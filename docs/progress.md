@@ -16,7 +16,7 @@ _Last updated: 2026-10-09 by Copilot_
 | 2b | Source URL fixes: OSM size-only verification, TCL Lyon GTFS resource | review | `data/source-urls` | Neighbouring OSM extracts verified by `Content-Length` instead of a nonexistent `.md5`; TCL Lyon's dropped/overridden GTFS resource now resolves to the current SYTRAL Mobilités feed with a Mobility Database fallback. Ruff clean; 67 tests pass. Dry run: 0 blocked entries (down from 27). |
 | 2c | Audit of the remaining 12 excluded community GTFS resources | review | `data/source-urls` | Checked, for each of the 12 datasets with a community-tagged excluded GTFS resource, whether that dataset keeps another producer GTFS resource; all 12 do (true duplicates), so none needed a TCL-Lyon-style override. Added a `discover_gtfs` safeguard that logs a warning if a community exclusion would ever leave a dataset with zero producer GTFS resources, so a future case is caught automatically. Ruff clean; 68 tests pass. |
 | 2d | France OSM sizes, resilient acquisition batches and reruns | review | `fix/osm-size` | France uses HEAD sizes without MD5 sidecars; OSM discovery refreshes all 28 extracts. Failed acquisitions no longer abort the batch; summary counts/reasons and exit 1 on failures. Recorded matching files skip network requests and preserve verification/date. Tests first; Ruff clean; 81 tests pass. |
-| 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | review | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. |
+| 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | review | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. Offline check: 551 downloaded, 536 passing feeds, 47 expired, 15 invalid/unusable, 18 flex indicators; no files deleted. |
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
@@ -112,8 +112,26 @@ Status values: not started, in progress, review, merged.
   `uv run ruff check .` passes and `uv run pytest -q` reports **108 passed**.
   The existing France OSM synthetic test now clears real acquisition hashes
   before downloading mock bytes, keeping tests independent of downloaded data.
-  No dependency added. National offline inventory run follows the implementation
-  commit, as requested.
+  No dependency added.
+- 2026-10-09, national offline check, run after implementation commit `c36491b`:
+  **552 configured resources**, **551 downloaded**, **550 valid ZIPs**,
+  **536 feeds passing all checks**, **15 downloaded files with errors**,
+  **47 expired feeds**, **18 files with flex/on-demand indicators**.
+  Expiry and flex counts overlap the other categories. The only missing file is
+  excluded resource **83905**, covered by validated **83906** (service through
+  **2027-08-28**). Command exit **0**; manifest SHA-256 unchanged; no network or
+  raw-file modification/deletion.
+- 2026-10-09, feed issues retained in the inventory: **82278** is not a ZIP
+  (the published GTFS-RT `.proto` URL); **83019** is an outer ZIP containing a
+  nested feed, not GTFS tables at that level; **83820** contains only agency and
+  stops. **78904/84240/83511** have CSV parsing errors (bounded follow-up samples
+  confirmed an unescaped quote, a short row and mixed line endings);
+  **81652/81649/84018** have incorrect calendar exception headers.
+  **14652/84068/83627/83629/78387/12616** have no effective service dates for
+  their trips. All files remain untouched for review; no permissive parser
+  fallback, alternate filename guess, sibling download or automatic deletion.
+  Full facts, dates and errors are persisted in
+  [the checked inventory](../config/gtfs_inventory.csv).
 
 ## Assumptions to check
 
