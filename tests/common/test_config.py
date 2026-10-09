@@ -40,3 +40,24 @@ paths:
 
     with pytest.raises(ValidationError):
         load_pilot_config(invalid)
+
+
+def test_pilot_config_rejects_windows_path_traversal(tmp_path: Path) -> None:
+    invalid = tmp_path / "pilot.yaml"
+    invalid.write_text(
+        """
+department: "33"
+halo_km: 50
+years: [2021, 2023]
+paths:
+  raw: data/raw
+  interim: data/interim
+  base: data/base
+  derived: data/derived
+  results: data/raw\\..\\outside
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        load_pilot_config(invalid)

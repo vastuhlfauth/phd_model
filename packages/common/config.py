@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def _validate_data_path(value: str) -> str:
-    path = PurePosixPath(value)
+    path = PurePosixPath(value.replace("\\", "/"))
     if path.is_absolute() or not path.parts or path.parts[0] != "data":
         raise ValueError("configured paths must be relative to the data/ directory")
     if ".." in path.parts:
