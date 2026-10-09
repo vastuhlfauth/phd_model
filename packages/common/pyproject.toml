@@ -1,0 +1,18 @@
+[project]
+name = "mobility-common"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb",
+    "pyarrow",
+    "pydantic",
+    "pyyaml",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["common"]
+package-dir = { common = "." }

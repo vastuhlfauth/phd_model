@@ -1,0 +1,5 @@
+data_root: data
+coordinate_system: EPSG:3035
+resolutions_m:
+  - 200
+  - 1000

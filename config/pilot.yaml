@@ -1,0 +1,11 @@
+department: "33"
+halo_km: 50
+years:
+  - 2021
+  - 2023
+paths:
+  raw: data/raw
+  interim: data/interim
+  base: data/base
+  derived: data/derived
+  results: data/results

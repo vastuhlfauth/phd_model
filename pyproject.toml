@@ -1,0 +1,53 @@
+[project]
+name = "mobility-france"
+version = "0.1.0"
+description = "Multimodal mobility and accessibility pipeline for metropolitan France"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb",
+    "httpx",
+    "mobility-acquire",
+    "mobility-common",
+    "mobility-landgrid",
+    "mobility-mobgrid",
+    "numba",
+    "numpy",
+    "pyarrow",
+    "pydantic",
+    "pyyaml",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "packages/common",
+    "packages/acquire",
+    "packages/landgrid",
+    "packages/mobgrid",
+]
+
+[tool.uv.sources]
+mobility-acquire = { workspace = true }
+mobility-common = { workspace = true }
+mobility-landgrid = { workspace = true }
+mobility-mobgrid = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

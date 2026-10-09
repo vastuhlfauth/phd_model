@@ -1,0 +1,23 @@
+[project]
+name = "mobility-landgrid"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb",
+    "mobility-acquire",
+    "mobility-common",
+    "numpy",
+    "pyarrow",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["landgrid*"]
+
+[tool.uv.sources]
+mobility-acquire = { workspace = true }
+mobility-common = { workspace = true }

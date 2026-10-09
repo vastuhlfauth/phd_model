@@ -1,0 +1,94 @@
+# References
+
+- Abraham, I., Fiat, A., Goldberg, A. V., Werneck, R. F. (2010). Highway dimension, shortest paths, and provably efficient algorithms. Proceedings of the ACM-SIAM Symposium on Discrete Algorithms (SODA).
+- Ahmed, A., Stopher, P. (2014). Seventy minutes plus or minus 10: a review of travel time budget studies. Transport Reviews 34(5), 607–625.
+- Ainsworth, B. E., et al. (2011). 2011 Compendium of Physical Activities: a second update of codes and MET values. Medicine & Science in Sports & Exercise 43(8), 1575–1581.
+- Akçelik, R. (1991). Travel time functions for transport planning purposes: Davidson's function, its time-dependent form and an alternative travel time function. Australian Road Research 21(3), 49–59.
+- Allen, T., Arkolakis, C. (2014). Trade and the topography of the spatial economy. Quarterly Journal of Economics 129(3), 1085–1140.
+- Allen, T., Arkolakis, C. (2022). The welfare effects of transportation infrastructure improvements. Review of Economic Studies 89(6), 2911–2957.
+- Bast, H., Delling, D., Goldberg, A., Müller-Hannemann, M., Pajor, T., Sanders, P., Wagner, D., Werneck, R. F. (2016). Route planning in transportation networks. In: Algorithm Engineering, LNCS 9220, Springer, 19–80.
+- Bast, H., Funke, S., Sanders, P., Schultes, D. (2007). Fast routing in road networks with transit nodes. Science 316, 566.
+- Baum, M., Buchhold, V., Sauer, J., Wagner, D., Zündorf, T. (2023). ULTRA: Unlimited transfers for efficient multimodal journey planning. Transportation Science. doi:10.1287/trsc.2022.0198
+- Ben-Akiva, M., Lerman, S. R. (1985). Discrete Choice Analysis: Theory and Application to Travel Demand. MIT Press.
+- Berry, B. J. L., Garrison, W. L. (1958). The functional bases of the central place hierarchy. Economic Geography 34(2), 145–154.
+- Bourne, J. E., Sauchelli, S., Perry, R., Page, A., Leary, S., England, C., Cooper, A. R. (2018). Health benefits of electrically-assisted cycling: a systematic review. International Journal of Behavioral Nutrition and Physical Activity 15, 116.
+- Bosch eBike Systems (2021). Performance Line factsheet, model year 2021 (support levels).
+- Bovy, P. H. L., Jansen, G. R. M. (1983). Network aggregation effects upon equilibrium assignment outcomes: an empirical investigation. Transportation Science 17(3), 240–262.
+- Broach, J., Dill, J., Gliebe, J. (2012). Where do cyclists ride? A route choice model developed with revealed preference GPS data. Transportation Research Part A 46(10), 1730–1740.
+- Bureau of Public Roads (1964). Traffic Assignment Manual. US Department of Commerce, Washington DC.
+- Byrne, N. M., Hills, A. P., Hunter, G. R., Weinsier, R. L., Schutz, Y. (2005). Metabolic equivalent: one size does not fit all. Journal of Applied Physiology 99(3), 1112–1119.
+- Conway, M. W., Byrd, A., van der Linden, M. (2017). Evidence-based transit and land use sketch planning using interactive accessibility methods on combined schedule and headway-based networks. Transportation Research Record 2653, 45–53.
+- Daly, A., Fox, J., Tuinenga, J. G. (2005). Pivot-point procedures in practical travel demand forecasting. European Regional Science Association conference paper.
+- Delamater, P. L., Messina, J. P., Shortridge, A. M., Grady, S. C. (2012). Measuring geographic access to health care: raster and network-based methods. International Journal of Health Geographics 11, 15.
+- Delling, D., Goldberg, A. V., Nowatzyk, A., Werneck, R. F. (2013). PHAST: Hardware-accelerated shortest path trees. Journal of Parallel and Distributed Computing.
+- Delling, D., Goldberg, A. V., Pajor, T., Werneck, R. F. (2017). Customizable route planning in road networks. Transportation Science 51(2), 566–591.
+- Delling, D., Pajor, T., Werneck, R. F. (2015). Round-based public transit routing. Transportation Science 49(3), 591–604.
+- di Prampero, P. E., Cortili, G., Mognoni, P., Saibene, F. (1979). Equation of motion of a cyclist. Journal of Applied Physiology 47(1), 201–206.
+- Digital Geography Lab, University of Helsinki. r5py: Rapid Realistic Routing with R5 in Python (software).
+- Dijkstra, L., Poelman, H., Ackermans, L. (2019). Road transport performance in Europe. DG REGIO Working Paper, European Commission.
+- Eicher, C. L., Brewer, C. A. (2001). Dasymetric mapping and areal interpolation: implementation and evaluation. Cartography and Geographic Information Science 28(2), 125–138.
+- Ettema, G., Lorås, H. W. (2009). Efficiency in cycling: a review. European Journal of Applied Physiology 106(1), 1–14.
+- Evans, G. W., Wener, R. E. (2006). Rail commuting duration and passenger stress. Health Psychology 25(3), 408–412.
+- Fajgelbaum, P. D., Schaal, E. (2020). Optimal transport networks in spatial equilibrium. Econometrica 88(4), 1411–1452.
+- Fruin, J. J. (1971). Pedestrian Planning and Design. Metropolitan Association of Urban Designers and Environmental Planners, New York.
+- Geurs, K. T., van Wee, B. (2004). Accessibility evaluation of land-use and transport strategies: review and research directions. Journal of Transport Geography 12(2), 127–140.
+- Gojanovic, B., Welker, J., Iglesias, K., Daucourt, C., Gremion, G. (2011). Electric bicycles as a new active transportation modality to promote health. Medicine & Science in Sports & Exercise 43(11), 2204–2210.
+- Hagen-Zanker, A., Jin, Y. (2012). A new method of adaptive zoning for spatial interaction models. Geographical Analysis 44(4), 281–301.
+- Hagen-Zanker, A., Jin, Y. (2015). Adaptive zoning for efficient transport modelling in urban models. ICCSA 2015, LNCS 9157, 673–687.
+- Hansen, W. G. (1959). How accessibility shapes land use. Journal of the American Institute of Planners 25(2), 73–76.
+- Haywood, L., Koning, M., Monchambert, G. (2017). Crowding in public transport: who cares and why? Transportation Research Part A 100, 215–227.
+- Heinen, E., van Wee, B., Maat, K. (2010). Commuting by bicycle: an overview of the literature. Transport Reviews 30(1), 59–96.
+- Hennessy, D. A., Wiesenthal, D. L. (1997). The relationship between traffic congestion, driver stress and direct versus indirect coping behaviours. Ergonomics 40(3), 348–361.
+- Fitch, D. T., Sharpnack, J., Handy, S. L. (2020). Psychological stress of bicycling with traffic: examining heart rate variability of bicyclists in natural urban environments. Transportation Research Part F 70, 81–97.
+- Google (2026). Routes API, method computeRoutes: reference documentation (fields duration, staticDuration, polyline; traffic on polylines).
+- Guo, X., Tavakoli, A., Robartes, E., Angulo, A., Chen, T. D., Heydarian, A. (2022). Roadway design matters: variation in bicyclists' psycho-physiological responses in different urban roadway designs. arXiv:2202.13468.
+- Herrmann, S. D., et al. (2024). 2024 Adult Compendium of Physical Activities: a third update of the energy costs of human activities. Journal of Sport and Health Science 13(1), 6–12.
+- Holroyd, E. M., Scraggs, D. A. (1966). Waiting times for buses in central London. Traffic Engineering and Control 8(3), 158–160.
+- Hood, J., Sall, E., Charlton, B. (2011). A GPS-based bicycle route choice model for San Francisco, California. Transportation Letters 3(1), 63–75.
+- INSEE (2022). Base permanente des équipements 2021: liste hiérarchisée des types d'équipements (updated 16 May 2022).
+- INSEE (2026). Liste et description des types d'équipements de la BPE au 1er janvier 2025 (updated April 2026).
+- Kittelson & Associates, KFH Group, et al. (2003). Transit Capacity and Quality of Service Manual, 2nd edition. TCRP Report 100, Transportation Research Board.
+- Kittelson & Associates, et al. (2013). Transit Capacity and Quality of Service Manual, 3rd edition (TCQSM). TCRP Report 165, Transportation Research Board.
+- Kölbl, R., Helbing, D. (2003). Energy laws in human travel behaviour. New Journal of Physics 5, 48.
+- Kuehnel, N., Ziemke, D. The end of travel time matrices: individual travel times in integrated land use/transport models. TU Berlin repository (DepositOnce).
+- Langford, B. C., Cherry, C. R., Bassett, D. R., Fitzhugh, E. C., Dhakal, N. (2017). Comparing physical activity of pedal-assist electric bikes with walking and conventional bicycles. Journal of Transport & Health 6, 463–473.
+- Larson, R. C., Odoni, A. R. (1981). Urban Operations Research. Prentice-Hall.
+- Legisocial (2025). Barème kilométrique 2025 (official mileage scale for cars).
+- Legrain, A., Eluru, N., El-Geneidy, A. M. (2015). Am stressed, must travel: the relationship between mode choice and commuting stress. Transportation Research Part F 34, 141–151.
+- Li, Z., Hensher, D. A. (2011). Crowding and public transport: a review of willingness to pay evidence and its relevance in project appraisal. Transport Policy 18(6), 880–887.
+- Ludlow, L. W., Weyand, P. G. (2016). Energy expenditure during level human walking: seeking a simple and accurate predictive solution. Journal of Applied Physiology 120(5), 481–494.
+- Marchetti, C. (1994). Anthropological invariants in travel behavior. Technological Forecasting and Social Change 47(1), 75–88.
+- Martin, J. C., Milliken, D. L., Cobb, J. E., McFadden, K. L., Coggan, A. R. (1998). Validation of a mathematical model for road cycling power. Journal of Applied Biomechanics 14(3), 276–291.
+- McFadden, D. (1978). Modelling the choice of residential location. In: Karlqvist, A. et al. (eds), Spatial Interaction Theory and Planning Models. North-Holland.
+- Menghini, G., Carrasco, N., Schüssler, N., Axhausen, K. W. (2010). Route choice of cyclists in Zurich. Transportation Research Part A 44(9), 754–765.
+- Mennis, J. (2003). Generating surface models of population using dasymetric mapping. The Professional Geographer 55(1), 31–42.
+- Metz, D. (2008). The myth of travel time saving. Transport Reviews 28(3), 321–336.
+- Minetti, A. E., Moia, C., Roi, G. S., Susta, D., Ferretti, G. (2002). Energy cost of walking and running at extreme uphill and downhill slopes. Journal of Applied Physiology 93(3), 1039–1046.
+- Mokhtarian, P. L., Chen, C. (2004). TTB or not TTB, that is the question: a review and analysis of the empirical literature on travel time (and money) budgets. Transportation Research Part A 38(9–10), 643–675.
+- Owen, A., Murphy, B. (2019). Temporal sampling and service frequency harmonics in transit accessibility evaluation. Journal of Transport and Land Use 12(1). doi:10.5198/jtlu.2019.1379
+- Pandolf, K. B., Givoni, B., Goldman, R. F. (1977). Predicting energy expenditure with loads while standing or walking very slowly. Journal of Applied Physiology 43(4), 577–581.
+- Parkin, J., Rotheram, J. (2010). Design speeds and acceleration characteristics of bicycle traffic for use in planning, design and appraisal. Transport Policy 17(5), 335–341.
+- Parkin, J., Wardman, M., Page, M. (2008). Estimation of the determinants of bicycle mode share for the journey to work using census data. Transportation 35(1), 93–109.
+- Pereira, R. H. M., Saraiva, M., Herszenhut, D., Braga, C. K. V., Conway, M. W. (2021). r5r: Rapid realistic routing on multimodal transport networks with R5 in R. Findings. doi:10.32866/001c.21262
+- Poelman, H., Dijkstra, L., Ackermans, L. (2020). Rail transport performance in Europe. DG REGIO Working Paper, European Commission.
+- Redding, S. J., Rossi-Hansberg, E. (2017). Quantitative spatial economics. Annual Review of Economics 9, 21–58.
+- Rodríguez, D. A., Joo, J. (2004). The relationship between non-motorized mode choice and the local physical environment. Transportation Research Part D 9(2), 151–173.
+- Rothley, K. D. (2005). Finding and filling the "cracks" in resistance surfaces for least-cost modeling. Ecology and Society 10(1), 4.
+- Santé publique France (2017). Étude de santé sur l'environnement, la biosurveillance, l'activité physique et la nutrition (Esteban 2014–2016): chapitre corpulence.
+- Schafer, A., Victor, D. G. (2000). The future mobility of the world population. Transportation Research Part A 34(3), 171–205.
+- Shoup, D. C. (2006). Cruising for parking. Transport Policy 13(6), 479–486.
+- Simini, F., González, M. C., Maritan, A., Barabási, A.-L. (2012). A universal model for mobility and migration patterns. Nature 484, 96–100.
+- Spitzer, H., Hettinger, T., Kaminsky, G. (1982). Tafeln für den Energieumsatz bei körperlicher Arbeit, 6th edition. Beuth, Berlin.
+- Stępniak, M., Pritchard, J. P., Geurs, K. T., Goliszek, S. (2019). The impact of temporal resolution on public transport accessibility measurement: review and case study in Poland. Journal of Transport Geography 75, 8–24.
+- Stouffer, S. A. (1940). Intervening opportunities: a theory relating mobility and distance. American Sociological Review 5(6), 845–867.
+- Tenkanen, H., Toivonen, T. (2020). Longitudinal spatial dataset on travel times and distances by different travel modes in Helsinki Region. Scientific Data 7, 77.
+- Tobler, W. (1993). Three presentations on geographical analysis and modeling. NCGIA Technical Report 93-1, University of California, Santa Barbara.
+- van Bemmelen, J., Quak, W., van Hekken, M., van Oosterom, P. (1993). Vector vs. raster-based algorithms for cross country movement planning. Proceedings of Auto-Carto 11.
+- Wardman, M., Whelan, G. (2011). Twenty years of rail crowding valuation studies: evidence and lessons from British experience. Transport Reviews 31(3), 379–398.
+- Webster, F. V. (1958). Traffic signal settings. Road Research Technical Paper 39, HMSO, London.
+- Weiss, D. J., et al. (2018). A global map of travel time to cities to assess inequalities in accessibility in 2015. Nature 553, 333–336.
+- Wener, R. E., Evans, G. W. (2011). Comparing stress of car and train commuters. Transportation Research Part F 14(2), 111–116.
+- Weyand, P. G., Smith, B. R., Puyau, M. R., Butte, N. F. (2010). The mass-specific energy cost of human walking is set by stature. Journal of Experimental Biology 213, 3972–3979.
+- Wilson, D. G., Schmidt, T. (2020). Bicycling Science, 4th edition. MIT Press.
+- Yang, Y., Herrera, C., Eagle, N., González, M. C. (2014). Limits of predictability in commuting flows in the absence of data for calibration. Scientific Reports 4, 5662.
+- Zahavi, Y., Talvitie, A. (1980). Regularities in travel time and money expenditure. Transportation Research Record 750, 13–19.
