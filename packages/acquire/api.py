@@ -12,6 +12,8 @@ def _request_json(
     *,
     params: dict[str, str] | None = None,
     api_key_env: str | None = None,
+    api_key_header: str = "Authorization",
+    api_key_scheme: str | None = "Bearer",
     client: httpx.Client | None = None,
 ) -> dict[str, Any]:
     headers: dict[str, str] = {}
@@ -21,7 +23,9 @@ def _request_json(
             raise ValueError(
                 f"required API key environment variable is unset: {api_key_env}"
             )
-        headers["Authorization"] = f"Bearer {api_key}"
+        headers[api_key_header] = (
+            f"{api_key_scheme} {api_key}" if api_key_scheme else api_key
+        )
     owns_client = client is None
     active_client = client or httpx.Client(follow_redirects=True)
     try:
@@ -41,6 +45,8 @@ def list_data_gouv_datasets(
     *,
     params: dict[str, str] | None = None,
     api_key_env: str | None = None,
+    api_key_header: str = "Authorization",
+    api_key_scheme: str | None = "Bearer",
     client: httpx.Client | None = None,
 ) -> dict[str, Any]:
     """Fetch a data.gouv.fr dataset listing from a configured API URL."""
@@ -48,6 +54,8 @@ def list_data_gouv_datasets(
         api_url,
         params=params,
         api_key_env=api_key_env,
+        api_key_header=api_key_header,
+        api_key_scheme=api_key_scheme,
         client=client,
     )
 
@@ -57,12 +65,16 @@ def get_data_gouv_dataset(
     dataset_id: str,
     *,
     api_key_env: str | None = None,
+    api_key_header: str = "Authorization",
+    api_key_scheme: str | None = "Bearer",
     client: httpx.Client | None = None,
 ) -> dict[str, Any]:
     """Fetch one data.gouv.fr dataset using its configured API base URL."""
     return _request_json(
         f"{api_url.rstrip('/')}/{quote(dataset_id, safe='')}",
         api_key_env=api_key_env,
+        api_key_header=api_key_header,
+        api_key_scheme=api_key_scheme,
         client=client,
     )
 

@@ -29,6 +29,8 @@ class SourceFile(BaseModel):
     license: str | None = None
     api_query: str | None = None
     api_key_env: str | None = None
+    api_key_header: str = "Authorization"
+    api_key_scheme: str | None = "Bearer"
     restricted: bool = False
     notes: str | None = None
 
@@ -51,6 +53,10 @@ class SourceFile(BaseModel):
             raise ValueError("restricted access requires restricted: true")
         if self.api_key_env is not None and not self.api_key_env.strip():
             raise ValueError("api_key_env must not be empty")
+        if not self.api_key_header.strip():
+            raise ValueError("api_key_header must not be empty")
+        if self.api_key_scheme is not None and not self.api_key_scheme.strip():
+            raise ValueError("api_key_scheme must not be empty")
         return self
 
 

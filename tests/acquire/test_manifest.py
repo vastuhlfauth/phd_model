@@ -78,3 +78,44 @@ def test_restricted_source_cannot_have_download_url() -> None:
             local_path="data/raw/restricted/file.zip",
             restricted=True,
         )
+
+
+def test_api_key_header_and_scheme_must_not_be_blank() -> None:
+    with pytest.raises(ValidationError, match="api_key_header"):
+        SourceFile(
+            source="example",
+            provider="Example",
+            vintage="2026",
+            url="https://example.test/api",
+            local_path="data/raw/example/file.json",
+            access="api",
+            api_key_header="  ",
+        )
+
+    with pytest.raises(ValidationError, match="api_key_scheme"):
+        SourceFile(
+            source="example",
+            provider="Example",
+            vintage="2026",
+            url="https://example.test/api",
+            local_path="data/raw/example/file.json",
+            access="api",
+            api_key_scheme="  ",
+        )
+
+
+def test_api_key_header_and_scheme_are_configurable_per_source() -> None:
+    source = SourceFile(
+        source="example",
+        provider="Example",
+        vintage="2026",
+        url="https://example.test/api",
+        local_path="data/raw/example/file.json",
+        access="api",
+        api_key_env="EXAMPLE_API_KEY",
+        api_key_header="X-Api-Key",
+        api_key_scheme=None,
+    )
+
+    assert source.api_key_header == "X-Api-Key"
+    assert source.api_key_scheme is None
