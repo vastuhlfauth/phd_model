@@ -18,7 +18,8 @@ import httpx
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
-from acquire.manifest import SourceFile
+from acquire.gtfs import GtfsCheck
+from acquire.manifest import SourceFile, replace_metadata
 
 logger = logging.getLogger(__name__)
 ATOM = "{http://www.w3.org/2005/Atom}"
@@ -42,6 +43,10 @@ class AcquisitionConfig(BaseModel):
     bdalti_feed: str
     metadata_max_bytes: int = Field(gt=0)
     request_timeout_seconds: float = Field(gt=0)
+    gtfs_read_timeout_seconds: float = Field(gt=0)
+    gtfs_archive_max_age_days: int = Field(gt=0)
+    manifest_replace_attempts: int = Field(gt=0, le=5)
+    manifest_retry_seconds: float = Field(gt=0)
     ign_interval_seconds: float = Field(ge=1)
     max_retries: int = Field(ge=0, le=5)
     retry_initial_seconds: float = Field(gt=0)
@@ -314,7 +319,12 @@ def discover_gtfs(
     return records
 
 
-def write_gtfs_inventory(path: Path, records: list[SourceFile]) -> None:
+def write_gtfs_inventory(
+    path: Path,
+    records: list[SourceFile],
+    checks: dict[str, GtfsCheck] | None = None,
+) -> None:
+    """Write feed metadata, preserving offline checks until explicitly rerun."""
     fields = [
         "dataset_id",
         "dataset_slug",
@@ -326,21 +336,46 @@ def write_gtfs_inventory(path: Path, records: list[SourceFile]) -> None:
         "available",
         "availability_note",
         "checked_date",
+        "archive_url",
+        "archive_date",
+        "archive_resource_id",
+        "excluded_reason",
         "dataset_gtfs_resource_count",
         "multiple_gtfs_resources",
     ]
+    check_fields = ["gtfs_" + name for name in GtfsCheck.model_fields]
+    previous: dict[str, dict[str, str]] = {}
+    if path.is_file() and checks is None:
+        with path.open(encoding="utf-8", newline="") as stream:
+            previous = {row["resource_id"]: row for row in csv.DictReader(stream)}
     counts = Counter(record.dataset_id for record in records)
     temporary = path.with_name(path.name + ".tmp")
     with temporary.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer = csv.DictWriter(stream, fieldnames=fields + check_fields)
         writer.writeheader()
         for record in records:
             row = {field: getattr(record, field) for field in fields[:-2]}
             row["covered_area"] = json.dumps(record.covered_area, ensure_ascii=False)
             row["dataset_gtfs_resource_count"] = counts[record.dataset_id]
             row["multiple_gtfs_resources"] = counts[record.dataset_id] > 1
+            if checks is not None and record.id in checks:
+                check = checks[record.id].model_dump(mode="json")
+                row.update(
+                    {
+                        "gtfs_" + name: (
+                            json.dumps(value, ensure_ascii=False)
+                            if isinstance(value, list)
+                            else value
+                        )
+                        for name, value in check.items()
+                    }
+                )
+            else:
+                prior = previous.get(record.resource_id or "", {})
+                if prior.get("local_path") == record.local_path:
+                    row.update({field: prior.get(field, "") for field in check_fields})
             writer.writerow(row)
-    temporary.replace(path)
+    replace_metadata(temporary, path)
     multiple_path = path.with_name("gtfs_multiple_resources.csv")
     temporary = multiple_path.with_name(multiple_path.name + ".tmp")
     with temporary.open("w", encoding="utf-8", newline="") as stream:
@@ -367,7 +402,7 @@ def write_gtfs_inventory(path: Path, records: list[SourceFile]) -> None:
                     ";".join(record.resource_id or "" for record in group),
                 ]
             )
-    temporary.replace(multiple_path)
+    replace_metadata(temporary, multiple_path)
 
 
 def _normalized(text: str) -> str:
@@ -499,7 +534,16 @@ def merge_discovered(
             record = record.model_copy(
                 update={
                     field: getattr(old, field)
-                    for field in ("size_bytes", "sha256", "download_date", "verified")
+                    for field in (
+                        "size_bytes",
+                        "sha256",
+                        "download_date",
+                        "verified",
+                        "archive_url",
+                        "archive_date",
+                        "archive_resource_id",
+                        "excluded_reason",
+                    )
                 }
             )
         replacements.append(record)

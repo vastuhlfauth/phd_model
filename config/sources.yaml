@@ -71,6 +71,28 @@ sources:
   download_date: '2026-10-09'
   license: ODbL-1.0
   verified: size
+- id: filosofi-natural-2019
+  source: filosofi
+  provider: INSEE
+  vintage: '2019'
+  url: https://www.insee.fr/fr/statistiques/fichier/7655503/Filosofi2019_carreaux_nivNaturel_csv.zip
+  local_path: data/raw/filosofi/2019/Filosofi2019_carreaux_nivNaturel_csv.zip
+  size_bytes: 6282711
+  sha256: 08e0976007f76b813e00b05795b9f9020635724eac5977ddabab1b8944aa9a87
+  download_date: '2026-10-09'
+  notes: Temporal validation of origins, section 6.5.
+  verified: false
+- id: filosofi-200m-2019
+  source: filosofi
+  provider: INSEE
+  vintage: '2019'
+  url: https://www.insee.fr/fr/statistiques/fichier/7655475/Filosofi2019_carreaux_200m_csv.zip
+  local_path: data/raw/filosofi/2019/Filosofi2019_carreaux_200m_csv.zip
+  size_bytes: 61770743
+  sha256: df10a26d03f2c8b9fec8d842f97f7b92cc7f61caf161de123d0b7955e0fec8b0
+  download_date: '2026-10-09'
+  notes: Temporal validation benchmark, section 6.5.
+  verified: false
 - id: filosofi-natural-2021
   source: filosofi
   provider: INSEE
@@ -4647,7 +4669,11 @@ sources:
   vintage: 2026-10
   url: https://bus-prod.saint-etienne-metropole.fr/Public/stas/api/gtfs.aspx
   local_path: data/raw/gtfs/2026-10/5c34c93f8b4c4104b817fb3a/81023.zip
+  size_bytes: 9765346
+  sha256: 8dc4724e91f8d87b370a463ae6615c154d1c390747bb205ef787f0c2480ffb6c
+  download_date: '2026-10-09'
   license: lov2
+  verified: false
   dataset_id: 5c34c93f8b4c4104b817fb3a
   dataset_slug: horaires-du-reseau-stas
   dataset_title: Réseau urbain STAS
@@ -4656,8 +4682,7 @@ sources:
   - type: epci
     nom: Saint-Étienne Métropole
     insee: '244200770'
-  available: false
-  availability_note: The read operation timed out
+  available: true
   checked_date: '2026-10-09'
 - id: gtfs-632a56a644e491b8ebeacfa5-82334
   source: gtfs
@@ -8435,6 +8460,7 @@ sources:
   provider: transport.data.gouv.fr
   vintage: 2026-10
   url: https://geoportail.lepuyenvelay.fr/data/gtfs/urbain/gtfs/
+  excluded_reason: broken resource, dataset covered by 83906
   local_path: data/raw/gtfs/2026-10/654d7323492eed0ae612b365/83905.zip
   license: lov2
   dataset_id: 654d7323492eed0ae612b365
@@ -8446,8 +8472,8 @@ sources:
     nom: CA du Puy-en-Velay
     insee: '200073419'
   available: false
-  availability_note: 'expected a data file but received an HTML page (Content-Type:
-    text/html) from https://geoportail.lepuyenvelay.fr/data/gtfs/urbain/gtfs/'
+  availability_note: expected a data file but downloaded content looks like an HTML
+    page from https://transport-data-gouv-fr-resource-history-prod.cellar-c2.services.clever-cloud.com/83905/83905.20261001.181010.106407.gtfs
   checked_date: '2026-10-09'
 - id: gtfs-654d7323492eed0ae612b365-83906
   source: gtfs
@@ -11052,8 +11078,15 @@ sources:
   provider: transport.data.gouv.fr
   vintage: 2026-10
   url: https://api.oisemob.cityway.fr/dataflow/offre-tc/download?provider=CCAC&dataFormat=GTFS&dataProfil=OPENDATA
+  archive_url: https://transport-data-gouv-fr-resource-history-prod.cellar-c2.services.clever-cloud.com/81042/81042.20260901.062958.755696.zip
+  archive_date: '2026-09-01'
+  archive_resource_id: '81042'
   local_path: data/raw/gtfs/2026-10/64a7294782315740773493bc/81042.zip
+  size_bytes: 248579
+  sha256: 432419c65305791a4bc70b55814600a1122912f78c29c0dc3ca3699bc2cd7be0
+  download_date: '2026-10-09'
   license: lov2
+  verified: false
   dataset_id: 64a7294782315740773493bc
   dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-airemob-communaute-de-communes-de-laire-cantilienne
   dataset_title: Réseau urbain et interurbain Aire’MOB
@@ -11062,8 +11095,7 @@ sources:
   - type: epci
     nom: CC de l'Aire Cantilienne
     insee: '246000764'
-  available: false
-  availability_note: unexpected successful download status 204
+  available: true
   checked_date: '2026-10-09'
 - id: gtfs-6a0483992788d7dd2da4e10b-84105
   source: gtfs
@@ -13402,7 +13434,11 @@ sources:
   vintage: 2026-10
   url: https://zenbus.net/gtfs/static/download.zip?dataset=saint-sulpice-la-pointe
   local_path: data/raw/gtfs/2026-10/6a3b939e6d59013b6b98c46e/84089.zip
+  size_bytes: 32652
+  sha256: 09fb739c9a5ed89f1ba9d8d259a747bcf3776c8e4b1d8b808e3bdd467155cd1d
+  download_date: '2026-10-09'
   license: lov2
+  verified: false
   dataset_id: 6a3b939e6d59013b6b98c46e
   dataset_slug: reseau-de-transport-urbain-de-la-ville-de-st-sulpice-la-pointe
   dataset_title: Réseau urbain ST SULPICE LA POINTE
@@ -13411,8 +13447,7 @@ sources:
   - type: commune
     nom: Saint-Sulpice-la-Pointe
     insee: '81271'
-  available: false
-  availability_note: The read operation timed out
+  available: true
   checked_date: '2026-10-09'
 - id: gtfs-60a5133609291f30ffca1d53-79576
   source: gtfs

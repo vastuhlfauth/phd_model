@@ -14,6 +14,8 @@ uv run python -m acquire --manifest config\sources.yaml --all --discover
 uv run python -m acquire --manifest config\sources.yaml --all --dry-run
 # Actual download only when explicitly requested:
 uv run python -m acquire --manifest config\sources.yaml --dataset filosofi
+# Offline GTFS inspection; keep all files, including invalid/expired feeds.
+uv run python -m acquire --manifest config\sources.yaml --check-gtfs
 ```
 
 Discovery can also select `gtfs`, `bdalti`, or `osm` individually. It writes the
@@ -23,9 +25,12 @@ files and record size, SHA-256, date, and independent verification status.
 Reruns check recorded local sizes and hashes before requesting the network;
 matching files are reported as already present, retaining their verification
 level and acquisition date. `--all` continues after an entry fails, persists
-successful records, and ends with counts of downloaded, already present,
-skipped, and failed entries plus each failure reason. Acquisition failures
-(including entries already marked unavailable) exit with code 1. As before,
+each completed file's record immediately (atomic replacement, up to five
+attempts with a short wait on Windows `PermissionError`), and ends with counts
+of downloaded, already present, skipped, failed and excluded entries plus each
+failure reason. Manifest readers close the handle before parsing YAML, avoiding
+self-inflicted Windows locks. Uncovered acquisition failures (including
+unavailable entries without a usable fallback) exit with code 1. As before,
 manual/restricted skips without failures exit with code 2; dry runs exit 0.
 Discovery URLs, raw-path templates, départements, neighbouring regions, vintages,
 step-0 feed patterns and request/retry limits are validated from
@@ -73,8 +78,21 @@ uv run python -m acquire --manifest config\sources.yaml --register-restricted em
 - Discovery on 2026-10-09: initially 565 resources / 487 datasets; excluding 13
   community resources leaves **552 producer resources / 486 datasets**.
   **33 datasets** have multiple GTFS resources.
-- API-marked unavailable resources are listed, not fetched. GTFS failures during
-  a later acquisition are recorded and listed without terminating the batch.
+- GTFS resources with a dataset/resource id can be retried even when a previous
+  acquisition marked them unavailable. Their read timeout is 300 seconds.
+  On a failed primary download (including HTML, empty data or HTTP 204), use
+  only the requested resource's latest permanent archive in dataset history.
+  It must be less than 60 days old and a valid GTFS ZIP; no older archives,
+  sibling downloads or alternative archive providers are searched.
+  Record the archive URL, resource id and date in the manifest.
+  If the resource still fails but a downloaded sibling of the same dataset
+  passes the local GTFS check, mark it as excluded with the covering resource id
+  rather than counting it as failed. Otherwise retain the explicit failure.
+- The offline `--check-gtfs` command inspects every configured downloaded feed
+  and records integrity, required table presence, flex indicators, effective
+  service dates, expiry, stop/trip counts, agencies and WGS84 extent in the
+  inventory. Missing, invalid and expired resources remain listed; nothing is
+  deleted. See [the GTFS data page](gtfs.md) for fields and limitations.
 - **TCL Lyon:** transport.data.gouv.fr tags resource `81943` (the current SYTRAL
   Mobilités feed, stable redirect
   <https://www.data.gouv.fr/api/1/datasets/r/abebedc6-28cf-4e2e-9c64-db57a40156f8>)
@@ -84,9 +102,10 @@ uv run python -m acquire --manifest config\sources.yaml --register-restricted em
   `gtfs_resource_overrides` in
   [config/acquisition.yaml](../../config/acquisition.yaml) drop `65812` and
   force-include `81943` on every re-discovery, with a Mobility Database fallback
-  URL (`files.mobilitydatabase.org`) used automatically if the primary download
-  fails. The same override/fallback mechanism applies to any other GTFS resource
-  that a Mobility Database copy can replace; none other is currently unavailable.
+  URL (`files.mobilitydatabase.org`) retained as discovery metadata. For
+  identified GTFS resources, the strict transport.data.gouv.fr own-archive rule
+  above supersedes this older generic fallback. Non-GTFS HTTP fallback behavior
+  is unchanged.
 - **Other excluded community resources:** after TCL Lyon, 12 community-tagged
   GTFS resources remain excluded across 10 datasets. Each dataset was checked
   for another, non-community producer GTFS resource; all 12 are true duplicates
@@ -188,6 +207,8 @@ includes redirecting SDES/data.gouv.fr endpoints and open INSEE Melodi endpoints
 | Dataset / file | Vintage | Direct URL | Local directory |
 |---|---|---|---|
 | FILOSOFI natural level | 2021 | <https://www.insee.fr/fr/statistiques/fichier/8735108/Filosofi2021_carreaux_nivNaturel_csv.zip> | `data/raw/filosofi/2021/` |
+| FILOSOFI natural level, temporal test (section 6.5) | 2019 | <https://www.insee.fr/fr/statistiques/fichier/7655503/Filosofi2019_carreaux_nivNaturel_csv.zip> | `data/raw/filosofi/2019/` |
+| FILOSOFI 200 m, temporal-test benchmark | 2019 | <https://www.insee.fr/fr/statistiques/fichier/7655475/Filosofi2019_carreaux_200m_csv.zip> | `data/raw/filosofi/2019/` |
 | FILOSOFI imputed 200 m benchmark | 2021 | <https://www.insee.fr/fr/statistiques/fichier/8735162/Filosofi2021_carreaux_200m_csv.zip> | `data/raw/filosofi/2021/` |
 | Census dossier complet | 2021 | <https://www.insee.fr/fr/statistiques/fichier/5359146/dossier_complet_31_12_2024.zip> | `data/raw/census/2021/` |
 | Census dossier complet | 2023 | <https://www.insee.fr/fr/statistiques/fichier/5359146/dossier_complet.parquet> | `data/raw/census/2023/` |

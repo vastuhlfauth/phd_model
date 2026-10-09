@@ -19,6 +19,7 @@ from acquire.discovery import (
     write_gtfs_inventory,
 )
 from acquire.download import download_source
+from acquire.gtfs import GtfsCheck, inspect_gtfs
 from acquire.manifest import SourceFile, load_manifest, save_manifest
 from acquire.overture import extract_places
 
@@ -30,6 +31,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest", required=True, type=Path)
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--dataset", help="source name or configured file id")
+    selection.add_argument(
+        "--check-gtfs",
+        action="store_true",
+        help="inspect all configured local GTFS files offline and write inventory",
+    )
     selection.add_argument(
         "--all", action="store_true", help="process every configured entry"
     )
@@ -66,6 +72,96 @@ def _select(sources: list[SourceFile], selector: str) -> list[SourceFile]:
     if not selected:
         raise ValueError(f"no configured source matches {selector!r}")
     return selected
+
+
+def _save_record(
+    manifest: Path, sources: list[SourceFile], record: SourceFile
+) -> list[SourceFile]:
+    updated = [record if source.id == record.id else source for source in sources]
+    save_manifest(manifest, updated)
+    return updated
+
+
+def _covering_resource(
+    source: SourceFile,
+    sources: list[SourceFile],
+    root: Path,
+    checks: dict[str, GtfsCheck],
+) -> str | None:
+    """Return a locally validated GTFS sibling id, never a sibling URL (5.1)."""
+    if source.source != "gtfs" or not source.dataset_id:
+        return None
+    for sibling in sources:
+        if (
+            sibling.source != "gtfs"
+            or sibling.id == source.id
+            or sibling.dataset_id != source.dataset_id
+            or sibling.resource_id is None
+        ):
+            continue
+        if sibling.id not in checks:
+            checks[sibling.id] = inspect_gtfs(root / sibling.local_path, date.today())
+        if checks[sibling.id].is_gtfs:
+            return sibling.resource_id
+    return None
+
+
+def _exclude_covered_failures(
+    sources: list[SourceFile], failures: dict[str, str], root: Path
+) -> list[SourceFile]:
+    """Exclude broken resources only with a valid local feed of the same dataset."""
+    checks: dict[str, GtfsCheck] = {}
+    updated = []
+    for source in sources:
+        sibling = (
+            _covering_resource(source, sources, root, checks)
+            if source.id in failures
+            else None
+        )
+        if sibling is not None:
+            reason = f"broken resource, dataset covered by {sibling}"
+            source = source.model_copy(update={"excluded_reason": reason})
+            del failures[source.id]
+            print(f"excluded {source.id}: {reason}")
+        updated.append(source)
+    return updated
+
+
+def _check_gtfs(sources: list[SourceFile], root: Path, inventory: Path) -> None:
+    gtfs = [source for source in sources if source.source == "gtfs"]
+    if not gtfs:
+        raise ValueError("no configured GTFS sources")
+    checks = {
+        source.id: inspect_gtfs(root / source.local_path, date.today())
+        for source in gtfs
+    }
+    write_gtfs_inventory(inventory, gtfs, checks)
+    downloaded = [check for check in checks.values() if check.error != "not downloaded"]
+    valid = sum(check.is_gtfs for check in downloaded)
+    expired = sum(check.expired is True for check in downloaded)
+    flex = sum(
+        check.has_locations_geojson or check.has_booking_rules for check in downloaded
+    )
+    print(
+        f"GTFS check: configured: {len(gtfs)}, downloaded: {len(downloaded)}, "
+        f"valid ZIP: {sum(check.valid_zip for check in downloaded)}, "
+        f"valid GTFS: {valid}, not GTFS/invalid: {len(downloaded) - valid}, "
+        f"expired: {expired}, flex/on-demand: {flex}, "
+        f"not downloaded: {len(gtfs) - len(downloaded)}"
+    )
+    for source in gtfs:
+        check = checks[source.id]
+        if check.error or check.expired:
+            print(
+                f"flag {source.resource_id or source.id}: "
+                f"{check.error or 'service ended'}"
+                + (
+                    f" (last service {check.last_service_date})"
+                    if check.expired
+                    else ""
+                )
+                + (f"; {source.excluded_reason}" if source.excluded_reason else "")
+            )
 
 
 def _register_restricted(
@@ -118,6 +214,16 @@ def main(argv: list[str] | None = None) -> int:
     manifest_path = args.manifest.resolve()
     sources = load_manifest(manifest_path)
     root = _project_root(manifest_path, args.project_root)
+    if args.check_gtfs:
+        if args.discover or args.dry_run:
+            logger.error("--check-gtfs cannot be combined with discovery or dry run")
+            return 1
+        try:
+            _check_gtfs(sources, root, manifest_path.with_name("gtfs_inventory.csv"))
+        except (OSError, ValueError) as error:
+            logger.error("GTFS check failed: %s", error)
+            return 1
+        return 0
     if args.discover:
         if args.dry_run or args.register_restricted:
             logger.error("--discover cannot be combined with --dry-run or registration")
@@ -221,7 +327,20 @@ def main(argv: list[str] | None = None) -> int:
     already_present = 0
     failures: dict[str, str] = {}
     for source in selected:
-        if source.available is False:
+        if source.excluded_reason:
+            if (
+                args.dry_run
+                or _covering_resource(source, sources, root, {}) is not None
+            ):
+                print(f"excluded {source.id}: {source.excluded_reason}")
+                continue
+            logger.warning("Dataset coverage lost for excluded resource %s", source.id)
+            source = source.model_copy(update={"excluded_reason": None})
+        if source.available is False and (
+            args.dry_run
+            or source.source != "gtfs"
+            or not (source.dataset_id and source.resource_id)
+        ):
             print(f"unavailable {source.id}: {source.availability_note}")
             failures[source.id] = source.availability_note or "reported unavailable"
             continue
@@ -259,26 +378,53 @@ def main(argv: list[str] | None = None) -> int:
             )
             continue
         try:
-            result = (
-                extract_places(source, root)
-                if source.access == "s3"
-                else download_source(source, root)
-            )
+            if source.access == "s3":
+                result = extract_places(source, root)
+            elif source.source == "gtfs" and args.acquisition_config:
+                result = download_source(
+                    source,
+                    root,
+                    settings=load_acquisition_config(args.acquisition_config),
+                )
+            else:
+                result = download_source(source, root)
         except (httpx.HTTPError, OSError, ValueError, duckdb.Error) as error:
             logger.error(
                 "failed to acquire %s (%s): %s", source.source, source.vintage, error
             )
             failures[source.id] = str(error) or type(error).__name__
             if source.source == "gtfs":
-                updated_by_id[source.id] = source.model_copy(
+                record = source.model_copy(
                     update={
                         "available": False,
                         "availability_note": str(error),
                         "checked_date": date.today(),
                     }
                 )
+                try:
+                    sources = _save_record(manifest_path, sources, record)
+                except (OSError, ValueError) as save_error:
+                    logger.error("cannot persist acquisition failure: %s", save_error)
+                    return 1
+                updated_by_id[source.id] = record
             continue
         updated_by_id[result.record.id] = result.record
+        record = result.record
+        if source.source == "gtfs" and not result.skipped:
+            record = record.model_copy(
+                update={
+                    "available": True,
+                    "availability_note": None,
+                    "checked_date": date.today(),
+                    "excluded_reason": None,
+                }
+            )
+            updated_by_id[record.id] = record
+        try:
+            sources = _save_record(manifest_path, sources, record)
+        except (OSError, ValueError) as error:
+            logger.error("cannot persist completed file %s: %s", record.id, error)
+            return 1
         if result.skipped:
             already_present += 1
             status = "already present"
@@ -292,16 +438,32 @@ def main(argv: list[str] | None = None) -> int:
                 status = "downloaded (not verified: no checksum configured)"
         print(f"{status} {result.local_path}")
 
-    if updated_by_id and not args.dry_run:
-        sources = [updated_by_id.get(source.id, source) for source in sources]
-        save_manifest(manifest_path, sources)
+    if not args.dry_run:
+        reconciled = _exclude_covered_failures(sources, failures, root)
+        if reconciled != sources:
+            try:
+                save_manifest(manifest_path, reconciled)
+            except (OSError, ValueError) as error:
+                logger.error("cannot persist covered-resource exclusions: %s", error)
+                return 1
+            sources = reconciled
+    if (
+        updated_by_id or any(source.excluded_reason for source in sources)
+    ) and not args.dry_run:
         gtfs = [source for source in sources if source.source == "gtfs"]
         if gtfs and all(source.dataset_id is not None for source in gtfs):
-            write_gtfs_inventory(manifest_path.with_name("gtfs_inventory.csv"), gtfs)
+            try:
+                write_gtfs_inventory(
+                    manifest_path.with_name("gtfs_inventory.csv"), gtfs
+                )
+            except (OSError, ValueError) as error:
+                logger.error("cannot persist GTFS inventory: %s", error)
+                return 1
     if not args.dry_run:
         print(
             f"Summary: downloaded: {downloaded}, already present: {already_present}, "
-            f"skipped: {skipped}, failed: {len(failures)}"
+            f"skipped: {skipped}, failed: {len(failures)}, "
+            f"excluded: {sum(bool(s.excluded_reason) for s in sources)}"
         )
         for source_id, reason in failures.items():
             print(f"failed {source_id}: {reason}")

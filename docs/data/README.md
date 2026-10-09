@@ -6,7 +6,7 @@ One page per dataset, written with `/schema` before any step uses the dataset. A
 
 | Dataset | Page | Vintages | Used by step |
 |---|---|---|---|
-| *(one line per dataset, added by `/schema`)* | | | |
+| GTFS acquisition inventory | [gtfs.md](gtfs.md) | Configured snapshot; service dates checked independently | 2, 0 |
 
 ## Template for a dataset page
 

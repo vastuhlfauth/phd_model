@@ -398,6 +398,14 @@ def test_france_osm_entries_use_head_sizes_and_no_sidecars(tmp_path):
         )
     ) as client:
         for record in france:
+            record = record.model_copy(
+                update={
+                    "sha256": None,
+                    "size_bytes": None,
+                    "download_date": None,
+                    "verified": None,
+                }
+            )
             result = download_source(
                 record, tmp_path, client=client, downloaded_at="2026-10-09"
             )

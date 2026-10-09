@@ -1,11 +1,41 @@
 """Configured source files and acquisition records for section 5."""
 
+import logging
+import time
 from datetime import date
 from pathlib import Path, PurePosixPath
+from tempfile import NamedTemporaryFile
 from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, JsonValue, model_validator
+
+logger = logging.getLogger(__name__)
+
+
+class ManifestWritePolicy(BaseModel):
+    """Configured Windows lock retry limits for atomic metadata writes."""
+
+    manifest_replace_attempts: int = Field(gt=0, le=5)
+    manifest_retry_seconds: float = Field(gt=0)
+
+
+def replace_metadata(temporary: Path, destination: Path) -> None:
+    """Retry only PermissionError; preserve the original on permanent failure."""
+    settings_path = destination.with_name("acquisition.yaml")
+    if not settings_path.is_file():
+        settings_path = Path(__file__).parents[2] / "config" / "acquisition.yaml"
+    with settings_path.open(encoding="utf-8") as stream:
+        settings = ManifestWritePolicy.model_validate(yaml.safe_load(stream))
+    for attempt in range(settings.manifest_replace_attempts):
+        try:
+            temporary.replace(destination)
+            return
+        except PermissionError:
+            if attempt + 1 == settings.manifest_replace_attempts:
+                raise
+            logger.warning("Metadata file locked; retrying replace of %s", destination)
+            time.sleep(settings.manifest_retry_seconds)
 
 
 class SourceFile(BaseModel):
@@ -19,6 +49,10 @@ class SourceFile(BaseModel):
     vintage: str = Field(min_length=1)
     url: str | None = None
     fallback_url: str | None = None
+    archive_url: str | None = None
+    archive_date: date | None = None
+    archive_resource_id: str | None = None
+    excluded_reason: str | None = None
     local_path: str = Field(min_length=1)
     access: Literal["http", "api", "s3", "manual", "restricted", "todo"] = "http"
     expected_size_bytes: int | None = Field(default=None, gt=0)
@@ -75,6 +109,8 @@ class SourceFile(BaseModel):
             HttpUrl(self.fallback_url)
             if self.access != "http":
                 raise ValueError("fallback_url requires access: http")
+        if self.archive_url is not None:
+            HttpUrl(self.archive_url)
         if self.restricted and (self.url is not None or self.access != "restricted"):
             raise ValueError("restricted sources must not have a download URL")
         if self.access == "http" and self.url is None:
@@ -108,8 +144,7 @@ def _validate_manifest(sources: list[SourceFile]) -> list[SourceFile]:
 
 def load_manifest(path: str | Path) -> list[SourceFile]:
     """Load and validate configured source files from a YAML manifest."""
-    with Path(path).open(encoding="utf-8") as stream:
-        document = yaml.safe_load(stream)
+    document = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if not isinstance(document, dict) or set(document) != {"sources"}:
         raise ValueError("manifest must contain only a top-level 'sources' list")
     raw_sources = document["sources"]
@@ -133,6 +168,19 @@ def save_manifest(path: str | Path, sources: list[SourceFile]) -> None:
         sort_keys=False,
         allow_unicode=True,
     )
-    temporary = destination.with_name(destination.name + ".tmp")
-    temporary.write_text(content, encoding="utf-8")
-    temporary.replace(destination)
+    temporary: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=destination.parent,
+            prefix=destination.name + ".",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(content)
+        replace_metadata(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)

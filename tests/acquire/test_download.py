@@ -2,9 +2,11 @@
 
 import hashlib
 from datetime import date
+from pathlib import Path
 
 import httpx
 import pytest
+from acquire.discovery import load_acquisition_config
 from acquire.download import (
     ChecksumMismatchError,
     SizeMismatchError,
@@ -12,6 +14,204 @@ from acquire.download import (
     download_source,
 )
 from acquire.manifest import SourceFile
+
+
+@pytest.mark.parametrize("failure", ["timeout", "html", "204", "empty"])
+def test_gtfs_uses_latest_resource_archive(tmp_path, gtfs_zip, failure) -> None:
+    """Sections 5.1/5.4: latest own archive, clean restart, 300 s read timeout."""
+    settings = load_acquisition_config(
+        Path(__file__).parents[2] / "config" / "acquisition.yaml"
+    )
+    body = gtfs_zip()
+    source = SourceFile(
+        id="gtfs-one",
+        source="gtfs",
+        provider="test",
+        vintage="2026-10",
+        dataset_id="dataset",
+        resource_id="42",
+        url="https://producer.test/feed",
+        local_path="data/raw/gtfs/42.zip",
+    )
+    partial = tmp_path / (source.local_path + ".part")
+    partial.parent.mkdir(parents=True)
+    partial.write_bytes(b"partial primary")
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if request.url.host == "producer.test":
+            assert request.extensions["timeout"]["read"] == 300
+            if failure == "timeout":
+                raise httpx.ReadTimeout("fixture timeout", request=request)
+            if failure == "html":
+                return _response(200, b"<html>broken</html>")
+            return _response(204 if failure == "204" else 200, b"")
+        if request.url.path.endswith("/dataset"):
+            return httpx.Response(
+                200,
+                json={
+                    "history": [
+                        {
+                            "resource_id": 42,
+                            "payload": {
+                                "permanent_url": "https://archive.test/older",
+                                "download_datetime": "2026-10-07T10:00:00Z",
+                            },
+                        },
+                        {
+                            "resource_id": 99,
+                            "payload": {
+                                "permanent_url": "https://archive.test/sibling",
+                                "download_datetime": "2026-10-09T10:00:00Z",
+                            },
+                        },
+                        {
+                            "resource_id": 42,
+                            "payload": {
+                                "permanent_url": "https://archive.test/latest",
+                                "download_datetime": "2026-10-08T10:00:00Z",
+                            },
+                        },
+                    ]
+                },
+            )
+        assert request.url.path == "/latest"
+        assert "Range" not in request.headers
+        return _response(200, body)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result = download_source(
+            source,
+            tmp_path,
+            client=client,
+            downloaded_at="2026-10-09",
+            settings=settings,
+        )
+    assert result.local_path.read_bytes() == body
+    assert result.record.archive_url == "https://archive.test/latest"
+    assert result.record.archive_date == date(2026, 10, 8)
+    assert result.record.archive_resource_id == "42"
+    assert result.record.url == source.url
+    assert result.record.available is True
+    assert len(requests) == 3
+
+
+@pytest.mark.parametrize(
+    "archive_date,body_kind",
+    [
+        ("2026-08-10T00:00:00Z", "valid"),
+        ("2026-10-10T00:00:00Z", "valid"),
+        ("2026-10-08T00:00:00Z", "html"),
+        ("2026-10-08T00:00:00Z", "missing_tables"),
+    ],
+)
+def test_gtfs_rejects_old_or_invalid_latest_archive(
+    tmp_path, gtfs_zip, archive_date, body_kind
+) -> None:
+    """Section 5.4: no older-archive or sibling search; raw data not published."""
+    settings = load_acquisition_config(
+        Path(__file__).parents[2] / "config" / "acquisition.yaml"
+    )
+    source = SourceFile(
+        id="gtfs-one",
+        source="gtfs",
+        provider="test",
+        vintage="2026-10",
+        dataset_id="dataset",
+        resource_id="42",
+        url="https://producer.test/feed",
+        local_path="data/raw/gtfs/42.zip",
+    )
+    body = (
+        b"<html>broken</html>"
+        if body_kind == "html"
+        else gtfs_zip(omit=("trips.txt",) if body_kind == "missing_tables" else ())
+    )
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if request.url.host == "producer.test":
+            return httpx.Response(503)
+        if request.url.path.endswith("/dataset"):
+            return httpx.Response(
+                200,
+                json={
+                    "history": [
+                        {
+                            "resource_id": 42,
+                            "payload": {
+                                "permanent_url": "https://archive.test/latest",
+                                "download_datetime": archive_date,
+                            },
+                        },
+                    ]
+                },
+            )
+        return _response(200, body)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        with pytest.raises(ValueError, match="archive|HTML"):
+            download_source(
+                source,
+                tmp_path,
+                client=client,
+                downloaded_at="2026-10-09",
+                settings=settings,
+            )
+    assert not (tmp_path / source.local_path).exists()
+    assert len(requests) == (2 if body_kind == "valid" else 3)
+
+
+def test_gtfs_archive_rerun_preserves_provenance_offline(tmp_path, gtfs_zip) -> None:
+    """Section 5.1: archive records are idempotent without a metadata request."""
+    body = gtfs_zip()
+    source = _source("data/raw/gtfs/feed.zip", body).model_copy(
+        update={
+            "source": "gtfs",
+            "id": "archive",
+            "dataset_id": "dataset",
+            "resource_id": "42",
+            "archive_resource_id": "42",
+            "archive_url": "https://archive.test/42",
+            "archive_date": date(2026, 10, 8),
+            "download_date": date(2026, 10, 9),
+            "verified": False,
+            "size_bytes": len(body),
+        }
+    )
+    path = tmp_path / source.local_path
+    path.parent.mkdir(parents=True)
+    path.write_bytes(body)
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: pytest.fail("archive rerun must be offline")
+        )
+    ) as client:
+        result = download_source(source, tmp_path, client=client)
+    assert result.skipped and result.record == source
+
+
+def test_fresh_primary_download_clears_old_archive_provenance(tmp_path, gtfs_zip):
+    """Section 5.1: provenance describes the actual downloaded bytes."""
+    body = gtfs_zip()
+    source = _source("data/raw/gtfs/feed.zip", body).model_copy(
+        update={
+            "source": "gtfs",
+            "archive_url": "https://archive.test/old",
+            "archive_date": date(2026, 10, 8),
+            "archive_resource_id": "42",
+        }
+    )
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: _response(200, body))
+    ) as client:
+        result = download_source(source, tmp_path, client=client)
+    assert not result.skipped
+    assert result.record.archive_url is None
+    assert result.record.archive_date is None
+    assert result.record.archive_resource_id is None
 
 
 def _source(path: str, content: bytes = b"payload") -> SourceFile:

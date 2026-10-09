@@ -12,6 +12,38 @@ from acquire.manifest import SourceFile, load_manifest, save_manifest
 ROOT = Path(__file__).parents[2]
 
 
+def test_completed_file_is_saved_before_next_download(tmp_path, monkeypatch) -> None:
+    """Section 5.1: interruption cannot erase earlier completed records."""
+    import acquire.cli as cli
+    from acquire.download import DownloadResult
+
+    manifest = tmp_path / "sources.yaml"
+    sources = [
+        SourceFile(
+            id=str(i),
+            source="example",
+            provider="test",
+            vintage="fixture",
+            url=f"https://example.test/{i}",
+            local_path=f"data/raw/example/{i}",
+        )
+        for i in range(2)
+    ]
+    save_manifest(manifest, sources)
+
+    def download(source, root):
+        if source.id == "1":
+            assert load_manifest(manifest)[0].size_bytes == 7
+            raise KeyboardInterrupt
+        record = source.model_copy(update={"size_bytes": 7, "sha256": "a" * 64})
+        return DownloadResult(root / source.local_path, record, False)
+
+    monkeypatch.setattr(cli, "download_source", download)
+    with pytest.raises(KeyboardInterrupt):
+        main(["--manifest", str(manifest), "--all"])
+    assert load_manifest(manifest)[0].sha256 == "a" * 64
+
+
 @pytest.mark.parametrize("failed_source", ["osm", "overture"])
 def test_all_continues_summarizes_and_persists_successes(
     tmp_path, monkeypatch, capsys, failed_source

@@ -2,6 +2,10 @@ transport_api: https://transport.data.gouv.fr/api/datasets
 bdalti_feed: https://data.geopf.fr/telechargement/resource/BDALTI
 metadata_max_bytes: 8388608
 request_timeout_seconds: 30
+gtfs_read_timeout_seconds: 300
+gtfs_archive_max_age_days: 60
+manifest_replace_attempts: 5
+manifest_retry_seconds: 1
 ign_interval_seconds: 1
 max_retries: 5
 retry_initial_seconds: 10

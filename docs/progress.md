@@ -16,6 +16,7 @@ _Last updated: 2026-10-09 by Copilot_
 | 2b | Source URL fixes: OSM size-only verification, TCL Lyon GTFS resource | review | `data/source-urls` | Neighbouring OSM extracts verified by `Content-Length` instead of a nonexistent `.md5`; TCL Lyon's dropped/overridden GTFS resource now resolves to the current SYTRAL Mobilités feed with a Mobility Database fallback. Ruff clean; 67 tests pass. Dry run: 0 blocked entries (down from 27). |
 | 2c | Audit of the remaining 12 excluded community GTFS resources | review | `data/source-urls` | Checked, for each of the 12 datasets with a community-tagged excluded GTFS resource, whether that dataset keeps another producer GTFS resource; all 12 do (true duplicates), so none needed a TCL-Lyon-style override. Added a `discover_gtfs` safeguard that logs a warning if a community exclusion would ever leave a dataset with zero producer GTFS resources, so a future case is caught automatically. Ruff clean; 68 tests pass. |
 | 2d | France OSM sizes, resilient acquisition batches and reruns | review | `fix/osm-size` | France uses HEAD sizes without MD5 sidecars; OSM discovery refreshes all 28 extracts. Failed acquisitions no longer abort the batch; summary counts/reasons and exit 1 on failures. Recorded matching files skip network requests and preserve verification/date. Tests first; Ruff clean; 81 tests pass. |
+| 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | review | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. |
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
@@ -67,6 +68,52 @@ Status values: not started, in progress, review, merged.
 - 2026-10-09, acquisition batches, continue after HTTP, filesystem, validation or DuckDB entry failures for any source, persist successful records, and print downloaded/already-present/skipped/failed counts plus each failure's id/reason. Actual acquisitions exit 1 for any failed or known-unavailable entry (including GTFS); retain existing exit 2 for manual/restricted skips without failures and offline dry-run exit 0. GTFS failure metadata remains recorded as before.
 - 2026-10-09, idempotency, compare recorded local size and SHA-256 (and cached MD5 when supplied) before fetching a checksum sidecar or data. Preserve recorded verification and download date; changed local content is downloaded again. Existing Overture acquisition metadata in the user's worktree was preserved and excluded from the fix commit.
 - 2026-10-09, validation, regression tests first reproduced **9 failures / 40 passes**; additional uppercase cached-MD5 coverage reproduced 2 classification failures before normalization. Final `uv run ruff check .` is clean and `uv run pytest -q` reports **81 passed**, including both France downloads with mocked bytes, offline reruns, corruption detection, HTTP/S3 batch continuation, persisted successes, summary counts/reasons, and nonzero GTFS/unavailable outcomes. No dependencies added.
+
+- 2026-10-09, acquisition robustness (sections 5.1/5.4/5.6), persist each completed
+  file before starting the next one, with unique same-directory temporary files.
+  Replacement makes at most five attempts, waiting one second only on
+  `PermissionError`; terminal write failures are logged and stop acquisition.
+  A Windows regression reproduced our own YAML reader holding a replacement
+  lock; manifest readers now close the handle before parsing. Failed attempts
+  leave the previous manifest intact and clean up their temporary file.
+- 2026-10-09, GTFS archive policy, user explicitly chose **only the requested
+  resource's latest permanent URL**, less than 60 days old, with a valid GTFS
+  ZIP before publication. No older archives, sibling downloads or Mobility
+  Database fallbacks for identified GTFS resources. Dataset detail history is
+  top-level, keyed by `resource_id`, with `payload.permanent_url` and
+  `payload.download_datetime`; verified against the public Le Puy API response.
+  Archive URL/date/resource id are separate manifest fields; the producer URL
+  stays unchanged. The GTFS read timeout is configured at 300 seconds.
+- 2026-10-09, GTFS recovery, **81023 (STAS)** and **84089 (Saint-Sulpice-la-Pointe)**
+  downloaded from their producer URLs with the longer timeout. **81042
+  (Aire'MOB)** returned HTTP 204 and was recovered from its own **2026-09-01**
+  archive, with provenance and local size/SHA-256 persisted. **83905 (Le Puy)**
+  and its latest **2026-10-01** archive both contain HTML; the already downloaded
+  **83906** passes the offline check. Per user instruction, 83905 is recorded as
+  `broken resource, dataset covered by 83906`, excluded and not counted as a
+  failure. The same local sibling validation applies to any failed resource;
+  exclusions are rechecked if covering files disappear.
+- 2026-10-09, offline GTFS inspection, added `--check-gtfs`, which writes ZIP CRC
+  validity, required/present files, flex indicators, effective first/last
+  service dates, expiry, stop/trip counts, agency names, WGS84 bounding box and
+  explicit errors to [the inventory](../config/gtfs_inventory.csv). Calendar
+  weekday flags and date exceptions are applied only to service ids used by
+  trips. Metadata tables are streamed to scratch space and read with DuckDB;
+  raw files and the manifest are unchanged by the check. This is acquisition
+  triage, not a full GTFS validator; see [the data page](data/gtfs.md).
+- 2026-10-09, Filosofi temporal validation, added and downloaded both supplied
+  **2019** INSEE ZIPs under `data/raw/filosofi/2019/`: natural level **6,282,711
+  bytes**, 200 m benchmark **61,770,743 bytes**, with dates and local SHA-256 in
+  the manifest. No provider checksum was available, so `verified: false`.
+  The current spec places the temporal test in **section 6.5**, not 6.6.
+- 2026-10-09, validation, acceptance tests first reproduced **11 failures /
+  35 passes**, plus the absent GTFS-check module; later repros covered stale
+  exclusions, Windows reader locks and stale archive provenance. Final
+  `uv run ruff check .` passes and `uv run pytest -q` reports **108 passed**.
+  The existing France OSM synthetic test now clears real acquisition hashes
+  before downloading mock bytes, keeping tests independent of downloaded data.
+  No dependency added. National offline inventory run follows the implementation
+  commit, as requested.
 
 ## Assumptions to check
 
