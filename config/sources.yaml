@@ -1977,23 +1977,6 @@ sources:
     insee: '53'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-658626a8a582bbf574c71b48-81464
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://www.korrigo.bzh/ftp/OPENDATA/BREIZHGO_CAR_56.gtfs.zip
-  local_path: data/raw/gtfs/2026-10/658626a8a582bbf574c71b48/81464.zip
-  license: odc-odbl
-  dataset_id: 658626a8a582bbf574c71b48
-  dataset_slug: breizhgo-car
-  dataset_title: Réseau interurbain BreizhGo Car
-  resource_id: '81464'
-  covered_area:
-  - type: region
-    nom: Bretagne
-    insee: '53'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-658626a8a582bbf574c71b48-81461
   source: gtfs
   provider: transport.data.gouv.fr
@@ -2005,6 +1988,23 @@ sources:
   dataset_slug: breizhgo-car
   dataset_title: Réseau interurbain BreizhGo Car
   resource_id: '81461'
+  covered_area:
+  - type: region
+    nom: Bretagne
+    insee: '53'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-658626a8a582bbf574c71b48-81464
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://www.korrigo.bzh/ftp/OPENDATA/BREIZHGO_CAR_56.gtfs.zip
+  local_path: data/raw/gtfs/2026-10/658626a8a582bbf574c71b48/81464.zip
+  license: odc-odbl
+  dataset_id: 658626a8a582bbf574c71b48
+  dataset_slug: breizhgo-car
+  dataset_title: Réseau interurbain BreizhGo Car
+  resource_id: '81464'
   covered_area:
   - type: region
     nom: Bretagne
@@ -2096,6 +2096,23 @@ sources:
     insee: '27'
   available: true
   checked_date: '2026-10-09'
+- id: gtfs-5f2c9a79e4e713875a58be26-84074
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://exs.mobigo2.cityway.fr/gtfs.aspx?key=OPENDATA&operatorCode=UT70
+  local_path: data/raw/gtfs/2026-10/5f2c9a79e4e713875a58be26/84074.zip
+  license: lov2
+  dataset_id: 5f2c9a79e4e713875a58be26
+  dataset_slug: reseau-de-transport-interurbain-mobigo-en-bourgogne-franche-comte
+  dataset_title: Réseau interurbain Mobigo
+  resource_id: '84074'
+  covered_area:
+  - type: region
+    nom: Bourgogne-Franche-Comté
+    insee: '27'
+  available: true
+  checked_date: '2026-10-09'
 - id: gtfs-5f2c9a79e4e713875a58be26-84078
   source: gtfs
   provider: transport.data.gouv.fr
@@ -2147,23 +2164,6 @@ sources:
     insee: '27'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5f2c9a79e4e713875a58be26-84074
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://exs.mobigo2.cityway.fr/gtfs.aspx?key=OPENDATA&operatorCode=UT70
-  local_path: data/raw/gtfs/2026-10/5f2c9a79e4e713875a58be26/84074.zip
-  license: lov2
-  dataset_id: 5f2c9a79e4e713875a58be26
-  dataset_slug: reseau-de-transport-interurbain-mobigo-en-bourgogne-franche-comte
-  dataset_title: Réseau interurbain Mobigo
-  resource_id: '84074'
-  covered_area:
-  - type: region
-    nom: Bourgogne-Franche-Comté
-    insee: '27'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-5f2c9a79e4e713875a58be26-84076
   source: gtfs
   provider: transport.data.gouv.fr
@@ -2198,23 +2198,6 @@ sources:
     insee: '27'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-667005c713503ed936c4be46-81829
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_59_P2.zip
-  local_path: data/raw/gtfs/2026-10/667005c713503ed936c4be46/81829.zip
-  license: notspecified
-  dataset_id: 667005c713503ed936c4be46
-  dataset_slug: arrets-horaires-et-parcours-theoriques-gtfs-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-59-nord
-  dataset_title: Réseau interurbain et scolaire - Nord (59)
-  resource_id: '81829'
-  covered_area:
-  - type: departement
-    nom: Nord
-    insee: '59'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-667005c713503ed936c4be46-81832
   source: gtfs
   provider: transport.data.gouv.fr
@@ -2243,6 +2226,23 @@ sources:
   dataset_slug: arrets-horaires-et-parcours-theoriques-gtfs-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-59-nord
   dataset_title: Réseau interurbain et scolaire - Nord (59)
   resource_id: '81830'
+  covered_area:
+  - type: departement
+    nom: Nord
+    insee: '59'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-667005c713503ed936c4be46-81829
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_59_P2.zip
+  local_path: data/raw/gtfs/2026-10/667005c713503ed936c4be46/81829.zip
+  license: notspecified
+  dataset_id: 667005c713503ed936c4be46
+  dataset_slug: arrets-horaires-et-parcours-theoriques-gtfs-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-59-nord
+  dataset_title: Réseau interurbain et scolaire - Nord (59)
+  resource_id: '81829'
   covered_area:
   - type: departement
     nom: Nord
@@ -2402,23 +2402,6 @@ sources:
     insee: '200054807'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5b3b3de988ee38708ada1789-39599
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-fri?apiKey=0d5075674700466047752b2c591d300a1452601d
-  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39599.zip
-  license: lov2
-  dataset_id: 5b3b3de988ee38708ada1789
-  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
-  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
-  resource_id: '39599'
-  covered_area:
-  - type: epci
-    nom: Métropole d'Aix-Marseille-Provence
-    insee: '200054807'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-5b3b3de988ee38708ada1789-39591
   source: gtfs
   provider: transport.data.gouv.fr
@@ -2453,40 +2436,6 @@ sources:
     insee: '200054807'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5b3b3de988ee38708ada1789-39603
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-aix?apiKey=020c7c326b6c5e750b168064336e344c61213521
-  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39603.zip
-  license: lov2
-  dataset_id: 5b3b3de988ee38708ada1789
-  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
-  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
-  resource_id: '39603'
-  covered_area:
-  - type: epci
-    nom: Métropole d'Aix-Marseille-Provence
-    insee: '200054807'
-  available: true
-  checked_date: '2026-10-09'
-- id: gtfs-5b3b3de988ee38708ada1789-80736
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-cio?apiKey=2b37114236244f1e115f6542331d243617772448
-  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/80736.zip
-  license: lov2
-  dataset_id: 5b3b3de988ee38708ada1789
-  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
-  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
-  resource_id: '80736'
-  covered_area:
-  - type: epci
-    nom: Métropole d'Aix-Marseille-Provence
-    insee: '200054807'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-5b3b3de988ee38708ada1789-39597
   source: gtfs
   provider: transport.data.gouv.fr
@@ -2504,17 +2453,17 @@ sources:
     insee: '200054807'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5b3b3de988ee38708ada1789-81969
+- id: gtfs-5b3b3de988ee38708ada1789-39599
   source: gtfs
   provider: transport.data.gouv.fr
   vintage: 2026-10
-  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp?apiKey=60327e505a214c77303f52206f11483069257343
-  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/81969.zip
+  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-fri?apiKey=0d5075674700466047752b2c591d300a1452601d
+  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39599.zip
   license: lov2
   dataset_id: 5b3b3de988ee38708ada1789
   dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
   dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
-  resource_id: '81969'
+  resource_id: '39599'
   covered_area:
   - type: epci
     nom: Métropole d'Aix-Marseille-Provence
@@ -2538,6 +2487,23 @@ sources:
     insee: '200054807'
   available: true
   checked_date: '2026-10-09'
+- id: gtfs-5b3b3de988ee38708ada1789-39603
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-aix?apiKey=020c7c326b6c5e750b168064336e344c61213521
+  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39603.zip
+  license: lov2
+  dataset_id: 5b3b3de988ee38708ada1789
+  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
+  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
+  resource_id: '39603'
+  covered_area:
+  - type: epci
+    nom: Métropole d'Aix-Marseille-Provence
+    insee: '200054807'
+  available: true
+  checked_date: '2026-10-09'
 - id: gtfs-5b3b3de988ee38708ada1789-39598
   source: gtfs
   provider: transport.data.gouv.fr
@@ -2549,6 +2515,40 @@ sources:
   dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
   dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
   resource_id: '39598'
+  covered_area:
+  - type: epci
+    nom: Métropole d'Aix-Marseille-Provence
+    insee: '200054807'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-5b3b3de988ee38708ada1789-80736
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-cio?apiKey=2b37114236244f1e115f6542331d243617772448
+  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/80736.zip
+  license: lov2
+  dataset_id: 5b3b3de988ee38708ada1789
+  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
+  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
+  resource_id: '80736'
+  covered_area:
+  - type: epci
+    nom: Métropole d'Aix-Marseille-Provence
+    insee: '200054807'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-5b3b3de988ee38708ada1789-81969
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp?apiKey=60327e505a214c77303f52206f11483069257343
+  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/81969.zip
+  license: lov2
+  dataset_id: 5b3b3de988ee38708ada1789
+  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
+  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
+  resource_id: '81969'
   covered_area:
   - type: epci
     nom: Métropole d'Aix-Marseille-Provence
@@ -4392,23 +4392,6 @@ sources:
     insee: '247200132'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5acb75f0c751df341652c886-84233
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://eur.mecatran.com/utw/ws/gtfsfeed/static/lemans?apiKey=73334a124f3a1654141d6979113106450f291d15&type=gtfs_setram_flex
-  local_path: data/raw/gtfs/2026-10/5acb75f0c751df341652c886/84233.zip
-  license: lov2
-  dataset_id: 5acb75f0c751df341652c886
-  dataset_slug: gtfs-du-reseau-des-transports-bus-et-tramway-setram-circulant-sur-le-territoire-le-mans-metropole
-  dataset_title: Réseau urbain SETRAM
-  resource_id: '84233'
-  covered_area:
-  - type: epci
-    nom: CU Le Mans Métropole
-    insee: '247200132'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-5acb75f0c751df341652c886-79601
   source: gtfs
   provider: transport.data.gouv.fr
@@ -4420,6 +4403,23 @@ sources:
   dataset_slug: gtfs-du-reseau-des-transports-bus-et-tramway-setram-circulant-sur-le-territoire-le-mans-metropole
   dataset_title: Réseau urbain SETRAM
   resource_id: '79601'
+  covered_area:
+  - type: epci
+    nom: CU Le Mans Métropole
+    insee: '247200132'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-5acb75f0c751df341652c886-84233
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://eur.mecatran.com/utw/ws/gtfsfeed/static/lemans?apiKey=73334a124f3a1654141d6979113106450f291d15&type=gtfs_setram_flex
+  local_path: data/raw/gtfs/2026-10/5acb75f0c751df341652c886/84233.zip
+  license: lov2
+  dataset_id: 5acb75f0c751df341652c886
+  dataset_slug: gtfs-du-reseau-des-transports-bus-et-tramway-setram-circulant-sur-le-territoire-le-mans-metropole
+  dataset_title: Réseau urbain SETRAM
+  resource_id: '84233'
   covered_area:
   - type: epci
     nom: CU Le Mans Métropole
@@ -6578,23 +6578,6 @@ sources:
     insee: '200039022'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-625561cdf949cea7e22006b7-83280
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://static.data.gouv.fr/resources/reseau-urbain-ville-de-vitre/20250716-121402/planning.zip
-  local_path: data/raw/gtfs/2026-10/625561cdf949cea7e22006b7/83280.zip
-  license: lov2
-  dataset_id: 625561cdf949cea7e22006b7
-  dataset_slug: reseau-urbain-ville-de-vitre
-  dataset_title: Réseau urbain Vitobus
-  resource_id: '83280'
-  covered_area:
-  - type: epci
-    nom: CA Vitré Communauté
-    insee: '200039022'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-625561cdf949cea7e22006b7-83276
   source: gtfs
   provider: transport.data.gouv.fr
@@ -6606,6 +6589,23 @@ sources:
   dataset_slug: reseau-urbain-ville-de-vitre
   dataset_title: Réseau urbain Vitobus
   resource_id: '83276'
+  covered_area:
+  - type: epci
+    nom: CA Vitré Communauté
+    insee: '200039022'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-625561cdf949cea7e22006b7-83280
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://static.data.gouv.fr/resources/reseau-urbain-ville-de-vitre/20250716-121402/planning.zip
+  local_path: data/raw/gtfs/2026-10/625561cdf949cea7e22006b7/83280.zip
+  license: lov2
+  dataset_id: 625561cdf949cea7e22006b7
+  dataset_slug: reseau-urbain-ville-de-vitre
+  dataset_title: Réseau urbain Vitobus
+  resource_id: '83280'
   covered_area:
   - type: epci
     nom: CA Vitré Communauté
@@ -8894,23 +8894,6 @@ sources:
     insee: '241927201'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-63b690e7498125c6c79a0b18-83746
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://static.data.gouv.fr/resources/donnees-du-reseau-evad-1/20251209-123614/gtfs-scolaire.zip
-  local_path: data/raw/gtfs/2026-10/63b690e7498125c6c79a0b18/83746.zip
-  license: lov2
-  dataset_id: 63b690e7498125c6c79a0b18
-  dataset_slug: donnees-du-reseau-evad-1
-  dataset_title: Réseau urbain EVA'D
-  resource_id: '83746'
-  covered_area:
-  - type: epci
-    nom: CC Pays d'Evian Vallée d'Abondance
-    insee: '200071967'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-63b690e7498125c6c79a0b18-80973
   source: gtfs
   provider: transport.data.gouv.fr
@@ -8922,6 +8905,23 @@ sources:
   dataset_slug: donnees-du-reseau-evad-1
   dataset_title: Réseau urbain EVA'D
   resource_id: '80973'
+  covered_area:
+  - type: epci
+    nom: CC Pays d'Evian Vallée d'Abondance
+    insee: '200071967'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-63b690e7498125c6c79a0b18-83746
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://static.data.gouv.fr/resources/donnees-du-reseau-evad-1/20251209-123614/gtfs-scolaire.zip
+  local_path: data/raw/gtfs/2026-10/63b690e7498125c6c79a0b18/83746.zip
+  license: lov2
+  dataset_id: 63b690e7498125c6c79a0b18
+  dataset_slug: donnees-du-reseau-evad-1
+  dataset_title: Réseau urbain EVA'D
+  resource_id: '83746'
   covered_area:
   - type: epci
     nom: CC Pays d'Evian Vallée d'Abondance
@@ -9132,23 +9132,6 @@ sources:
     insee: MC
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-64a70ea48ac48fd73181d7e5-81070
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://api.oisemob.cityway.fr/dataflow/offre-tc/download?provider=SABLONS&dataFormat=GTFS&dataProfil=OPENDATA
-  local_path: data/raw/gtfs/2026-10/64a70ea48ac48fd73181d7e5/81070.zip
-  license: lov2
-  dataset_id: 64a70ea48ac48fd73181d7e5
-  dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-sablons-bus-communaute-de-communes-des-sablons
-  dataset_title: Réseau urbain Sablons Bus
-  resource_id: '81070'
-  covered_area:
-  - type: epci
-    nom: CC des Sablons
-    insee: '246000582'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-64a70ea48ac48fd73181d7e5-81651
   source: gtfs
   provider: transport.data.gouv.fr
@@ -9160,6 +9143,23 @@ sources:
   dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-sablons-bus-communaute-de-communes-des-sablons
   dataset_title: Réseau urbain Sablons Bus
   resource_id: '81651'
+  covered_area:
+  - type: epci
+    nom: CC des Sablons
+    insee: '246000582'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-64a70ea48ac48fd73181d7e5-81070
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://api.oisemob.cityway.fr/dataflow/offre-tc/download?provider=SABLONS&dataFormat=GTFS&dataProfil=OPENDATA
+  local_path: data/raw/gtfs/2026-10/64a70ea48ac48fd73181d7e5/81070.zip
+  license: lov2
+  dataset_id: 64a70ea48ac48fd73181d7e5
+  dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-sablons-bus-communaute-de-communes-des-sablons
+  dataset_title: Réseau urbain Sablons Bus
+  resource_id: '81070'
   covered_area:
   - type: epci
     nom: CC des Sablons
@@ -9847,23 +9847,6 @@ sources:
     insee: '247600646'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-69a6f2ca10dcf3d189434a2c-83921
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://api.oisemob.cityway.fr/dataflow/tad/download?provider=LELIBELLULE&dataFormat=gtfs
-  local_path: data/raw/gtfs/2026-10/69a6f2ca10dcf3d189434a2c/83921.zip
-  license: odc-odbl
-  dataset_id: 69a6f2ca10dcf3d189434a2c
-  dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-le-libellule-communaute-du-liancourtois-la-vallee-doree
-  dataset_title: Réseau urbain et TAD zonal Libellule
-  resource_id: '83921'
-  covered_area:
-  - type: epci
-    nom: CC du Liancourtois
-    insee: '246000129'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-69a6f2ca10dcf3d189434a2c-83922
   source: gtfs
   provider: transport.data.gouv.fr
@@ -9875,6 +9858,23 @@ sources:
   dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-le-libellule-communaute-du-liancourtois-la-vallee-doree
   dataset_title: Réseau urbain et TAD zonal Libellule
   resource_id: '83922'
+  covered_area:
+  - type: epci
+    nom: CC du Liancourtois
+    insee: '246000129'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-69a6f2ca10dcf3d189434a2c-83921
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://api.oisemob.cityway.fr/dataflow/tad/download?provider=LELIBELLULE&dataFormat=gtfs
+  local_path: data/raw/gtfs/2026-10/69a6f2ca10dcf3d189434a2c/83921.zip
+  license: odc-odbl
+  dataset_id: 69a6f2ca10dcf3d189434a2c
+  dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-le-libellule-communaute-du-liancourtois-la-vallee-doree
+  dataset_title: Réseau urbain et TAD zonal Libellule
+  resource_id: '83921'
   covered_area:
   - type: epci
     nom: CC du Liancourtois
@@ -9983,23 +9983,6 @@ sources:
     insee: '243600236'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-69398942abbf3c01c143b6eb-83755
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://static.data.gouv.fr/resources/aravis-bus-hiver-2025-2026/20251210-145252/export-gtfs-aravis-hiver-2026-hiver20252026.zip
-  local_path: data/raw/gtfs/2026-10/69398942abbf3c01c143b6eb/83755.zip
-  license: lov2
-  dataset_id: 69398942abbf3c01c143b6eb
-  dataset_slug: aravis-bus-hiver-2025-2026
-  dataset_title: Réseau urbain ARAVIS Bus
-  resource_id: '83755'
-  covered_area:
-  - type: epci
-    nom: CC des Vallées de Thônes
-    insee: '247400617'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-69398942abbf3c01c143b6eb-84055
   source: gtfs
   provider: transport.data.gouv.fr
@@ -10011,6 +9994,23 @@ sources:
   dataset_slug: aravis-bus-hiver-2025-2026
   dataset_title: Réseau urbain ARAVIS Bus
   resource_id: '84055'
+  covered_area:
+  - type: epci
+    nom: CC des Vallées de Thônes
+    insee: '247400617'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-69398942abbf3c01c143b6eb-83755
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://static.data.gouv.fr/resources/aravis-bus-hiver-2025-2026/20251210-145252/export-gtfs-aravis-hiver-2026-hiver20252026.zip
+  local_path: data/raw/gtfs/2026-10/69398942abbf3c01c143b6eb/83755.zip
+  license: lov2
+  dataset_id: 69398942abbf3c01c143b6eb
+  dataset_slug: aravis-bus-hiver-2025-2026
+  dataset_title: Réseau urbain ARAVIS Bus
+  resource_id: '83755'
   covered_area:
   - type: epci
     nom: CC des Vallées de Thônes
@@ -11166,23 +11166,6 @@ sources:
     insee: '38253'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-69206120a3b522554e1a204a-83810
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://static.data.gouv.fr/resources/gtfs-les-2alpes-saison-hiver-2025-2026/20260602-132501/gtfs-navette-annuelle-2-alpes.zip
-  local_path: data/raw/gtfs/2026-10/69206120a3b522554e1a204a/83810.zip
-  license: lov2
-  dataset_id: 69206120a3b522554e1a204a
-  dataset_slug: gtfs-les-2alpes-saison-hiver-2025-2026
-  dataset_title: Navettes hivernales des 2 Alpes
-  resource_id: '83810'
-  covered_area:
-  - type: commune
-    nom: Les Deux Alpes
-    insee: '38253'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-69206120a3b522554e1a204a-83813
   source: gtfs
   provider: transport.data.gouv.fr
@@ -11194,6 +11177,23 @@ sources:
   dataset_slug: gtfs-les-2alpes-saison-hiver-2025-2026
   dataset_title: Navettes hivernales des 2 Alpes
   resource_id: '83813'
+  covered_area:
+  - type: commune
+    nom: Les Deux Alpes
+    insee: '38253'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-69206120a3b522554e1a204a-83810
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://static.data.gouv.fr/resources/gtfs-les-2alpes-saison-hiver-2025-2026/20260602-132501/gtfs-navette-annuelle-2-alpes.zip
+  local_path: data/raw/gtfs/2026-10/69206120a3b522554e1a204a/83810.zip
+  license: lov2
+  dataset_id: 69206120a3b522554e1a204a
+  dataset_slug: gtfs-les-2alpes-saison-hiver-2025-2026
+  dataset_title: Navettes hivernales des 2 Alpes
+  resource_id: '83810'
   covered_area:
   - type: commune
     nom: Les Deux Alpes

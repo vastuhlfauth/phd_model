@@ -210,6 +210,7 @@ def discover_gtfs(
         if dataset.type != "public-transit":
             continue
         community_ids = {str(resource.id) for resource in dataset.community_resources}
+        gtfs_resources = []
         for resource in dataset.resources:
             if resource.format is None:
                 logger.warning(
@@ -220,6 +221,23 @@ def discover_gtfs(
                 continue
             if resource.format.strip().upper() != "GTFS":
                 continue
+            gtfs_resources.append(resource)
+
+        classified: list[tuple[str, bool, bool]] = []
+        for resource in gtfs_resources:
+            resource_id = str(resource.id)
+            is_dropped = resource_id in settings.gtfs_dropped_resource_ids
+            override = settings.gtfs_resource_overrides.get(resource_id)
+            is_community = (
+                resource_id in community_ids
+                or resource.community_resource_publisher is not None
+                or "community_resource_publisher" in resource.model_fields_set
+            )
+            is_kept = not is_dropped and not (is_community and override is None)
+            classified.append((resource_id, is_kept, is_community))
+        kept_ids = {resource_id for resource_id, is_kept, _ in classified if is_kept}
+
+        for resource in gtfs_resources:
             resource_id = str(resource.id)
             if resource_id in settings.gtfs_dropped_resource_ids:
                 dropped += 1
@@ -237,6 +255,15 @@ def discover_gtfs(
             )
             if is_community and override is None:
                 excluded += 1
+                if not kept_ids:
+                    logger.warning(
+                        "Community-excluded GTFS resource %s is the only GTFS "
+                        "resource for dataset %s (%s); review for an override "
+                        "like TCL Lyon's resource 81943",
+                        resource_id,
+                        dataset.id,
+                        dataset.slug,
+                    )
                 continue
             availability_note = (
                 "Unavailable according to transport.data.gouv.fr"

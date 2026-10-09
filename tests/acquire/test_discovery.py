@@ -126,6 +126,30 @@ def test_gtfs_drops_configured_resource_ids_regardless_of_availability():
     assert "123" in {record.resource_id for record in records}
 
 
+def test_gtfs_warns_when_a_sole_feed_is_community_excluded(caplog):
+    sole_feed_payload = dataset(
+        id="only-community",
+        title="Reseau sans feed producteur",
+        resources=[
+            {
+                "id": 777,
+                "format": "GTFS",
+                "url": "https://example.test/only-feed.zip",
+                "community_resource_publisher": "Third party",
+            }
+        ],
+    )
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=[dataset(), sole_feed_payload])
+        )
+    ) as client:
+        records = discover_gtfs(client, "2026-10", SETTINGS)
+    assert "777" not in {record.resource_id for record in records}
+    assert "is the only GTFS" in caplog.text
+    assert "only-community" in caplog.text
+
+
 def test_gtfs_override_forces_inclusion_of_a_community_tagged_resource():
     payload = dataset()
     payload["community_resources"] = [payload["resources"][0]]

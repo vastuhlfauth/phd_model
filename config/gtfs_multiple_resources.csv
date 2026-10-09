@@ -1,34 +1,34 @@
 dataset_id,dataset_slug,dataset_title,gtfs_resource_count,resource_ids
 580defb1a3a7292dcfa9d33f,versions-des-horaires-theoriques-des-lignes-de-bus-et-de-metro-du-reseau-star-dans-les-formats-gtfs-et-netex-ainsi-que-les-urls-dacces-au-gtfs-rt-1,Réseau urbain STAR,2,83282;83281
-5acb75f0c751df341652c886,gtfs-du-reseau-des-transports-bus-et-tramway-setram-circulant-sur-le-territoire-le-mans-metropole,Réseau urbain SETRAM,3,84170;84233;79601
-5b3b3de988ee38708ada1789,reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone,Réseaux urbains de la Métropole Aix-Marseille-Provence,15,39595;39596;39589;39602;39601;39592;39599;39591;39594;39603;80736;39597;81969;39593;39598
+5acb75f0c751df341652c886,gtfs-du-reseau-des-transports-bus-et-tramway-setram-circulant-sur-le-territoire-le-mans-metropole,Réseau urbain SETRAM,3,84170;79601;84233
+5b3b3de988ee38708ada1789,reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone,Réseaux urbains de la Métropole Aix-Marseille-Provence,15,39595;39596;39589;39602;39601;39592;39591;39594;39597;39599;39593;39603;39598;80736;81969
 5bc59247634f417c808580b3,lignes-regulieres-de-transports-sillages-en-pays-de-grasse-urbain-et-scolaire,Réseau urbain et scolaire Sillages,2,79821;79822
 5cb42b2a8b4c4178f85e4a16,reseau-urbain-interurbain-et-scolaire-de-la-communaute-dagglomeration-privas-centre-ardeche,Réseau urbain et scolaire T'CAP,2,81342;79272
 5d2352ad634f41602cdc8d8a,offre-de-transports-du-grand-albigeois-gtfs,Réseau urbain du Grand Albigeois,3,79728;79687;81522
-5f2c9a79e4e713875a58be26,reseau-de-transport-interurbain-mobigo-en-bourgogne-franche-comte,Réseau interurbain Mobigo,8,84075;84077;84078;83931;84073;84074;84076;84072
+5f2c9a79e4e713875a58be26,reseau-de-transport-interurbain-mobigo-en-bourgogne-franche-comte,Réseau interurbain Mobigo,8,84075;84077;84074;84078;83931;84073;84076;84072
 5f3e9f003caad471591e541f,horaires-theoriques-et-reel-du-reseau-maelis-montlucon-communaute-gtfs,Réseau urbain Maelis,2,84114;84065
 6033a87b4e276fd6499986bf,ametis,Réseau urbain Ametis,2,80223;80705
 615c0b5448c0d2789eb0681b,agence-agglobus,Réseau urbain Agglobus,3,81705;83304;83781
 615fd9d5bbb0c1c35fe86fe3,gtfs-sankeo,Réseau urbain et scolaire Sankéo,3,83735;82900;83734
-625561cdf949cea7e22006b7,reseau-urbain-ville-de-vitre,Réseau urbain Vitobus,3,83019;83280;83276
-63b690e7498125c6c79a0b18,donnees-du-reseau-evad-1,Réseau urbain EVA'D,2,83746;80973
+625561cdf949cea7e22006b7,reseau-urbain-ville-de-vitre,Réseau urbain Vitobus,3,83019;83276;83280
+63b690e7498125c6c79a0b18,donnees-du-reseau-evad-1,Réseau urbain EVA'D,2,80973;83746
 648b0a691678a3bfb2ebbe35,reseau-transport-urbain-de-bernay,Réseau urbain l'Bus,2,84161;83775
 64a70ac9e0c46980035f5e79,donnees-theoriques-et-temps-reel-du-reseau-axo-communaute-dagglomeration-creil-sud-oise,Réseau urbain AXO,2,81645;81072
-64a70ea48ac48fd73181d7e5,donnees-theoriques-et-temps-reel-du-reseau-sablons-bus-communaute-de-communes-des-sablons,Réseau urbain Sablons Bus,2,81070;81651
+64a70ea48ac48fd73181d7e5,donnees-theoriques-et-temps-reel-du-reseau-sablons-bus-communaute-de-communes-des-sablons,Réseau urbain Sablons Bus,2,81651;81070
 64a714c26b6c9709cb559444,donnees-theoriques-et-temps-reel-du-reseau-pass-thelle-bus-communaute-de-communes-thelloise,Réseau urbain PassThelle Bus,2,81068;81648
 64a717392b51b69db1b44220,donnees-theoriques-et-temps-reel-du-reseau-le-bus-communaute-de-communes-du-clermontois,Réseau urbain Le Bus,2,81652;81056
 64c3da6eae50f397e3d8d099,donnees-theoriques-et-temps-reel-du-reseau-corolis-interurbain-communaute-dagglomeration-du-beauvaisis,Réseau interurbain et TAD zonal Corolis,2,81138;81650
 654d7323492eed0ae612b365,fichier-gtfs-des-transports-urbains-de-la-communaute-dagglomeration-du-puy-en-velay,Réseau urbain Mobilité en Velay,2,83905;83906
 6569252ddf850d55eca3e3d9,description-de-loffre-tad-tao-gtfs-flex-orleans-metropole,TAD zonal réseau TAO Orléans,2,83784;81413
-658626a8a582bbf574c71b48,breizhgo-car,Réseau interurbain BreizhGo Car,4,81463;81462;81464;81461
+658626a8a582bbf574c71b48,breizhgo-car,Réseau interurbain BreizhGo Car,4,81463;81462;81461;81464
 658626a9a5597d726dc71b48,breizhgo-bateaux,Réseau interurbain BreizhGo Bateaux,4,81481;81480;81479;81478
 659eb61087e7a31564db6157,donnees-theoriques-du-reseau-hopla-communaute-de-communes-de-la-plaine-destrees,Réseau urbain Hoplà,2,81649;81519
-667005c713503ed936c4be46,arrets-horaires-et-parcours-theoriques-gtfs-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-59-nord,Réseau interurbain et scolaire - Nord (59),4,81829;81832;81830;81828
+667005c713503ed936c4be46,arrets-horaires-et-parcours-theoriques-gtfs-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-59-nord,Réseau interurbain et scolaire - Nord (59),4,81832;81830;81829;81828
 667005da13503ed936c4be66,arrets-horaires-et-parcours-theoriques-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-60-oise-1,Réseau interurbain et scolaire - Oise (60),4,81820;81823;81822;81821
 6670560d00478a9b4a2d0233,horaires-theoriques-et-temps-reel-aux-formats-gtfs-et-gtfs-rt-du-reseau-sitac,Réseau urbain SITAC,2,83807;82278
 687aec884e4a0dd29c55372d,reseau-de-transport-en-commun-trans-agglo-de-dlva,Réseau urbain et interurbain Trans'Agglo,2,83291;83789
 68b48c2486fd35d69fb0272e,gtfs-rentree,Réseau urbain ARVI,2,83578;84192
-69206120a3b522554e1a204a,gtfs-les-2alpes-saison-hiver-2025-2026,Navettes hivernales des 2 Alpes,3,83989;83810;83813
+69206120a3b522554e1a204a,gtfs-les-2alpes-saison-hiver-2025-2026,Navettes hivernales des 2 Alpes,3,83989;83813;83810
 6929bcf1f8e17f7057966df0,rubis-grand-bourg-mobilites-offre-de-transport-theorique-et-temps-reel,Réseau urbain Rubis,2,84243;84244
-69398942abbf3c01c143b6eb,aravis-bus-hiver-2025-2026,Réseau urbain ARAVIS Bus,2,83755;84055
-69a6f2ca10dcf3d189434a2c,donnees-theoriques-et-temps-reel-du-reseau-le-libellule-communaute-du-liancourtois-la-vallee-doree,Réseau urbain et TAD zonal Libellule,2,83921;83922
+69398942abbf3c01c143b6eb,aravis-bus-hiver-2025-2026,Réseau urbain ARAVIS Bus,2,84055;83755
+69a6f2ca10dcf3d189434a2c,donnees-theoriques-et-temps-reel-du-reseau-le-libellule-communaute-du-liancourtois-la-vallee-doree,Réseau urbain et TAD zonal Libellule,2,83922;83921

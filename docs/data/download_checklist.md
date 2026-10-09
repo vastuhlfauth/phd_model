@@ -80,6 +80,16 @@ uv run python -m acquire --manifest config\sources.yaml --register-restricted em
   URL (`files.mobilitydatabase.org`) used automatically if the primary download
   fails. The same override/fallback mechanism applies to any other GTFS resource
   that a Mobility Database copy can replace; none other is currently unavailable.
+- **Other excluded community resources:** after TCL Lyon, 12 community-tagged
+  GTFS resources remain excluded across 10 datasets. Each dataset was checked
+  for another, non-community producer GTFS resource; all 12 are true duplicates
+  of a feed the catalog already keeps, so none needed an override. The full
+  audit (dataset id/slug/title, network, excluded resource id/URL, the sibling
+  producer resource ids kept instead, and the decision) is in
+  [config/gtfs_excluded_community_resources.csv](../../config/gtfs_excluded_community_resources.csv).
+  `discover_gtfs` now warns if a future community exclusion would leave a
+  dataset with no producer GTFS resource at all, so a new TCL-Lyon-style case
+  is caught instead of silently dropped.
 
 Step-0 prerequisites: IDFM, TCL Lyon, STAR Rennes, Sète Agglopôle Méditerranée,
 TBM Bordeaux, SNCF (TER/Intercités/TGV), liO Occitanie and Rémi. IDFM's producer
