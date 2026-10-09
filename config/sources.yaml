@@ -268,8 +268,12 @@ sources:
   url: s3://overturemaps-us-west-2/release/2026-09-23.1/theme=places/type=place/*
   local_path: data/raw/overture/2026-09-23.1/overture-places.parquet
   access: s3
+  size_bytes: 1459547233
+  sha256: 289227406ca1671101769f7df9613322f791924b28fe7996538dd272ea0de624
+  download_date: '2026-10-09'
   notes: Anonymous S3; France including Corsica and adjacent NUTS3 box. Clip later.
     Archive before about 2026-11-22.
+  verified: false
   bbox:
   - -5.5
   - 40.4
