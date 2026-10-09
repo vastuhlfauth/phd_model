@@ -1,6 +1,8 @@
 # Download checklist
 
-Store everything in `data/raw/{source}/{vintage}/` and never edit it there. Step 2 (`acquire`) automates these downloads later; until then, download by hand and tick the box. Restricted sources stay manual.
+Store everything in `data/raw/{source}/{vintage}/` and never edit it there. The source catalog is `config/sources.yaml`. Preview the configured pilot list with `uv run python -m acquire --manifest config/sources.yaml --all --dry-run`; download a configured direct-HTTP source with `uv run python -m acquire --manifest config/sources.yaml --dataset osm`. API-discovery, manual, and restricted entries are listed rather than fetched until their file URLs are configured. Interrupted direct downloads resume from their `.part` files; successful downloads update their size, SHA-256, and date in the catalog.
+
+Restricted sources are never downloaded. After placing a restricted source's files in its configured folder, register them with `uv run python -m acquire --manifest config/sources.yaml --register-restricted fichiers_fonciers` or `--register-restricted emc2`.
 
 **Pilot:** Gironde (département 33) plus a 50 km halo (parts of Charente-Maritime, Charente, Dordogne, Lot-et-Garonne, Landes).
 

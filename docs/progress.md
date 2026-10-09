@@ -11,7 +11,7 @@ _Last updated: 2026-10-09 by Copilot_
 | — | Repository skeleton (`/bootstrap`) | done | `step/bootstrap-skeleton` | uv workspace, package layout, configuration validation; Ruff and 3 tests pass (pinned Python 3.12.15) |
 | 0 | GTFS rebuilding test | not started | | |
 | 1 | `common`: config, grid cells, DuckDB I/O | review | `step/common-foundations` | Config validation; cell ids/codes, nesting, neighbour stencil and tiles; Arrow/Parquet helpers; Ruff clean and 12 tests pass |
-| 2 | `acquire`: manifest and downloaders | not started | | |
+| 2 | `acquire`: manifest and downloaders | review | `step/acquire` | Configured pilot source catalog; resumable, size-checked and checksum-verified HTTP downloads; Geofabrik MD5; restricted-file registration; API discovery helpers; dry-run CLI. No real downloads run. Ruff clean; 30 tests pass. |
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
@@ -35,6 +35,9 @@ Status values: not started, in progress, review, merged.
 - 2026-10-09, bootstrap, pin the project to Python 3.12 with `uv python pin 3.12` (writes `.python-version`); the sandbox's system Python (3.14) is only used to bootstrap `uv` itself. `.python-version` and `uv.lock` are committed so every agent and CI run uses the same interpreter and locked dependency set.
 - 2026-10-09, step 1, keep tile size and halo caller-supplied because section 4.4 gives tile dimensions as examples and the halo depends on the mode cutoff.
 - 2026-10-09, step 1, reject easting indices of 100,000 or more because the cell-id encoding uses 100,000 as its base.
+- 2026-10-09, step 2, keep source URLs, vintages, local paths, checksums and licenses in `config/sources.yaml`; leave unknown values unset or marked `TODO(confirm)` rather than guessing.
+- 2026-10-09, step 2, download only configured direct-HTTP files; API-discovery and manual sources are listed by the CLI but are not treated as downloadable file URLs.
+- 2026-10-09, step 2, register restricted files only after they are placed locally; calculate their size and SHA-256 without downloading or altering them.
 
 ## Assumptions to check
 
@@ -48,6 +51,10 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [ ] EMC² surveys: access conditions (section 5.3)
 - [ ] EMC² surveys: zoning and leg detail (section 5.4)
 - [ ] Géovélo cycle infrastructure: a version for 2021 (sections 5.3 and 8.1)
+- [ ] Exact earliest Géovélo 2022 monthly vintage and direct resource URL
+- [ ] Filosofi 2021 imputed 200 m benchmark: published file URL
+- [ ] Overture places: release to archive and direct extraction details
+- [ ] Acquisition API resources: direct file URLs, source-specific licenses, and expected checksums where providers publish them
 - [ ] Lyon BHNS Part-Dieu – Sept-Chemins: opening date (section 5.6)
 - [ ] Car ownership model: functional form, e.g. ordered or multinomial logit (section 6.4)
 - [ ] Public-sector jobs: default surface by amenity type when there is no building footprint (section 7.2)

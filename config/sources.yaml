@@ -1,1 +1,253 @@
-# Source manifests and vintages are specified in section 5.
+sources:
+  - id: fichiers-fonciers-2021
+    source: fichiers_fonciers
+    provider: Cerema
+    vintage: "2021"
+    url:
+    local_path: data/raw/fichiers_fonciers/ff2021/
+    access: restricted
+    restricted: true
+    license: Cerema convention
+    notes: Register only after the local files have been placed here.
+  - id: fichiers-fonciers-2022
+    source: fichiers_fonciers
+    provider: Cerema
+    vintage: "2022"
+    url:
+    local_path: data/raw/fichiers_fonciers/ff2022/
+    access: restricted
+    restricted: true
+    license: Cerema convention
+    notes: Register only after the local files have been placed here.
+  - id: fichiers-fonciers-2024
+    source: fichiers_fonciers
+    provider: Cerema
+    vintage: "2024"
+    url:
+    local_path: data/raw/fichiers_fonciers/ff2024/
+    access: restricted
+    restricted: true
+    license: Cerema convention
+    notes: Register only after the local files have been placed here.
+  - id: bpe-2021
+    source: bpe
+    provider: INSEE
+    vintage: "2021"
+    url:
+    local_path: data/raw/bpe/INSEE_bpe21-ensemble-xy-csv/
+    access: manual
+    notes: Already available; register local files when desired.
+  - id: bpe-nomenclature-2021
+    source: bpe_nomenclature
+    provider: INSEE
+    vintage: "2021"
+    url:
+    local_path: data/raw/bpe/nomenclature/
+    access: manual
+    notes: Already available; register local files when desired.
+  - id: eurostat-grid-2021
+    source: eurostat_grid
+    provider: Eurostat GISCO
+    vintage: "2021"
+    url:
+    local_path: data/raw/eurostat_grid/Eurostat_Census-GRID_2021_V3/
+    access: manual
+    notes: Already available; register local files when desired.
+  - id: osm-2022
+    source: osm
+    provider: Geofabrik
+    vintage: "2022-01-01"
+    url: https://download.geofabrik.de/europe/france-220101.osm.pbf
+    local_path: data/raw/osm/220101/france-220101.osm.pbf
+    access: http
+    md5_url: https://download.geofabrik.de/europe/france-220101.osm.pbf.md5
+    license: ODbL-1.0
+  - id: osm-2024
+    source: osm
+    provider: Geofabrik
+    vintage: "2024-01-01"
+    url: https://download.geofabrik.de/europe/france-240101.osm.pbf
+    local_path: data/raw/osm/240101/france-240101.osm.pbf
+    access: http
+    md5_url: https://download.geofabrik.de/europe/france-240101.osm.pbf.md5
+    license: ODbL-1.0
+  - id: gtfs-gironde-2026
+    source: gtfs
+    provider: transport.data.gouv.fr
+    vintage: "2026-10"
+    url: https://transport.data.gouv.fr/api/datasets
+    local_path: data/raw/gtfs/2026-10/
+    access: api
+    api_query: Search for TBM, regional coaches of Nouvelle-Aquitaine, and TER feeds covering Gironde.
+    notes: Dataset ids and resource URLs must be confirmed through API discovery.
+  - id: filosofi-natural-2021
+    source: filosofi
+    provider: INSEE
+    vintage: "2021"
+    url: https://www.insee.fr/fr/statistiques/fichier/8735108/Filosofi2021_carreaux_nivNaturel_csv.zip
+    local_path: data/raw/filosofi/2021/Filosofi2021_carreaux_nivNaturel_csv.zip
+    access: http
+  - id: filosofi-200m-2021
+    source: filosofi
+    provider: INSEE
+    vintage: "2021"
+    url:
+    local_path: data/raw/filosofi/2021/
+    access: todo
+    notes: "TODO(confirm): identify where INSEE publishes the 200 m imputed benchmark."
+  - id: census-2021
+    source: census
+    provider: INSEE
+    vintage: "2021"
+    url: https://www.insee.fr/fr/statistiques/5359146
+    local_path: data/raw/census/2021/
+    access: api
+    api_query: Discover commune census tables and their file resources.
+  - id: census-2023
+    source: census
+    provider: INSEE
+    vintage: "2023"
+    url: https://www.insee.fr/fr/statistiques/5359146
+    local_path: data/raw/census/2023/
+    access: api
+    api_query: Discover commune census tables and their file resources.
+  - id: emp-2021
+    source: emp
+    provider: INSEE
+    vintage: "2021"
+    url: https://www.insee.fr/fr/statistiques/8202930?sommaire=8205947
+    local_path: data/raw/emp/2021/
+    access: api
+    api_query: Discover employment-at-place-of-work files.
+  - id: emp-2023
+    source: emp
+    provider: INSEE
+    vintage: "2023"
+    url: https://www.insee.fr/fr/statistiques/9004561
+    local_path: data/raw/emp/2023/
+    access: api
+    api_query: Discover employment-at-place-of-work files.
+  - id: mobpro-2021
+    source: mobpro
+    provider: INSEE
+    vintage: "2021"
+    url: https://www.insee.fr/fr/statistiques/8205896?sommaire=8205966
+    local_path: data/raw/mobpro/2021/
+    access: api
+    api_query: Discover home-to-work flow files.
+  - id: mobpro-2023
+    source: mobpro
+    provider: INSEE
+    vintage: "2023"
+    url: https://www.insee.fr/fr/statistiques/9004795?sommaire=9004842
+    local_path: data/raw/mobpro/2023/
+    access: api
+    api_query: Discover home-to-work flow files.
+  - id: bpe-2025
+    source: bpe
+    provider: INSEE
+    vintage: "2025"
+    url: https://www.insee.fr/fr/statistiques/8217525?sommaire=8217537
+    local_path: data/raw/bpe/2025/
+    access: api
+    api_query: Discover BPE 2025 files and equipment nomenclature.
+  - id: cog-epci-2026
+    source: cog
+    provider: INSEE
+    vintage: "2026"
+    url: https://www.insee.fr/fr/information/7671844
+    local_path: data/raw/cog/2026/
+    access: api
+    api_query: Discover the communes-to-EPCI table.
+  - id: cog-passage
+    source: cog
+    provider: INSEE
+    vintage: since-2003
+    url: https://www.insee.fr/fr/information/7671867
+    local_path: data/raw/cog/passage/
+    access: api
+    api_query: Discover the commune table de passage.
+  - id: contours-2021
+    source: contours
+    provider: Etalab
+    vintage: "2021"
+    url: https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2021/geojson/
+    local_path: data/raw/contours/2021/
+    access: api
+    api_query: Discover commune contours.
+  - id: contours-2023
+    source: contours
+    provider: Etalab
+    vintage: "2023"
+    url: https://etalab-datasets.geo.data.gouv.fr/2023/geojson/
+    local_path: data/raw/contours/2023/
+    access: api
+    api_query: Discover commune contours.
+  - id: contours-2026
+    source: contours
+    provider: Etalab
+    vintage: "2026"
+    url: https://etalab-datasets.geo.data.gouv.fr/2026/geojson/
+    local_path: data/raw/contours/2026/
+    access: api
+    api_query: Discover commune contours.
+  - id: bdalti-25m
+    source: bdalti
+    provider: IGN
+    vintage: latest
+    url: https://www.data.gouv.fr/datasets/bd-alti-r-1
+    local_path: data/raw/bdalti/25m/
+    access: api
+    api_query: Discover BD ALTI 25 m resources for Gironde and neighbouring départements.
+  - id: geovelo-2022
+    source: geovelo
+    provider: transport.data.gouv.fr
+    vintage: "2022-xx"
+    url: https://transport.data.gouv.fr/datasets/amenagements-cyclables-france-metropolitaine
+    local_path: data/raw/geovelo/2022-xx/
+    access: api
+    api_query: Discover the earliest available monthly file from mid-2022.
+    notes: "TODO(confirm): confirm the first available 2022 monthly file."
+  - id: geovelo-2024
+    source: geovelo
+    provider: transport.data.gouv.fr
+    vintage: "2024-01"
+    url: https://transport.data.gouv.fr/datasets/amenagements-cyclables-france-metropolitaine
+    local_path: data/raw/geovelo/2024-01/
+    access: api
+    api_query: Discover the January 2024 monthly file.
+  - id: overture-places
+    source: overture
+    provider: Overture Maps
+    vintage: TODO-confirm
+    url:
+    local_path: data/raw/overture/TODO-confirm/
+    access: todo
+    api_query: s3://overturemaps-us-west-2/release/{release}/theme=places/type=place/*
+    notes: "TODO(confirm): choose and archive a current Overture release."
+  - id: emp2019
+    source: emp2019
+    provider: SDES
+    vintage: 2018-2019
+    url: https://www.statistiques.developpement-durable.gouv.fr/resultats-detailles-de-lenquete-mobilite-des-personnes-de-2019
+    local_path: data/raw/emp2019/
+    access: api
+    api_query: Discover the SDES public tables, including K_DEPLOC.
+  - id: emc2-gironde-2021
+    source: emc2
+    provider: Cerema
+    vintage: "2021"
+    url:
+    local_path: data/raw/emc2/gironde_2021/
+    access: restricted
+    restricted: true
+    license: Cerema restricted
+    notes: Register only after the local files have been placed here.
+  - id: cars-2022
+    source: cars
+    provider: data.gouv.fr
+    vintage: "2022"
+    url: https://www.data.gouv.fr/datasets/part-des-menages-selon-le-nombre-de-voiture-a-disposition
+    local_path: data/raw/cars/2022/
+    access: api
+    api_query: Discover the commune-level household car-count file.
