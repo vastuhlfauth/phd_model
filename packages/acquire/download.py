@@ -75,6 +75,9 @@ def _matches_existing(
 ) -> bool:
     if not destination.is_file():
         return False
+    if source.size_bytes is not None:
+        if destination.stat().st_size != source.size_bytes:
+            return False
     if source.expected_size_bytes is not None:
         if destination.stat().st_size != source.expected_size_bytes:
             return False
@@ -209,6 +212,25 @@ def _attempt_download(
     downloaded_at: date | str | None,
 ) -> DownloadResult:
     """Download from `url`, recording the result against the configured `source`."""
+    if source.sha256 is not None and _matches_existing(
+        source,
+        destination,
+        source.expected_md5.lower() if source.expected_md5 is not None else None,
+    ):
+        logger.info("Skipping recorded source file %s", destination)
+        record = (
+            source
+            if source.verified is not None
+            else _record_download(
+                source,
+                destination,
+                downloaded_at=source.download_date,
+                verified=True,
+                set_current_date=False,
+            )
+        )
+        return DownloadResult(destination, record, True)
+
     expected_md5 = _expected_md5(source, client)
     if _matches_existing(source, destination, expected_md5):
         logger.info("Skipping verified source file %s", destination)

@@ -20,6 +20,13 @@ Discovery can also select `gtfs`, `bdalti`, or `osm` individually. It writes the
 resolved file entries back to the catalog. Re-discovery preserves acquisition
 records only when the URL and local path are unchanged. Downloads resume `.part`
 files and record size, SHA-256, date, and independent verification status.
+Reruns check recorded local sizes and hashes before requesting the network;
+matching files are reported as already present, retaining their verification
+level and acquisition date. `--all` continues after an entry fails, persists
+successful records, and ends with counts of downloaded, already present,
+skipped, and failed entries plus each failure reason. Acquisition failures
+(including entries already marked unavailable) exit with code 1. As before,
+manual/restricted skips without failures exit with code 2; dry runs exit 0.
 Discovery URLs, raw-path templates, départements, neighbouring regions, vintages,
 step-0 feed patterns and request/retry limits are validated from
 [config/acquisition.yaml](../../config/acquisition.yaml), adjacent to the manifest
@@ -159,13 +166,16 @@ EPCI polygons, not matches against the EPCI/network names.
 | spain/aragon | <https://download.geofabrik.de/europe/spain/aragon-220101.osm.pbf> | <https://download.geofabrik.de/europe/spain/aragon-240101.osm.pbf> |
 | spain/cataluna | <https://download.geofabrik.de/europe/spain/cataluna-220101.osm.pbf> | <https://download.geofabrik.de/europe/spain/cataluna-240101.osm.pbf> |
 
-HEAD checks on 2026-10-09: **all 26 neighbouring PBFs return 200** with an
+HEAD checks on 2026-10-09: **both France and all 26 neighbouring PBFs return 200** with an
 advertised `Content-Length`, which is stored as `expected_size_bytes` and
 checked against the download. No `.md5` sidecar is requested or configured for
-these 26 entries; `download_source` records `verified: size` for them (not a
+these 28 entries; `download_source` records `verified: size` for them (not a
 full checksum match) and `verified: true` only when an MD5 or SHA-256 also
-matches. France's own `osm-2022`/`osm-2024` entries keep their real `.md5`
-sidecars and are verified by checksum as before. HEAD failure/unsupported HEAD
+matches a provider-supplied checksum. France's `osm-2022`/`osm-2024` entries
+have sizes **4,138,048,011** and **4,499,503,510 bytes**, respectively;
+OSM re-discovery also refreshes their sizes without changing their ids or paths.
+The stored local SHA-256 supports reruns but does not upgrade size-only
+verification to a provider checksum match. HEAD failure/unsupported HEAD
 is reported as unconfirmed, not interpreted as a missing file. Destinations are
 adjacent NUTS3 plus a 50 km routing halo; clipping belongs to later processing.
 

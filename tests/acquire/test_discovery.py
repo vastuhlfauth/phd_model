@@ -359,6 +359,63 @@ def test_osm_without_content_length_leaves_size_unset():
     )
 
 
+def test_france_osm_entries_use_head_sizes_and_no_sidecars(tmp_path):
+    """Sections 5.1/5.3: France uses the same dated-extract size check."""
+    configured = [
+        source
+        for source in load_manifest(
+            Path(__file__).parents[2] / "config" / "sources.yaml"
+        )
+        if source.id in ("osm-2022", "osm-2024")
+    ]
+    assert len(configured) == 2
+    assert all(source.md5_url is None for source in configured)
+    assert all(source.expected_size_bytes > 0 for source in configured)
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        assert request.method == "HEAD"
+        assert not request.url.path.endswith(".md5")
+        return httpx.Response(200, headers={"Content-Length": "123"})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        records = discover_osm(client, SETTINGS, configured)
+    france = [record for record in records if record.id in ("osm-2022", "osm-2024")]
+    assert len(france) == 2
+    assert len(requests) == 28
+    assert all(record.expected_size_bytes == 123 for record in france)
+    assert all(record.md5_url is None for record in france)
+    assert {record.local_path for record in france} == {
+        record.local_path for record in configured
+    }
+    from acquire.download import download_source
+
+    content = b"x" * 123
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, stream=httpx.ByteStream(content))
+        )
+    ) as client:
+        for record in france:
+            result = download_source(
+                record, tmp_path, client=client, downloaded_at="2026-10-09"
+            )
+            assert result.record.verified == "size"
+            assert result.record.sha256 is not None
+            assert result.record.size_bytes == 123
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: pytest.fail(
+                "verified France file must not be fetched again"
+            )
+        )
+    ) as client:
+        rerun = download_source(result.record, tmp_path, client=client)
+    assert rerun.skipped
+    assert rerun.record == result.record
+
+
 def test_merge_preserves_checksums_only_for_unchanged_url():
     old = SourceFile(
         id="gtfs-a-1",
@@ -444,10 +501,12 @@ def test_gtfs_download_failure_is_recorded_and_batch_continues(
         raise httpx.ConnectError("unavailable")
 
     monkeypatch.setattr(cli, "download_source", fail)
-    assert main(["--manifest", str(manifest), "--all"]) == 0
+    assert main(["--manifest", str(manifest), "--all"]) == 1
     assert attempted == ["gtfs-1", "gtfs-2"]
     assert all(record.available is False for record in load_manifest(manifest))
-    assert "unavailable resources: 2" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "failed: 2" in output
+    assert "failed gtfs-1: unavailable" in output
 
 
 def test_eurostat_uses_actual_download_date(tmp_path, monkeypatch):

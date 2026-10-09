@@ -2,10 +2,121 @@
 
 from pathlib import Path
 
+import httpx
+import pytest
 import yaml
 from acquire.cli import main
+from acquire.download import download_source
+from acquire.manifest import SourceFile, load_manifest, save_manifest
 
 ROOT = Path(__file__).parents[2]
+
+
+@pytest.mark.parametrize("failed_source", ["osm", "overture"])
+def test_all_continues_summarizes_and_persists_successes(
+    tmp_path, monkeypatch, capsys, failed_source
+) -> None:
+    """Section 5.1: batch failures do not lose later files or rerun records."""
+    import acquire.cli as cli
+
+    manifest = tmp_path / "sources.yaml"
+    sources = [
+        SourceFile(
+            id="broken",
+            source=failed_source,
+            provider="test",
+            vintage="fixture",
+            url="https://example.test/broken",
+            local_path="data/raw/example/broken.bin",
+        ),
+        SourceFile(
+            id="good",
+            source="example",
+            provider="test",
+            vintage="fixture",
+            url="https://example.test/good",
+            local_path="data/raw/example/good.bin",
+            expected_size_bytes=7,
+        ),
+        SourceFile(
+            id="manual",
+            source="example",
+            provider="test",
+            vintage="fixture",
+            local_path="data/raw/example/manual",
+            access="manual",
+            notes="register locally",
+        ),
+    ]
+    if failed_source == "overture":
+        sources[0] = sources[0].model_copy(
+            update={
+                "access": "s3",
+                "url": "s3://bucket/places/*",
+                "local_path": "data/raw/example/broken.parquet",
+                "bbox": (-5, 40, 10, 51),
+                "s3_region": "us-west-2",
+            }
+        )
+    save_manifest(manifest, sources)
+    requests = []
+
+    def respond(request):
+        requests.append(request.url.path)
+        if request.url.path == "/broken":
+            return httpx.Response(404)
+        return httpx.Response(200, stream=httpx.ByteStream(b"payload"))
+
+    def fail_extract(source, root):
+        raise OSError("extraction failed")
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        monkeypatch.setattr(
+            cli,
+            "download_source",
+            lambda source, root: download_source(
+                source, root, client=client, downloaded_at="2026-10-09"
+            ),
+        )
+        monkeypatch.setattr(cli, "extract_places", fail_extract)
+        argv = ["--manifest", str(manifest), "--project-root", str(tmp_path), "--all"]
+        assert main(argv) == 1
+        output = capsys.readouterr().out
+        assert "downloaded: 1, already present: 0, skipped: 1, failed: 1" in output
+        assert "failed broken:" in output
+        assert ("404" if failed_source == "osm" else "extraction failed") in output
+        record = load_manifest(manifest)[1]
+        assert record.verified == "size"
+        assert record.sha256 is not None
+        assert main(argv) == 1
+        output = capsys.readouterr().out
+        assert "downloaded: 0, already present: 1, skipped: 1, failed: 1" in output
+        assert requests.count("/good") == 1
+        assert load_manifest(manifest)[1] == record
+
+
+def test_all_counts_known_unavailable_as_failed(tmp_path, capsys) -> None:
+    """Section 5.1: an unavailable entry is reported without fetching it."""
+    manifest = tmp_path / "sources.yaml"
+    save_manifest(
+        manifest,
+        [
+            SourceFile(
+                id="missing",
+                source="osm",
+                provider="test",
+                vintage="fixture",
+                url="https://example.test/missing",
+                local_path="data/raw/osm/missing.pbf",
+                available=False,
+                availability_note="HEAD HTTP 404",
+            )
+        ],
+    )
+    assert main(["--manifest", str(manifest), "--all"]) == 1
+    output = capsys.readouterr().out
+    assert "failed: 1" in output
+    assert "failed missing: HEAD HTTP 404" in output
 
 
 def test_cli_dry_run_lists_configured_download_without_network(capsys) -> None:

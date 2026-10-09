@@ -179,6 +179,87 @@ def test_matching_file_is_skipped_without_http_request(tmp_path) -> None:
     client.close()
 
 
+@pytest.mark.parametrize("verified", [True, "size", False])
+@pytest.mark.parametrize(
+    "expected_md5", [None, hashlib.md5(b"already recorded").hexdigest().upper()]
+)
+def test_recorded_file_rerun_preserves_verification_without_network(
+    tmp_path, verified, expected_md5
+) -> None:
+    """Section 5.1: matching local records are idempotent, even offline."""
+    content = b"already recorded"
+    source = _source("data/raw/example/file.bin", content).model_copy(
+        update={
+            "size_bytes": len(content),
+            "expected_size_bytes": len(content),
+            "verified": verified,
+            "download_date": date(2026, 10, 9),
+            "md5_url": "https://example.test/file.bin.md5",
+            "expected_md5": expected_md5,
+        }
+    )
+    destination = tmp_path / source.local_path
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(content)
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: pytest.fail("recorded file must not use the network")
+        )
+    ) as client:
+        result = download_source(source, tmp_path, client=client)
+    assert result.skipped
+    assert result.record == source
+
+
+def test_size_verified_download_rerun_keeps_size_classification(tmp_path) -> None:
+    """Section 5.1: a stored local digest is not a provider checksum."""
+    content = b"osm fixture"
+    source = _source("data/raw/osm/file.pbf", content).model_copy(
+        update={"sha256": None, "expected_size_bytes": len(content)}
+    )
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return _response(200, content, {"Content-Length": str(len(content))})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        first = download_source(
+            source, tmp_path, client=client, downloaded_at="2026-10-09"
+        )
+        second = download_source(first.record, tmp_path, client=client)
+    assert len(requests) == 1
+    assert second.skipped
+    assert second.record == first.record
+    assert second.record.verified == "size"
+
+
+@pytest.mark.parametrize("existing", [b"corrupt", b"truncated"])
+def test_recorded_file_is_redownloaded_if_local_content_changed(
+    tmp_path, existing
+) -> None:
+    """Section 5.1: a record is skipped only when local bytes still match."""
+    source = _source("data/raw/example/file.bin").model_copy(
+        update={"size_bytes": 7, "verified": True}
+    )
+    destination = tmp_path / source.local_path
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(existing)
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return _response(200, b"payload", {"Content-Length": "7"})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result = download_source(
+            source, tmp_path, client=client, downloaded_at="2026-10-09"
+        )
+    assert not result.skipped
+    assert len(requests) == 1
+    assert destination.read_bytes() == b"payload"
+
+
 def test_download_rejects_content_length_and_checksum_mismatches(tmp_path) -> None:
     source = SourceFile(
         source="example",

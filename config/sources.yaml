@@ -53,7 +53,7 @@ sources:
   vintage: '2022-01-01'
   url: https://download.geofabrik.de/europe/france-220101.osm.pbf
   local_path: data/raw/osm/220101/france-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/france-220101.osm.pbf.md5
+  expected_size_bytes: 4138048011
   license: ODbL-1.0
 - id: osm-2024
   source: osm
@@ -61,7 +61,7 @@ sources:
   vintage: '2024-01-01'
   url: https://download.geofabrik.de/europe/france-240101.osm.pbf
   local_path: data/raw/osm/240101/france-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/france-240101.osm.pbf.md5
+  expected_size_bytes: 4499503510
   license: ODbL-1.0
 - id: filosofi-natural-2021
   source: filosofi

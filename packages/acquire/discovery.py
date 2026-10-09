@@ -433,8 +433,12 @@ def check_file_size(
     return True, size, note
 
 
-def discover_osm(client: httpx.Client, settings: AcquisitionConfig) -> list[SourceFile]:
-    """Geofabrik publishes no .md5 sidecar for dated regional extracts; use size."""
+def discover_osm(
+    client: httpx.Client,
+    settings: AcquisitionConfig,
+    configured: list[SourceFile] | None = None,
+) -> list[SourceFile]:
+    """Section 5.3: HEAD-check configured and neighbouring dated extracts by size."""
     records = []
     for stamp, vintage in settings.osm_snapshots.items():
         for region in settings.osm_regions:
@@ -457,6 +461,13 @@ def discover_osm(client: httpx.Client, settings: AcquisitionConfig) -> list[Sour
                     ),
                 )
             )
+
+    urls = {record.url for record in records}
+    records.extend(
+        record.model_copy(update={"md5_url": None, "md5_available": None})
+        for record in configured or []
+        if record.source == "osm" and record.access == "http" and record.url not in urls
+    )
 
     def check(record: SourceFile) -> SourceFile:
         assert record.url is not None

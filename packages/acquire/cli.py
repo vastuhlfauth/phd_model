@@ -158,7 +158,9 @@ def main(argv: list[str] | None = None) -> int:
                     elif name == "bdalti":
                         records = discover_bdalti(client, settings)
                     else:
-                        records = discover_osm(client, settings)
+                        records = discover_osm(
+                            client, settings, _select(sources, "osm")
+                        )
                     for record in records:
                         if record.available is False:
                             print(
@@ -215,11 +217,13 @@ def main(argv: list[str] | None = None) -> int:
 
     updated_by_id: dict[str, SourceFile] = {}
     skipped = 0
-    unavailable = 0
+    downloaded = 0
+    already_present = 0
+    failures: dict[str, str] = {}
     for source in selected:
         if source.available is False:
             print(f"unavailable {source.id}: {source.availability_note}")
-            unavailable += 1
+            failures[source.id] = source.availability_note or "reported unavailable"
             continue
         if source.access not in ("http", "s3") or source.restricted:
             reason = source.notes or f"access method is {source.access}"
@@ -264,8 +268,8 @@ def main(argv: list[str] | None = None) -> int:
             logger.error(
                 "failed to acquire %s (%s): %s", source.source, source.vintage, error
             )
+            failures[source.id] = str(error) or type(error).__name__
             if source.source == "gtfs":
-                unavailable += 1
                 updated_by_id[source.id] = source.model_copy(
                     update={
                         "available": False,
@@ -273,17 +277,19 @@ def main(argv: list[str] | None = None) -> int:
                         "checked_date": date.today(),
                     }
                 )
-                continue
-            return 1
+            continue
         updated_by_id[result.record.id] = result.record
         if result.skipped:
-            status = "verified"
-        elif result.record.verified is True:
-            status = "downloaded and verified"
-        elif result.record.verified == "size":
-            status = "downloaded (verified by size only: no checksum sidecar)"
+            already_present += 1
+            status = "already present"
         else:
-            status = "downloaded (not verified: no checksum configured)"
+            downloaded += 1
+            if result.record.verified is True:
+                status = "downloaded and verified"
+            elif result.record.verified == "size":
+                status = "downloaded (verified by size only: no checksum sidecar)"
+            else:
+                status = "downloaded (not verified: no checksum configured)"
         print(f"{status} {result.local_path}")
 
     if updated_by_id and not args.dry_run:
@@ -292,8 +298,15 @@ def main(argv: list[str] | None = None) -> int:
         gtfs = [source for source in sources if source.source == "gtfs"]
         if gtfs and all(source.dataset_id is not None for source in gtfs):
             write_gtfs_inventory(manifest_path.with_name("gtfs_inventory.csv"), gtfs)
-    if unavailable:
-        print(f"unavailable resources: {unavailable} (listed, not fatal)")
+    if not args.dry_run:
+        print(
+            f"Summary: downloaded: {downloaded}, already present: {already_present}, "
+            f"skipped: {skipped}, failed: {len(failures)}"
+        )
+        for source_id, reason in failures.items():
+            print(f"failed {source_id}: {reason}")
+        if failures:
+            return 1
     if skipped and not args.dry_run:
         logger.error(
             "%s configured source entries require non-HTTP or manual acquisition",
