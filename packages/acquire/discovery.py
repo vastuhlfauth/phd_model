@@ -25,6 +25,15 @@ ATOM = "{http://www.w3.org/2005/Atom}"
 GPF = "{https://data.geopf.fr/annexes/ressources/xsd/gpf_dl.xsd}"
 
 
+class GtfsResourceOverride(BaseModel):
+    """Manual correction for one resource id across any dataset."""
+
+    model_config = ConfigDict(extra="forbid")
+    url: str | None = None
+    fallback_url: str | None = None
+    notes: str | None = None
+
+
 class AcquisitionConfig(BaseModel):
     """Source discovery parameters and request limits for section 5.1."""
 
@@ -45,6 +54,10 @@ class AcquisitionConfig(BaseModel):
     osm_regions: list[str]
     metropolitan_departments: set[str]
     step0_network_patterns: dict[str, str]
+    gtfs_dropped_resource_ids: set[str] = Field(default_factory=set)
+    gtfs_resource_overrides: dict[str, GtfsResourceOverride] = Field(
+        default_factory=dict
+    )
 
 
 def load_acquisition_config(path: Path) -> AcquisitionConfig:
@@ -192,19 +205,12 @@ def discover_gtfs(
     )
     records = []
     excluded = 0
+    dropped = 0
     for dataset in datasets:
         if dataset.type != "public-transit":
             continue
         community_ids = {str(resource.id) for resource in dataset.community_resources}
         for resource in dataset.resources:
-            if (
-                str(resource.id) in community_ids
-                or resource.community_resource_publisher is not None
-                or "community_resource_publisher" in resource.model_fields_set
-            ):
-                if resource.format and resource.format.strip().upper() == "GTFS":
-                    excluded += 1
-                continue
             if resource.format is None:
                 logger.warning(
                     "Resource %s in dataset %s has no format; not classified as GTFS",
@@ -215,13 +221,46 @@ def discover_gtfs(
             if resource.format.strip().upper() != "GTFS":
                 continue
             resource_id = str(resource.id)
+            if resource_id in settings.gtfs_dropped_resource_ids:
+                dropped += 1
+                logger.info(
+                    "Dropped superseded GTFS resource %s (dataset %s)",
+                    resource_id,
+                    dataset.id,
+                )
+                continue
+            override = settings.gtfs_resource_overrides.get(resource_id)
+            is_community = (
+                resource_id in community_ids
+                or resource.community_resource_publisher is not None
+                or "community_resource_publisher" in resource.model_fields_set
+            )
+            if is_community and override is None:
+                excluded += 1
+                continue
+            availability_note = (
+                "Unavailable according to transport.data.gouv.fr"
+                if resource.is_available is False
+                else None
+            )
+            if override and override.notes:
+                availability_note = (
+                    f"{availability_note} {override.notes}"
+                    if availability_note
+                    else override.notes
+                )
             records.append(
                 SourceFile(
                     id=f"gtfs-{dataset.id}-{resource_id}",
                     source="gtfs",
                     provider="transport.data.gouv.fr",
                     vintage=vintage,
-                    url=resource.original_url or resource.url,
+                    url=(
+                        (override.url if override and override.url else None)
+                        or resource.original_url
+                        or resource.url
+                    ),
+                    fallback_url=override.fallback_url if override else None,
                     local_path=settings.gtfs_local_path.format(
                         vintage=vintage,
                         dataset_id=dataset.id,
@@ -234,17 +273,17 @@ def discover_gtfs(
                     covered_area=dataset.covered_area,
                     license=dataset.licence,
                     available=resource.is_available,
-                    availability_note=(
-                        "Unavailable according to transport.data.gouv.fr"
-                        if resource.is_available is False
-                        else None
-                    ),
+                    availability_note=availability_note,
                     checked_date=date.today(),
                 )
             )
     if not records:
         raise ValueError("transport discovery found no public-transit GTFS resources")
-    logger.info("Excluded %s community GTFS resources", excluded)
+    logger.info(
+        "Excluded %s community GTFS resources; dropped %s superseded resources",
+        excluded,
+        dropped,
+    )
     return records
 
 
@@ -347,7 +386,28 @@ def check_url(client: httpx.Client, url: str) -> tuple[bool | None, str]:
     return True, f"HEAD HTTP {response.status_code}"
 
 
+def check_file_size(
+    client: httpx.Client, url: str
+) -> tuple[bool | None, int | None, str]:
+    """One HEAD: availability and an advertised Content-Length, when present."""
+    try:
+        response = client.head(url)
+    except httpx.HTTPError as error:
+        return None, None, f"HEAD failed: {type(error).__name__}: {error}"
+    if response.status_code in (404, 410):
+        return False, None, f"HEAD HTTP {response.status_code}"
+    if not response.is_success:
+        return None, None, f"HEAD HTTP {response.status_code}; existence unconfirmed"
+    content_length = response.headers.get("Content-Length")
+    size = int(content_length) if content_length and content_length.isdigit() else None
+    note = f"HEAD HTTP {response.status_code}"
+    if size is None:
+        note += "; no Content-Length header"
+    return True, size, note
+
+
 def discover_osm(client: httpx.Client, settings: AcquisitionConfig) -> list[SourceFile]:
+    """Geofabrik publishes no .md5 sidecar for dated regional extracts; use size."""
     records = []
     for stamp, vintage in settings.osm_snapshots.items():
         for region in settings.osm_regions:
@@ -363,20 +423,22 @@ def discover_osm(client: httpx.Client, settings: AcquisitionConfig) -> list[Sour
                     local_path=settings.osm_local_path.format(
                         stamp=stamp, filename=filename
                     ),
-                    md5_url=url + ".md5",
                     license="ODbL-1.0",
+                    notes=(
+                        "No .md5 sidecar is published for dated regional extracts; "
+                        "verified by size only."
+                    ),
                 )
             )
 
     def check(record: SourceFile) -> SourceFile:
-        assert record.url is not None and record.md5_url is not None
-        file_status, file_note = check_url(client, record.url)
-        md5_status, md5_note = check_url(client, record.md5_url)
+        assert record.url is not None
+        available, size, note = check_file_size(client, record.url)
         return record.model_copy(
             update={
-                "available": file_status,
-                "md5_available": md5_status,
-                "availability_note": f"file: {file_note}; md5: {md5_note}",
+                "available": available,
+                "expected_size_bytes": size,
+                "availability_note": note,
                 "checked_date": date.today(),
             }
         )

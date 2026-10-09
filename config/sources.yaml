@@ -268,7 +268,6 @@ sources:
   url: s3://overturemaps-us-west-2/release/2026-09-23.1/theme=places/type=place/*
   local_path: data/raw/overture/2026-09-23.1/overture-places.parquet
   access: s3
-  s3_region: us-west-2
   notes: Anonymous S3; France including Corsica and adjacent NUTS3 box. Clip later.
     Archive before about 2026-11-22.
   bbox:
@@ -276,6 +275,7 @@ sources:
   - 40.4
   - 10.0
   - 51.6
+  s3_region: us-west-2
 - id: emp2019-data
   source: emp2019
   provider: SDES
@@ -1214,6 +1214,344 @@ sources:
   expected_size_bytes: 20449305
   notes: Departement D02B; keep the original .7z.
   edition_date: '2020-04-16'
+- id: osm-belgium-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/belgium-220101.osm.pbf
+  local_path: data/raw/osm/220101/belgium-220101.osm.pbf
+  expected_size_bytes: 469885252
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-luxembourg-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/luxembourg-220101.osm.pbf
+  local_path: data/raw/osm/220101/luxembourg-220101.osm.pbf
+  expected_size_bytes: 36954615
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-switzerland-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/switzerland-220101.osm.pbf
+  local_path: data/raw/osm/220101/switzerland-220101.osm.pbf
+  expected_size_bytes: 383948567
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-andorra-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/andorra-220101.osm.pbf
+  local_path: data/raw/osm/220101/andorra-220101.osm.pbf
+  expected_size_bytes: 1867201
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-monaco-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/monaco-220101.osm.pbf
+  local_path: data/raw/osm/220101/monaco-220101.osm.pbf
+  expected_size_bytes: 458801
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-germany-baden-wuerttemberg-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/germany/baden-wuerttemberg-220101.osm.pbf
+  local_path: data/raw/osm/220101/baden-wuerttemberg-220101.osm.pbf
+  expected_size_bytes: 528247229
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-germany-rheinland-pfalz-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/germany/rheinland-pfalz-220101.osm.pbf
+  local_path: data/raw/osm/220101/rheinland-pfalz-220101.osm.pbf
+  expected_size_bytes: 195101753
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-germany-saarland-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/germany/saarland-220101.osm.pbf
+  local_path: data/raw/osm/220101/saarland-220101.osm.pbf
+  expected_size_bytes: 46385121
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-italy-nord-ovest-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/italy/nord-ovest-220101.osm.pbf
+  local_path: data/raw/osm/220101/nord-ovest-220101.osm.pbf
+  expected_size_bytes: 461789919
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-spain-pais-vasco-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/spain/pais-vasco-220101.osm.pbf
+  local_path: data/raw/osm/220101/pais-vasco-220101.osm.pbf
+  expected_size_bytes: 57124257
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-spain-navarra-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/spain/navarra-220101.osm.pbf
+  local_path: data/raw/osm/220101/navarra-220101.osm.pbf
+  expected_size_bytes: 23844866
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-spain-aragon-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/spain/aragon-220101.osm.pbf
+  local_path: data/raw/osm/220101/aragon-220101.osm.pbf
+  expected_size_bytes: 60345105
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-spain-cataluna-220101
+  source: osm
+  provider: Geofabrik
+  vintage: '2022-01-01'
+  url: https://download.geofabrik.de/europe/spain/cataluna-220101.osm.pbf
+  local_path: data/raw/osm/220101/cataluna-220101.osm.pbf
+  expected_size_bytes: 186425768
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-belgium-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/belgium-240101.osm.pbf
+  local_path: data/raw/osm/240101/belgium-240101.osm.pbf
+  expected_size_bytes: 577833980
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-luxembourg-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/luxembourg-240101.osm.pbf
+  local_path: data/raw/osm/240101/luxembourg-240101.osm.pbf
+  expected_size_bytes: 41000206
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-switzerland-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/switzerland-240101.osm.pbf
+  local_path: data/raw/osm/240101/switzerland-240101.osm.pbf
+  expected_size_bytes: 449857557
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-andorra-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/andorra-240101.osm.pbf
+  local_path: data/raw/osm/240101/andorra-240101.osm.pbf
+  expected_size_bytes: 2559902
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-monaco-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/monaco-240101.osm.pbf
+  local_path: data/raw/osm/240101/monaco-240101.osm.pbf
+  expected_size_bytes: 537890
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-germany-baden-wuerttemberg-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/germany/baden-wuerttemberg-240101.osm.pbf
+  local_path: data/raw/osm/240101/baden-wuerttemberg-240101.osm.pbf
+  expected_size_bytes: 574089646
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-germany-rheinland-pfalz-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/germany/rheinland-pfalz-240101.osm.pbf
+  local_path: data/raw/osm/240101/rheinland-pfalz-240101.osm.pbf
+  expected_size_bytes: 220602942
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-germany-saarland-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/germany/saarland-240101.osm.pbf
+  local_path: data/raw/osm/240101/saarland-240101.osm.pbf
+  expected_size_bytes: 49669805
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-italy-nord-ovest-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/italy/nord-ovest-240101.osm.pbf
+  local_path: data/raw/osm/240101/nord-ovest-240101.osm.pbf
+  expected_size_bytes: 514480454
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-spain-pais-vasco-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/spain/pais-vasco-240101.osm.pbf
+  local_path: data/raw/osm/240101/pais-vasco-240101.osm.pbf
+  expected_size_bytes: 61241156
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-spain-navarra-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/spain/navarra-240101.osm.pbf
+  local_path: data/raw/osm/240101/navarra-240101.osm.pbf
+  expected_size_bytes: 29480734
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-spain-aragon-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/spain/aragon-240101.osm.pbf
+  local_path: data/raw/osm/240101/aragon-240101.osm.pbf
+  expected_size_bytes: 74375135
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
+- id: osm-spain-cataluna-240101
+  source: osm
+  provider: Geofabrik
+  vintage: '2024-01-01'
+  url: https://download.geofabrik.de/europe/spain/cataluna-240101.osm.pbf
+  local_path: data/raw/osm/240101/cataluna-240101.osm.pbf
+  expected_size_bytes: 217883471
+  license: ODbL-1.0
+  notes: No .md5 sidecar is published for dated regional extracts; verified by size
+    only.
+  available: true
+  availability_note: HEAD HTTP 200
+  checked_date: '2026-10-09'
 - id: gtfs-6703a201386f775e01f4269b-82386
   source: gtfs
   provider: transport.data.gouv.fr
@@ -1622,6 +1960,23 @@ sources:
     insee: '53'
   available: true
   checked_date: '2026-10-09'
+- id: gtfs-658626a8a582bbf574c71b48-81462
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://www.korrigo.bzh/ftp/OPENDATA/BREIZHGO_CAR_29.gtfs.zip
+  local_path: data/raw/gtfs/2026-10/658626a8a582bbf574c71b48/81462.zip
+  license: odc-odbl
+  dataset_id: 658626a8a582bbf574c71b48
+  dataset_slug: breizhgo-car
+  dataset_title: Réseau interurbain BreizhGo Car
+  resource_id: '81462'
+  covered_area:
+  - type: region
+    nom: Bretagne
+    insee: '53'
+  available: true
+  checked_date: '2026-10-09'
 - id: gtfs-658626a8a582bbf574c71b48-81464
   source: gtfs
   provider: transport.data.gouv.fr
@@ -1650,23 +2005,6 @@ sources:
   dataset_slug: breizhgo-car
   dataset_title: Réseau interurbain BreizhGo Car
   resource_id: '81461'
-  covered_area:
-  - type: region
-    nom: Bretagne
-    insee: '53'
-  available: true
-  checked_date: '2026-10-09'
-- id: gtfs-658626a8a582bbf574c71b48-81462
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://www.korrigo.bzh/ftp/OPENDATA/BREIZHGO_CAR_29.gtfs.zip
-  local_path: data/raw/gtfs/2026-10/658626a8a582bbf574c71b48/81462.zip
-  license: odc-odbl
-  dataset_id: 658626a8a582bbf574c71b48
-  dataset_slug: breizhgo-car
-  dataset_title: Réseau interurbain BreizhGo Car
-  resource_id: '81462'
   covered_area:
   - type: region
     nom: Bretagne
@@ -1860,17 +2198,17 @@ sources:
     insee: '27'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-667005c713503ed936c4be46-81828
+- id: gtfs-667005c713503ed936c4be46-81829
   source: gtfs
   provider: transport.data.gouv.fr
   vintage: 2026-10
-  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_59_P1.zip
-  local_path: data/raw/gtfs/2026-10/667005c713503ed936c4be46/81828.zip
+  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_59_P2.zip
+  local_path: data/raw/gtfs/2026-10/667005c713503ed936c4be46/81829.zip
   license: notspecified
   dataset_id: 667005c713503ed936c4be46
   dataset_slug: arrets-horaires-et-parcours-theoriques-gtfs-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-59-nord
   dataset_title: Réseau interurbain et scolaire - Nord (59)
-  resource_id: '81828'
+  resource_id: '81829'
   covered_area:
   - type: departement
     nom: Nord
@@ -1911,17 +2249,17 @@ sources:
     insee: '59'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-667005c713503ed936c4be46-81829
+- id: gtfs-667005c713503ed936c4be46-81828
   source: gtfs
   provider: transport.data.gouv.fr
   vintage: 2026-10
-  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_59_P2.zip
-  local_path: data/raw/gtfs/2026-10/667005c713503ed936c4be46/81829.zip
+  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_59_P1.zip
+  local_path: data/raw/gtfs/2026-10/667005c713503ed936c4be46/81828.zip
   license: notspecified
   dataset_id: 667005c713503ed936c4be46
   dataset_slug: arrets-horaires-et-parcours-theoriques-gtfs-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-59-nord
   dataset_title: Réseau interurbain et scolaire - Nord (59)
-  resource_id: '81829'
+  resource_id: '81828'
   covered_area:
   - type: departement
     nom: Nord
@@ -1979,23 +2317,6 @@ sources:
     insee: '200054807'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5b3b3de988ee38708ada1789-39593
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-col?apiKey=776d384907333d300f1b0077344506394e09501d
-  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39593.zip
-  license: lov2
-  dataset_id: 5b3b3de988ee38708ada1789
-  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
-  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
-  resource_id: '39593'
-  covered_area:
-  - type: epci
-    nom: Métropole d'Aix-Marseille-Provence
-    insee: '200054807'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-5b3b3de988ee38708ada1789-39596
   source: gtfs
   provider: transport.data.gouv.fr
@@ -2007,23 +2328,6 @@ sources:
   dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
   dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
   resource_id: '39596'
-  covered_area:
-  - type: epci
-    nom: Métropole d'Aix-Marseille-Provence
-    insee: '200054807'
-  available: true
-  checked_date: '2026-10-09'
-- id: gtfs-5b3b3de988ee38708ada1789-39598
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-aub?apiKey=5d154e7479302217113b0146044950783f2e7f72
-  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39598.zip
-  license: lov2
-  dataset_id: 5b3b3de988ee38708ada1789
-  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
-  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
-  resource_id: '39598'
   covered_area:
   - type: epci
     nom: Métropole d'Aix-Marseille-Provence
@@ -2075,6 +2379,23 @@ sources:
   dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
   dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
   resource_id: '39601'
+  covered_area:
+  - type: epci
+    nom: Métropole d'Aix-Marseille-Provence
+    insee: '200054807'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-5b3b3de988ee38708ada1789-39592
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-lib?apiKey=14276f6a093c2c53370b48001f75646f2b2c3969
+  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39592.zip
+  license: lov2
+  dataset_id: 5b3b3de988ee38708ada1789
+  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
+  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
+  resource_id: '39592'
   covered_area:
   - type: epci
     nom: Métropole d'Aix-Marseille-Provence
@@ -2200,34 +2521,52 @@ sources:
     insee: '200054807'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5b3b3de988ee38708ada1789-39592
+- id: gtfs-5b3b3de988ee38708ada1789-39593
   source: gtfs
   provider: transport.data.gouv.fr
   vintage: 2026-10
-  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-lib?apiKey=14276f6a093c2c53370b48001f75646f2b2c3969
-  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39592.zip
+  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-col?apiKey=776d384907333d300f1b0077344506394e09501d
+  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39593.zip
   license: lov2
   dataset_id: 5b3b3de988ee38708ada1789
   dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
   dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
-  resource_id: '39592'
+  resource_id: '39593'
   covered_area:
   - type: epci
     nom: Métropole d'Aix-Marseille-Provence
     insee: '200054807'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5de42c4d8b4c417a10e62ec9-65812
+- id: gtfs-5b3b3de988ee38708ada1789-39598
   source: gtfs
   provider: transport.data.gouv.fr
   vintage: 2026-10
-  url: https://download.data.grandlyon.com/files/rdata/tcl_sytral.tcltheorique/GTFS_TCL.ZIP
-  local_path: data/raw/gtfs/2026-10/5de42c4d8b4c417a10e62ec9/65812.zip
+  url: https://app.mecatran.com/utw/ws/gtfsfeed/static/mamp-aub?apiKey=5d154e7479302217113b0146044950783f2e7f72
+  local_path: data/raw/gtfs/2026-10/5b3b3de988ee38708ada1789/39598.zip
+  license: lov2
+  dataset_id: 5b3b3de988ee38708ada1789
+  dataset_slug: reseaux-de-transports-en-commun-de-la-metropole-daix-marseille-provence-et-des-bouches-du-rhone
+  dataset_title: Réseaux urbains de la Métropole Aix-Marseille-Provence
+  resource_id: '39598'
+  covered_area:
+  - type: epci
+    nom: Métropole d'Aix-Marseille-Provence
+    insee: '200054807'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-5de42c4d8b4c417a10e62ec9-81943
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://www.data.gouv.fr/api/1/datasets/r/abebedc6-28cf-4e2e-9c64-db57a40156f8
+  fallback_url: https://files.mobilitydatabase.org/tdg-81943/tdg-81943-202610090009/tdg-81943-202610090009.zip
+  local_path: data/raw/gtfs/2026-10/5de42c4d8b4c417a10e62ec9/81943.zip
   license: mobility-licence
   dataset_id: 5de42c4d8b4c417a10e62ec9
   dataset_slug: horaires-theoriques-du-reseau-transports-en-commun-lyonnais
   dataset_title: Réseau urbain TCL
-  resource_id: '65812'
+  resource_id: '81943'
   covered_area:
   - type: epci
     nom: CA Villefranche Beaujolais Saône
@@ -2265,8 +2604,10 @@ sources:
   - type: epci
     nom: Métropole de Lyon
     insee: '200046977'
-  available: false
-  availability_note: Unavailable according to transport.data.gouv.fr
+  available: true
+  availability_note: transport.data.gouv.fr tags this resource as a community copy
+    even though it is the producer's published URL (datagouv_id abebedc6-28cf-4e2e-9c64-db57a40156f8);
+    kept per manual verification on 2026-10-09.
   checked_date: '2026-10-09'
 - id: gtfs-632a56a68a907ff3d4eacfa5-82338
   source: gtfs
@@ -2586,17 +2927,17 @@ sources:
     insee: '60'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-667005da13503ed936c4be66-81821
+- id: gtfs-667005da13503ed936c4be66-81823
   source: gtfs
   provider: transport.data.gouv.fr
   vintage: 2026-10
-  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_60_P2.zip
-  local_path: data/raw/gtfs/2026-10/667005da13503ed936c4be66/81821.zip
+  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_60_P4.zip
+  local_path: data/raw/gtfs/2026-10/667005da13503ed936c4be66/81823.zip
   license: notspecified
   dataset_id: 667005da13503ed936c4be66
   dataset_slug: arrets-horaires-et-parcours-theoriques-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-60-oise-1
   dataset_title: Réseau interurbain et scolaire - Oise (60)
-  resource_id: '81821'
+  resource_id: '81823'
   covered_area:
   - type: departement
     nom: Oise
@@ -2620,17 +2961,17 @@ sources:
     insee: '60'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-667005da13503ed936c4be66-81823
+- id: gtfs-667005da13503ed936c4be66-81821
   source: gtfs
   provider: transport.data.gouv.fr
   vintage: 2026-10
-  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_60_P4.zip
-  local_path: data/raw/gtfs/2026-10/667005da13503ed936c4be66/81823.zip
+  url: https://geocatalogue.hautsdefrance.fr/gtfs/RHDF_GTFS_COM_SCO_60_P2.zip
+  local_path: data/raw/gtfs/2026-10/667005da13503ed936c4be66/81821.zip
   license: notspecified
   dataset_id: 667005da13503ed936c4be66
   dataset_slug: arrets-horaires-et-parcours-theoriques-du-reseau-routier-regional-de-transport-scolaire-et-interurbain-60-oise-1
   dataset_title: Réseau interurbain et scolaire - Oise (60)
-  resource_id: '81823'
+  resource_id: '81821'
   covered_area:
   - type: departement
     nom: Oise
@@ -3031,23 +3372,6 @@ sources:
     insee: '200023414'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-580defb1a3a7292dcfa9d33f-83281
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://eu.ftp.opendatasoft.com/star/gtfs/GTFS_STAR_BUS_METRO_EN_COURS.zip
-  local_path: data/raw/gtfs/2026-10/580defb1a3a7292dcfa9d33f/83281.zip
-  license: odc-odbl
-  dataset_id: 580defb1a3a7292dcfa9d33f
-  dataset_slug: versions-des-horaires-theoriques-des-lignes-de-bus-et-de-metro-du-reseau-star-dans-les-formats-gtfs-et-netex-ainsi-que-les-urls-dacces-au-gtfs-rt-1
-  dataset_title: Réseau urbain STAR
-  resource_id: '83281'
-  covered_area:
-  - type: epci
-    nom: Rennes Métropole
-    insee: '243500139'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-580defb1a3a7292dcfa9d33f-83282
   source: gtfs
   provider: transport.data.gouv.fr
@@ -3059,6 +3383,23 @@ sources:
   dataset_slug: versions-des-horaires-theoriques-des-lignes-de-bus-et-de-metro-du-reseau-star-dans-les-formats-gtfs-et-netex-ainsi-que-les-urls-dacces-au-gtfs-rt-1
   dataset_title: Réseau urbain STAR
   resource_id: '83282'
+  covered_area:
+  - type: epci
+    nom: Rennes Métropole
+    insee: '243500139'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-580defb1a3a7292dcfa9d33f-83281
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://eu.ftp.opendatasoft.com/star/gtfs/GTFS_STAR_BUS_METRO_EN_COURS.zip
+  local_path: data/raw/gtfs/2026-10/580defb1a3a7292dcfa9d33f/83281.zip
+  license: odc-odbl
+  dataset_id: 580defb1a3a7292dcfa9d33f
+  dataset_slug: versions-des-horaires-theoriques-des-lignes-de-bus-et-de-metro-du-reseau-star-dans-les-formats-gtfs-et-netex-ainsi-que-les-urls-dacces-au-gtfs-rt-1
+  dataset_title: Réseau urbain STAR
+  resource_id: '83281'
   covered_area:
   - type: epci
     nom: Rennes Métropole
@@ -4556,23 +4897,6 @@ sources:
     insee: '249730045'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-615c0b5448c0d2789eb0681b-83781
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://static.data.gouv.fr/resources/agence-agglobus/20260226-105258/gtfs-agglobus-2026-oe-v2.zip
-  local_path: data/raw/gtfs/2026-10/615c0b5448c0d2789eb0681b/83781.zip
-  license: lov2
-  dataset_id: 615c0b5448c0d2789eb0681b
-  dataset_slug: agence-agglobus
-  dataset_title: Réseau urbain Agglobus
-  resource_id: '83781'
-  covered_area:
-  - type: epci
-    nom: CA du Centre Littoral
-    insee: '249730045'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-615c0b5448c0d2789eb0681b-83304
   source: gtfs
   provider: transport.data.gouv.fr
@@ -4584,6 +4908,23 @@ sources:
   dataset_slug: agence-agglobus
   dataset_title: Réseau urbain Agglobus
   resource_id: '83304'
+  covered_area:
+  - type: epci
+    nom: CA du Centre Littoral
+    insee: '249730045'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-615c0b5448c0d2789eb0681b-83781
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://static.data.gouv.fr/resources/agence-agglobus/20260226-105258/gtfs-agglobus-2026-oe-v2.zip
+  local_path: data/raw/gtfs/2026-10/615c0b5448c0d2789eb0681b/83781.zip
+  license: lov2
+  dataset_id: 615c0b5448c0d2789eb0681b
+  dataset_slug: agence-agglobus
+  dataset_title: Réseau urbain Agglobus
+  resource_id: '83781'
   covered_area:
   - type: epci
     nom: CA du Centre Littoral
@@ -5455,23 +5796,6 @@ sources:
     insee: '200068989'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-64c3da6eae50f397e3d8d099-81650
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://api.oisemob.cityway.fr/dataflow/tad/download?provider=COROLIS_INT&dataFormat=gtfs
-  local_path: data/raw/gtfs/2026-10/64c3da6eae50f397e3d8d099/81650.zip
-  license: lov2
-  dataset_id: 64c3da6eae50f397e3d8d099
-  dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-corolis-interurbain-communaute-dagglomeration-du-beauvaisis
-  dataset_title: Réseau interurbain et TAD zonal Corolis
-  resource_id: '81650'
-  covered_area:
-  - type: epci
-    nom: CA du Beauvaisis
-    insee: '200067999'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-64c3da6eae50f397e3d8d099-81138
   source: gtfs
   provider: transport.data.gouv.fr
@@ -5483,6 +5807,23 @@ sources:
   dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-corolis-interurbain-communaute-dagglomeration-du-beauvaisis
   dataset_title: Réseau interurbain et TAD zonal Corolis
   resource_id: '81138'
+  covered_area:
+  - type: epci
+    nom: CA du Beauvaisis
+    insee: '200067999'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-64c3da6eae50f397e3d8d099-81650
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://api.oisemob.cityway.fr/dataflow/tad/download?provider=COROLIS_INT&dataFormat=gtfs
+  local_path: data/raw/gtfs/2026-10/64c3da6eae50f397e3d8d099/81650.zip
+  license: lov2
+  dataset_id: 64c3da6eae50f397e3d8d099
+  dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-corolis-interurbain-communaute-dagglomeration-du-beauvaisis
+  dataset_title: Réseau interurbain et TAD zonal Corolis
+  resource_id: '81650'
   covered_area:
   - type: epci
     nom: CA du Beauvaisis
@@ -6067,23 +6408,6 @@ sources:
     insee: '200071363'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5d2352ad634f41602cdc8d8a-81522
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://static.data.gouv.fr/resources/offre-de-transports-du-grand-albigeois-gtfs/20260813-074150/libea-reseau-periurbain.zip
-  local_path: data/raw/gtfs/2026-10/5d2352ad634f41602cdc8d8a/81522.zip
-  license: odc-odbl
-  dataset_id: 5d2352ad634f41602cdc8d8a
-  dataset_slug: offre-de-transports-du-grand-albigeois-gtfs
-  dataset_title: Réseau urbain du Grand Albigeois
-  resource_id: '81522'
-  covered_area:
-  - type: epci
-    nom: CA de l'Albigeois (C2A)
-    insee: '248100737'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-5d2352ad634f41602cdc8d8a-79728
   source: gtfs
   provider: transport.data.gouv.fr
@@ -6112,6 +6436,23 @@ sources:
   dataset_slug: offre-de-transports-du-grand-albigeois-gtfs
   dataset_title: Réseau urbain du Grand Albigeois
   resource_id: '79687'
+  covered_area:
+  - type: epci
+    nom: CA de l'Albigeois (C2A)
+    insee: '248100737'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-5d2352ad634f41602cdc8d8a-81522
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://static.data.gouv.fr/resources/offre-de-transports-du-grand-albigeois-gtfs/20260813-074150/libea-reseau-periurbain.zip
+  local_path: data/raw/gtfs/2026-10/5d2352ad634f41602cdc8d8a/81522.zip
+  license: odc-odbl
+  dataset_id: 5d2352ad634f41602cdc8d8a
+  dataset_slug: offre-de-transports-du-grand-albigeois-gtfs
+  dataset_title: Réseau urbain du Grand Albigeois
+  resource_id: '81522'
   covered_area:
   - type: epci
     nom: CA de l'Albigeois (C2A)
@@ -7348,23 +7689,6 @@ sources:
     insee: '248900334'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5f3e9f003caad471591e541f-84065
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://saeiv-p01.navocap.com/NvpGTFS/72/api/static/getzip
-  local_path: data/raw/gtfs/2026-10/5f3e9f003caad471591e541f/84065.zip
-  license: odc-odbl
-  dataset_id: 5f3e9f003caad471591e541f
-  dataset_slug: horaires-theoriques-et-reel-du-reseau-maelis-montlucon-communaute-gtfs
-  dataset_title: Réseau urbain Maelis
-  resource_id: '84065'
-  covered_area:
-  - type: epci
-    nom: CA Montluçon Communauté
-    insee: '200071082'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-5f3e9f003caad471591e541f-84114
   source: gtfs
   provider: transport.data.gouv.fr
@@ -7376,6 +7700,23 @@ sources:
   dataset_slug: horaires-theoriques-et-reel-du-reseau-maelis-montlucon-communaute-gtfs
   dataset_title: Réseau urbain Maelis
   resource_id: '84114'
+  covered_area:
+  - type: epci
+    nom: CA Montluçon Communauté
+    insee: '200071082'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-5f3e9f003caad471591e541f-84065
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://saeiv-p01.navocap.com/NvpGTFS/72/api/static/getzip
+  local_path: data/raw/gtfs/2026-10/5f3e9f003caad471591e541f/84065.zip
+  license: odc-odbl
+  dataset_id: 5f3e9f003caad471591e541f
+  dataset_slug: horaires-theoriques-et-reel-du-reseau-maelis-montlucon-communaute-gtfs
+  dataset_title: Réseau urbain Maelis
+  resource_id: '84065'
   covered_area:
   - type: epci
     nom: CA Montluçon Communauté
@@ -8462,23 +8803,6 @@ sources:
     insee: '200070563'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-5cb42b2a8b4c4178f85e4a16-79272
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://static.data.gouv.fr/resources/reseau-urbain-interurbain-et-scolaire-de-la-communaute-dagglomeration-privas-centre-ardeche/20260918-123000/gtfs-dsp-2026.zip
-  local_path: data/raw/gtfs/2026-10/5cb42b2a8b4c4178f85e4a16/79272.zip
-  license: lov2
-  dataset_id: 5cb42b2a8b4c4178f85e4a16
-  dataset_slug: reseau-urbain-interurbain-et-scolaire-de-la-communaute-dagglomeration-privas-centre-ardeche
-  dataset_title: Réseau urbain et scolaire T'CAP
-  resource_id: '79272'
-  covered_area:
-  - type: epci
-    nom: CA Privas Centre Ardèche
-    insee: '200071413'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-5cb42b2a8b4c4178f85e4a16-81342
   source: gtfs
   provider: transport.data.gouv.fr
@@ -8490,6 +8814,23 @@ sources:
   dataset_slug: reseau-urbain-interurbain-et-scolaire-de-la-communaute-dagglomeration-privas-centre-ardeche
   dataset_title: Réseau urbain et scolaire T'CAP
   resource_id: '81342'
+  covered_area:
+  - type: epci
+    nom: CA Privas Centre Ardèche
+    insee: '200071413'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-5cb42b2a8b4c4178f85e4a16-79272
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://static.data.gouv.fr/resources/reseau-urbain-interurbain-et-scolaire-de-la-communaute-dagglomeration-privas-centre-ardeche/20260918-123000/gtfs-dsp-2026.zip
+  local_path: data/raw/gtfs/2026-10/5cb42b2a8b4c4178f85e4a16/79272.zip
+  license: lov2
+  dataset_id: 5cb42b2a8b4c4178f85e4a16
+  dataset_slug: reseau-urbain-interurbain-et-scolaire-de-la-communaute-dagglomeration-privas-centre-ardeche
+  dataset_title: Réseau urbain et scolaire T'CAP
+  resource_id: '79272'
   covered_area:
   - type: epci
     nom: CA Privas Centre Ardèche
@@ -8859,23 +9200,6 @@ sources:
     insee: '200090561'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-64a717392b51b69db1b44220-81056
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://api.oisemob.cityway.fr/dataflow/offre-tc/download?provider=LEBUS&dataFormat=GTFS&dataProfil=OPENDATA
-  local_path: data/raw/gtfs/2026-10/64a717392b51b69db1b44220/81056.zip
-  license: lov2
-  dataset_id: 64a717392b51b69db1b44220
-  dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-le-bus-communaute-de-communes-du-clermontois
-  dataset_title: Réseau urbain Le Bus
-  resource_id: '81056'
-  covered_area:
-  - type: epci
-    nom: CC du Clermontois
-    insee: '246000376'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-64a717392b51b69db1b44220-81652
   source: gtfs
   provider: transport.data.gouv.fr
@@ -8887,6 +9211,23 @@ sources:
   dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-le-bus-communaute-de-communes-du-clermontois
   dataset_title: Réseau urbain Le Bus
   resource_id: '81652'
+  covered_area:
+  - type: epci
+    nom: CC du Clermontois
+    insee: '246000376'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-64a717392b51b69db1b44220-81056
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://api.oisemob.cityway.fr/dataflow/offre-tc/download?provider=LEBUS&dataFormat=GTFS&dataProfil=OPENDATA
+  local_path: data/raw/gtfs/2026-10/64a717392b51b69db1b44220/81056.zip
+  license: lov2
+  dataset_id: 64a717392b51b69db1b44220
+  dataset_slug: donnees-theoriques-et-temps-reel-du-reseau-le-bus-communaute-de-communes-du-clermontois
+  dataset_title: Réseau urbain Le Bus
+  resource_id: '81056'
   covered_area:
   - type: epci
     nom: CC du Clermontois
@@ -10825,23 +11166,6 @@ sources:
     insee: '38253'
   available: true
   checked_date: '2026-10-09'
-- id: gtfs-69206120a3b522554e1a204a-83813
-  source: gtfs
-  provider: transport.data.gouv.fr
-  vintage: 2026-10
-  url: https://static.data.gouv.fr/resources/gtfs-les-2alpes-saison-hiver-2025-2026/20260520-064425/gtfs-navette-annuelle-2-alpes.zip
-  local_path: data/raw/gtfs/2026-10/69206120a3b522554e1a204a/83813.zip
-  license: lov2
-  dataset_id: 69206120a3b522554e1a204a
-  dataset_slug: gtfs-les-2alpes-saison-hiver-2025-2026
-  dataset_title: Navettes hivernales des 2 Alpes
-  resource_id: '83813'
-  covered_area:
-  - type: commune
-    nom: Les Deux Alpes
-    insee: '38253'
-  available: true
-  checked_date: '2026-10-09'
 - id: gtfs-69206120a3b522554e1a204a-83810
   source: gtfs
   provider: transport.data.gouv.fr
@@ -10853,6 +11177,23 @@ sources:
   dataset_slug: gtfs-les-2alpes-saison-hiver-2025-2026
   dataset_title: Navettes hivernales des 2 Alpes
   resource_id: '83810'
+  covered_area:
+  - type: commune
+    nom: Les Deux Alpes
+    insee: '38253'
+  available: true
+  checked_date: '2026-10-09'
+- id: gtfs-69206120a3b522554e1a204a-83813
+  source: gtfs
+  provider: transport.data.gouv.fr
+  vintage: 2026-10
+  url: https://static.data.gouv.fr/resources/gtfs-les-2alpes-saison-hiver-2025-2026/20260520-064425/gtfs-navette-annuelle-2-alpes.zip
+  local_path: data/raw/gtfs/2026-10/69206120a3b522554e1a204a/83813.zip
+  license: lov2
+  dataset_id: 69206120a3b522554e1a204a
+  dataset_slug: gtfs-les-2alpes-saison-hiver-2025-2026
+  dataset_title: Navettes hivernales des 2 Alpes
+  resource_id: '83813'
   covered_area:
   - type: commune
     nom: Les Deux Alpes
@@ -10997,316 +11338,4 @@ sources:
     nom: Rayol-Canadel-sur-Mer
     insee: '83152'
   available: true
-  checked_date: '2026-10-09'
-- id: osm-belgium-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/belgium-220101.osm.pbf
-  local_path: data/raw/osm/220101/belgium-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/belgium-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-luxembourg-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/luxembourg-220101.osm.pbf
-  local_path: data/raw/osm/220101/luxembourg-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/luxembourg-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-switzerland-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/switzerland-220101.osm.pbf
-  local_path: data/raw/osm/220101/switzerland-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/switzerland-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-andorra-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/andorra-220101.osm.pbf
-  local_path: data/raw/osm/220101/andorra-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/andorra-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-monaco-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/monaco-220101.osm.pbf
-  local_path: data/raw/osm/220101/monaco-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/monaco-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-germany-baden-wuerttemberg-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/germany/baden-wuerttemberg-220101.osm.pbf
-  local_path: data/raw/osm/220101/baden-wuerttemberg-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/germany/baden-wuerttemberg-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-germany-rheinland-pfalz-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/germany/rheinland-pfalz-220101.osm.pbf
-  local_path: data/raw/osm/220101/rheinland-pfalz-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/germany/rheinland-pfalz-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-germany-saarland-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/germany/saarland-220101.osm.pbf
-  local_path: data/raw/osm/220101/saarland-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/germany/saarland-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-italy-nord-ovest-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/italy/nord-ovest-220101.osm.pbf
-  local_path: data/raw/osm/220101/nord-ovest-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/italy/nord-ovest-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-spain-pais-vasco-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/spain/pais-vasco-220101.osm.pbf
-  local_path: data/raw/osm/220101/pais-vasco-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/spain/pais-vasco-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-spain-navarra-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/spain/navarra-220101.osm.pbf
-  local_path: data/raw/osm/220101/navarra-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/spain/navarra-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-spain-aragon-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/spain/aragon-220101.osm.pbf
-  local_path: data/raw/osm/220101/aragon-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/spain/aragon-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-spain-cataluna-220101
-  source: osm
-  provider: Geofabrik
-  vintage: '2022-01-01'
-  url: https://download.geofabrik.de/europe/spain/cataluna-220101.osm.pbf
-  local_path: data/raw/osm/220101/cataluna-220101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/spain/cataluna-220101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-belgium-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/belgium-240101.osm.pbf
-  local_path: data/raw/osm/240101/belgium-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/belgium-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-luxembourg-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/luxembourg-240101.osm.pbf
-  local_path: data/raw/osm/240101/luxembourg-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/luxembourg-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-switzerland-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/switzerland-240101.osm.pbf
-  local_path: data/raw/osm/240101/switzerland-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/switzerland-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-andorra-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/andorra-240101.osm.pbf
-  local_path: data/raw/osm/240101/andorra-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/andorra-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-monaco-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/monaco-240101.osm.pbf
-  local_path: data/raw/osm/240101/monaco-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/monaco-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-germany-baden-wuerttemberg-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/germany/baden-wuerttemberg-240101.osm.pbf
-  local_path: data/raw/osm/240101/baden-wuerttemberg-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/germany/baden-wuerttemberg-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-germany-rheinland-pfalz-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/germany/rheinland-pfalz-240101.osm.pbf
-  local_path: data/raw/osm/240101/rheinland-pfalz-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/germany/rheinland-pfalz-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-germany-saarland-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/germany/saarland-240101.osm.pbf
-  local_path: data/raw/osm/240101/saarland-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/germany/saarland-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-italy-nord-ovest-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/italy/nord-ovest-240101.osm.pbf
-  local_path: data/raw/osm/240101/nord-ovest-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/italy/nord-ovest-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-spain-pais-vasco-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/spain/pais-vasco-240101.osm.pbf
-  local_path: data/raw/osm/240101/pais-vasco-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/spain/pais-vasco-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-spain-navarra-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/spain/navarra-240101.osm.pbf
-  local_path: data/raw/osm/240101/navarra-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/spain/navarra-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-spain-aragon-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/spain/aragon-240101.osm.pbf
-  local_path: data/raw/osm/240101/aragon-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/spain/aragon-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
-  checked_date: '2026-10-09'
-- id: osm-spain-cataluna-240101
-  source: osm
-  provider: Geofabrik
-  vintage: '2024-01-01'
-  url: https://download.geofabrik.de/europe/spain/cataluna-240101.osm.pbf
-  local_path: data/raw/osm/240101/cataluna-240101.osm.pbf
-  md5_url: https://download.geofabrik.de/europe/spain/cataluna-240101.osm.pbf.md5
-  license: ODbL-1.0
-  available: true
-  md5_available: false
-  availability_note: 'file: HEAD HTTP 200; md5: HEAD HTTP 404'
   checked_date: '2026-10-09'

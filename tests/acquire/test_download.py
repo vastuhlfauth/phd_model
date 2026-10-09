@@ -274,7 +274,9 @@ def test_download_without_size_or_checksum_is_recorded_as_unverified(tmp_path) -
     client.close()
 
 
-def test_download_with_expected_size_is_recorded_as_verified(tmp_path) -> None:
+def test_download_with_expected_size_only_is_recorded_as_size_verified(
+    tmp_path,
+) -> None:
     content = b"sized content"
     source = SourceFile(
         source="example",
@@ -296,7 +298,51 @@ def test_download_with_expected_size_is_recorded_as_verified(tmp_path) -> None:
 
     result = download_source(source, tmp_path, client=client)
 
-    assert result.record.verified is True
+    assert result.record.verified == "size"
+    client.close()
+
+
+def test_download_falls_back_when_primary_url_fails(tmp_path) -> None:
+    content = b"sytral feed content"
+    source = SourceFile(
+        source="gtfs",
+        provider="transport.data.gouv.fr",
+        vintage="2026-10",
+        url="https://example.test/primary.zip",
+        fallback_url="https://example.test/fallback.zip",
+        local_path="data/raw/gtfs/2026-10/example.zip",
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/primary.zip":
+            return httpx.Response(503)
+        return _response(200, content, {"Content-Length": str(len(content))})
+
+    client = httpx.Client(transport=httpx.MockTransport(respond))
+
+    result = download_source(source, tmp_path, client=client)
+
+    assert result.local_path.read_bytes() == content
+    assert result.record.url == "https://example.test/primary.zip"
+    assert "fallback" in result.record.notes
+    client.close()
+
+
+def test_download_raises_when_fallback_also_fails(tmp_path) -> None:
+    source = SourceFile(
+        source="gtfs",
+        provider="transport.data.gouv.fr",
+        vintage="2026-10",
+        url="https://example.test/primary.zip",
+        fallback_url="https://example.test/fallback.zip",
+        local_path="data/raw/gtfs/2026-10/example.zip",
+    )
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(503))
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        download_source(source, tmp_path, client=client)
     client.close()
 
 

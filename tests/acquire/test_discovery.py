@@ -112,6 +112,106 @@ def test_gtfs_excludes_community_resources_by_id_or_publisher():
     assert [record.resource_id for record in records] == ["124"]
 
 
+def test_gtfs_drops_configured_resource_ids_regardless_of_availability():
+    settings = SETTINGS.model_copy(
+        update={"gtfs_resource_overrides": {}, "gtfs_dropped_resource_ids": {"124"}}
+    )
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=[dataset()])
+        )
+    ) as client:
+        records = discover_gtfs(client, "2026-10", settings)
+    assert "124" not in {record.resource_id for record in records}
+    assert "123" in {record.resource_id for record in records}
+
+
+def test_gtfs_override_forces_inclusion_of_a_community_tagged_resource():
+    payload = dataset()
+    payload["community_resources"] = [payload["resources"][0]]
+    payload["resources"][0]["id"] = 999
+    from acquire.discovery import GtfsResourceOverride
+
+    settings = SETTINGS.model_copy(
+        update={
+            "gtfs_dropped_resource_ids": set(),
+            "gtfs_resource_overrides": {
+                "999": GtfsResourceOverride(
+                    url="https://stable.example.test/redirect",
+                    fallback_url="https://mirror.example.test/copy.zip",
+                    notes="manually kept despite the community flag",
+                )
+            },
+        }
+    )
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=[payload])
+        )
+    ) as client:
+        records = discover_gtfs(client, "2026-10", settings)
+    kept = next(record for record in records if record.resource_id == "999")
+    assert kept.url == "https://stable.example.test/redirect"
+    assert kept.fallback_url == "https://mirror.example.test/copy.zip"
+    assert "manually kept" in kept.availability_note
+
+
+def test_real_configured_tcl_lyon_override_drops_old_feed_and_keeps_sytral():
+    payload = {
+        "id": "5de42c4d8b4c417a10e62ec9",
+        "slug": "horaires-theoriques-du-reseau-transports-en-commun-lyonnais",
+        "title": "Reseau urbain TCL",
+        "type": "public-transit",
+        "covered_area": [{"nom": "Metropole de Lyon"}],
+        "community_resources": [
+            {
+                "id": 81943,
+                "format": "GTFS",
+                "url": "https://www.data.gouv.fr/api/1/datasets/r/abebedc6-28cf-4e2e-9c64-db57a40156f8",
+                "original_url": (
+                    "https://gtech-transit-prod.apigee.net/v1/google/gtfs/odbl/"
+                    "lyon_tcl.zip?apikey=secret"
+                ),
+                "is_available": True,
+            }
+        ],
+        "resources": [
+            {
+                "id": 81943,
+                "format": "GTFS",
+                "url": "https://www.data.gouv.fr/api/1/datasets/r/abebedc6-28cf-4e2e-9c64-db57a40156f8",
+                "original_url": (
+                    "https://gtech-transit-prod.apigee.net/v1/google/gtfs/odbl/"
+                    "lyon_tcl.zip?apikey=secret"
+                ),
+                "is_available": True,
+            },
+            {
+                "id": 65812,
+                "format": "GTFS",
+                "url": "https://download.data.grandlyon.com/.../GTFS_TCL.ZIP",
+                "is_available": False,
+            },
+        ],
+    }
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=[payload])
+        )
+    ) as client:
+        records = discover_gtfs(client, "2026-10", SETTINGS)
+    resource_ids = {record.resource_id for record in records}
+    assert "65812" not in resource_ids
+    kept = next(record for record in records if record.resource_id == "81943")
+    assert kept.url == (
+        "https://www.data.gouv.fr/api/1/datasets/r/abebedc6-28cf-4e2e-9c64-db57a40156f8"
+    )
+    assert kept.fallback_url == (
+        "https://files.mobilitydatabase.org/tdg-81943/"
+        "tdg-81943-202610090009/tdg-81943-202610090009.zip"
+    )
+
+
 def test_gtfs_missing_format_is_reported(caplog):
     payload = [
         dataset(
@@ -188,19 +288,32 @@ def test_ign_paginates_and_handles_corsica_without_downloading_archives(caplog):
     assert "missing metropolitan department" in caplog.text
 
 
-def test_osm_uses_exact_names_and_head_for_both_files_and_md5():
+def test_osm_uses_exact_names_and_head_once_per_file_with_size():
     requests = []
 
     def respond(request):
         requests.append(request)
         assert request.method == "HEAD"
-        return httpx.Response(404 if "monaco" in request.url.path else 200)
+        if "monaco" in request.url.path:
+            return httpx.Response(404)
+        return httpx.Response(200, headers={"Content-Length": "123456789"})
 
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         records = discover_osm(client, SETTINGS)
     assert len(records) == 2 * len(OSM_REGIONS) == 26
-    assert len(requests) == 52
+    assert len(requests) == 26
+    assert all(record.md5_url is None for record in records)
     assert all(record.available is False for record in records if "monaco" in record.id)
+    assert all(
+        record.expected_size_bytes == 123456789
+        for record in records
+        if "monaco" not in record.id
+    )
+    assert all(
+        record.expected_size_bytes is None
+        for record in records
+        if "monaco" in record.id
+    )
     assert any(
         "germany/baden-wuerttemberg-220101.osm.pbf" in str(r.url) for r in requests
     )
@@ -208,6 +321,18 @@ def test_osm_uses_exact_names_and_head_for_both_files_and_md5():
         transport=httpx.MockTransport(lambda request: httpx.Response(405))
     ) as client:
         assert check_url(client, "https://example.test/file")[0] is None
+
+
+def test_osm_without_content_length_leaves_size_unset():
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200))
+    ) as client:
+        records = discover_osm(client, SETTINGS)
+    assert all(record.expected_size_bytes is None for record in records)
+    assert all(record.available is True for record in records)
+    assert all(
+        "no Content-Length header" in record.availability_note for record in records
+    )
 
 
 def test_merge_preserves_checksums_only_for_unchanged_url():
@@ -428,17 +553,29 @@ def test_metadata_retries_exhaust_after_five_increasing_waits(monkeypatch):
     assert waits == [10, 20, 40, 80, 160]
 
 
-def test_osm_distinguishes_existing_files_from_missing_sidecars():
-    with httpx.Client(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(
-                404 if request.url.path.endswith(".md5") else 200
-            )
+def test_osm_discovery_feeds_a_size_only_verified_download(tmp_path):
+    """End-to-end: no .md5 sidecar is ever requested; download verifies by size."""
+    content = b"neighbouring region extract"
+
+    def respond(request):
+        if request.method == "HEAD":
+            assert not request.url.path.endswith(".md5")
+            return httpx.Response(200, headers={"Content-Length": str(len(content))})
+        return httpx.Response(
+            200,
+            headers={"Content-Length": str(len(content))},
+            stream=httpx.ByteStream(content),
         )
-    ) as client:
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         records = discover_osm(client, SETTINGS)
-    assert all(record.available is True for record in records)
-    assert all(record.md5_available is False for record in records)
+        record = records[0]
+        assert record.md5_url is None
+        from acquire.download import download_source
+
+        result = download_source(record, tmp_path, client=client)
+    assert result.record.verified == "size"
+    assert result.record.size_bytes == len(content)
 
 
 @pytest.mark.parametrize("update", [{"ign_interval_seconds": 0.9}, {"max_retries": 6}])

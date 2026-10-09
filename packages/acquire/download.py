@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 import httpx
 
@@ -181,7 +182,7 @@ def _record_download(
     destination: Path,
     *,
     downloaded_at: date | str | None,
-    verified: bool,
+    verified: bool | Literal["size"],
     set_current_date: bool = True,
 ) -> SourceFile:
     recorded_date = downloaded_at
@@ -197,6 +198,98 @@ def _record_download(
             "verified": verified,
         }
     )
+
+
+def _attempt_download(
+    source: SourceFile,
+    url: str,
+    destination: Path,
+    partial_path: Path,
+    client: httpx.Client,
+    downloaded_at: date | str | None,
+) -> DownloadResult:
+    """Download from `url`, recording the result against the configured `source`."""
+    expected_md5 = _expected_md5(source, client)
+    if _matches_existing(source, destination, expected_md5):
+        logger.info("Skipping verified source file %s", destination)
+        return DownloadResult(
+            destination,
+            _record_download(
+                source,
+                destination,
+                downloaded_at=source.download_date,
+                verified=True,
+                set_current_date=False,
+            ),
+            True,
+        )
+
+    logger.info("Downloading %s (%s) to %s", source.source, source.vintage, destination)
+    response_size = _stream_response(client, url, partial_path)
+    if _looks_like_html(partial_path):
+        partial_path.unlink(missing_ok=True)
+        raise UnexpectedHtmlResponseError(
+            f"expected a data file but downloaded content looks like an "
+            f"HTML page from {url}"
+        )
+    actual_size = partial_path.stat().st_size
+    if response_size is not None and actual_size != response_size:
+        partial_path.unlink(missing_ok=True)
+        raise SizeMismatchError(
+            f"downloaded {actual_size} bytes but the server declared {response_size}"
+        )
+    if (
+        source.expected_size_bytes is not None
+        and actual_size != source.expected_size_bytes
+    ):
+        partial_path.unlink(missing_ok=True)
+        raise SizeMismatchError(
+            f"downloaded {actual_size} bytes but expected {source.expected_size_bytes}"
+        )
+    if expected_md5 is not None and checksum_file(partial_path, "md5") != expected_md5:
+        partial_path.unlink(missing_ok=True)
+        raise ChecksumMismatchError(f"MD5 mismatch for {source.local_path}")
+    if source.sha256 is not None:
+        actual_sha256 = checksum_file(partial_path, "sha256")
+        if actual_sha256 != source.sha256.lower():
+            partial_path.unlink(missing_ok=True)
+            raise ChecksumMismatchError(f"SHA-256 mismatch for {source.local_path}")
+
+    os.replace(partial_path, destination)
+    verified: bool | Literal["size"]
+    if expected_md5 is not None or source.sha256 is not None:
+        verified = True
+    elif source.expected_size_bytes is not None:
+        verified = "size"
+    else:
+        verified = False
+    record = _record_download(
+        source, destination, downloaded_at=downloaded_at, verified=verified
+    )
+    if expected_md5 is not None:
+        record = record.model_copy(update={"expected_md5": expected_md5})
+    if verified is True:
+        logger.info(
+            "Verified %s (%s bytes, SHA-256 %s)",
+            destination,
+            record.size_bytes,
+            record.sha256,
+        )
+    elif verified == "size":
+        logger.info(
+            "Verified by size only (no checksum sidecar) %s (%s bytes, SHA-256 %s)",
+            destination,
+            record.size_bytes,
+            record.sha256,
+        )
+    else:
+        logger.info(
+            "Not verified: no size or checksum available for %s (%s bytes, SHA-256 %s)",
+            destination,
+            record.size_bytes,
+            record.sha256,
+        )
+    return DownloadResult(destination, record, False)
 
 
 def download_source(
@@ -221,86 +314,50 @@ def download_source(
 
     active_client, should_close = _client_context(client)
     try:
-        expected_md5 = _expected_md5(source, active_client)
-        if _matches_existing(source, destination, expected_md5):
-            logger.info("Skipping verified source file %s", destination)
-            return DownloadResult(
+        try:
+            return _attempt_download(
+                source,
+                source.url,
                 destination,
-                _record_download(
-                    source,
-                    destination,
-                    downloaded_at=source.download_date,
-                    verified=True,
-                    set_current_date=False,
-                ),
-                True,
+                partial_path,
+                active_client,
+                downloaded_at,
             )
-
-        logger.info(
-            "Downloading %s (%s) to %s", source.source, source.vintage, destination
-        )
-        response_size = _stream_response(active_client, source.url, partial_path)
-        if _looks_like_html(partial_path):
-            partial_path.unlink(missing_ok=True)
-            raise UnexpectedHtmlResponseError(
-                f"expected a data file but downloaded content looks like an "
-                f"HTML page from {source.url}"
+        except (
+            httpx.HTTPError,
+            ChecksumMismatchError,
+            SizeMismatchError,
+            UnexpectedHtmlResponseError,
+        ) as error:
+            if source.fallback_url is None:
+                raise
+            logger.warning(
+                "Primary URL failed for %s (%s); trying fallback %s",
+                source.source,
+                error,
+                source.fallback_url,
             )
-        actual_size = partial_path.stat().st_size
-        if response_size is not None and actual_size != response_size:
-            partial_path.unlink(missing_ok=True)
-            raise SizeMismatchError(
-                f"downloaded {actual_size} bytes but the server "
-                f"declared {response_size}"
-            )
-        if (
-            source.expected_size_bytes is not None
-            and actual_size != source.expected_size_bytes
-        ):
-            partial_path.unlink(missing_ok=True)
-            raise SizeMismatchError(
-                f"downloaded {actual_size} bytes but expected "
-                f"{source.expected_size_bytes}"
-            )
-        if (
-            expected_md5 is not None
-            and checksum_file(partial_path, "md5") != expected_md5
-        ):
-            partial_path.unlink(missing_ok=True)
-            raise ChecksumMismatchError(f"MD5 mismatch for {source.local_path}")
-        if source.sha256 is not None:
-            actual_sha256 = checksum_file(partial_path, "sha256")
-            if actual_sha256 != source.sha256.lower():
-                partial_path.unlink(missing_ok=True)
-                raise ChecksumMismatchError(f"SHA-256 mismatch for {source.local_path}")
-
-        os.replace(partial_path, destination)
-        verified = (
-            source.expected_size_bytes is not None
-            or expected_md5 is not None
-            or source.sha256 is not None
-        )
-        record = _record_download(
-            source, destination, downloaded_at=downloaded_at, verified=verified
-        )
-        if expected_md5 is not None:
-            record = record.model_copy(update={"expected_md5": expected_md5})
-        if verified:
-            logger.info(
-                "Verified %s (%s bytes, SHA-256 %s)",
+            result = _attempt_download(
+                source,
+                source.fallback_url,
                 destination,
-                record.size_bytes,
-                record.sha256,
+                partial_path,
+                active_client,
+                downloaded_at,
             )
-        else:
-            logger.info(
-                "Not verified: no size or checksum available for %s "
-                "(%s bytes, SHA-256 %s)",
-                destination,
-                record.size_bytes,
-                record.sha256,
+            fallback_note = (
+                f"Downloaded from fallback URL after primary failed: {error}"
             )
-        return DownloadResult(destination, record, False)
+            record = result.record.model_copy(
+                update={
+                    "notes": (
+                        f"{source.notes} {fallback_note}"
+                        if source.notes
+                        else fallback_note
+                    ),
+                }
+            )
+            return DownloadResult(result.local_path, record, result.skipped)
     finally:
         if should_close:
             active_client.close()

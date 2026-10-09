@@ -165,8 +165,6 @@ def main(argv: list[str] | None = None) -> int:
                                 f"unavailable {record.id}: {record.url}; "
                                 f"{record.availability_note}"
                             )
-                        if record.md5_available is False:
-                            print(f"unavailable MD5 {record.id}: {record.md5_url}")
                         elif record.availability_note and record.available is None:
                             print(
                                 f"unconfirmed {record.id}: {record.availability_note}"
@@ -223,10 +221,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"unavailable {source.id}: {source.availability_note}")
             unavailable += 1
             continue
-        if source.md5_available is False:
-            print(f"unavailable checksum {source.id}: {source.md5_url}")
-            unavailable += 1
-            continue
         if source.access not in ("http", "s3") or source.restricted:
             reason = source.notes or f"access method is {source.access}"
             print(f"skip {source.source} {source.vintage}: {reason}")
@@ -257,6 +251,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"would {'extract' if source.access == 's3' else 'download'} "
                 f"{source.source} {source.vintage}: {source.url} -> {destination}"
                 + (f" bbox={source.bbox}" if source.bbox else "")
+                + (f" fallback={source.fallback_url}" if source.fallback_url else "")
             )
             continue
         try:
@@ -283,8 +278,10 @@ def main(argv: list[str] | None = None) -> int:
         updated_by_id[result.record.id] = result.record
         if result.skipped:
             status = "verified"
-        elif result.record.verified:
+        elif result.record.verified is True:
             status = "downloaded and verified"
+        elif result.record.verified == "size":
+            status = "downloaded (verified by size only: no checksum sidecar)"
         else:
             status = "downloaded (not verified: no checksum configured)"
         print(f"{status} {result.local_path}")

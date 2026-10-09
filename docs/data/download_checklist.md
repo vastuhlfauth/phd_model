@@ -3,8 +3,8 @@
 Store original files under `data/raw/` and never edit or unpack archives in place.
 The file-level catalog is [config/sources.yaml](../../config/sources.yaml).
 No data files were downloaded while resolving these URLs (2026-10-09).
-The [saved dry-run output](acquire_dry_run.txt) lists 690 HTTP downloads proposed,
-1 Overture extraction, 27 unavailable/checksum-blocked entries and 8
+The [saved dry-run output](acquire_dry_run.txt) lists 717 HTTP downloads proposed,
+1 Overture extraction, 0 unavailable/checksum-blocked entries and 8
 manual/restricted skips (exit 0).
 
 ```powershell
@@ -68,8 +68,18 @@ uv run python -m acquire --manifest config\sources.yaml --register-restricted em
   **33 datasets** have multiple GTFS resources.
 - API-marked unavailable resources are listed, not fetched. GTFS failures during
   a later acquisition are recorded and listed without terminating the batch.
-- The retained TCL Lyon producer resource `65812` is currently API-marked
-  unavailable. Its available community copy is deliberately excluded.
+- **TCL Lyon:** transport.data.gouv.fr tags resource `81943` (the current SYTRAL
+  Mobilités feed, stable redirect
+  <https://www.data.gouv.fr/api/1/datasets/r/abebedc6-28cf-4e2e-9c64-db57a40156f8>)
+  as a community copy, even though it is the producer's own published URL; this
+  excluded it from the producer-only catalog, leaving only the deprecated and
+  unavailable 2022 resource `65812`. `gtfs_dropped_resource_ids` and
+  `gtfs_resource_overrides` in
+  [config/acquisition.yaml](../../config/acquisition.yaml) drop `65812` and
+  force-include `81943` on every re-discovery, with a Mobility Database fallback
+  URL (`files.mobilitydatabase.org`) used automatically if the primary download
+  fails. The same override/fallback mechanism applies to any other GTFS resource
+  that a Mobility Database copy can replace; none other is currently unavailable.
 
 Step-0 prerequisites: IDFM, TCL Lyon, STAR Rennes, Sète Agglopôle Méditerranée,
 TBM Bordeaux, SNCF (TER/Intercités/TGV), liO Occitanie and Rémi. IDFM's producer
@@ -117,9 +127,11 @@ EPCI polygons, not matches against the EPCI/network names.
 - [ ] France: <https://download.geofabrik.de/europe/france-220101.osm.pbf> and
   <https://download.geofabrik.de/europe/france-240101.osm.pbf>, with their `.md5`.
 - [ ] For each neighbouring region below, use exactly
-  `https://download.geofabrik.de/europe/{region}-{220101|240101}.osm.pbf`
-  and that URL plus `.md5`. Save originals to `data/raw/osm/{220101,240101}/`.
-  No alternative region names are guessed.
+  `https://download.geofabrik.de/europe/{region}-{220101|240101}.osm.pbf`.
+  Geofabrik publishes no `.md5` sidecar for these dated regional extracts
+  (confirmed 2026-10-09: all 26 exact `.osm.pbf.md5` URLs return 404); verify
+  by the HEAD response's `Content-Length` instead. Save originals to
+  `data/raw/osm/{220101,240101}/`. No alternative region names are guessed.
 
 | Region | 2022-01-01 PBF | 2024-01-01 PBF |
 |---|---|---|
@@ -137,13 +149,15 @@ EPCI polygons, not matches against the EPCI/network names.
 | spain/aragon | <https://download.geofabrik.de/europe/spain/aragon-220101.osm.pbf> | <https://download.geofabrik.de/europe/spain/aragon-240101.osm.pbf> |
 | spain/cataluna | <https://download.geofabrik.de/europe/spain/cataluna-220101.osm.pbf> | <https://download.geofabrik.de/europe/spain/cataluna-240101.osm.pbf> |
 
-HEAD checks on 2026-10-09: **all 26 neighbouring PBFs return 200**, but
-**all 26 exact `.osm.pbf.md5` URLs return 404**. Record file and checksum
-availability separately. The downloader lists checksum-blocked entries rather
-than silently dropping checksum verification; resolve the missing sidecars
-before acquisition. HEAD failure/unsupported HEAD is reported as unconfirmed,
-not interpreted as a missing file. Destinations are adjacent NUTS3 plus a
-50 km routing halo; clipping belongs to later processing.
+HEAD checks on 2026-10-09: **all 26 neighbouring PBFs return 200** with an
+advertised `Content-Length`, which is stored as `expected_size_bytes` and
+checked against the download. No `.md5` sidecar is requested or configured for
+these 26 entries; `download_source` records `verified: size` for them (not a
+full checksum match) and `verified: true` only when an MD5 or SHA-256 also
+matches. France's own `osm-2022`/`osm-2024` entries keep their real `.md5`
+sidecars and are verified by checksum as before. HEAD failure/unsupported HEAD
+is reported as unconfirmed, not interpreted as a missing file. Destinations are
+adjacent NUTS3 plus a 50 km routing halo; clipping belongs to later processing.
 
 ## Direct national files
 

@@ -8,6 +8,19 @@ retry_initial_seconds: 10
 osm_workers: 4
 bdalti_local_path: data/raw/bdalti/25m/{filename}
 gtfs_local_path: data/raw/gtfs/{vintage}/{dataset_id}/{resource_id}.zip
+gtfs_dropped_resource_ids:
+  # Deprecated Grand Lyon open-data GTFS_TCL.ZIP, superseded by resource 81943
+  # (the current SYTRAL Mobilités feed, kept below as a manual override).
+  - "65812"
+gtfs_resource_overrides:
+  "81943":
+    url: https://www.data.gouv.fr/api/1/datasets/r/abebedc6-28cf-4e2e-9c64-db57a40156f8
+    fallback_url: https://files.mobilitydatabase.org/tdg-81943/tdg-81943-202610090009/tdg-81943-202610090009.zip
+    notes: >-
+      transport.data.gouv.fr tags this resource as a community copy even though
+      it is the producer's published URL (datagouv_id
+      abebedc6-28cf-4e2e-9c64-db57a40156f8); kept per manual verification on
+      2026-10-09.
 osm_url: https://download.geofabrik.de/europe/{region}-{stamp}.osm.pbf
 osm_local_path: data/raw/osm/{stamp}/{filename}
 osm_snapshots:

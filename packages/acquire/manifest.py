@@ -18,6 +18,7 @@ class SourceFile(BaseModel):
     provider: str = Field(min_length=1)
     vintage: str = Field(min_length=1)
     url: str | None = None
+    fallback_url: str | None = None
     local_path: str = Field(min_length=1)
     access: Literal["http", "api", "s3", "manual", "restricted", "todo"] = "http"
     expected_size_bytes: int | None = Field(default=None, gt=0)
@@ -33,7 +34,7 @@ class SourceFile(BaseModel):
     api_key_scheme: str | None = "Bearer"
     restricted: bool = False
     notes: str | None = None
-    verified: bool | None = None
+    verified: bool | Literal["size"] | None = None
     edition_date: date | None = None
     dataset_id: str | None = None
     dataset_slug: str | None = None
@@ -70,6 +71,10 @@ class SourceFile(BaseModel):
             HttpUrl(self.url)
         if self.md5_url is not None:
             HttpUrl(self.md5_url)
+        if self.fallback_url is not None:
+            HttpUrl(self.fallback_url)
+            if self.access != "http":
+                raise ValueError("fallback_url requires access: http")
         if self.restricted and (self.url is not None or self.access != "restricted"):
             raise ValueError("restricted sources must not have a download URL")
         if self.access == "http" and self.url is None:
