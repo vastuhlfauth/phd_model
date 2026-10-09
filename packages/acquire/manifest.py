@@ -5,7 +5,7 @@ from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, JsonValue, model_validator
 
 
 class SourceFile(BaseModel):
@@ -19,7 +19,7 @@ class SourceFile(BaseModel):
     vintage: str = Field(min_length=1)
     url: str | None = None
     local_path: str = Field(min_length=1)
-    access: Literal["http", "api", "manual", "restricted", "todo"] = "http"
+    access: Literal["http", "api", "s3", "manual", "restricted", "todo"] = "http"
     expected_size_bytes: int | None = Field(default=None, gt=0)
     expected_md5: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{32}$")
     md5_url: str | None = None
@@ -34,6 +34,18 @@ class SourceFile(BaseModel):
     restricted: bool = False
     notes: str | None = None
     verified: bool | None = None
+    edition_date: date | None = None
+    dataset_id: str | None = None
+    dataset_slug: str | None = None
+    dataset_title: str | None = None
+    resource_id: str | None = None
+    covered_area: list[dict[str, JsonValue]] | None = None
+    available: bool | None = None
+    md5_available: bool | None = None
+    availability_note: str | None = None
+    checked_date: date | None = None
+    bbox: tuple[float, float, float, float] | None = None
+    s3_region: str | None = Field(default=None, pattern=r"^[a-z]{2}-[a-z]+-\d+$")
 
     @model_validator(mode="after")
     def validate_source(self) -> "SourceFile":
@@ -42,7 +54,19 @@ class SourceFile(BaseModel):
             raise ValueError("local_path must be relative to data/raw/")
         if ".." in path.parts:
             raise ValueError("local_path must not traverse outside data/raw/")
-        if self.url is not None:
+        if self.access == "s3":
+            if self.url is None or not self.url.startswith("s3://"):
+                raise ValueError("S3 sources require an s3:// URL")
+            if self.bbox is None or not self.local_path.endswith(".parquet"):
+                raise ValueError(
+                    "S3 extraction requires bbox and a Parquet destination"
+                )
+            if self.s3_region is None:
+                raise ValueError("S3 extraction requires s3_region")
+            west, south, east, north = self.bbox
+            if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
+                raise ValueError("bbox must be west, south, east, north in degrees")
+        elif self.url is not None:
             HttpUrl(self.url)
         if self.md5_url is not None:
             HttpUrl(self.md5_url)

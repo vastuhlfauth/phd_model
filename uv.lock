@@ -175,12 +175,14 @@ name = "mobility-acquire"
 version = "0.1.0"
 source = { editable = "packages/acquire" }
 dependencies = [
+    { name = "duckdb" },
     { name = "httpx" },
     { name = "mobility-common" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "duckdb" },
     { name = "httpx" },
     { name = "mobility-common", editable = "packages/common" },
 ]

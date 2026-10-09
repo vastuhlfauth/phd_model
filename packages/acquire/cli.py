@@ -2,13 +2,25 @@
 
 import argparse
 import logging
+from datetime import date
 from pathlib import Path
 
+import duckdb
 import httpx
 
 from acquire.checksums import checksum_file
+from acquire.discovery import (
+    discover_bdalti,
+    discover_gtfs,
+    discover_osm,
+    load_acquisition_config,
+    merge_discovered,
+    step0_coverage,
+    write_gtfs_inventory,
+)
 from acquire.download import download_source
 from acquire.manifest import SourceFile, load_manifest, save_manifest
+from acquire.overture import extract_places
 
 logger = logging.getLogger("acquire")
 
@@ -19,7 +31,7 @@ def _parser() -> argparse.ArgumentParser:
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--dataset", help="source name or configured file id")
     selection.add_argument(
-        "--all", action="store_true", help="process every pilot entry"
+        "--all", action="store_true", help="process every configured entry"
     )
     selection.add_argument(
         "--register-restricted",
@@ -29,7 +41,13 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--discover",
+        action="store_true",
+        help="metadata GETs and OSM HEADs only; write manifest and GTFS inventory",
+    )
     parser.add_argument("--project-root", type=Path)
+    parser.add_argument("--acquisition-config", type=Path)
     return parser
 
 
@@ -94,12 +112,76 @@ def _register_restricted(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run one source or the configured pilot list without implicit network access."""
+    """Run selected sources; dry runs have no implicit network access."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = _parser().parse_args(argv)
     manifest_path = args.manifest.resolve()
     sources = load_manifest(manifest_path)
     root = _project_root(manifest_path, args.project_root)
+    if args.discover:
+        if args.dry_run or args.register_restricted:
+            logger.error("--discover cannot be combined with --dry-run or registration")
+            return 1
+        names = ("gtfs", "bdalti", "osm") if args.all else (args.dataset,)
+        if any(name not in ("gtfs", "bdalti", "osm") for name in names):
+            logger.error("discovery supports --dataset gtfs, bdalti, osm or --all")
+            return 1
+        try:
+            settings = load_acquisition_config(
+                args.acquisition_config or manifest_path.with_name("acquisition.yaml")
+            )
+            with httpx.Client(
+                follow_redirects=True,
+                timeout=settings.request_timeout_seconds,
+            ) as client:
+                for name in names:
+                    if name == "gtfs":
+                        configured = _select(sources, "gtfs")
+                        vintages = {record.vintage for record in configured}
+                        if len(vintages) != 1:
+                            raise ValueError("GTFS discovery requires one snapshot")
+                        records = discover_gtfs(client, vintages.pop(), settings)
+                        print(
+                            f"GTFS: {len(records)} producer resources across "
+                            f"{len({record.dataset_id for record in records})} "
+                            "distinct datasets"
+                        )
+                        for network, matches in step0_coverage(
+                            records, settings
+                        ).items():
+                            print(
+                                f"step-0 {network}: "
+                                f"{len(matches)} available resource(s)"
+                                if matches
+                                else f"step-0 MISSING: {network}"
+                            )
+                    elif name == "bdalti":
+                        records = discover_bdalti(client, settings)
+                    else:
+                        records = discover_osm(client, settings)
+                    for record in records:
+                        if record.available is False:
+                            print(
+                                f"unavailable {record.id}: {record.url}; "
+                                f"{record.availability_note}"
+                            )
+                        if record.md5_available is False:
+                            print(f"unavailable MD5 {record.id}: {record.md5_url}")
+                        elif record.availability_note and record.available is None:
+                            print(
+                                f"unconfirmed {record.id}: {record.availability_note}"
+                            )
+                    sources = merge_discovered(sources, records, name)
+                    save_manifest(manifest_path, sources)
+                    if name == "gtfs":
+                        write_gtfs_inventory(
+                            manifest_path.with_name("gtfs_inventory.csv"), records
+                        )
+                    print(f"discovered {name}: {len(records)} file entries")
+        except (httpx.HTTPError, OSError, ValueError) as error:
+            logger.error("discovery failed: %s", error)
+            return 1
+        return 0
 
     if args.register_restricted:
         try:
@@ -133,29 +215,72 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", error)
         return 1
 
-    updated_by_path: dict[str, SourceFile] = {}
+    updated_by_id: dict[str, SourceFile] = {}
     skipped = 0
+    unavailable = 0
     for source in selected:
-        if source.access != "http" or source.restricted:
+        if source.available is False:
+            print(f"unavailable {source.id}: {source.availability_note}")
+            unavailable += 1
+            continue
+        if source.md5_available is False:
+            print(f"unavailable checksum {source.id}: {source.md5_url}")
+            unavailable += 1
+            continue
+        if source.access not in ("http", "s3") or source.restricted:
             reason = source.notes or f"access method is {source.access}"
             print(f"skip {source.source} {source.vintage}: {reason}")
             skipped += 1
             continue
+        if source.source == "eurostat":
+            today = date.today().isoformat()
+            parts = Path(source.local_path).parts
+            source = source.model_copy(
+                update={
+                    "vintage": today,
+                    "local_path": "/".join((*parts[:-2], today, parts[-1])),
+                    **(
+                        {
+                            "size_bytes": None,
+                            "sha256": None,
+                            "download_date": None,
+                            "verified": None,
+                        }
+                        if source.vintage != today
+                        else {}
+                    ),
+                }
+            )
         destination = root / source.local_path
         if args.dry_run:
             print(
-                f"would download {source.source} {source.vintage}: "
-                f"{source.url} -> {destination}"
+                f"would {'extract' if source.access == 's3' else 'download'} "
+                f"{source.source} {source.vintage}: {source.url} -> {destination}"
+                + (f" bbox={source.bbox}" if source.bbox else "")
             )
             continue
         try:
-            result = download_source(source, root)
-        except (httpx.HTTPError, OSError, ValueError) as error:
+            result = (
+                extract_places(source, root)
+                if source.access == "s3"
+                else download_source(source, root)
+            )
+        except (httpx.HTTPError, OSError, ValueError, duckdb.Error) as error:
             logger.error(
                 "failed to acquire %s (%s): %s", source.source, source.vintage, error
             )
+            if source.source == "gtfs":
+                unavailable += 1
+                updated_by_id[source.id] = source.model_copy(
+                    update={
+                        "available": False,
+                        "availability_note": str(error),
+                        "checked_date": date.today(),
+                    }
+                )
+                continue
             return 1
-        updated_by_path[result.record.local_path] = result.record
+        updated_by_id[result.record.id] = result.record
         if result.skipped:
             status = "verified"
         elif result.record.verified:
@@ -164,11 +289,14 @@ def main(argv: list[str] | None = None) -> int:
             status = "downloaded (not verified: no checksum configured)"
         print(f"{status} {result.local_path}")
 
-    if updated_by_path and not args.dry_run:
-        sources = [
-            updated_by_path.get(source.local_path, source) for source in sources
-        ]
+    if updated_by_id and not args.dry_run:
+        sources = [updated_by_id.get(source.id, source) for source in sources]
         save_manifest(manifest_path, sources)
+        gtfs = [source for source in sources if source.source == "gtfs"]
+        if gtfs and all(source.dataset_id is not None for source in gtfs):
+            write_gtfs_inventory(manifest_path.with_name("gtfs_inventory.csv"), gtfs)
+    if unavailable:
+        print(f"unavailable resources: {unavailable} (listed, not fatal)")
     if skipped and not args.dry_run:
         logger.error(
             "%s configured source entries require non-HTTP or manual acquisition",
