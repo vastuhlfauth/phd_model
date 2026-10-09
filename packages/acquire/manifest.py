@@ -13,7 +13,7 @@ class SourceFile(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(default="", pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    id: str = Field(default="")
     source: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
     provider: str = Field(min_length=1)
     vintage: str = Field(min_length=1)
@@ -33,6 +33,7 @@ class SourceFile(BaseModel):
     api_key_scheme: str | None = "Bearer"
     restricted: bool = False
     notes: str | None = None
+    verified: bool | None = None
 
     @model_validator(mode="after")
     def validate_source(self) -> "SourceFile":
@@ -61,7 +62,13 @@ class SourceFile(BaseModel):
 
 
 def _validate_manifest(sources: list[SourceFile]) -> list[SourceFile]:
-    ids = [source.id for source in sources if source.id]
+    blank = sorted({source.source for source in sources if not source.id})
+    if blank:
+        names = ", ".join(blank)
+        raise ValueError(
+            f"every source must have a non-empty id; missing an id for: {names}"
+        )
+    ids = [source.id for source in sources]
     if len(ids) != len(set(ids)):
         raise ValueError("manifest source ids must be unique")
     paths = [source.local_path.replace("\\", "/") for source in sources]

@@ -5,7 +5,12 @@ from datetime import date
 
 import httpx
 import pytest
-from acquire.download import ChecksumMismatchError, SizeMismatchError, download_source
+from acquire.download import (
+    ChecksumMismatchError,
+    SizeMismatchError,
+    UnexpectedHtmlResponseError,
+    download_source,
+)
 from acquire.manifest import SourceFile
 
 
@@ -170,6 +175,7 @@ def test_matching_file_is_skipped_without_http_request(tmp_path) -> None:
 
     assert result.skipped
     assert result.record.sha256 == hashlib.sha256(content).hexdigest()
+    assert result.record.verified is True
     client.close()
 
 
@@ -239,4 +245,94 @@ def test_restricted_source_is_never_downloaded(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="restricted"):
         download_source(source, tmp_path, client=client)
+    client.close()
+
+
+def test_download_without_size_or_checksum_is_recorded_as_unverified(tmp_path) -> None:
+    content = b"page content with no configured checksum"
+    source = SourceFile(
+        source="example",
+        provider="Example",
+        vintage="2026",
+        url="https://example.test/file.bin",
+        local_path="data/raw/example/file.bin",
+    )
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: _response(
+                200,
+                content,
+                {"Content-Length": str(len(content))},
+            )
+        )
+    )
+
+    result = download_source(source, tmp_path, client=client)
+
+    assert result.record.verified is False
+    assert result.record.sha256 == hashlib.sha256(content).hexdigest()
+    client.close()
+
+
+def test_download_with_expected_size_is_recorded_as_verified(tmp_path) -> None:
+    content = b"sized content"
+    source = SourceFile(
+        source="example",
+        provider="Example",
+        vintage="2026",
+        url="https://example.test/file.bin",
+        local_path="data/raw/example/file.bin",
+        expected_size_bytes=len(content),
+    )
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: _response(
+                200,
+                content,
+                {"Content-Length": str(len(content))},
+            )
+        )
+    )
+
+    result = download_source(source, tmp_path, client=client)
+
+    assert result.record.verified is True
+    client.close()
+
+
+def test_download_rejects_html_content_type(tmp_path) -> None:
+    source = _source("data/raw/example/file.bin", b"<html>not the real file</html>")
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: _response(
+                200,
+                b"<html>not the real file</html>",
+                {"Content-Type": "text/html; charset=utf-8"},
+            )
+        )
+    )
+
+    with pytest.raises(UnexpectedHtmlResponseError, match="HTML page"):
+        download_source(source, tmp_path, client=client)
+    assert not (tmp_path / source.local_path).exists()
+    assert not (tmp_path / (source.local_path + ".part")).exists()
+    client.close()
+
+
+def test_download_rejects_html_body_without_content_type_header(tmp_path) -> None:
+    body = b"<!DOCTYPE html>\n<html><body>error page</body></html>"
+    source = _source("data/raw/example/file.bin", body)
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: _response(
+                200,
+                body,
+                {"Content-Length": str(len(body))},
+            )
+        )
+    )
+
+    with pytest.raises(UnexpectedHtmlResponseError, match="HTML page"):
+        download_source(source, tmp_path, client=client)
+    assert not (tmp_path / source.local_path).exists()
     client.close()

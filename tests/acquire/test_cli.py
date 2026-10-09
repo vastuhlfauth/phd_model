@@ -61,6 +61,7 @@ sources:
     assert result == 0
     assert "registered emc2 2021:" in capsys.readouterr().out
     record = updated["sources"][1]
+    assert record["id"] == "restricted:emc2:data/raw/emc2/gironde_2021/survey.csv"
     assert record["local_path"] == "data/raw/emc2/gironde_2021/survey.csv"
     assert record["size_bytes"] == len(b"local restricted fixture")
     assert len(record["sha256"]) == 64

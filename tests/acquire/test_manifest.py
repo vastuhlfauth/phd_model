@@ -22,12 +22,14 @@ def test_manifest_rejects_duplicate_paths_and_unsafe_paths(tmp_path: Path) -> No
     manifest.write_text(
         """
 sources:
-  - source: example
+  - id: example-2026
+    source: example
     provider: Example
     vintage: "2026"
     url: https://example.test/file.zip
     local_path: data/raw/example/file.zip
-  - source: example
+  - id: example-2027
+    source: example
     provider: Example
     vintage: "2027"
     url: https://example.test/file.zip
@@ -41,7 +43,8 @@ sources:
     manifest.write_text(
         """
 sources:
-  - source: example
+  - id: example-2026
+    source: example
     provider: Example
     vintage: "2026"
     url: https://example.test/file.zip
@@ -53,9 +56,53 @@ sources:
         load_manifest(manifest)
 
 
+def test_manifest_rejects_sources_without_an_id(tmp_path: Path) -> None:
+    manifest = tmp_path / "sources.yaml"
+    manifest.write_text(
+        """
+sources:
+  - source: example
+    provider: Example
+    vintage: "2026"
+    url: https://example.test/file.zip
+    local_path: data/raw/example/file.zip
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="non-empty id.*example"):
+        load_manifest(manifest)
+
+
+def test_manifest_rejects_duplicate_ids(tmp_path: Path) -> None:
+    manifest = tmp_path / "sources.yaml"
+    manifest.write_text(
+        """
+sources:
+  - id: dup
+    source: example
+    provider: Example
+    vintage: "2026"
+    url: https://example.test/file.zip
+    local_path: data/raw/example/one.zip
+  - id: dup
+    source: example
+    provider: Example
+    vintage: "2027"
+    url: https://example.test/file.zip
+    local_path: data/raw/example/two.zip
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="source ids must be unique"):
+        load_manifest(manifest)
+
+
 def test_manifest_round_trip(tmp_path: Path) -> None:
     path = tmp_path / "sources.yaml"
     source = SourceFile(
+        id="example-2026",
         source="example",
         provider="Example",
         vintage="2026",

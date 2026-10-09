@@ -11,7 +11,7 @@ _Last updated: 2026-10-09 by Copilot_
 | — | Repository skeleton (`/bootstrap`) | done | `step/bootstrap-skeleton` | uv workspace, package layout, configuration validation; Ruff and 3 tests pass (pinned Python 3.12.15) |
 | 0 | GTFS rebuilding test | not started | | |
 | 1 | `common`: config, grid cells, DuckDB I/O | review | `step/common-foundations` | Config validation; cell ids/codes, nesting, neighbour stencil and tiles; Arrow/Parquet helpers; Ruff clean and 12 tests pass |
-| 2 | `acquire`: manifest and downloaders | review | `step/acquire` | Configured pilot source catalog; resumable, size-checked and checksum-verified HTTP downloads; Geofabrik MD5; restricted-file registration; API discovery helpers; dry-run CLI. No real downloads run. Ruff clean; 30 tests pass. |
+| 2 | `acquire`: manifest and downloaders | review | `step/acquire` | Configured pilot source catalog; resumable, size-checked and checksum-verified HTTP downloads; Geofabrik MD5; restricted-file registration; API discovery helpers with per-source auth header/scheme; HTML-page detection; `verified` tracking; dry-run CLI. No real downloads run. Ruff clean; 40 tests pass. |
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
@@ -38,6 +38,10 @@ Status values: not started, in progress, review, merged.
 - 2026-10-09, step 2, keep source URLs, vintages, local paths, checksums and licenses in `config/sources.yaml`; leave unknown values unset or marked `TODO(confirm)` rather than guessing.
 - 2026-10-09, step 2, download only configured direct-HTTP files; API-discovery and manual sources are listed by the CLI but are not treated as downloadable file URLs.
 - 2026-10-09, step 2, register restricted files only after they are placed locally; calculate their size and SHA-256 without downloading or altering them.
+- 2026-10-09, step 2 (review follow-up), make the acquisition API client's auth header name and scheme (e.g. `Authorization: Bearer …` or `X-Api-Key: …`) configurable per source via `api_key_header`/`api_key_scheme`, instead of hardcoding `Authorization: Bearer`.
+- 2026-10-09, step 2 (review follow-up), require every manifest source to have a unique, non-empty `id`; `load_manifest`/`save_manifest` fail with a clear message otherwise. Registered restricted records now get a generated id (`restricted:{source}:{relative path}`) instead of a blank one, and the CLI keys its download-update map by `local_path` (already guaranteed unique) rather than by `id`.
+- 2026-10-09, step 2 (review follow-up), add a `verified` field to `SourceFile`: `True` only when a download was checked against a configured `expected_size_bytes`, MD5 (explicit or via `md5_url`), or `sha256`; otherwise the download is accepted (if the basic transport-length check passes) but logged and recorded as `verified: false`, since Content-Length alone is not an independent integrity check. The SHA-256 of the downloaded file is always computed and stored regardless of whether it was checked against anything.
+- 2026-10-09, step 2 (review follow-up), reject downloads whose response looks like an HTML page (Content-Type `text/html`, or a body starting with `<!DOCTYPE`/`<html`) instead of the expected data file, to catch a web-page URL mistakenly configured in place of a direct file URL.
 
 ## Assumptions to check
 

@@ -24,6 +24,10 @@ class SizeMismatchError(ValueError):
     """Raised when a downloaded file does not match its expected size."""
 
 
+class UnexpectedHtmlResponseError(ValueError):
+    """Raised when a configured file URL returns an HTML page instead of a file."""
+
+
 @dataclass(frozen=True)
 class DownloadResult:
     """A downloaded or already verified file and its manifest record."""
@@ -104,6 +108,22 @@ def _check_content_range(
     return total, end - start + 1
 
 
+def _reject_html_content_type(response: httpx.Response, url: str) -> None:
+    content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
+    if content_type.lower() == "text/html":
+        raise UnexpectedHtmlResponseError(
+            f"expected a data file but received an HTML page "
+            f"(Content-Type: text/html) from {url}"
+        )
+
+
+def _looks_like_html(path: Path) -> bool:
+    with path.open("rb") as stream:
+        head = stream.read(512)
+    stripped = head.lstrip().lower()
+    return stripped.startswith(b"<!doctype") or stripped.startswith(b"<html")
+
+
 def _stream_response(
     client: httpx.Client,
     url: str,
@@ -124,6 +144,7 @@ def _stream_response(
                 raise ValueError(
                     f"unexpected successful download status {response.status_code}"
                 )
+            _reject_html_content_type(response, url)
 
             if response.status_code == 206:
                 total_size, expected_chunk_size = _check_content_range(
@@ -160,6 +181,7 @@ def _record_download(
     destination: Path,
     *,
     downloaded_at: date | str | None,
+    verified: bool,
     set_current_date: bool = True,
 ) -> SourceFile:
     recorded_date = downloaded_at
@@ -172,6 +194,7 @@ def _record_download(
             "size_bytes": destination.stat().st_size,
             "sha256": checksum_file(destination, "sha256"),
             "download_date": recorded_date,
+            "verified": verified,
         }
     )
 
@@ -207,6 +230,7 @@ def download_source(
                     source,
                     destination,
                     downloaded_at=source.download_date,
+                    verified=True,
                     set_current_date=False,
                 ),
                 True,
@@ -216,6 +240,12 @@ def download_source(
             "Downloading %s (%s) to %s", source.source, source.vintage, destination
         )
         response_size = _stream_response(active_client, source.url, partial_path)
+        if _looks_like_html(partial_path):
+            partial_path.unlink(missing_ok=True)
+            raise UnexpectedHtmlResponseError(
+                f"expected a data file but downloaded content looks like an "
+                f"HTML page from {source.url}"
+            )
         actual_size = partial_path.stat().st_size
         if response_size is not None and actual_size != response_size:
             partial_path.unlink(missing_ok=True)
@@ -245,15 +275,31 @@ def download_source(
                 raise ChecksumMismatchError(f"SHA-256 mismatch for {source.local_path}")
 
         os.replace(partial_path, destination)
-        record = _record_download(source, destination, downloaded_at=downloaded_at)
+        verified = (
+            source.expected_size_bytes is not None
+            or expected_md5 is not None
+            or source.sha256 is not None
+        )
+        record = _record_download(
+            source, destination, downloaded_at=downloaded_at, verified=verified
+        )
         if expected_md5 is not None:
             record = record.model_copy(update={"expected_md5": expected_md5})
-        logger.info(
-            "Verified %s (%s bytes, SHA-256 %s)",
-            destination,
-            record.size_bytes,
-            record.sha256,
-        )
+        if verified:
+            logger.info(
+                "Verified %s (%s bytes, SHA-256 %s)",
+                destination,
+                record.size_bytes,
+                record.sha256,
+            )
+        else:
+            logger.info(
+                "Not verified: no size or checksum available for %s "
+                "(%s bytes, SHA-256 %s)",
+                destination,
+                record.size_bytes,
+                record.sha256,
+            )
         return DownloadResult(destination, record, False)
     finally:
         if should_close:

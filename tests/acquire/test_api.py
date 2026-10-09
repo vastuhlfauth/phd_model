@@ -99,6 +99,7 @@ def test_api_key_never_leaks_into_manifest_or_logs(
     )
 
     source = SourceFile(
+        id="example-2026",
         source="example",
         provider="Example",
         vintage="2026",

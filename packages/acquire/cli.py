@@ -81,7 +81,7 @@ def _register_restricted(
             records.append(
                 source.model_copy(
                     update={
-                        "id": "",
+                        "id": f"restricted:{source.source}:{relative}",
                         "local_path": relative,
                         "size_bytes": path.stat().st_size,
                         "sha256": checksum_file(path),
@@ -133,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", error)
         return 1
 
-    updated_by_id: dict[str, SourceFile] = {}
+    updated_by_path: dict[str, SourceFile] = {}
     skipped = 0
     for source in selected:
         if source.access != "http" or source.restricted:
@@ -155,11 +155,19 @@ def main(argv: list[str] | None = None) -> int:
                 "failed to acquire %s (%s): %s", source.source, source.vintage, error
             )
             return 1
-        updated_by_id[source.id] = result.record
-        print(f"{'verified' if result.skipped else 'downloaded'} {result.local_path}")
+        updated_by_path[result.record.local_path] = result.record
+        if result.skipped:
+            status = "verified"
+        elif result.record.verified:
+            status = "downloaded and verified"
+        else:
+            status = "downloaded (not verified: no checksum configured)"
+        print(f"{status} {result.local_path}")
 
-    if updated_by_id and not args.dry_run:
-        sources = [updated_by_id.get(source.id, source) for source in sources]
+    if updated_by_path and not args.dry_run:
+        sources = [
+            updated_by_path.get(source.local_path, source) for source in sources
+        ]
         save_manifest(manifest_path, sources)
     if skipped and not args.dry_run:
         logger.error(
