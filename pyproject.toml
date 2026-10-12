@@ -43,6 +43,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+    "pilot: needs pilot/local data under data/raw or data/interim; skipped when absent",
+]
 
 [tool.ruff]
 target-version = "py312"

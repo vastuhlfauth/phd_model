@@ -2,14 +2,14 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-09 by Copilot_
+_Last updated: 2026-10-12 by Copilot_
 
 ## Steps (table of section 14.5)
 
 | Step | Content | Status | Branch | Notes |
 |---|---|---|---|---|
 | — | Repository skeleton (`/bootstrap`) | done | `step/bootstrap-skeleton` | uv workspace, package layout, configuration validation; Ruff and 3 tests pass (pinned Python 3.12.15) |
-| 0 | GTFS rebuilding test | not started | | |
+| 0 | GTFS rebuilding test | review | `step/gtfs-rebuild-test` | DuckDB-only stop matching and scoring/cutting engine for section 5.6; cached OSM stops and real calibration run on the five test EPCIs and the metro/tram/rail cases. See notes below and [the report](data/step0_gtfs_rebuild.md). Ruff clean; 157 tests pass (3 real-data pilot tests, rest synthetic). |
 | 1 | `common`: config, grid cells, DuckDB I/O | review | `step/common-foundations` | Config validation; cell ids/codes, nesting, neighbour stencil and tiles; Arrow/Parquet helpers; Ruff clean and 12 tests pass |
 | 2 | `acquire`: manifest and downloaders | review | `step/acquire` | Configured pilot source catalog; resumable, size-checked and checksum-verified HTTP downloads; Geofabrik MD5; restricted-file registration; API discovery helpers with per-source auth header/scheme; HTML-page detection; `verified` tracking; dry-run CLI. No real downloads run. Ruff clean; 40 tests pass. |
 | 2a | Source URLs and national acquisition coverage | review | `data/source-urls` | Both requested updates combined in one commit with user approval. 726 file/registration entries; direct INSEE/SDES/Géovélo/CARS/NUTS/Eurostat URLs; producer-only national GTFS inventory; 96 metropolitan BD ALTI archives; 26 neighbouring OSM extracts; anonymous Overture Parquet extraction with national box. Ruff clean; 61 tests pass. Metadata/HEAD requests only; no data files downloaded. |
@@ -132,10 +132,76 @@ Status values: not started, in progress, review, merged.
   fallback, alternate filename guess, sibling download or automatic deletion.
   Full facts, dates and errors are persisted in
   [the checked inventory](../config/gtfs_inventory.csv).
+- 2026-10-12, step 0, built the rebuild test entirely in `mobgrid/pt`
+  (`gtfs_clean.py` exact-date service selection, `stop_tables.py` OSM
+  public-transport stop extraction and GTFS pattern extraction,
+  `gtfs_rebuild.py` match/score/cut engine, `epci.py` EPCI polygon
+  membership, `calibrate.py` the calibration driver, `report.py` the
+  markdown writer), configured in `config/gtfs_rebuild.yaml`. Reference
+  date **2026-10-13** (Tuesday, in school term, inside every test
+  network's configured GTFS validity window, including STAR Rennes's
+  split timetable versions). OSM mode-family classification (bus, tram,
+  metro, rail) is a documented tag-priority rule in `stop_tables.py`, not
+  a config value, since it is deterministic classification logic rather
+  than a tunable threshold.
+- 2026-10-12, step 0 performance, OSM extraction reads the PBF in three
+  passes (node coordinates without tags, matching ways, matching nodes)
+  instead of carrying a `tags` MAP for every node, and the lifecycle-tag
+  exclusion uses `list_filter` instead of a correlated `EXISTS`/`UNNEST`
+  subquery (250s to 65s on a France-wide way scan in testing). GTFS
+  pattern grouping hashes the ordered stop sequence before `GROUP BY`
+  instead of grouping by the `LIST` column directly, and IDFM/STAR
+  Rennes's `trips.txt`/`stop_times.txt` (IDFM's `stop_times.txt` is
+  1.1 GB) are pre-filtered to the needed routes with a streaming Python
+  pass before DuckDB reads them, since only a handful of metro routes are
+  needed from otherwise huge national/regional feeds. The EPCI-polygon
+  union is a materialised `TEMP TABLE`, not a `VIEW` (a view recomputed
+  the union, read and reprojection on every query: about 70-180s per
+  query; the table drops this to under 0.2s), with a bounding-box
+  candidate table computed before the exact `ST_Within` test. OSM public
+  transport stops are cached once per dated extract to
+  `data/interim/osm_pt_stops/{stamp}.parquet`; later runs only read the
+  Parquet. Even with all of this, the real run over 8 networks and both
+  OSM dates took about **2 hours**, dominated by two full-France OSM
+  scans (the OSM bounding box is close to national because a few SNCF
+  long-distance patterns reach several test EPCIs).
+- 2026-10-12, step 0 calibration result, chosen on the known cases of
+  section 5.6: **r = 100 m, k = 2, theta (bus) = 0.70, theta (tram) =
+  theta (metro) = theta (rail) = 0.50**. Metro (F1 0.75) and tram (F1
+  0.67) fit reasonably; **bus does not** (F1 <= 0.02 at every grid point;
+  about half of all ~1,570 route-level bus cases, almost all expected
+  "kept", score below any candidate theta). The most likely cause is
+  genuinely sparse bus-stop mapping in the dated 2022/2024 OSM extracts,
+  which section 5.6 names as the least complete family, not a code
+  defect; metro/tram stops are far more consistently pre-mapped. Marked
+  `TODO(confirm)` in `config/gtfs_rebuild.yaml`; do not use the bus theta
+  for scenario triage before reviewing a sample of its "dropped" routes
+  by hand. Lyon's BHNS Part-Dieu - Sept-Chemins case has no confirmed
+  opening date ([TO CONFIRM], section 5.6) and is reported for manual
+  review only, matched to its closest current route (125) by name, not
+  scored. Full per-case results, the complete score table, per-EPCI
+  dropped/cut bus lines and the rail manual-review list are in
+  [the committed report](data/step0_gtfs_rebuild.md).
+- 2026-10-12, step 0 rural EPCI coverage (resolves the pending open
+  point below), checked spatially with each network's real GTFS stops
+  against the exact 2026 EPCI polygon, not by feed presence: **Couserans-
+  Pyrénées is covered** (30 liO Occitanie patterns intersect its
+  polygon); **Marche Occitane - Val d'Anglin has no liO, Rémi or SNCF
+  stop inside its polygon** (0 of all three), consistent with "no
+  network of its own" but showing that even the regional coach/rail
+  networks named in the spec text do not call directly inside this
+  EPCI's communes.
 
 ## Assumptions to check
 
 - 2026-10-09, bootstrap, the initial base configuration contains the EPSG:3035 coordinate system and 200 m/1 km resolutions; `config/base.yaml`.
+- 2026-10-12, step 0, a pattern's expected outcome defaults to "kept" at
+  both state dates unless it is one of section 5.6's listed known
+  changes; this lets the calibration score every bus/tram/metro route of
+  the test networks, not just the handful of explicitly named cases.
+- 2026-10-12, step 0, route-level scoring takes the worst outcome across
+  a route's direction patterns (dropped > cut > kept), since a route with
+  any affected pattern is operationally affected.
 
 ## Open points from the spec
 
@@ -150,11 +216,13 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [x] Overture places: release 2026-09-23.1 and national Parquet extraction configured
 - [ ] Archive Overture before approximately 2026-11-22; no data acquisition has been run
 - [x] Step 0: TCL Lyon GTFS now resolves to the current SYTRAL Mobilités resource 81943 (producer URL + Mobility Database fallback); the deprecated 65812 resource is dropped
-- [ ] Step 0: verify liO/Rémi stops inside the 2026 Couserans-Pyrénées and Marche Occitane – Val d'Anglin EPCI polygons
+- [x] Step 0: verify liO/Rémi stops inside the 2026 Couserans-Pyrénées and Marche Occitane – Val d'Anglin EPCI polygons: Couserans-Pyrénées is covered (30 liO patterns); Marche Occitane has no liO/Rémi/SNCF stop inside its polygon
 - [x] Neighbouring OSM extracts: Geofabrik publishes no `.md5` sidecar for dated regional files; verified by `Content-Length`-based size instead
 - [x] France OSM extracts: same size-only verification for both vintages; section 5.3's dated-extract `.md5` claim is incorrect (user-approved override, specification left unchanged)
 - [ ] Acquisition API resources: direct file URLs, source-specific licenses, and expected checksums where providers publish them
 - [ ] Lyon BHNS Part-Dieu – Sept-Chemins: opening date (section 5.6)
+- [ ] Step 0: bus theta (0.70) is the grid optimum but has a very weak fit (F1 <= 0.02); confirm, lower, or investigate the dated OSM extracts' bus-stop completeness before trusting bus drop/cut results for scenario triage
+- [ ] PT: rule for a regular service whose `calendar`/`calendar_dates` window has already expired by the state/reference date — shift it to its last valid week (e.g. same weekday pattern one week back) or drop it entirely (section 8.6/14.4)
 - [ ] Car ownership model: functional form, e.g. ordered or multinomial logit (section 6.4)
 - [ ] Public-sector jobs: default surface by amenity type when there is no building footprint (section 7.2)
 - [ ] PT engine: departure sampling if plain RAPTOR is kept, after the benchmark (section 8.6)
