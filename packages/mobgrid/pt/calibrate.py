@@ -21,7 +21,11 @@ import pyarrow.compute as pc
 from acquire.manifest import load_manifest
 
 from mobgrid.pt.config import GtfsRebuildConfig, KnownCase, ModeFamily
-from mobgrid.pt.epci import load_epci_polygons_3035, pattern_ids_within_epci
+from mobgrid.pt.epci import (
+    filter_stops_to_contour_coverage,
+    load_epci_polygons_3035,
+    pattern_ids_within_epci,
+)
 from mobgrid.pt.gtfs_rebuild import (
     PatternMatch,
     PatternResult,
@@ -131,6 +135,10 @@ def load_all_network_patterns(
                 value_set=pa.array(sorted(keep_ids), type=pa.string()),
             )
             tables[key] = table.filter(mask)
+            if key in config.manual_review_networks:
+                tables[key] = filter_stops_to_contour_coverage(
+                    connection, tables[key], contours_path
+                )
     return tables, coverage
 
 
@@ -416,4 +424,3 @@ def run_calibration(
         final_matches, config, grid_result.chosen_k, grid_result.chosen_theta
     )
     return CalibrationRun(grid_result, final_evaluations, rural_epci_coverage)
-

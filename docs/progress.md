@@ -2,14 +2,14 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-12 by Copilot_
+_Last updated: 2026-10-13 by Copilot_
 
 ## Steps (table of section 14.5)
 
 | Step | Content | Status | Branch | Notes |
 |---|---|---|---|---|
 | — | Repository skeleton (`/bootstrap`) | done | `step/bootstrap-skeleton` | uv workspace, package layout, configuration validation; Ruff and 3 tests pass (pinned Python 3.12.15) |
-| 0 | GTFS rebuilding test | review | `step/gtfs-rebuild-test` | DuckDB-only stop matching and scoring/cutting engine for section 5.6; cached OSM stops and real calibration run on the five test EPCIs and the metro/tram/rail cases. See notes below and [the report](data/step0_gtfs_rebuild.md). Ruff clean; 157 tests pass (3 real-data pilot tests, rest synthetic). |
+| 0 | GTFS rebuilding test | in progress | `step/gtfs-rebuild-test` | Relation-based rebuild supersedes the stop-only calibration: name match, then geometry, then spatial verification of each route's main pattern. Synthetic implementation is complete; the user must run the Luxembourg smoke, two national extractions and calibration. |
 | 1 | `common`: config, grid cells, DuckDB I/O | review | `step/common-foundations` | Config validation; cell ids/codes, nesting, neighbour stencil and tiles; Arrow/Parquet helpers; Ruff clean and 12 tests pass |
 | 2 | `acquire`: manifest and downloaders | review | `step/acquire` | Configured pilot source catalog; resumable, size-checked and checksum-verified HTTP downloads; Geofabrik MD5; restricted-file registration; API discovery helpers with per-source auth header/scheme; HTML-page detection; `verified` tracking; dry-run CLI. No real downloads run. Ruff clean; 40 tests pass. |
 | 2a | Source URLs and national acquisition coverage | review | `data/source-urls` | Both requested updates combined in one commit with user approval. 726 file/registration entries; direct INSEE/SDES/Géovélo/CARS/NUTS/Eurostat URLs; producer-only national GTFS inventory; 96 metropolitan BD ALTI archives; 26 neighbouring OSM extracts; anonymous Overture Parquet extraction with national box. Ruff clean; 61 tests pass. Metadata/HEAD requests only; no data files downloaded. |
@@ -35,6 +35,64 @@ Status values: not started, in progress, review, merged.
 
 ## Decisions taken while coding
 
+- 2026-10-13, long-running job policy (task A), appended the user's exact
+  instructions to [.github/copilot-instructions.md](../.github/copilot-instructions.md),
+  ignored `logs/`, and configured pytest to exclude `pilot` tests by default.
+  National extraction and real calibration must be run by the user, with
+  resumable checkpoints, dated logs and summaries. Task B's relation-based
+  GTFS rebuild is planned only; implementation awaits approval. Validation:
+  Ruff clean; default pytest run reports 155 passed and 2 pilot tests
+  deselected in 16.93 s. The PowerShell tool reported a separate wrapper
+  `SetShouldExit` error after both commands completed successfully.
+- 2026-10-13, step 0 method change (user-approved override of section 5.6),
+  replace the failed stop-only rule with **OSM route-relation matching by
+  normalised name first, then by geometry**, followed by spatial verification
+  of the matched portions. Route decisions use the most-travelled pattern on
+  the reference date, not the worst pattern. Name matches use network/operator
+  tags as tie-breakers; geometry-only matches are `kept-renamed`. Tram, metro
+  and rail are cut at uncovered ends before theta; buses and ferries are only
+  kept or dropped. Networks below 50% relation coverage are `not-testable`.
+- 2026-10-13, step 0 extraction, use DuckDB `ST_ReadOSM` in three filtered
+  passes preserving `refs`, `ref_types` and `ref_roles`; no new dependency.
+  Cache relation, member, way and stop/platform Parquet under
+  `data/interim/osm_pt_routes/{date}`. DuckDB is capped at 60% of physical RAM
+  and spills under `data/interim`. Each dated run checkpoints completed
+  Parquet stages and writes the required log and summary.
+- 2026-10-13, step 0 scoring, calibrate each family over r, k, theta and the
+  minimum geometry share. Report known-case precision/recall/F1 and exact
+  outcomes separately from the false-change rate among all other test-area
+  routes presumed unchanged; exclude `not-testable`. Rank exact known outcomes
+  first, then F1, then the lower false-change rate. Recommendations remain
+  `TODO(confirm)` until the user runs the real calibration.
+- 2026-10-13, step 0 synthetic validation, Ruff is clean and the default
+  pytest run reports **174 passed, 2 pilot tests deselected in 23.26 s**.
+  Synthetic fixtures cover normalised name matching, network/operator
+  tie-breaking, E/F-style geometry renaming, construction exclusion,
+  cut-before-theta, main-pattern selection, bus/ferry no-cut decisions,
+  low-coverage `not-testable`, track-qualified fixed-guideway fallback,
+  known-case/false-change scoring and confirmed-only scenario edits. The
+  Luxembourg smoke was subsequently run; no download, pilot, calibration or
+  national job was run by Copilot.
+- 2026-10-13, step 0 smoke check, the Luxembourg 2024 extraction validates the
+  three-pass DuckDB schema: 690 relations (644 bus, 44 train, 2 tram), 100% of
+  the 79,404 member ways with a geometry and 100% of the 19,111 member stops
+  with coordinates. `process_peak_memory_bytes` returned nothing because
+  `GetCurrentProcess` kept ctypes' default `c_int` result type, truncating the
+  64-bit pseudo-handle so `GetProcessMemoryInfo` failed with
+  `ERROR_INVALID_HANDLE`; the handle is now typed `c_void_p`. A clean rerun
+  took 6.6 seconds and peaked at 0.71 GiB. Linear compressed-input runtime
+  estimates are 11.2 minutes for France 2022 and 12.1 minutes for France
+  2024. The corresponding 71.24 and 77.46 GiB memory figures are conservative
+  upper bounds, not forecasts: most work streams, while DuckDB is capped at
+  60% of RAM and spills to disk. On this 31.64 GiB PC, the verified runtime
+  settings are a 19.0 GiB memory limit, 12 default threads and spill directory
+  `data/interim/osm_pt_routes/_duckdb_temp`.
+- 2026-10-13, step 0 resumability, OSM extraction publishes each Parquet
+  stage atomically and skips existing stages. GTFS ZIP tables are extracted
+  atomically and reused. Calibration checkpoints every completed parameter
+  point to `data/interim/gtfs_rebuild/calibration_scratch/calibration_grid.pkl`
+  and invalidates that checkpoint when the grid, pattern set or relation ids
+  change; the final result pickle is reused on rerun.
 - 2026-10-09, bootstrap, use a four-member uv workspace with per-package setuptools metadata, so each package can be developed and installed independently.
 - 2026-10-09, bootstrap, keep the pilot's area, years, halo and data directories in YAML; validate generic formats and positive/unique values in Pydantic.
 - 2026-10-09, bootstrap, pin the project to Python 3.12 with `uv python pin 3.12` (writes `.python-version`); the sandbox's system Python (3.14) is only used to bootstrap `uv` itself. `.python-version` and `uv.lock` are committed so every agent and CI run uses the same interpreter and locked dependency set.
@@ -199,9 +257,9 @@ Status values: not started, in progress, review, merged.
   both state dates unless it is one of section 5.6's listed known
   changes; this lets the calibration score every bus/tram/metro route of
   the test networks, not just the handful of explicitly named cases.
-- 2026-10-12, step 0, route-level scoring takes the worst outcome across
-  a route's direction patterns (dropped > cut > kept), since a route with
-  any affected pattern is operationally affected.
+- 2026-10-13, step 0, routes not listed as labelled known cases in each test
+  area are presumed unchanged for false-change scoring. This is not ground
+  truth and is reported separately from known-case precision/recall/F1.
 
 ## Open points from the spec
 
@@ -221,7 +279,9 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [x] France OSM extracts: same size-only verification for both vintages; section 5.3's dated-extract `.md5` claim is incorrect (user-approved override, specification left unchanged)
 - [ ] Acquisition API resources: direct file URLs, source-specific licenses, and expected checksums where providers publish them
 - [ ] Lyon BHNS Part-Dieu – Sept-Chemins: opening date (section 5.6)
-- [ ] Step 0: bus theta (0.70) is the grid optimum but has a very weak fit (F1 <= 0.02); confirm, lower, or investigate the dated OSM extracts' bus-stop completeness before trusting bus drop/cut results for scenario triage
+- [ ] Step 0 relation parameters: run the approved Luxembourg smoke, national
+  relation extractions and calibration; review `kept-renamed`/`dropped`
+  candidates and confirm recommended r, k, theta and geometry shares
 - [ ] PT: rule for a regular service whose `calendar`/`calendar_dates` window has already expired by the state/reference date — shift it to its last valid week (e.g. same weekday pattern one week back) or drop it entirely (section 8.6/14.4)
 - [ ] Car ownership model: functional form, e.g. ordered or multinomial logit (section 6.4)
 - [ ] Public-sector jobs: default surface by amenity type when there is no building footprint (section 7.2)

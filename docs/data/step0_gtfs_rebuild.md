@@ -1,5 +1,12 @@
 # Step 0: GTFS rebuilding test (section 5.6)
 
+> **Superseded result awaiting rerun.** The tables below are the 2026-10-12
+> stop-only calibration and are retained only as the failure baseline. The
+> user-approved implementation now matches OSM route relations by name, then
+> geometry, and verifies their portions. Running the relation calibration
+> replaces this file with the new known-case metrics, presumed-unchanged
+> false-change rates, route evidence, coverage flags and rail review.
+
 Calibration run on the reference date **2026-10-13**, against the
 dated OSM extracts of **1 January 2022** and **1 January 2024**, for the five
 test EPCIs and the metro/tram cases of section 5.6's calibration table.

@@ -1,0 +1,26 @@
+# Confirmed and candidate level-2 PT edits (section 11.4).
+# A past state is the 2026 network minus confirmed changes opened after it.
+# Candidates never alter a state until moved to confirmed after review.
+
+confirmed:
+  - id: bordeaux_bus_express_g
+    type: pt_new_line
+    network: tbm_bordeaux
+    route_ids: ["901"]
+    opened: "2024-06-01"
+    description: Bordeaux Express G, Saint-Jean - Saint-Aubin-de-Medoc.
+  - id: bordeaux_bus_express_h
+    type: pt_new_line
+    network: tbm_bordeaux
+    route_ids: ["911", "912"]
+    opened: "2025-01-01"
+    description: Bordeaux Express H temporary circular routes.
+  - id: sete_express_bus_a
+    type: pt_new_line
+    network: sete_agglopole
+    route_ids: ["A"]
+    opened: "2026-01-05"
+    description: Sete express bus A and RD2 bus-priority corridor.
+
+# Populated by the full calibration with dropped and kept-renamed routes.
+candidates: []

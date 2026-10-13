@@ -14,6 +14,7 @@ import pyarrow as pa
 from mobgrid.pt.gtfs_clean import select_active_services
 
 _GTFS_TABLE_NAMES = (
+    "agency.txt",
     "routes.txt",
     "trips.txt",
     "stops.txt",
@@ -36,11 +37,16 @@ def extract_gtfs_tables(zip_path: str | Path, destination: str | Path) -> None:
         for name in _GTFS_TABLE_NAMES:
             if name not in members:
                 continue
+            target_path = destination_path / name
+            if target_path.is_file():
+                continue
+            temporary_path = target_path.with_suffix(".tmp")
             with (
                 archive.open(members[name]) as source,
-                (destination_path / name).open("wb") as target,
+                temporary_path.open("wb") as target,
             ):
                 shutil.copyfileobj(source, target)
+            temporary_path.replace(target_path)
 
 
 def _filter_rows_by_column(
@@ -231,7 +237,7 @@ _ROUTE_TYPE_FAMILY: dict[int, str] = {
     1: "metro",
     2: "rail",
     3: "bus",
-    4: "rail",  # ferry: no dedicated family in section 5.6; grouped for completeness.
+    4: "ferry",
     5: "tram",  # cable tram
     6: "metro",  # aerial lift: grouped with metro-like fixed guideway.
     7: "metro",  # funicular
@@ -241,7 +247,7 @@ _ROUTE_TYPE_FAMILY: dict[int, str] = {
 
 
 def _mode_family_from_route_type(route_type: int | None) -> str | None:
-    """Map a GTFS ``route_type`` to bus/tram/metro/rail (section 5.6)."""
+    """Map a GTFS ``route_type`` to a rebuild mode family (section 5.6)."""
     if route_type is None:
         return None
     if route_type in _ROUTE_TYPE_FAMILY:
@@ -255,12 +261,17 @@ def _mode_family_from_route_type(route_type: int | None) -> str | None:
     if 900 <= route_type <= 906:
         return "tram"
     if 1000 <= route_type <= 1021:
-        return "rail"
+        return "ferry"
     if 1300 <= route_type <= 1307:
         return "metro"
     if 1400 <= route_type <= 1402:
         return "metro"
     return None
+
+
+def _transport_mode_from_route_type(route_type: int | None) -> str | None:
+    """Map GTFS route type to the exact mode used for OSM relation matching."""
+    return _mode_family_from_route_type(route_type)
 
 
 def register_mode_family_udf(connection: duckdb.DuckDBPyConnection) -> None:
@@ -300,13 +311,40 @@ def load_gtfs_patterns(
     connection.execute("LOAD spatial")
     register_mode_family_udf(connection)
     for name in (
-        "routes", "trips", "stops", "stop_times", "calendar", "calendar_dates",
+        "agency", "routes", "trips", "stops", "stop_times", "calendar",
+        "calendar_dates",
     ):
         path = directory / f"{name}.txt"
         if path.is_file():
             connection.read_csv(
                 str(path), header=True, all_varchar=True, delimiter=","
             ).create_view(name)
+    route_columns = {
+        row[0] for row in connection.execute("DESCRIBE routes").fetchall()
+    }
+    agency_columns = {
+        row[0] for row in connection.execute("DESCRIBE agency").fetchall()
+    }
+    agency_id = (
+        "routes.agency_id"
+        if "agency_id" in route_columns
+        else "NULL"
+    )
+    short_name = (
+        "routes.route_short_name"
+        if "route_short_name" in route_columns
+        else "CAST(NULL AS VARCHAR)"
+    )
+    long_name = (
+        "routes.route_long_name"
+        if "route_long_name" in route_columns
+        else "CAST(NULL AS VARCHAR)"
+    )
+    agency_join = (
+        f"LEFT JOIN agency ON {agency_id} = agency.agency_id"
+        if "agency_id" in agency_columns and "agency_id" in route_columns
+        else "LEFT JOIN agency ON true"
+    )
     select_active_services(connection, reference_date)
     route_filter = ""
     if route_ids is not None:
@@ -345,6 +383,11 @@ def load_gtfs_patterns(
         )
         SELECT patterns.pattern_id, patterns.route_id, patterns.direction_id,
                gtfs_mode_family(TRY_CAST(routes.route_type AS INTEGER)) AS mode_family,
+               gtfs_mode_family(TRY_CAST(routes.route_type AS INTEGER))
+                   AS transport_mode,
+               {short_name} AS route_short_name,
+               {long_name} AS route_long_name,
+               agency.agency_name,
                patterns.trip_count,
                CAST(ordinal AS INTEGER) AS stop_sequence,
                stops.stop_id,
@@ -364,5 +407,6 @@ def load_gtfs_patterns(
              UNNEST(patterns.stop_sequence) WITH ORDINALITY AS u(stop_id, ordinal)
         JOIN stops ON stops.stop_id = u.stop_id
         JOIN routes ON routes.route_id = patterns.route_id
+        {agency_join}
         ORDER BY patterns.pattern_id, ordinal
     """).to_arrow_table()

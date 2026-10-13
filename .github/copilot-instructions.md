@@ -61,3 +61,9 @@ Rules for speed:
 - Do not hard-code paths, URLs, years, thresholds or API keys. Keys come from environment variables.
 - Do not add a dependency without saying why.
 - Do not commit to `main`. Work on the branch of the step.
+
+## Long-running jobs (never run them yourself)
+- Never run a command that may take more than about 2 minutes: real-data runs, calibrations, pilot or national computations, downloads, or tests marked pilot.
+- Instead: make the code work on synthetic fixtures, and if useful on a small real sample that runs in under 2 minutes (e.g. the Monaco or Luxembourg OSM files in data/raw/osm, or --limit N); then give me the exact command to run in my own terminal, and stop.
+- Every long job is resumable (skips finished parts, checkpoints under data/interim), logs to logs/{YYYY-MM-DD}_{task}.log, and ends by writing logs/{YYYY-MM-DD}_{task}_summary.md (inputs, counts, timings, warnings, output paths).
+- When I come back with a summary, read only the summary, and the end of the log if there was an error.

@@ -80,6 +80,7 @@ def test_untagged_mode_is_excluded() -> None:
         (1, "metro"),
         (2, "rail"),
         (3, "bus"),
+        (4, "ferry"),
         (11, "bus"),
         (700, "bus"),
         (702, "bus"),
@@ -98,7 +99,12 @@ def test_mode_family_from_route_type_handles_none() -> None:
 
 def _write_gtfs_fixture(directory) -> None:
     (directory / "routes.txt").write_text(
-        "route_id,route_type\nR1,3\nR2,0\n", encoding="utf-8"
+        "route_id,agency_id,route_short_name,route_long_name,route_type\n"
+        "R1,OP,1,Bus one,3\nR2,OP,T2,Tram two,0\n",
+        encoding="utf-8",
+    )
+    (directory / "agency.txt").write_text(
+        "agency_id,agency_name\nOP,Example operator\n", encoding="utf-8"
     )
     (directory / "trips.txt").write_text(
         "route_id,service_id,trip_id,direction_id\n"
@@ -140,6 +146,8 @@ def test_load_gtfs_patterns_groups_distinct_stop_sequences(tmp_path) -> None:
     assert route_ids == {"R1", "R2"}
     assert mode_families["R1"] == "bus"
     assert mode_families["R2"] == "tram"
+    assert set(table.column("agency_name").to_pylist()) == {"Example operator"}
+    assert set(table.column("route_short_name").to_pylist()) == {"1", "T2"}
     # R1 has two distinct stop sequences (T1: A-B-C, T2: A-B): two patterns.
     pattern_ids = {
         pid

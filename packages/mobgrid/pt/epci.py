@@ -93,3 +93,43 @@ def pattern_ids_within_epci(
         connection.unregister("pattern_stops_for_epci")
     return {row[0] for row in rows}
 
+
+def filter_stops_to_contour_coverage(
+    connection: duckdb.DuckDBPyConnection,
+    pattern_stops: pa.Table,
+    contours_path: str | Path,
+) -> pa.Table:
+    """Drop route stops outside metropolitan-France OSM coverage.
+
+    The dated France extracts cover the commune contours used by the project.
+    This filter prevents international rail stops from entering ``n``.
+    """
+    connection.execute(f"""
+        CREATE OR REPLACE TEMP TABLE osm_extract_coverage AS
+        SELECT geom, ST_XMin(geom) AS xmin, ST_YMin(geom) AS ymin,
+               ST_XMax(geom) AS xmax, ST_YMax(geom) AS ymax
+        FROM (
+            SELECT ST_Transform(
+                ST_Union_Agg(geom), 'EPSG:4326', 'EPSG:3035', true
+            ) AS geom
+            FROM st_read('{Path(contours_path).as_posix()}')
+        )
+    """)
+    connection.register("rail_stops_for_coverage", pattern_stops)
+    try:
+        return connection.sql("""
+            SELECT rail_stops_for_coverage.*
+            FROM rail_stops_for_coverage, osm_extract_coverage
+            WHERE rail_stops_for_coverage.x BETWEEN osm_extract_coverage.xmin
+                                                   AND osm_extract_coverage.xmax
+              AND rail_stops_for_coverage.y BETWEEN osm_extract_coverage.ymin
+                                                   AND osm_extract_coverage.ymax
+              AND ST_Within(
+                  ST_Point(rail_stops_for_coverage.x,
+                           rail_stops_for_coverage.y),
+                  osm_extract_coverage.geom
+              )
+            ORDER BY pattern_id, stop_sequence
+        """).to_arrow_table()
+    finally:
+        connection.unregister("rail_stops_for_coverage")

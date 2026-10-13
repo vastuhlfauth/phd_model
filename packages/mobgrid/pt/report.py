@@ -1,241 +1,226 @@
-"""Markdown report for the step 0 GTFS rebuilding calibration (section 5.6)."""
+"""Markdown reporting for the relation-based GTFS rebuild calibration."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from mobgrid.pt.calibrate import CalibrationRun, PatternEvaluation
 from mobgrid.pt.config import GtfsRebuildConfig
-from mobgrid.pt.gtfs_rebuild import route_outcome
+from mobgrid.pt.relation_pipeline import GridPoint, RelationCalibrationRun, RouteRun
 
 
-def _route_evaluations(
-    evaluations: list[PatternEvaluation], network: str, route_id: str, date_key: str
-) -> list[PatternEvaluation]:
-    return [
-        item
-        for item in evaluations
-        if item.network == network
-        and item.route_id == route_id
-        and item.date_key == date_key
-    ]
-
-
-def _known_cases_table(config: GtfsRebuildConfig, run: CalibrationRun) -> str:
+def _recommended(run: RelationCalibrationRun) -> str:
     lines = [
-        "| Case | Network | Route | Family | Opened | Expected 1 Jan 2022 | "
-        "Obtained 2022 | Expected 1 Jan 2024 | Obtained 2024 | Match |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Family | r (m) | k | theta | geometry share | Known correct | "
+        "Known F1 | False-change rate |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for family, point in sorted(run.chosen.items()):
+        score = point.score
+        lines.append(
+            f"| {family} | {point.r_m} | {point.k} | {point.theta:.1f} | "
+            f"{point.geometry_share:.1f} | {score.known_correct}/"
+            f"{score.known_total} | {score.f1:.2f} | "
+            f"{score.false_change_rate:.2%} |"
+        )
+    return "\n".join(lines)
+
+
+def _score_table(grid: list[GridPoint]) -> str:
+    lines = [
+        "| Family | r | k | theta | geometry share | Known n | Known exact | "
+        "Precision | Recall | F1 | Presumed unchanged n | False-change rate |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for point in sorted(
+        grid,
+        key=lambda item: (
+            item.mode_family,
+            item.r_m,
+            item.k,
+            item.theta,
+            item.geometry_share,
+        ),
+    ):
+        score = point.score
+        exact = score.known_correct / score.known_total if score.known_total else 0
+        lines.append(
+            f"| {point.mode_family} | {point.r_m} | {point.k} | "
+            f"{point.theta:.1f} | {point.geometry_share:.1f} | "
+            f"{score.known_total} | {exact:.2f} | {score.precision:.2f} | "
+            f"{score.recall:.2f} | {score.f1:.2f} | "
+            f"{score.presumed_unchanged_total} | "
+            f"{score.false_change_rate:.2%} |"
+        )
+    return "\n".join(lines)
+
+
+def _known_cases(config: GtfsRebuildConfig, run: RelationCalibrationRun) -> str:
+    lines = [
+        "| Case | Route | Family | 2022 expected / obtained | "
+        "2024 expected / obtained | Pass and relations |",
+        "|---|---|---|---|---|---|",
     ]
     for case in config.known_cases:
-        row_2022 = _route_evaluations(
-            run.final_evaluations, case.network, case.route_id, "2022-01-01"
-        )
-        row_2024 = _route_evaluations(
-            run.final_evaluations, case.network, case.route_id, "2024-01-01"
-        )
-        obtained_2022 = (
-            route_outcome([item.result for item in row_2022]) if row_2022 else "n/a"
-        )
-        obtained_2024 = (
-            route_outcome([item.result for item in row_2024]) if row_2024 else "n/a"
-        )
-        expected_2022 = case.expected_2022 or "(not scored)"
-        expected_2024 = case.expected_2024 or "(not scored)"
-        if case.expected_2022 is None and case.expected_2024 is None:
-            match = "manual review"
-        else:
-            match = (
-                "yes"
-                if obtained_2022 == case.expected_2022
-                and obtained_2024 == case.expected_2024
-                else "NO"
+        cells = []
+        evidence = []
+        for date_key, expected in (
+            ("2022-01-01", case.expected_2022),
+            ("2024-01-01", case.expected_2024),
+        ):
+            route = next(
+                (
+                    item
+                    for item in run.final_routes
+                    if item.network == case.network
+                    and item.date_key == date_key
+                    and case.route_id
+                    in {item.pattern.route_id, item.pattern.short_name}
+                ),
+                None,
             )
+            cells.append(
+                f"{expected or 'review'} / "
+                f"{route.result.outcome if route else 'n/a'}"
+            )
+            if route:
+                evidence.append(
+                    f"{date_key[:4]}: {route.result.match_pass or 'none'} "
+                    f"{', '.join(route.result.relation_refs) or '-'} "
+                    f"({route.result.covered_share:.0%})"
+                )
         lines.append(
-            f"| {case.id} | {case.network} | {case.route_id} | {case.mode_family} | "
-            f"{case.opened or '?'} | {expected_2022} | {obtained_2022} | "
-            f"{expected_2024} | {obtained_2024} | {match} |"
+            f"| {case.id} | {case.route_id} | {case.mode_family} | "
+            f"{cells[0]} | {cells[1]} | {'; '.join(evidence)} |"
         )
     return "\n".join(lines)
 
 
-def _bus_family_note(run: CalibrationRun) -> str:
-    """Flag the bus family's weak calibration fit, for manual judgement."""
-    best_bus = max(
-        (c for c in run.grid_result.grid if c.mode_family == "bus"),
-        key=lambda c: (c.f1, c.accuracy),
-    )
-    if best_bus.f1 >= 0.3:
-        return ""
-    return f"""
-> **Known limitation, bus family.** Even at its best grid point
-> (r={best_bus.r_m:g} m, k={best_bus.k}, theta={best_bus.theta:g}), bus
-> precision/recall/F1 are {best_bus.precision:.2f}/{best_bus.recall:.2f}/
-> {best_bus.f1:.2f} over {best_bus.total} route-level cases: about half of
-> all bus routes (almost all expected "kept") score below any reasonable
-> theta. Section 5.6 names the likely cause directly: bus-stop mapping in
-> OpenStreetMap is the least complete of the four families, and the dated
-> 2022/2024 extracts appear to have materially sparser bus-stop coverage
-> than needed, unrelated to real network changes. The recommended
-> theta (bus) below is the grid optimum, but it is not a reliable
-> threshold; please review before confirming it, for example by
-> re-checking a sample of the "dropped" routes below by hand, before using
-> this family's result for scenario triage.
-"""
-
-
-
-def _score_table(run: CalibrationRun) -> str:
-    lines = [
-        "| Family | r (m) | k | theta | n cases | accuracy | precision | recall | F1 |",
-        "|---|---|---|---|---|---|---|---|---|",
+def _changed_routes(routes: list[RouteRun]) -> str:
+    selected = [
+        route
+        for route in routes
+        if route.result.outcome
+        in ("dropped", "cut", "kept-renamed", "not-testable")
     ]
-    ordered = sorted(
-        run.grid_result.grid, key=lambda c: (c.mode_family, c.r_m, c.k, c.theta)
-    )
-    for counts in ordered:
+    if not selected:
+        return "_No routes in a review outcome._"
+    lines = [
+        "| Network | Route | Date | Family | Outcome | Pass | Relation ids / refs | "
+        "Covered share |",
+        "|---|---|---|---|---|---|---|---:|",
+    ]
+    for route in sorted(
+        selected,
+        key=lambda item: (item.network, item.pattern.route_id, item.date_key),
+    ):
+        result = route.result
+        relations = ", ".join(
+            f"{relation_id}:{ref}"
+            for relation_id, ref in zip(
+                result.relation_ids,
+                (*result.relation_refs, *("" for _ in result.relation_ids)),
+            )
+        )
         lines.append(
-            f"| {counts.mode_family} | {counts.r_m:g} | {counts.k} | "
-            f"{counts.theta:g} | {counts.total} | {counts.accuracy:.2f} | "
-            f"{counts.precision:.2f} | {counts.recall:.2f} | {counts.f1:.2f} |"
+            f"| {route.network} | {route.pattern.route_id} | {route.date_key} | "
+            f"{route.pattern.mode} | {result.outcome} | "
+            f"{result.match_pass or '-'} | {relations or '-'} | "
+            f"{result.covered_share:.0%} |"
         )
     return "\n".join(lines)
 
 
-def _epci_line_list(
-    run: CalibrationRun, config: GtfsRebuildConfig, epci_key: str, mode_family: str
+def _epci_sections(
+    run: RelationCalibrationRun, config: GtfsRebuildConfig
 ) -> str:
-    epci = config.test_epcis[epci_key]
-    network = epci.network
-    if network is None:
-        return "_No network of its own (section 5.6)._"
-    rows = [
-        item
-        for item in run.final_evaluations
-        if item.network == network
-        and item.mode_family == mode_family
-        and item.result.outcome in ("dropped", "cut")
-    ]
-    if not rows:
-        return "_No lines dropped or cut at either date._"
-    lines = [
-        "| Route | Pattern | Date | n | m | s | Outcome | Flagged interior |",
-        "|---|---|---|---|---|---|---|---|",
-    ]
-    for item in sorted(rows, key=lambda r: (r.route_id, r.date_key, r.pattern_id)):
-        lines.append(
-            f"| {item.route_id} | {item.pattern_id} | {item.date_key} | "
-            f"{item.result.n} | {item.result.m} | {item.result.s:.2f} | "
-            f"{item.result.outcome} | {item.result.flagged_interior} |"
-        )
-    return "\n".join(lines)
+    sections = []
+    for epci in config.test_epcis:
+        route_keys = run.epci_routes.get(epci, set())
+        routes = [
+            route
+            for route in run.final_routes
+            if (route.network, route.pattern.route_id) in route_keys
+        ]
+        sections.append(f"### {epci}\n\n{_changed_routes(routes)}")
+    return "\n\n".join(sections)
 
 
-def _rail_manual_review(run: CalibrationRun) -> str:
-    rows = [
-        item
-        for item in run.final_evaluations
-        if item.mode_family == "rail" and item.result.outcome in ("dropped", "cut")
-    ]
-    if not rows:
-        return "_No SNCF rail lines dropped or cut at either date (metro thresholds)._"
-    lines = [
-        "| Route | Pattern | Date | n | m | s | Outcome | Flagged interior |",
-        "|---|---|---|---|---|---|---|---|",
-    ]
-    for item in sorted(rows, key=lambda r: (r.route_id, r.date_key, r.pattern_id)):
-        lines.append(
-            f"| {item.route_id} | {item.pattern_id} | {item.date_key} | "
-            f"{item.result.n} | {item.result.m} | {item.result.s:.2f} | "
-            f"{item.result.outcome} | {item.result.flagged_interior} |"
-        )
-    return "\n".join(lines)
+def _flagged_networks(run: RelationCalibrationRun) -> str:
+    if not run.flagged_networks:
+        return "_None._"
+    return "\n".join(
+        f"- {date_key}: `{network}`"
+        for date_key, network in sorted(run.flagged_networks)
+    )
 
 
-def _coverage_section(run: CalibrationRun, config: GtfsRebuildConfig) -> str:
-    header_networks = sorted({
-        network for counts in run.rural_epci_coverage.values() for network in counts
-    })
-    lines = [
-        "| Test EPCI | " + " | ".join(header_networks) + " |",
-        "|---|" + "---|" * len(header_networks),
+def _rail_review(run: RelationCalibrationRun) -> str:
+    rail = [
+        route
+        for route in run.final_routes
+        if route.pattern.mode == "rail"
+        and route.result.outcome
+        in ("dropped", "cut", "kept-renamed", "not-testable")
     ]
-    for epci_key in config.test_epcis:
-        counts = run.rural_epci_coverage.get(epci_key, {})
-        cells = " | ".join(
-            f"{counts.get(network, 0)} patterns" for network in header_networks
-        )
-        lines.append(f"| {epci_key} | {cells} |")
-    return "\n".join(lines)
+    checks = "\n".join(
+        f"- SNCF route `{route_id}`: classified `{mode}`"
+        for route_id, mode in sorted(run.rail_route_modes.items())
+    ) or "- Requested SNCF route ids were not present in the selected feed."
+    return f"{checks}\n\n{_changed_routes(rail)}"
 
 
 def write_report(
-    run: CalibrationRun, config: GtfsRebuildConfig, path: str | Path
+    run: RelationCalibrationRun,
+    config: GtfsRebuildConfig,
+    path: str | Path,
 ) -> None:
-    """Write the committed step 0 report (section 5.6 acceptance test)."""
-    chosen = run.grid_result.chosen_theta
+    """Write all calibration evidence required by section 5.6."""
     text = f"""# Step 0: GTFS rebuilding test (section 5.6)
 
-Calibration run on the reference date **{config.reference_date}**, against the
-dated OSM extracts of **1 January 2022** and **1 January 2024**, for the five
-test EPCIs and the metro/tram cases of section 5.6's calibration table.
+This implementation replaces the stop-only test with **name matching followed
+by geometry matching**, then spatially verifies the matched relation portions.
+Results come from each route's most-travelled pattern on
+**{config.reference_date}**.
 
 ## Recommended parameters
 
-| Parameter | Value |
-|---|---|
-| r (matching radius) | {run.grid_result.chosen_r_m:g} m |
-| k (cut run length) | {run.grid_result.chosen_k} |
-| theta (bus) | {chosen.get("bus"):.2f} |
-| theta (tram) | {chosen.get("tram"):.2f} |
-| theta (metro) | {chosen.get("metro"):.2f} |
-| theta (rail) | {chosen.get("rail"):.2f} (reuses the metro threshold; no rail case) |
+The ranking maximises exact known-case outcomes, then known-case F1, then
+minimises the false-change rate among presumed-unchanged routes. Rail reuses
+metro parameters because section 5.6 has no labelled rail case; ferry reuses
+bus parameters and is never cut.
 
-Chosen as the (r, k) pair maximising the summed F1 of bus, tram and metro
-against the known cases below, with theta optimised independently per mode
-family at that (r, k). Written to `config/gtfs_rebuild.yaml` under `chosen`,
-marked `TODO(confirm)` pending your review of this report.
-{_bus_family_note(run)}
-## Known cases: expected vs obtained
+{_recommended(run)}
 
-{_known_cases_table(config, run)}
+Values are written to `config/gtfs_rebuild.yaml` as `TODO(confirm)`.
 
-The BHNS Part-Dieu - Sept-Chemins case ([TO CONFIRM: opening date], section
-5.6) is reported for manual review only and is excluded from the score table.
+## Known cases: expected versus obtained
 
-## Score table (r, theta, k per mode family)
+{_known_cases(config, run)}
 
-{_score_table(run)}
+## Complete calibration score table
 
-## Bus lines dropped or cut, by test EPCI
+Known-case precision, recall and F1 exclude `not-testable` routes. The
+false-change rate is the share of other test-area routes presumed unchanged
+that were incorrectly cut or dropped; `kept-renamed` is not a false change.
 
-### Bordeaux Metropole
+{_score_table(run.grid)}
 
-{_epci_line_list(run, config, "bordeaux_metropole", "bus")}
+## Routes requiring review, by test EPCI
 
-### Metropole de Lyon
+{_epci_sections(run, config)}
 
-{_epci_line_list(run, config, "metropole_de_lyon", "bus")}
+## Networks below 50% OSM relation coverage
 
-### Sete Agglopole Mediterranee
+Every route in these network/date combinations is retained as `not-testable`.
 
-{_epci_line_list(run, config, "sete_agglopole_mediterranee", "bus")}
+{_flagged_networks(run)}
 
-## Rural EPCI spatial coverage (no network of their own)
+## Rail manual review
 
-Patterns of each regional/national network with at least one stop inside the
-EPCI's 2026 polygon (section 5.6: "feed presence alone does not establish
-coverage").
+Stops outside the configured OSM coverage are excluded from n. Routes 7601
+and 951-953 must remain buses when their GTFS `route_type` is 3.
 
-{_coverage_section(run, config)}
-
-## Rail lines dropped or cut (manual review, metro thresholds)
-
-No rail case is available in section 5.6's calibration table; SNCF patterns
-reaching one of the five test EPCIs are scored with the metro theta and
-listed here for manual review only (not included in the score table).
-
-{_rail_manual_review(run)}
+{_rail_review(run)}
 """
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)

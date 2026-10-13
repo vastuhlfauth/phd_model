@@ -9,8 +9,10 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-ModeFamily = Literal["bus", "tram", "metro", "rail"]
-PatternOutcome = Literal["kept", "dropped", "cut"]
+ModeFamily = Literal["bus", "tram", "metro", "rail", "ferry"]
+PatternOutcome = Literal[
+    "kept", "kept-renamed", "dropped", "cut", "not-testable"
+]
 
 
 class CalibrationGrid(BaseModel):
@@ -20,15 +22,17 @@ class CalibrationGrid(BaseModel):
     r_m: list[int] = Field(min_length=1)
     theta: list[float] = Field(min_length=1)
     k: list[int] = Field(min_length=1)
+    geometry_share: list[float] = Field(min_length=1)
 
 
-class ChosenParameters(BaseModel):
-    """Parameters retained after calibration; null until confirmed."""
+class ChosenFamilyParameters(BaseModel):
+    """Parameters retained for one mode family; null until confirmed."""
 
     model_config = ConfigDict(extra="forbid")
     r_m: int | None = None
     k: int | None = None
-    theta: dict[ModeFamily, float | None] = Field(default_factory=dict)
+    geometry_share: float | None = None
+    theta: float | None = None
 
 
 class NetworkRef(BaseModel):
@@ -71,8 +75,9 @@ class GtfsRebuildConfig(BaseModel):
     osm_lifecycle_prefixes: list[str] = Field(min_length=1)
     osm_source_ids: dict[str, str]
     osm_cache_root: str
+    osm_route_cache_root: str
     calibration: CalibrationGrid
-    chosen: ChosenParameters
+    chosen: dict[ModeFamily, ChosenFamilyParameters]
     networks: dict[str, NetworkRef]
     test_epcis: dict[str, EpciRef]
     manual_review_networks: list[str] = Field(default_factory=list)

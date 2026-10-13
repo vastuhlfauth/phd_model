@@ -24,11 +24,13 @@ osm_source_ids:
 # Cached Parquet of extracted OSM public-transport stops, one file per date;
 # written once, read afterwards (never re-reads the PBF).
 osm_cache_root: data/interim/osm_pt_stops
+osm_route_cache_root: data/interim/osm_pt_routes
 
 calibration:
   r_m: [25, 50, 100]
   theta: [0.5, 0.6, 0.7, 0.8, 0.9]
   k: [1, 2, 3]
+  geometry_share: [0.3, 0.5, 0.7]
 
 # Recommended by the calibration script; TODO(confirm) after reading
 # docs/data/step0_gtfs_rebuild.md.
@@ -37,13 +39,31 @@ calibration:
 # without manual review -- see the "Known limitation, bus family" note in
 # docs/data/step0_gtfs_rebuild.md before confirming.
 chosen:
-  r_m: 100
-  k: 2
-  theta:
-    bus: 0.7
-    tram: 0.5
-    metro: 0.5
-    rail: 0.5
+  bus:
+    r_m: null
+    k: null
+    geometry_share: null
+    theta: null
+  tram:
+    r_m: null
+    k: null
+    geometry_share: null
+    theta: null
+  metro:
+    r_m: null
+    k: null
+    geometry_share: null
+    theta: null
+  rail:
+    r_m: null
+    k: null
+    geometry_share: null
+    theta: null
+  ferry:
+    r_m: null
+    k: null
+    geometry_share: null
+    theta: null
 
 # transport.data.gouv.fr GTFS resource ids, resolved to local paths through
 # config/gtfs_inventory.csv at run time.
@@ -106,6 +126,24 @@ known_cases:
     expected_2022: cut
     expected_2024: kept
     notes: Tram A extended to the airport, about 5 km, 5 stations.
+  - id: bordeaux_tram_e_rename
+    network: tbm_bordeaux
+    route_id: E
+    mode_family: tram
+    epci: bordeaux_metropole
+    opened: "2025-12-01"
+    expected_2022: kept-renamed
+    expected_2024: kept-renamed
+    notes: 2026 line E uses the old tram A tracks.
+  - id: bordeaux_tram_f_rename
+    network: tbm_bordeaux
+    route_id: F
+    mode_family: tram
+    epci: bordeaux_metropole
+    opened: "2025-12-01"
+    expected_2022: kept-renamed
+    expected_2024: kept-renamed
+    notes: 2026 line F uses the old tram A tracks.
   - id: bordeaux_bus_express_g
     network: tbm_bordeaux
     route_id: "901"
