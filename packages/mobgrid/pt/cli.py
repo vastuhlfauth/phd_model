@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
 import pickle
 import time
@@ -13,7 +15,7 @@ from pathlib import Path
 import duckdb
 import yaml
 
-from mobgrid.pt.config import load_gtfs_rebuild_config
+from mobgrid.pt.config import GtfsRebuildConfig, load_gtfs_rebuild_config
 from mobgrid.pt.osm_route_extraction import (
     configure_extraction_connection,
     estimate_run,
@@ -23,12 +25,57 @@ from mobgrid.pt.osm_route_extraction import (
 )
 from mobgrid.pt.relation_pipeline import (
     RelationCalibrationRun,
+    network_relation_coverage,
     run_relation_calibration,
 )
 from mobgrid.pt.report import write_report
 from mobgrid.pt.stop_tables import write_osm_pt_stops_cache
 
 logger = logging.getLogger("mobgrid.pt")
+
+
+def _file_stat(path: str | Path) -> tuple[int, int] | None:
+    candidate = Path(path)
+    if not candidate.is_file():
+        return None
+    stat = candidate.stat()
+    return (stat.st_size, stat.st_mtime_ns)
+
+
+def _calibration_run_signature(
+    config: GtfsRebuildConfig,
+    gtfs_inventory_csv: str | Path,
+    sources_yaml: str | Path,
+    contours_path: str | Path,
+    restrict_networks: list[str] | None,
+) -> str:
+    """Hash every input a calibration run depends on.
+
+    Covers the OSM route caches' own files (so a ways.parquet rebuild, such
+    as the 2026-10-14 busway/lanes_bus schema upgrade, is detected), the
+    config content, and the GTFS/sources/contours files, so the top-level
+    results checkpoint is invalidated exactly like the lower-level
+    relation-table and grid checkpoints already are.
+    """
+    payload = {
+        "config": config.model_dump(mode="json"),
+        "gtfs_inventory": _file_stat(gtfs_inventory_csv),
+        "sources": _file_stat(sources_yaml),
+        "contours": _file_stat(contours_path),
+        "restrict_networks": sorted(restrict_networks) if restrict_networks else None,
+        "route_caches": {
+            date_key: {
+                name: _file_stat(
+                    Path(config.osm_route_cache_root) / date_key / f"{name}.parquet"
+                )
+                for name in ("relations", "ways", "stops")
+            }
+            for date_key in config.osm_source_ids
+        },
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode()
+    ).hexdigest()
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -84,6 +131,12 @@ def _parser() -> argparse.ArgumentParser:
         "--results-pickle",
         type=Path,
         default=Path("data/results/step0_gtfs_rebuild/relation_calibration.pkl"),
+    )
+    calibrate.add_argument(
+        "--networks",
+        nargs="+",
+        default=None,
+        help="Optional subset of network ids to calibrate (for a single test site)",
     )
     calibrate.add_argument("--scratch-dir", type=Path)
     calibrate.add_argument("--log", type=Path)
@@ -159,41 +212,106 @@ def _write_chosen_config(path: Path, run: RelationCalibrationRun) -> None:
     )
 
 
-def _write_candidates(path: Path, run: RelationCalibrationRun) -> None:
+_REVIEW_COVERAGE_THRESHOLD = 0.90
+_REVIEW_LIST_LIMIT = 50
+_RAIL_REVIEW_LIST_LIMIT = 30
+
+
+def _candidate_family(mode: str) -> str:
+    return "bus" if mode == "ferry" else mode
+
+
+def _write_review_lists(path: Path, run: RelationCalibrationRun) -> None:
+    """Split candidate route changes into a short review list and the rest.
+
+    Section 5.6 point 3 (2026-10-14 decision): a candidate is eligible for
+    review only if every date it was flagged on belongs to a network/date
+    with at least 90% OSM relation coverage; eligible candidates are then
+    ranked BHNS/express first, then by trips on the reference date. Bus and
+    ferry candidates are capped at the top 50; rail candidates (kept by
+    default like bus -- 2026-10-14 decision) get their own top-30-by-trips
+    cap, since rail has no BHNS concept and would otherwise compete with
+    bus/ferry for the same 50 slots. Every other candidate, of any family,
+    is kept in ``not_applied`` with its evidence -- nothing is deleted, and
+    neither list is ever applied automatically (only ``confirmed`` edits
+    are). Candidates already in ``rejected`` (a reviewer's explicit no) are
+    excluded so they are not re-surfaced on every rerun.
+    """
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    confirmed = {
+    excluded = {
         (change["network"], route_id)
         for change in raw.get("confirmed", [])
         for route_id in change["route_ids"]
     }
+    excluded |= {
+        (candidate["network"], candidate["route_id"])
+        for candidate in raw.get("rejected", [])
+    }
+    coverage = network_relation_coverage(run)
     grouped: dict[tuple[str, str], list] = {}
     for route in run.final_routes:
         key = (route.network, route.pattern.route_id)
         if (
             route.result.outcome in ("dropped", "kept-renamed")
-            and key not in confirmed
+            and key not in excluded
         ):
-            grouped.setdefault(
-                key, []
-            ).append(route)
+            grouped.setdefault(key, []).append(route)
+
     candidates = []
     for (network, route_id), routes in sorted(grouped.items()):
         evidence = max(routes, key=lambda route: route.result.covered_share)
-        candidates.append(
-            {
-                "id": f"candidate_{network}_{route_id}".replace(":", "_"),
-                "network": network,
-                "route_id": route_id,
-                "outcomes_by_date": {
-                    route.date_key: route.result.outcome for route in routes
-                },
-                "match_pass": evidence.result.match_pass,
-                "relation_ids": list(evidence.result.relation_ids),
-                "relation_refs": list(evidence.result.relation_refs),
-                "covered_share": round(evidence.result.covered_share, 6),
-            }
+        outcomes_by_date = {
+            route.date_key: route.result.outcome for route in routes
+        }
+        coverage_by_date = {
+            date_key: round(coverage.get((network, date_key), 0.0), 6)
+            for date_key in outcomes_by_date
+        }
+        eligible = bool(coverage_by_date) and all(
+            share >= _REVIEW_COVERAGE_THRESHOLD
+            for share in coverage_by_date.values()
         )
-    raw["candidates"] = candidates
+        candidates.append(
+            (
+                _candidate_family(evidence.pattern.mode),
+                eligible,
+                evidence.pattern.is_bhns,
+                evidence.pattern.trip_count,
+                {
+                    "id": f"candidate_{network}_{route_id}".replace(":", "_"),
+                    "network": network,
+                    "route_id": route_id,
+                    "outcomes_by_date": outcomes_by_date,
+                    "match_pass": evidence.result.match_pass,
+                    "relation_ids": list(evidence.result.relation_ids),
+                    "relation_refs": list(evidence.result.relation_refs),
+                    "covered_share": round(evidence.result.covered_share, 6),
+                    "trip_count": evidence.pattern.trip_count,
+                    "is_bhns": evidence.pattern.is_bhns,
+                    "network_coverage_by_date": coverage_by_date,
+                },
+            )
+        )
+
+    to_review_ids: set[str] = set()
+    for family in {item[0] for item in candidates}:
+        limit = (
+            _RAIL_REVIEW_LIST_LIMIT if family == "rail" else _REVIEW_LIST_LIMIT
+        )
+        eligible_candidates = sorted(
+            (item for item in candidates if item[0] == family and item[1]),
+            key=lambda item: (item[2], item[3]),
+            reverse=True,
+        )
+        to_review_ids |= {
+            item[4]["id"] for item in eligible_candidates[:limit]
+        }
+    raw["to_review"] = [
+        item[4] for item in candidates if item[4]["id"] in to_review_ids
+    ]
+    raw["not_applied"] = [
+        item[4] for item in candidates if item[4]["id"] not in to_review_ids
+    ]
     path.write_text(
         yaml.safe_dump(raw, sort_keys=False, allow_unicode=False),
         encoding="utf-8",
@@ -204,22 +322,44 @@ def _run_calibration(args: argparse.Namespace) -> int:
     config = load_gtfs_rebuild_config(args.config)
 
     def execute(scratch: Path) -> RelationCalibrationRun:
-        if args.results_pickle.is_file():
-            logger.info("checkpoint exists, loading %s", args.results_pickle)
-            with args.results_pickle.open("rb") as stream:
-                return pickle.load(stream)
+        signature = _calibration_run_signature(
+            config,
+            args.gtfs_inventory,
+            args.sources,
+            args.contours,
+            args.networks,
+        )
+        signature_path = args.results_pickle.with_suffix(".signature.json")
+        if args.results_pickle.is_file() and signature_path.is_file():
+            previous = json.loads(signature_path.read_text(encoding="utf-8"))
+            if previous.get("signature") == signature:
+                logger.info(
+                    "checkpoint exists and inputs unchanged, loading %s",
+                    args.results_pickle,
+                )
+                with args.results_pickle.open("rb") as stream:
+                    return pickle.load(stream)
+            logger.info(
+                "checkpoint inputs changed (e.g. a re-extracted OSM route "
+                "cache or a config edit); recomputing %s",
+                args.results_pickle,
+            )
         run = run_relation_calibration(
             config,
             args.gtfs_inventory,
             args.sources,
             args.contours,
             scratch,
+            restrict_networks=args.networks,
         )
         args.results_pickle.parent.mkdir(parents=True, exist_ok=True)
         temporary = args.results_pickle.with_suffix(".tmp")
         with temporary.open("wb") as stream:
             pickle.dump(run, stream)
         temporary.replace(args.results_pickle)
+        signature_path.write_text(
+            json.dumps({"signature": signature}), encoding="utf-8"
+        )
         return run
 
     scratch = args.scratch_dir or Path(
@@ -227,9 +367,15 @@ def _run_calibration(args: argparse.Namespace) -> int:
     )
     scratch.mkdir(parents=True, exist_ok=True)
     run = execute(scratch)
-    write_report(run, config, args.report)
-    _write_chosen_config(args.config, run)
-    _write_candidates(Path("config/pt_changes.yaml"), run)
+    pt_changes_path = Path("config/pt_changes.yaml")
+    if args.networks is None:
+        _write_chosen_config(args.config, run)
+        _write_review_lists(pt_changes_path, run)
+    else:
+        logger.info(
+            "subset calibration: leaving chosen config and candidates unchanged"
+        )
+    write_report(run, config, args.report, pt_changes_path=pt_changes_path)
     summary = args.summary or _default_artifact("gtfs_calibration", "_summary.md")
     _write_calibration_summary(run, summary, args.report, args.results_pickle)
     return 0

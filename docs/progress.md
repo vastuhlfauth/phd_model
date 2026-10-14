@@ -2,14 +2,14 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-13 by Copilot_
+_Last updated: 2026-10-14 by Copilot_
 
 ## Steps (table of section 14.5)
 
 | Step | Content | Status | Branch | Notes |
 |---|---|---|---|---|
 | — | Repository skeleton (`/bootstrap`) | done | `step/bootstrap-skeleton` | uv workspace, package layout, configuration validation; Ruff and 3 tests pass (pinned Python 3.12.15) |
-| 0 | GTFS rebuilding test | in progress | `step/gtfs-rebuild-test` | Relation-based rebuild supersedes the stop-only calibration: name match, then geometry, then spatial verification of each route's main pattern. Synthetic implementation is complete; the user must run the Luxembourg smoke, two national extractions and calibration. |
+| 0 | GTFS rebuilding test | done | `step/gtfs-rebuild-test` | Relation-based rebuild (name match, then geometry; in-service tracks of any same-mode relation give coverage, not only the matched one; cut-then-theta for tram/metro/rail) replaces the failed stop-only calibration. Bus, ferry and rail are never auto-applied (screening/review only); tram and metro thresholds are confirmed. Known limitations: OSM sometimes tags tracks in service before their documented opening (a data gap, patched case by case in `pt_changes.yaml`'s `confirmed` list); bus and rail OSM relation/way mapping is incomplete nationally, kept to manual review via `to_review`/`not_applied`. |
 | 1 | `common`: config, grid cells, DuckDB I/O | review | `step/common-foundations` | Config validation; cell ids/codes, nesting, neighbour stencil and tiles; Arrow/Parquet helpers; Ruff clean and 12 tests pass |
 | 2 | `acquire`: manifest and downloaders | review | `step/acquire` | Configured pilot source catalog; resumable, size-checked and checksum-verified HTTP downloads; Geofabrik MD5; restricted-file registration; API discovery helpers with per-source auth header/scheme; HTML-page detection; `verified` tracking; dry-run CLI. No real downloads run. Ruff clean; 40 tests pass. |
 | 2a | Source URLs and national acquisition coverage | review | `data/source-urls` | Both requested updates combined in one commit with user approval. 726 file/registration entries; direct INSEE/SDES/Géovélo/CARS/NUTS/Eurostat URLs; producer-only national GTFS inventory; 96 metropolitan BD ALTI archives; 26 neighbouring OSM extracts; anonymous Overture Parquet extraction with national box. Ruff clean; 61 tests pass. Metadata/HEAD requests only; no data files downloaded. |
@@ -90,9 +90,294 @@ Status values: not started, in progress, review, merged.
 - 2026-10-13, step 0 resumability, OSM extraction publishes each Parquet
   stage atomically and skips existing stages. GTFS ZIP tables are extracted
   atomically and reused. Calibration checkpoints every completed parameter
-  point to `data/interim/gtfs_rebuild/calibration_scratch/calibration_grid.pkl`
-  and invalidates that checkpoint when the grid, pattern set or relation ids
-  change; the final result pickle is reused on rerun.
+  point to
+  `data/interim/gtfs_rebuild/calibration_scratch/calibration_grid_tables.pkl`
+  and invalidates that checkpoint when the grid or table-precompute signature
+  changes; the final result pickle is reused on rerun.
+- 2026-10-13, step 0 contour repair, the first full calibration stopped while
+  unioning the national commune contours for rail coverage because an invalid
+  overseas polygon had a hole outside its shell. Both EPCI and national
+  coverage unions now apply DuckDB `ST_MakeValid` to each source geometry
+  before aggregation. A synthetic multi-commune regression reproduces the
+  original `TopologyException` before the fix and verifies inside/outside stop
+  filtering afterwards. The long calibration was not rerun by Copilot.
+- 2026-10-14, step 0 table calibration, replaced the repeated Python scan of
+  national relation geometry. The pipeline first keeps one main pattern per
+  route reaching a test EPCI, plus known cases. DuckDB then bbox-prefilters
+  same-mode relations within 1 km of individual pattern stops and writes
+  persistent pattern, name-match and stop/relation-distance Parquet tables.
+  Exact spatial distances are computed once up to the largest radius; the
+  complete grid is evaluated from scalar tables in one DuckDB query. Every
+  point is still logged and atomically checkpointed, using a new cache format
+  that cannot reuse the two points from the abandoned geometry-loop run.
+- 2026-10-14, step 0 Sète benchmark, a clean subset run retained 22 main
+  patterns and completed in 66.6 seconds. Spatial precompute took 31.6 seconds
+  (3,344 candidate relations, 3,784 distance rows, 49 name rows); all cached
+  route outcomes for the 405-point grid took 0.6 seconds, and scoring,
+  per-point logging and checkpointing took about 2.8 seconds total (about
+  0.007 seconds per point). The subset produced 44 route/date outcomes and did
+  not update national chosen parameters or candidates.
+- 2026-10-14, step 0 first full national run, completed in 16m 27s (one-time
+  spatial precompute 9.7 min over 647 reduced patterns, 185,724 candidate
+  relations, 177,158 distance rows; the full 405-point grid itself in 5.1 s).
+  Known-case metrics were strong (bus/ferry F1 1.00, metro/rail F1 1.00, tram
+  F1 0.92), but the bus/ferry false-change rate was 30-73% at *every* grid
+  point, never below 32.63%. Traced to TBM bus line "1" (name-matched
+  correctly, ref "1"): 34 of 50 stops sit 0.4-7 m from the matched relation
+  (near-perfect), but 16 of 50 have no relation way/stop within the largest
+  calibrated radius (100 m) -- a genuine OSM bus-route mapping-completeness
+  gap, not a matching bug. 516 candidates were written, overwhelmingly bus.
+- 2026-10-14, step 0 BHNS/express decision (section 5.6, user-approved),
+  given the bus mapping gap above: bus and ferry are never auto-applied to a
+  past state; `PtChangeCatalogue.changes_after`/`removed_route_keys` read
+  only `confirmed` by default (Express G 901, H 911/912, Sète A). BHNS/express
+  routes are the one exception -- identified by `Express`, `BHNS`,
+  `Liane(s)`, `Chronobus` in the GTFS short/long name or `route_desc`
+  (`classify_bhns`) -- and are verified like a tram: cut at uncovered ends
+  before theta, using dedicated bus infrastructure in OSM
+  (`highway=busway`/`bus_guideway`, `busway=*`, `lanes:bus=*`, excluding
+  construction/proposed) instead of the plain kept/dropped bus rule. This
+  required two new `ways.parquet` columns (`busway`, `lanes_bus`);
+  `extract_osm_pt_routes` now detects a cache missing them and rebuilds only
+  `ways.parquet` from the already-cached `ways_raw`/`nodes_raw`/`members`
+  stages (verified on a Luxembourg smoke rerun: all five other stages
+  skipped, `ways.parquet` rebuilt from cache in about 3.6 s, no PBF rescan;
+  confirmed real `busway`/`lanes:bus` tag values and one `highway=bus_guideway`
+  way present). The France 2022/2024 route caches still predate these
+  columns and must be re-extracted by the user (same command as before; both
+  dates needed, since the dated caches are unioned and must share a schema).
+- 2026-10-14, step 0 France ways.parquet rebuild, the user reran both dated
+  extractions; as expected, the four PBF-scan stages were skipped and only
+  `ways.parquet` was rebuilt from cache, with no PBF rescan. The Luxembourg
+  smoke's "a few seconds" estimate for this step was wrong at national scale:
+  the final join/aggregate over millions of ways and their points is not
+  input-size-independent, and it took about 32 minutes for 2022
+  (2,337,542 ways) and about 2h 37min for 2024 (3,004,246 ways). Both caches
+  now carry real `busway`/`lanes_bus` data: 2022 has 1,212 `highway in
+  (busway, bus_guideway)` ways, 14,329 `busway=*` ways and 1,707
+  `lanes:bus=*` ways; 2024 has 6,827/17,944/2,660 respectively.
+- 2026-10-14, step 0 checkpoint-invalidation bug, the first `calibrate` rerun
+  after the ways.parquet rebuild silently reused the pre-BHNS results pickle
+  and skipped recomputation entirely: unlike the relation-table precompute
+  and grid checkpoints, the top-level `--results-pickle` had no input
+  signature, only an "if the file exists, load it" check. Fixed with
+  `_calibration_run_signature`, hashing the config, the GTFS
+  inventory/sources/contours files and every OSM route cache file's size and
+  mtime, stored alongside the pickle as `*.signature.json`; a changed
+  signature (such as a rebuilt `ways.parquet`) forces recomputation. A
+  synthetic regression proves the signature changes when a route-cache file
+  is rewritten and is stable otherwise. The real calibration still needs to
+  be rerun by the user with this fix in place.
+- 2026-10-14, step 0 second full national run (with the signature fix, BHNS
+  rule and new `ways.parquet` columns in effect), completed. Precompute took
+  about 40 minutes this time (185,724 candidate relations, 177,495 distance
+  rows, up from 177,158 -- the extra per-way BHNS in-service `CASE` adds real
+  cost at this scale) versus 9.7 minutes before; the grid itself still only
+  11.5 s. Known cases stayed strong (bus/ferry F1 1.00 incl. both Bordeaux
+  Express cases now correctly "dropped" both dates; metro/rail F1 1.00; tram
+  F1 0.92 unchanged). The bus/ferry false-change rate is still high (70.35%
+  recommended), confirming the 2026-10-13 finding: this is an OSM
+  bus-route-mapping-completeness limitation BHNS treatment cannot fix for
+  ordinary bus lines, which is why bus/ferry are never auto-applied (decision
+  above). `classify_bhns` correctly flagged 16 real routes from GTFS names,
+  including TBM's "Lianes N" convention and the three confirmed Express
+  lines (901, 911, 912) plus TCL's "98EX ... (Express)"; two TBM Lianes show
+  0% of stops on dedicated bus infrastructure (OSM simply has none mapped for
+  those lines). `config/pt_changes.yaml` now has 50 `to_review` (2 BHNS) and
+  468 `not_applied` candidates from real post-BHNS data, replacing the
+  provisional migration; `docs/data/step0_gtfs_rebuild.md` is current (the
+  stale banner was naturally overwritten by the real `write_report` run).
+- 2026-10-14, step 0 rail score-aliasing bug, `chosen["rail"]` literally
+  copied metro's `GridPoint` (rail reuses metro's r/k/theta/geometry_share
+  since section 5.6 has no labelled rail known case), which also copied
+  metro's *score* -- unlike ferry (genuinely merged into the "bus" family
+  everywhere, so aliasing `chosen["ferry"] = chosen["bus"]` is correct),
+  rail is a distinct, separately-evaluated family, so the report's "rail"
+  row silently showed metro's 9/9 known cases and 0.00% false-change rate
+  instead of rail's own. Fixed: rail's score is now recomputed from rail's
+  own routes at metro's chosen parameters. A synthetic regression (distinct
+  metro-kept vs rail-dropped routes) proves the two scores differ and
+  `chosen["rail"].score is not chosen["metro"].score`. The real rail false-
+  change rate is **33.51%** (65 of 194 presumed-unchanged SNCF routes cut or
+  dropped), not the reported 0.00%; patched directly into the cached
+  results pickle/report/`pt_changes.yaml` (pure recomputation from already-
+  cached `final_routes`, no rerun needed) and reverified: Ruff clean, 193
+  tests pass.
+- 2026-10-14, step 0 false-change detail for tram/metro/rail at the
+  recommended point: metro has 0 presumed-unchanged routes (IDFM/STAR
+  Rennes are restricted to known-case metro lines only, so every metro
+  route is a known case); tram has 20 presumed-unchanged, 2 flagged (`tcl_lyon`
+  `T4`, both dates, `cut`, 100% covered after cutting -- a real end
+  extension, not a mapping gap); rail has 194 presumed-unchanged, 65 flagged
+  (mostly SNCF TER/TGV/OCESN routes, `cut` or `dropped`, shares from 0% to
+  100%), consistent with rail inheriting metro's strict `geometry_share=0.7`
+  threshold on routes it was never calibrated against.
+- 2026-10-14, step 0 tram known-case failures (2 of 8, giving F1 0.92): (a)
+  `bordeaux_tram_f_rename` (route 164/F) is `cut` at both dates, not the
+  expected `kept-renamed`: 11 of its leading stops are not within range of
+  the matched relation "A" at either date (100% covered after cutting), so F
+  apparently extends beyond old A's historic tracks at its start, unlike E
+  (163), which is fully covered (0 stops cut) at both dates. (b)
+  `bordeaux_tram_a_airport` (route 59/A) is `kept` in 2022 (100% covered, no
+  cut) against an expected `cut`: OSM's "A" relation already carries the
+  full route geometry to the airport in the 2022-01-01 extract, suggesting
+  the track was mapped (or physically built) before the line's commercial
+  opening date used to set the known-case expectation. Both read as likely
+  mislabelled known-case assumptions (an OSM-vs-GTFS evidence question,
+  not a pipeline defect) rather than matching/verification bugs, pending the
+  user's confirmation of Bordeaux's actual track history.
+- 2026-10-14, step 0 TBM line 05/Liane 5 investigation and rejection,
+  flagged `dropped` in 2024 only (to_review). Confirmed **not** a ref-
+  normalisation issue: GTFS `route_short_name` "5" matches OSM `ref` "5"
+  exactly in both dated extracts (matching always uses `route_short_name`,
+  never the zero-padded internal GTFS `route_id` "05"); a repo-wide audit
+  found zero `route_short_name` values with a leading zero in any test
+  network, so `normalise_ref` needed no change and nothing else is affected.
+  Root cause: OSM gained two additional `ref='5'` relations by 2024
+  (16438549/16438550, "Lianes 5 -> Villenave-d'Ornon Courrejean", alongside
+  the original 2425811/2425812 "-> Piscine Chambery") -- a genuine route-
+  variant addition, not a mapping error. Because "05"/"Lianes 5" is BHNS-
+  classified, coverage only counts `busway`/`lanes:bus`-tagged ways, which
+  are sparsely mapped here: 2022 barely passed (a 3-stop remnant, 100%
+  covered after cutting, just clears bus's `theta=0.9`) and 2024 falls to
+  66.7% (4/6) after cutting. Added `PtChangeCatalogue.rejected` (with a
+  `notes` field) for candidates a reviewer has confirmed are false
+  positives; `_write_review_lists` now excludes `confirmed` *and*
+  `rejected` route keys so they are not re-surfaced on a rerun. TBM 05 was
+  moved from `to_review` into `rejected` with the finding above recorded.
+- 2026-10-14, step 0 "relations give identity, tracks give coverage"
+  decision (user-confirmed field corrections): known cases were wrong, not
+  the pipeline. Line F opened 2025-12-06 (did not exist 1 Jan 2022/2024;
+  `expected_2022`/`expected_2024` corrected from `kept-renamed` to `cut`,
+  kept only on stops served by whatever line's tracks were in service that
+  date); tram A ended at Merignac Centre on 1 Jan 2022, with the airport
+  branch opening in 2023 (its `cut`/`kept` expectation was already correct).
+  For tram, metro and rail only, coverage now checks any in-service
+  same-mode relation's ways on that date, not only the one(s) selected as
+  the route's identity match (`track_covered`, new CTE in
+  `_bulk_evaluation_sql`; bus/ferry unchanged). A synthetic regression
+  proves a stop is covered via an unmatched same-mode relation's track. Also
+  added, defensively: ways whose `opening_date`/`start_date` (full ISO or a
+  bare year) is after the snapshot date are excluded from `in_service` and
+  `bus_lane_in_service`; the SQL checks column existence first, so older
+  caches without these columns keep working unchanged (two new regression
+  tests in `tests/mobgrid/pt/test_relation_tables.py`, a new module).
+  Inspected the Bordeaux tram A airport-branch ways in the 2022-01-01
+  `_stages/ways_raw.parquet` (the raw OSM tags, not just the narrower
+  `ways.parquet` columns): none of its 207 member ways carry `construction`,
+  `opening_date` or `start_date` at all, so this specific case is a genuine
+  OSM-data gap (the track was mapped as ordinary `railway=tram` well before
+  the 2023 opening), not something the new filter or a re-extraction can
+  fix; `ways.parquet` still needed the two new columns added regardless (for
+  other lines), bumping its required-columns set again -- a further France
+  re-extraction (both dates, reusing cached stages, no PBF rescan) is
+  optional and only given below if wanted, not run automatically.
+- 2026-10-14, step 0 re-score from cached tables (no re-extraction), only
+  the grid-evaluation SQL changed (track_covered), so re-scoring reused the
+  existing `relation_tables` precompute cache directly via
+  `calibrate_relations`, skipping GTFS/EPCI reloading entirely (a few
+  seconds, not minutes). Result: tram known cases improved from 5/8 to
+  **7/8** (F1 0.92, only the Merignac/airport OSM-data gap above remains
+  wrong) and tram's false-change rate dropped from 10.00% to **0.00%**
+  (zero of 20 presumed-unchanged routes now wrongly flagged). Rail's
+  false-change rate dropped from 33.51% to **17.01%** (33 of 194
+  presumed-unchanged SNCF routes still cut or dropped, mostly `cut` with
+  a wide range of post-cut shares -- a remaining, smaller OSM rail-mapping
+  gap). Metro was unchanged (9/9, 0 presumed-unchanged, already restricted
+  to known-case lines only). `config/gtfs_rebuild.yaml`'s `chosen` block
+  did not need updating: every family's recommended `r_m`/`k`/`theta`/
+  `geometry_share` came out identical to before the fix.
+- 2026-10-14, step 0 rail default-kept and its own review cap, rail is
+  policy-equivalent to bus (`changes_after`/`removed_route_keys` already
+  only ever read `confirmed`, regardless of family). `_write_review_lists`
+  now computes `to_review` per family: bus/ferry combined keep their top-50
+  BHNS-then-trips cap; rail gets its own top-30-by-trips cap (no BHNS
+  concept), so it never competes with bus for the same 50 slots. In
+  practice no SNCF candidate currently reaches `to_review`: the network's
+  own OSM relation-match coverage is only 59% (2022) / 56% (2024), below
+  the shared 90% eligibility gate, so all 63 SNCF candidates land in
+  `not_applied` -- correct and expected, not a bug; the per-family cap will
+  bind once SNCF's coverage improves or another rail network is added.
+- 2026-10-14, step 0 candidate review reduction (section 5.6 point 3), the
+  flat 516-candidate list is replaced by `to_review` (candidates whose
+  network has >=90% OSM relation coverage on every date they were flagged,
+  ranked BHNS/express first then by reference-date trips, capped at 50) and
+  `not_applied` (every other candidate, with full evidence, never auto-
+  applied). `config/pt_changes.yaml`'s existing 516 candidates were migrated
+  into `not_applied` as a provisional bucket (schema-valid, nothing deleted),
+  since they were computed before BHNS classification existed and must be
+  regenerated by a fresh `calibrate` run to be correctly re-split.
+  `docs/data/step0_gtfs_rebuild.md` is marked stale for the same reason.
+- 2026-10-14, step 0 past-state sensitivity (section 11.4), added
+  `PtChangeCatalogue.removed_route_keys(state_date, sensitivity=...)`:
+  `"confirmed"` (default) subtracts only confirmed edits; the future past-
+  state builder can pass `"confirmed_and_candidates"` to additionally drop
+  every candidate (`to_review` or `not_applied`) whose outcome on that date
+  is `dropped`, for sensitivity testing; `kept-renamed` candidates are never
+  removed, since they describe a route kept on a different alignment.
+- 2026-10-14, step 0 open limitation, the bus/ferry false-change rate (above)
+  means neither the bus/ferry `chosen` calibration values nor a bulk
+  `not_applied` candidate should be trusted as ground truth without manual
+  review; the BHNS/90%-coverage changes reduce but do not eliminate this,
+  since most French bus lines are not BHNS and OSM bus-route mapping
+  completeness cannot be improved from this project. Validation: Ruff clean;
+  188 tests pass, 2 pilot tests deselected.
+- 2026-10-14, step 0 opening_date re-extraction impact check (read-only), the
+  user re-extracted both France ways.parquet caches with the opening_date/
+  start_date columns. A national scan found only 81 (2022-01-01) and 68
+  (2024-01-01) ways nationwide with an `opening_date`/`start_date` after
+  that cache's own snapshot date; of those, the only tram/metro/rail
+  relations affected are TER P53 (Hauts-de-France) in 2022 and Transilien
+  K/TER K15 (Paris-Crepy-en-Valois-Laon) in 2024 -- neither overlaps any of
+  the 5 test EPCIs. No known case, false-change figure or reported route
+  changes; the expensive national precompute rebuild (distances are not
+  read-only recoverable from the cached scalar tables; re-deriving them
+  would cost as much as the earlier ~40-minute ways.parquet rebuild) was
+  not run, since this bounded check already proves it would not matter.
+- 2026-10-14, step 0 Merignac airport branch confirmed, added
+  `bordeaux_tram_a_merignac_airport` (`type: pt_extend`, route `59`, opened
+  2023-04-01) to `pt_changes.yaml`'s `confirmed` list, recording that tram A
+  ended at Merignac Centre on 1 Jan 2022 and the airport branch is kept in
+  the 2024 state, with the OSM-tagged-before-opening data gap noted.
+  `PtChange` gained an optional `notes` field (mirroring
+  `PtChangeCandidate`) for this kind of methodological caveat. Open
+  limitation: `removed_route_keys()` still treats every confirmed change
+  the same way, regardless of `type` -- for a `pt_new_line` the whole route
+  is correctly absent before `opened`, but for a `pt_extend` it is *also*
+  fully removed rather than trimmed to its pre-extension stops; the actual
+  partial trim is expected to come from the calibration's own `cut`
+  start/end indices once the (not yet built) scenario engine applies
+  network edits, not from this simplified route-level sensitivity helper.
+- 2026-10-14, step 0 tram and metro thresholds confirmed, removed the
+  blanket `TODO(confirm)` from `config/gtfs_rebuild.yaml`; `tram`
+  (`r_m=25, k=1, theta=0.5, geometry_share=0.3`) and `metro` (`r_m=25,
+  k=2, theta=0.5, geometry_share=0.7`) are confirmed with their known-case
+  and false-change evidence recorded inline. `bus`, `ferry` and `rail` keep
+  a per-family `TODO(confirm)` comment stating they are screening/review
+  only and never applied automatically; `rail` additionally notes it
+  reuses metro's values for screening only (section 5.6 has no labelled
+  rail known case).
+- 2026-10-14, step 0 done. Method: match each 2026 route's main pattern by
+  normalised ref/name first, then by covered-stop geometry (multiple tied
+  relations, e.g. Bordeaux's old tram A onto 2026 lines E and F); verify
+  coverage for tram, metro and rail against any in-service same-mode
+  relation's track on that date, not only the identity match ("relations
+  give identity, tracks give coverage"); for tram/metro/rail, cut uncovered
+  end runs of length >= k before applying theta; bus and ferry are kept or
+  dropped only. Bus, ferry and rail are never applied automatically
+  (screening/review only, split into a coverage- and trip-ranked
+  `to_review` and a `not_applied` list, plus a `rejected` list for
+  reviewer-confirmed false positives); only `confirmed` edits reach a past
+  state by default, with a `confirmed_and_candidates` sensitivity option.
+  Known limitations: OSM sometimes tags a track as in service before its
+  documented opening date (a genuine data gap patched case by case through
+  `confirmed`, as for Merignac above, not detectable from tags alone when
+  absent, as confirmed for Bordeaux tram A's 2022 ways); bus and rail OSM
+  route-relation/way mapping is nationally incomplete, so their false-change
+  rates stay non-trivial (bus/ferry ~70%, rail ~17%) regardless of
+  parameters, which is why both remain manual-review-only rather than
+  auto-applied. Final validation: Ruff clean; 197 tests pass, 2 pilot tests
+  deselected.
 - 2026-10-09, bootstrap, use a four-member uv workspace with per-package setuptools metadata, so each package can be developed and installed independently.
 - 2026-10-09, bootstrap, keep the pilot's area, years, halo and data directories in YAML; validate generic formats and positive/unique values in Pydantic.
 - 2026-10-09, bootstrap, pin the project to Python 3.12 with `uv python pin 3.12` (writes `.python-version`); the sandbox's system Python (3.14) is only used to bootstrap `uv` itself. `.python-version` and `uv.lock` are committed so every agent and CI run uses the same interpreter and locked dependency set.

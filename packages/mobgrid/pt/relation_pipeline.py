@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import pickle
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -14,13 +15,19 @@ import pyarrow as pa
 
 from mobgrid.pt.calibrate import (
     load_all_network_patterns,
+    reduce_to_main_test_area_patterns,
 )
 from mobgrid.pt.config import GtfsRebuildConfig, ModeFamily
 from mobgrid.pt.epci import pattern_ids_within_epci
+from mobgrid.pt.relation_tables import (
+    CachedRouteRun,
+    PrecomputeSummary,
+    evaluate_cached_grid,
+    precompute_relation_tables,
+)
 from mobgrid.pt.route_calibration import FamilyScore, RouteEvaluation, score_family
 from mobgrid.pt.route_relations import (
     OSMRelation,
-    OSMWay,
     RelationMatch,
     RoutePattern,
     RouteResult,
@@ -30,7 +37,6 @@ from mobgrid.pt.route_relations import (
     match_route,
     qualify_fallback_stops,
 )
-from mobgrid.pt.stop_tables import read_osm_pt_stops_cache
 
 logger = logging.getLogger(__name__)
 _CALIBRATED_FAMILIES: tuple[ModeFamily, ...] = ("bus", "tram", "metro")
@@ -75,60 +81,39 @@ class RelationCalibrationRun:
     epci_routes: dict[str, set[tuple[str, str]]] = field(default_factory=dict)
 
 
-def _route_mode(route: str) -> str:
+def network_relation_coverage(
+    run: RelationCalibrationRun,
+) -> dict[tuple[str, str], float]:
+    """Share of each network/date's routes that found any OSM relation.
+
+    Computed over every family's final evaluation together (section 5.6
+    point 5's basis), at a finer grain than the 50% not-testable cutoff;
+    used to gate the 2026-10-14 review-list reduction at 90% coverage.
+    """
+    counts: dict[tuple[str, str], list[int]] = {}
+    for route in run.final_routes:
+        key = (route.network, route.date_key)
+        matched, total = counts.setdefault(key, [0, 0])
+        total += 1
+        if route.match.relation_ids:
+            matched += 1
+        counts[key] = [matched, total]
     return {
-        "bus": "bus",
-        "trolleybus": "bus",
-        "coach": "bus",
-        "tram": "tram",
-        "light_rail": "tram",
-        "subway": "metro",
-        "monorail": "metro",
-        "train": "rail",
-        "ferry": "ferry",
-    }[route]
+        key: (matched / total if total else 0.0)
+        for key, (matched, total) in counts.items()
+    }
 
 
-def load_osm_relations(
-    connection: duckdb.DuckDBPyConnection, directory: str | Path
-) -> list[OSMRelation]:
-    """Load one dated relation cache into compact matching records."""
-    root = Path(directory)
-    relation_rows = connection.execute(
-        "SELECT relation_id, ref, name, network, operator, route "
-        "FROM read_parquet(?)",
-        [str(root / "relations.parquet")],
-    ).fetchall()
-    ways_by_relation: dict[int, list[OSMWay]] = {}
-    for row in connection.execute(
-        "SELECT relation_id, points, railway, highway, construction, lifecycle "
-        "FROM read_parquet(?) ORDER BY relation_id, sequence",
-        [str(root / "ways.parquet")],
-    ).fetchall():
-        points = tuple((float(point["x"]), float(point["y"])) for point in row[1])
-        ways_by_relation.setdefault(row[0], []).append(
-            OSMWay(points, row[2], row[3], row[4], row[5])
-        )
-    stops_by_relation: dict[int, list[tuple[float, float]]] = {}
-    for relation_id, x, y in connection.execute(
-        "SELECT relation_id, x, y FROM read_parquet(?) "
-        "ORDER BY relation_id, sequence",
-        [str(root / "stops.parquet")],
-    ).fetchall():
-        stops_by_relation.setdefault(relation_id, []).append((x, y))
-    return [
-        OSMRelation(
-            relation_id,
-            ref,
-            name,
-            network,
-            operator,
-            _route_mode(route),
-            tuple(stops_by_relation.get(relation_id, ())),
-            tuple(ways_by_relation.get(relation_id, ())),
-        )
-        for relation_id, ref, name, network, operator, route in relation_rows
-    ]
+def _replace_checkpoint(temporary: Path, destination: Path) -> None:
+    """Atomically publish a checkpoint despite transient Windows file locks."""
+    for attempt in range(5):
+        try:
+            temporary.replace(destination)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def patterns_from_table(table: pa.Table) -> list[RoutePattern]:
@@ -349,27 +334,27 @@ def _rank(point: GridPoint) -> tuple[float, ...]:
 
 
 def calibrate_relations(
-    patterns: dict[str, list[RoutePattern]],
-    relations: dict[str, list[OSMRelation]],
+    connection: duckdb.DuckDBPyConnection,
+    precompute: PrecomputeSummary,
     config: GtfsRebuildConfig,
-    fallback_stops: dict[tuple[str, str], tuple[tuple[float, float], ...]]
-    | None = None,
     checkpoint_path: str | Path | None = None,
-) -> tuple[list[GridPoint], dict[str, GridPoint]]:
-    """Search each mode family, prioritising exact known cases then false changes."""
+) -> tuple[
+    list[GridPoint],
+    dict[str, GridPoint],
+    dict[
+        tuple[str, int, int, float, float],
+        tuple[list[CachedRouteRun], set[tuple[str, str]]],
+    ],
+]:
+    """Search the parameter grid using cached scalar tables only."""
     signature_payload = {
+        "format": "relation-table-grid-v1",
         "grid": config.calibration.model_dump(mode="json"),
-        "patterns": {
-            network: [
-                (pattern.pattern_id, pattern.trip_count)
-                for pattern in network_patterns
-            ]
-            for network, network_patterns in patterns.items()
-        },
-        "relations": {
-            date_key: [relation.relation_id for relation in date_relations]
-            for date_key, date_relations in relations.items()
-        },
+        "precompute": json.loads(
+            (precompute.cache_directory / "precompute.json").read_text(
+                encoding="utf-8"
+            )
+        ),
     }
     signature = hashlib.sha256(
         json.dumps(signature_payload, sort_keys=True).encode()
@@ -397,12 +382,29 @@ def calibrate_relations(
         for point in grid
     }
     chosen: dict[str, GridPoint] = {}
-    match_cache: dict[
-        tuple[str, str, str, int, float], RelationMatch
-    ] = {}
-    fallback_cache: dict[
-        tuple[str, str, int], tuple[tuple[float, float], ...]
-    ] = {}
+    total_points = (
+        len(_CALIBRATED_FAMILIES)
+        * len(config.calibration.r_m)
+        * len(config.calibration.k)
+        * len(config.calibration.theta)
+        * len(config.calibration.geometry_share)
+    )
+    run_started = time.perf_counter()
+    initial_completed = len(grid)
+    table_started = time.perf_counter()
+    evaluations = evaluate_cached_grid(
+        connection,
+        precompute,
+        config,
+        r_values=config.calibration.r_m,
+        k_values=config.calibration.k,
+        theta_values=config.calibration.theta,
+        geometry_values=config.calibration.geometry_share,
+    )
+    logger.info(
+        "evaluated cached route outcomes for the complete grid in %.1fs",
+        time.perf_counter() - table_started,
+    )
     for family in _CALIBRATED_FAMILIES:
         for r_m in config.calibration.r_m:
             for k in config.calibration.k:
@@ -411,18 +413,10 @@ def calibrate_relations(
                         key = (family, r_m, k, theta, geometry_share)
                         if key in completed:
                             continue
-                        runs, _ = evaluate_networks(
-                            patterns,
-                            relations,
-                            config,
-                            r_m=r_m,
-                            k=k,
-                            theta=theta,
-                            geometry_share=geometry_share,
-                            only_family=family,
-                            fallback_stops=fallback_stops,
-                            match_cache=match_cache,
-                            fallback_cache=fallback_cache,
+                        point_started = time.perf_counter()
+                        runs, _ = evaluations.get(
+                            key,
+                            ([], set()),
                         )
                         point = GridPoint(
                             family,
@@ -434,6 +428,26 @@ def calibrate_relations(
                         )
                         grid.append(point)
                         completed.add(key)
+                        pt_elapsed = time.perf_counter() - point_started
+                        new_completed = len(grid) - initial_completed
+                        mean_elapsed = (
+                            (time.perf_counter() - run_started) / new_completed
+                        )
+                        remaining = max(0, total_points - len(grid)) * mean_elapsed
+                        logger.info(
+                            "calibration point %s/%s: family=%s r=%s k=%s "
+                            "theta=%s geometry_share=%s in %.1fs "
+                            "(est. remaining %.1fs)",
+                            len(grid),
+                            total_points,
+                            family,
+                            r_m,
+                            k,
+                            theta,
+                            geometry_share,
+                            pt_elapsed,
+                            remaining,
+                        )
                         if checkpoint is not None:
                             checkpoint.parent.mkdir(parents=True, exist_ok=True)
                             temporary = checkpoint.with_suffix(".tmp")
@@ -442,14 +456,38 @@ def calibrate_relations(
                                     {"signature": signature, "grid": grid},
                                     stream,
                                 )
-                            temporary.replace(checkpoint)
+                            _replace_checkpoint(temporary, checkpoint)
     for point in grid:
         family = point.mode_family
         if family not in chosen or _rank(point) > _rank(chosen[family]):
             chosen[family] = point
-    chosen["rail"] = chosen["metro"]
+    # Rail reuses metro's parameters (section 5.6 has no labelled rail known
+    # case), but it is its own distinct family in `evaluations` (unlike
+    # ferry, which is always merged into "bus"), so its score must be
+    # recomputed on rail's own routes rather than aliasing metro's GridPoint
+    # (which would silently report metro's known-case/false-change numbers
+    # under the "rail" label).
+    rail_params = chosen["metro"]
+    rail_runs, _ = evaluations.get(
+        (
+            "rail",
+            rail_params.r_m,
+            rail_params.k,
+            rail_params.theta,
+            rail_params.geometry_share,
+        ),
+        ([], set()),
+    )
+    chosen["rail"] = GridPoint(
+        "rail",
+        rail_params.r_m,
+        rail_params.k,
+        rail_params.theta,
+        rail_params.geometry_share,
+        _family_score(rail_runs, "rail"),
+    )
     chosen["ferry"] = chosen["bus"]
-    return grid, chosen
+    return grid, chosen, evaluations
 
 
 def run_relation_calibration(
@@ -458,11 +496,21 @@ def run_relation_calibration(
     sources_yaml: str | Path,
     contours_path: str | Path,
     scratch_dir: str | Path,
+    *,
+    restrict_networks: list[str] | None = None,
 ) -> RelationCalibrationRun:
     """Load GTFS/caches, calibrate, and evaluate selected family parameters."""
     connection = duckdb.connect()
     tables, rural_coverage = load_all_network_patterns(
-        connection, config, gtfs_inventory_csv, contours_path, scratch_dir
+        connection,
+        config,
+        gtfs_inventory_csv,
+        contours_path,
+        scratch_dir,
+        restrict_networks,
+    )
+    tables = reduce_to_main_test_area_patterns(
+        connection, tables, config, contours_path
     )
     patterns = {
         network: patterns_from_table(table) for network, table in tables.items()
@@ -484,49 +532,57 @@ def run_relation_calibration(
                 for pattern_id in pattern_ids
                 if pattern_id in route_by_pattern
             )
-    relation_caches: dict[str, list[OSMRelation]] = {}
-    fallback_stops: dict[
-        tuple[str, str], tuple[tuple[float, float], ...]
-    ] = {}
-    for date_key, source_id in config.osm_source_ids.items():
+    route_cache_directories = {}
+    stop_cache_paths = {}
+    for date_key in config.osm_source_ids:
         cache = Path(config.osm_route_cache_root) / date_key
         if not (cache / "_SUCCESS.json").is_file():
             raise FileNotFoundError(
                 f"OSM relation cache missing for {date_key}: run extraction first"
             )
-        relation_caches[date_key] = load_osm_relations(connection, cache)
+        route_cache_directories[date_key] = cache
         stop_cache = Path(config.osm_cache_root) / f"{date_key}.parquet"
         if stop_cache.is_file():
-            rows = read_osm_pt_stops_cache(connection, stop_cache).fetchall()
-            for mode in ("tram", "metro", "rail"):
-                stops = tuple(
-                    (float(row[3]), float(row[4]))
-                    for row in rows
-                    if row[2] == mode
-                )
-                fallback_stops[(date_key, mode)] = stops
+            stop_cache_paths[date_key] = stop_cache
 
-    grid, chosen = calibrate_relations(
-        patterns,
-        relation_caches,
+    precompute_started = time.perf_counter()
+    precompute = precompute_relation_tables(
+        connection,
+        tables,
+        route_cache_directories,
+        stop_cache_paths,
+        Path(scratch_dir) / "relation_tables",
         config,
-        fallback_stops,
-        Path(scratch_dir) / "calibration_grid.pkl",
+        max_r_m=max(config.calibration.r_m),
+    )
+    logger.info(
+        "relation precompute: %s patterns, %s candidate relations, "
+        "%s distance rows, %s name rows in %.1fs",
+        precompute.pattern_count,
+        precompute.candidate_relation_count,
+        precompute.distance_count,
+        precompute.name_count,
+        time.perf_counter() - precompute_started,
+    )
+    grid, chosen, evaluations = calibrate_relations(
+        connection,
+        precompute,
+        config,
+        Path(scratch_dir) / "calibration_grid_tables.pkl",
     )
     final_routes: list[RouteRun] = []
     flagged: set[tuple[str, str]] = set()
-    for family in _CALIBRATED_FAMILIES:
+    for family in (*_CALIBRATED_FAMILIES, "rail"):
         point = chosen[family]
-        runs, family_flagged = evaluate_networks(
-            patterns,
-            relation_caches,
-            config,
-            r_m=point.r_m,
-            k=point.k,
-            theta=point.theta,
-            geometry_share=point.geometry_share,
-            only_family=family,
-            fallback_stops=fallback_stops,
+        runs, family_flagged = evaluations.get(
+            (
+                family,
+                point.r_m,
+                point.k,
+                point.theta,
+                point.geometry_share,
+            ),
+            ([], set()),
         )
         final_routes.extend(runs)
         flagged |= family_flagged

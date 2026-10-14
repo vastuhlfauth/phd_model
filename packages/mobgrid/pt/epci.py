@@ -38,7 +38,8 @@ def load_epci_polygons_3035(
         FROM (
             SELECT epci AS siren,
                    ST_Transform(
-                       ST_Union_Agg(geom), 'EPSG:4326', 'EPSG:3035', true
+                       ST_Union_Agg(ST_MakeValid(geom)),
+                       'EPSG:4326', 'EPSG:3035', true
                    ) AS geom
             FROM st_read('{Path(contours_path).as_posix()}')
             WHERE {siren_filter}
@@ -110,7 +111,8 @@ def filter_stops_to_contour_coverage(
                ST_XMax(geom) AS xmax, ST_YMax(geom) AS ymax
         FROM (
             SELECT ST_Transform(
-                ST_Union_Agg(geom), 'EPSG:4326', 'EPSG:3035', true
+                ST_Union_Agg(ST_MakeValid(geom)),
+                'EPSG:4326', 'EPSG:3035', true
             ) AS geom
             FROM st_read('{Path(contours_path).as_posix()}')
         )

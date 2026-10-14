@@ -6,7 +6,11 @@ import json
 
 import duckdb
 import pyarrow as pa
-from mobgrid.pt.epci import load_epci_polygons_3035, pattern_ids_within_epci
+from mobgrid.pt.epci import (
+    filter_stops_to_contour_coverage,
+    load_epci_polygons_3035,
+    pattern_ids_within_epci,
+)
 
 # A single square commune (0,0)-(1,1) degrees, belonging to EPCI "111111111",
 # and a disjoint commune far away belonging to EPCI "222222222".
@@ -36,6 +40,38 @@ _GEOJSON = {
 def _write_geojson(tmp_path) -> str:
     path = tmp_path / "communes.geojson"
     path.write_text(json.dumps(_GEOJSON), encoding="utf-8")
+    return str(path)
+
+
+def _write_invalid_geojson(tmp_path) -> str:
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"code": "00001", "epci": "111111111"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]],
+                        [[2, 2], [3, 2], [3, 3], [2, 3], [2, 2]],
+                    ],
+                },
+            },
+            {
+                "type": "Feature",
+                "properties": {"code": "00002", "epci": "222222222"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [[10, 10], [11, 10], [11, 11], [10, 11], [10, 10]]
+                    ],
+                },
+            },
+        ],
+    }
+    path = tmp_path / "invalid-communes.geojson"
+    path.write_text(json.dumps(geojson), encoding="utf-8")
     return str(path)
 
 
@@ -92,3 +128,36 @@ def test_pattern_ids_within_epci_returns_empty_for_no_match(tmp_path) -> None:
         "pattern_id": ["far"], "x": [outside[0]], "y": [outside[1]]
     })
     assert pattern_ids_within_epci(connection, pattern_stops, "222222222") == set()
+
+
+def test_filter_stops_repairs_invalid_contour_geometry(tmp_path) -> None:
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    inside = connection.execute("""
+        SELECT ST_X(point), ST_Y(point)
+        FROM (
+            SELECT ST_Transform(
+                ST_Point(0.5, 0.5), 'EPSG:4326', 'EPSG:3035', true
+            ) AS point
+        )
+    """).fetchone()
+    outside = connection.execute("""
+        SELECT ST_X(point), ST_Y(point)
+        FROM (
+            SELECT ST_Transform(
+                ST_Point(5.0, 5.0), 'EPSG:4326', 'EPSG:3035', true
+            ) AS point
+        )
+    """).fetchone()
+    pattern_stops = pa.table({
+        "pattern_id": ["inside", "outside"],
+        "stop_sequence": [1, 1],
+        "x": [inside[0], outside[0]],
+        "y": [inside[1], outside[1]],
+    })
+
+    filtered = filter_stops_to_contour_coverage(
+        connection, pattern_stops, _write_invalid_geojson(tmp_path)
+    )
+
+    assert filtered.column("pattern_id").to_pylist() == ["inside"]

@@ -2,6 +2,7 @@
 
 import duckdb
 from mobgrid.pt.osm_route_extraction import (
+    _invalidate_stale_ways_cache,
     configure_extraction_connection,
     memory_limit_gib,
     relation_members,
@@ -34,4 +35,48 @@ def test_relation_members_preserve_types_roles_and_order() -> None:
         ("node", 200, "stop"),
         ("way", 300, "platform"),
     ]
+
+
+def test_invalidate_stale_ways_cache_deletes_missing_lifecycle_date_columns(
+    tmp_path,
+) -> None:
+    connection = duckdb.connect()
+    stale = tmp_path / "ways.parquet"
+    connection.execute(
+        """
+        COPY (
+            SELECT 1 AS relation_id, 1 AS sequence, '' AS role, 1 AS way_id,
+                   'tram' AS railway, NULL::VARCHAR AS highway,
+                   NULL::VARCHAR AS busway, NULL::VARCHAR AS lanes_bus,
+                   NULL::VARCHAR AS construction, false AS lifecycle,
+                   []::STRUCT(x DOUBLE, y DOUBLE)[] AS points,
+                   NULL::BLOB AS geometry
+        ) TO ? (FORMAT PARQUET)
+        """,
+        [str(stale)],
+    )
+    _invalidate_stale_ways_cache(connection, stale)
+    assert not stale.is_file()
+
+
+def test_invalidate_stale_ways_cache_keeps_up_to_date_file(tmp_path) -> None:
+    connection = duckdb.connect()
+    fresh = tmp_path / "ways.parquet"
+    connection.execute(
+        """
+        COPY (
+            SELECT 1 AS relation_id, 1 AS sequence, '' AS role, 1 AS way_id,
+                   'tram' AS railway, NULL::VARCHAR AS highway,
+                   NULL::VARCHAR AS busway, NULL::VARCHAR AS lanes_bus,
+                   NULL::VARCHAR AS construction,
+                   NULL::VARCHAR AS opening_date, NULL::VARCHAR AS start_date,
+                   false AS lifecycle,
+                   []::STRUCT(x DOUBLE, y DOUBLE)[] AS points,
+                   NULL::BLOB AS geometry
+        ) TO ? (FORMAT PARQUET)
+        """,
+        [str(fresh)],
+    )
+    _invalidate_stale_ways_cache(connection, fresh)
+    assert fresh.is_file()
 

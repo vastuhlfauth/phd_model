@@ -1,72 +1,76 @@
-# GTFS rebuilding test (section 5.6 / step 0 of section 14.5).
-#
-# Score table, per-case results and the calibration rationale are written to
-# docs/data/step0_gtfs_rebuild.md by packages/mobgrid/pt/gtfs_rebuild.py.
-
-# Representative school-period weekday of the 2026 feeds (Tuesday), inside
-# every test network's configured GTFS validity window and before the 2026
-# Toussaint school holidays (both states use the same date; only the dated
-# OSM extract differs).
-reference_date: "2026-10-13"
-
-# OSM lifecycle prefixes excluded from stop extraction (section 5.6, point 1).
+reference_date: '2026-10-13'
 osm_lifecycle_prefixes:
-  - construction
-  - proposed
-  - disused
-  - abandoned
-
-# config/sources.yaml ids of the two dated France OSM extracts.
+- construction
+- proposed
+- disused
+- abandoned
 osm_source_ids:
-  "2022-01-01": osm-2022
-  "2024-01-01": osm-2024
-
-# Cached Parquet of extracted OSM public-transport stops, one file per date;
-# written once, read afterwards (never re-reads the PBF).
+  '2022-01-01': osm-2022
+  '2024-01-01': osm-2024
 osm_cache_root: data/interim/osm_pt_stops
 osm_route_cache_root: data/interim/osm_pt_routes
-
 calibration:
-  r_m: [25, 50, 100]
-  theta: [0.5, 0.6, 0.7, 0.8, 0.9]
-  k: [1, 2, 3]
-  geometry_share: [0.3, 0.5, 0.7]
-
-# Recommended by the calibration script; TODO(confirm) after reading
-# docs/data/step0_gtfs_rebuild.md.
-# TODO(confirm): recommended by the calibration script of 2026-10-12; bus has
-# a very weak fit (F1 <= 0.02 at every grid point) and should not be trusted
-# without manual review -- see the "Known limitation, bus family" note in
-# docs/data/step0_gtfs_rebuild.md before confirming.
+  r_m:
+  - 25
+  - 50
+  - 100
+  theta:
+  - 0.5
+  - 0.6
+  - 0.7
+  - 0.8
+  - 0.9
+  k:
+  - 1
+  - 2
+  - 3
+  geometry_share:
+  - 0.3
+  - 0.5
+  - 0.7
 chosen:
   bus:
-    r_m: null
-    k: null
-    geometry_share: null
-    theta: null
-  tram:
-    r_m: null
-    k: null
-    geometry_share: null
-    theta: null
-  metro:
-    r_m: null
-    k: null
-    geometry_share: null
-    theta: null
-  rail:
-    r_m: null
-    k: null
-    geometry_share: null
-    theta: null
+    # TODO(confirm): screening only; bus is never applied automatically
+    # (section 5.6 2026-10-14 decision) because its false-change rate stays
+    # high at every grid point (an OSM bus-route mapping-completeness gap,
+    # not a tuning issue). Candidates go to config/pt_changes.yaml's
+    # to_review/not_applied for manual confirmation.
+    r_m: 100
+    k: 1
+    geometry_share: 0.3
+    theta: 0.9
   ferry:
-    r_m: null
-    k: null
-    geometry_share: null
-    theta: null
-
-# transport.data.gouv.fr GTFS resource ids, resolved to local paths through
-# config/gtfs_inventory.csv at run time.
+    # TODO(confirm): screening only; same rule as bus (never auto-applied).
+    r_m: 100
+    k: 1
+    geometry_share: 0.3
+    theta: 0.9
+  metro:
+    # Confirmed 2026-10-14: known cases 9/9, F1 1.00, 0 presumed-unchanged
+    # routes (IDFM/STAR Rennes are restricted to known-case metro lines).
+    r_m: 25
+    k: 2
+    geometry_share: 0.7
+    theta: 0.5
+  rail:
+    # TODO(confirm): screening only, for manual review; rail is never
+    # applied automatically (same policy as bus). Reuses metro's values
+    # above because section 5.6 has no labelled rail known case; its own
+    # false-change rate (17.01% of 194 presumed-unchanged SNCF routes,
+    # 2026-10-14) reflects a separate, smaller OSM rail-mapping gap.
+    r_m: 25
+    k: 2
+    geometry_share: 0.7
+    theta: 0.5
+  tram:
+    # Confirmed 2026-10-14: known cases 7/8, F1 0.92, false-change 0.00% of
+    # 20 presumed-unchanged routes. The one remaining known-case mismatch
+    # (Bordeaux tram A, 2022) is a documented OSM data gap, not a parameter
+    # issue (see docs/progress.md).
+    r_m: 25
+    k: 1
+    geometry_share: 0.3
+    theta: 0.5
 networks:
   tbm_bordeaux:
     resource_id: 83024
@@ -79,9 +83,8 @@ networks:
     notes: Restricted to the route_type=1 metro lines of the known cases.
   star_rennes:
     resource_id: 83281
-    notes: >-
-      Version valid at reference_date (83282 starts the day after);
-      restricted to route_type=1 metro lines a/b.
+    notes: Version valid at reference_date (83282 starts the day after); restricted
+      to route_type=1 metro lines a/b.
   lio_occitanie:
     resource_id: 81026
     notes: Restricted to patterns intersecting the two rural test EPCIs.
@@ -91,153 +94,149 @@ networks:
   sncf:
     resource_id: 83582
     notes: Rail, manual review only; restricted to the five test EPCIs.
-
 test_epcis:
   bordeaux_metropole:
-    siren: "243300316"
+    siren: '243300316'
     network: tbm_bordeaux
   metropole_de_lyon:
-    siren: "200046977"
+    siren: '200046977'
     network: tcl_lyon
   sete_agglopole_mediterranee:
-    siren: "200066355"
+    siren: '200066355'
     network: sete_agglopole
   couserans_pyrenees:
-    siren: "200067940"
-    notes: >-
-      No network of its own (section 5.6); coverage checked spatially via
-      liO/Remi stops inside the 2026 EPCI polygon.
+    siren: '200067940'
+    notes: No network of its own (section 5.6); coverage checked spatially via liO/Remi
+      stops inside the 2026 EPCI polygon.
   marche_occitane_val_danglin:
-    siren: "200035137"
+    siren: '200035137'
     notes: Same as Couserans-Pyrenees.
-
 manual_review_networks:
-  - sncf
-
-# Known changes of section 5.6's calibration table. Routes of the above
-# networks not listed here default to expected "kept" at both state dates.
+- sncf
 known_cases:
-  - id: bordeaux_tram_a_airport
-    network: tbm_bordeaux
-    route_id: "59"
-    mode_family: tram
-    epci: bordeaux_metropole
-    opened: "2023-04-01"
-    expected_2022: cut
-    expected_2024: kept
-    notes: Tram A extended to the airport, about 5 km, 5 stations.
-  - id: bordeaux_tram_e_rename
-    network: tbm_bordeaux
-    route_id: E
-    mode_family: tram
-    epci: bordeaux_metropole
-    opened: "2025-12-01"
-    expected_2022: kept-renamed
-    expected_2024: kept-renamed
-    notes: 2026 line E uses the old tram A tracks.
-  - id: bordeaux_tram_f_rename
-    network: tbm_bordeaux
-    route_id: F
-    mode_family: tram
-    epci: bordeaux_metropole
-    opened: "2025-12-01"
-    expected_2022: kept-renamed
-    expected_2024: kept-renamed
-    notes: 2026 line F uses the old tram A tracks.
-  - id: bordeaux_bus_express_g
-    network: tbm_bordeaux
-    route_id: "901"
-    mode_family: bus
-    epci: bordeaux_metropole
-    opened: "2024-06-01"
-    expected_2022: dropped
-    expected_2024: dropped
-    notes: Bus Express G (BHNS), Saint-Jean - Saint-Aubin-de-Medoc.
-  - id: bordeaux_bus_express_h1
-    network: tbm_bordeaux
-    route_id: "911"
-    mode_family: bus
-    epci: bordeaux_metropole
-    opened: "2025-01-01"
-    expected_2022: dropped
-    expected_2024: dropped
-    notes: Circular Bus Express H (temporary routes), opened 2025.
-  - id: bordeaux_bus_express_h2
-    network: tbm_bordeaux
-    route_id: "912"
-    mode_family: bus
-    epci: bordeaux_metropole
-    opened: "2025-01-01"
-    expected_2022: dropped
-    expected_2024: dropped
-    notes: Circular Bus Express H (temporary routes), opened 2025.
-  - id: lyon_tram_t6_extension
-    network: tcl_lyon
-    route_id: T6
-    mode_family: tram
-    epci: metropole_de_lyon
-    opened: "2026-02-14"
-    expected_2022: cut
-    expected_2024: cut
-    notes: Tram T6 extended north, Hopitaux-Est - La Doua, 5.4 km, 10 stations.
-  - id: lyon_bhns_part_dieu_sept_chemins
-    network: tcl_lyon
-    route_id: "125"
-    mode_family: bus
-    epci: metropole_de_lyon
-    opened: null
-    expected_2022: null
-    expected_2024: null
-    notes: >-
-      TODO(confirm): [TO CONFIRM: opening date], section 5.6. Best-matching
-      current route (Gare Part-Dieu Vivier-Merle - Bron Sept-Chemins);
-      reported for manual review only, not scored.
-  - id: sete_express_bus_a
-    network: sete_agglopole
-    route_id: A
-    mode_family: bus
-    epci: sete_agglopole_mediterranee
-    opened: "2026-01-05"
-    expected_2022: dropped
-    expected_2024: dropped
-    notes: Express bus line A with the RD2 bus-priority corridor.
-  - id: paris_metro_14_orly
-    network: idfm
-    route_id: "IDFM:C01384"
-    mode_family: metro
-    opened: "2024-06-01"
-    expected_2022: cut
-    expected_2024: cut
-    notes: Line 14 extended south to Orly.
-  - id: paris_metro_11_rosny
-    network: idfm
-    route_id: "IDFM:C01381"
-    mode_family: metro
-    opened: "2024-06-01"
-    expected_2022: cut
-    expected_2024: cut
-    notes: Line 11 extended to Rosny-Bois-Perrier.
-  - id: paris_metro_4_bagneux
-    network: idfm
-    route_id: "IDFM:C01374"
-    mode_family: metro
-    opened: "2022-01-01"
-    expected_2022: cut
-    expected_2024: kept
-    notes: Line 4 extended to Bagneux.
-  - id: paris_metro_12_aubervilliers
-    network: idfm
-    route_id: "IDFM:C01382"
-    mode_family: metro
-    opened: "2022-05-01"
-    expected_2022: cut
-    expected_2024: kept
-    notes: Line 12 extended to Mairie d'Aubervilliers.
-  - id: rennes_metro_line_b
-    network: star_rennes
-    route_id: 7-1002
-    mode_family: metro
-    opened: "2022-09-01"
-    expected_2022: dropped
-    expected_2024: kept
-    notes: Rennes metro line b, absent 1 Jan 2022, present 1 Jan 2024.
+- id: bordeaux_tram_a_airport
+  network: tbm_bordeaux
+  route_id: '59'
+  mode_family: tram
+  epci: bordeaux_metropole
+  opened: '2023-04-01'
+  expected_2022: cut
+  expected_2024: kept
+  notes: Tram A extended to the airport, about 5 km, 5 stations.
+- id: bordeaux_tram_e_rename
+  network: tbm_bordeaux
+  route_id: E
+  mode_family: tram
+  epci: bordeaux_metropole
+  opened: '2025-12-01'
+  expected_2022: kept-renamed
+  expected_2024: kept-renamed
+  notes: 2026 line E uses the old tram A tracks.
+- id: bordeaux_tram_f_rename
+  network: tbm_bordeaux
+  route_id: F
+  mode_family: tram
+  epci: bordeaux_metropole
+  opened: '2025-12-01'
+  expected_2022: cut
+  expected_2024: cut
+  notes: >-
+    Line F did not exist on 1 Jan 2022 or 1 Jan 2024 (opened 2025-12-06);
+    only kept on stops served by whichever line's tram tracks were in
+    service on that date.
+- id: bordeaux_bus_express_g
+  network: tbm_bordeaux
+  route_id: '901'
+  mode_family: bus
+  epci: bordeaux_metropole
+  opened: '2024-06-01'
+  expected_2022: dropped
+  expected_2024: dropped
+  notes: Bus Express G (BHNS), Saint-Jean - Saint-Aubin-de-Medoc.
+- id: bordeaux_bus_express_h1
+  network: tbm_bordeaux
+  route_id: '911'
+  mode_family: bus
+  epci: bordeaux_metropole
+  opened: '2025-01-01'
+  expected_2022: dropped
+  expected_2024: dropped
+  notes: Circular Bus Express H (temporary routes), opened 2025.
+- id: bordeaux_bus_express_h2
+  network: tbm_bordeaux
+  route_id: '912'
+  mode_family: bus
+  epci: bordeaux_metropole
+  opened: '2025-01-01'
+  expected_2022: dropped
+  expected_2024: dropped
+  notes: Circular Bus Express H (temporary routes), opened 2025.
+- id: lyon_tram_t6_extension
+  network: tcl_lyon
+  route_id: T6
+  mode_family: tram
+  epci: metropole_de_lyon
+  opened: '2026-02-14'
+  expected_2022: cut
+  expected_2024: cut
+  notes: Tram T6 extended north, Hopitaux-Est - La Doua, 5.4 km, 10 stations.
+- id: lyon_bhns_part_dieu_sept_chemins
+  network: tcl_lyon
+  route_id: '125'
+  mode_family: bus
+  epci: metropole_de_lyon
+  opened: null
+  expected_2022: null
+  expected_2024: null
+  notes: 'TODO(confirm): [TO CONFIRM: opening date], section 5.6. Best-matching current
+    route (Gare Part-Dieu Vivier-Merle - Bron Sept-Chemins); reported for manual review
+    only, not scored.'
+- id: sete_express_bus_a
+  network: sete_agglopole
+  route_id: A
+  mode_family: bus
+  epci: sete_agglopole_mediterranee
+  opened: '2026-01-05'
+  expected_2022: dropped
+  expected_2024: dropped
+  notes: Express bus line A with the RD2 bus-priority corridor.
+- id: paris_metro_14_orly
+  network: idfm
+  route_id: IDFM:C01384
+  mode_family: metro
+  opened: '2024-06-01'
+  expected_2022: cut
+  expected_2024: cut
+  notes: Line 14 extended south to Orly.
+- id: paris_metro_11_rosny
+  network: idfm
+  route_id: IDFM:C01381
+  mode_family: metro
+  opened: '2024-06-01'
+  expected_2022: cut
+  expected_2024: cut
+  notes: Line 11 extended to Rosny-Bois-Perrier.
+- id: paris_metro_4_bagneux
+  network: idfm
+  route_id: IDFM:C01374
+  mode_family: metro
+  opened: '2022-01-01'
+  expected_2022: cut
+  expected_2024: kept
+  notes: Line 4 extended to Bagneux.
+- id: paris_metro_12_aubervilliers
+  network: idfm
+  route_id: IDFM:C01382
+  mode_family: metro
+  opened: '2022-05-01'
+  expected_2022: cut
+  expected_2024: kept
+  notes: Line 12 extended to Mairie d'Aubervilliers.
+- id: rennes_metro_line_b
+  network: star_rennes
+  route_id: 7-1002
+  mode_family: metro
+  opened: '2022-09-01'
+  expected_2022: dropped
+  expected_2024: kept
+  notes: Rennes metro line b, absent 1 Jan 2022, present 1 Jan 2024.

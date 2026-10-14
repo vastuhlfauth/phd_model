@@ -70,6 +70,7 @@ class RoutePattern:
     agency_name: str | None
     trip_count: int
     stops: tuple[tuple[float, float], ...]
+    is_bhns: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,27 @@ def normalise_ref(value: str | None) -> str:
     text = re.sub(r"^\s*(?:ligne|line)\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^\s*[tml]\s*[-.:]?\s*(?=[a-z0-9])", "", text, flags=re.I)
     return re.sub(r"[^a-z0-9]+", "", text.casefold())
+
+
+_BHNS_KEYWORDS = ("express", "bhns", "liane", "chronobus")
+
+
+def classify_bhns(
+    short_name: str | None,
+    long_name: str | None,
+    description: str | None = None,
+) -> bool:
+    """Identify BHNS/express bus routes from their name or description.
+
+    Matches ``Express``, ``BHNS``, ``Lianes``/``Liane`` and ``Chronobus``
+    (case- and diacritics-insensitive) in the short name, long name or GTFS
+    ``route_desc``; these routes are verified like trams (section 5.6 point
+    2 of the 2026-10-14 decision), not with the plain bus kept/dropped rule.
+    """
+    haystack = _normalise_text(
+        " ".join(value for value in (short_name, long_name, description) if value)
+    )
+    return any(keyword in haystack for keyword in _BHNS_KEYWORDS)
 
 
 def _point_segment_distance(

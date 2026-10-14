@@ -340,6 +340,11 @@ def load_gtfs_patterns(
         if "route_long_name" in route_columns
         else "CAST(NULL AS VARCHAR)"
     )
+    description = (
+        "routes.route_desc"
+        if "route_desc" in route_columns
+        else "CAST(NULL AS VARCHAR)"
+    )
     agency_join = (
         f"LEFT JOIN agency ON {agency_id} = agency.agency_id"
         if "agency_id" in agency_columns and "agency_id" in route_columns
@@ -387,6 +392,7 @@ def load_gtfs_patterns(
                    AS transport_mode,
                {short_name} AS route_short_name,
                {long_name} AS route_long_name,
+               {description} AS route_desc,
                agency.agency_name,
                patterns.trip_count,
                CAST(ordinal AS INTEGER) AS stop_sequence,

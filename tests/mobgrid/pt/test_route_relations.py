@@ -5,6 +5,7 @@ from mobgrid.pt.route_relations import (
     OSMWay,
     RoutePattern,
     choose_main_patterns,
+    classify_bhns,
     classify_network,
     evaluate_route,
     match_route,
@@ -183,3 +184,12 @@ def test_fixed_guideway_fallback_requires_in_service_same_mode_track() -> None:
         fallback_stops=qualified,
     )
     assert result.outcome == "kept"
+
+
+def test_classify_bhns_matches_keywords_case_and_accent_insensitively() -> None:
+    assert classify_bhns("12", "Ligne Express Centre-Gare", None)
+    assert classify_bhns("BHNS A", "Liaison nord", None)
+    assert classify_bhns("L3", "Liane 3", None)
+    assert classify_bhns("C1", "CHRONOBUS", None)
+    assert classify_bhns("12", "Boulevard urbain", "Ligne express saisonniere")
+    assert not classify_bhns("12", "Boulevard urbain", None)

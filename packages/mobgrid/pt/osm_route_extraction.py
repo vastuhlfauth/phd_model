@@ -146,6 +146,41 @@ def _stage(
     temporary.replace(path)
 
 
+_WAYS_REQUIRED_COLUMNS = frozenset((
+    "relation_id", "sequence", "role", "way_id", "railway", "highway",
+    "busway", "lanes_bus", "construction", "opening_date", "start_date",
+    "lifecycle", "points", "geometry",
+))
+
+
+def _invalidate_stale_ways_cache(
+    connection: duckdb.DuckDBPyConnection, path: Path
+) -> None:
+    """Delete a cached ``ways.parquet`` missing newly required columns.
+
+    Keeps ``ways_raw.parquet``/``nodes_raw.parquet``/``members.parquet``
+    (the expensive PBF-scan stages) untouched, so a schema upgrade such as
+    adding bus-infrastructure tag columns only redoes the cheap final join,
+    not the national PBF scan.
+    """
+    if not path.is_file():
+        return
+    existing = {
+        row[0]
+        for row in connection.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{_sql_path(path)}')"
+        ).fetchall()
+    }
+    if not _WAYS_REQUIRED_COLUMNS <= existing:
+        logger.info(
+            "ways.parquet schema is stale (missing %s), rebuilding from "
+            "cached stages: %s",
+            _WAYS_REQUIRED_COLUMNS - existing,
+            path,
+        )
+        path.unlink()
+
+
 def _route_filter_sql() -> str:
     route_types = ", ".join(f"'{route_type}'" for route_type in _ROUTE_TYPES)
     return (
@@ -230,6 +265,7 @@ def extract_osm_pt_routes(
         "tags['network'] AS network, tags['operator'] AS operator, "
         f"tags['route'] AS route FROM read_parquet('{relations_source}')",
     )
+    _invalidate_stale_ways_cache(connection, output / "ways.parquet")
     _stage(
         connection,
         output / "ways.parquet",
@@ -248,7 +284,11 @@ def extract_osm_pt_routes(
         SELECT relation_id, sequence, role, way_id,
                any_value(tags['railway']) AS railway,
                any_value(tags['highway']) AS highway,
+               any_value(tags['busway']) AS busway,
+               any_value(tags['lanes:bus']) AS lanes_bus,
                any_value(tags['construction']) AS construction,
+               any_value(tags['opening_date']) AS opening_date,
+               any_value(tags['start_date']) AS start_date,
                bool_or(len(list_filter(map_keys(tags), key ->
                    starts_with(key, 'construction:')
                    OR starts_with(key, 'proposed:')

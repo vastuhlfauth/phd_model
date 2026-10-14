@@ -4,8 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from mobgrid.pt.config import GtfsRebuildConfig
-from mobgrid.pt.relation_pipeline import GridPoint, RelationCalibrationRun, RouteRun
+from mobgrid.pt.relation_pipeline import (
+    GridPoint,
+    RelationCalibrationRun,
+    RouteRun,
+    network_relation_coverage,
+)
 
 
 def _recommended(run: RelationCalibrationRun) -> str:
@@ -169,10 +176,112 @@ def _rail_review(run: RelationCalibrationRun) -> str:
     return f"{checks}\n\n{_changed_routes(rail)}"
 
 
+def _bus_coverage_table(run: RelationCalibrationRun) -> str:
+    coverage = network_relation_coverage(run)
+    if not coverage:
+        return "_No bus/ferry route evaluated._"
+    lines = [
+        "| Network | Date | Matched routes | Total routes | Coverage |",
+        "|---|---|---:|---:|---:|",
+    ]
+    counts: dict[tuple[str, str], list[int]] = {}
+    for route in run.final_routes:
+        if route.pattern.mode not in ("bus", "ferry"):
+            continue
+        key = (route.network, route.date_key)
+        matched, total = counts.setdefault(key, [0, 0])
+        total += 1
+        if route.match.relation_ids:
+            matched += 1
+        counts[key] = [matched, total]
+    for (network, date_key), (matched, total) in sorted(counts.items()):
+        share = matched / total if total else 0.0
+        lines.append(
+            f"| {network} | {date_key} | {matched} | {total} | {share:.0%} |"
+        )
+    return "\n".join(lines)
+
+
+def _bhns_classification(run: RelationCalibrationRun) -> str:
+    seen: dict[tuple[str, str], RouteRun] = {}
+    for route in run.final_routes:
+        if route.pattern.mode == "bus" and route.pattern.is_bhns:
+            key = (route.network, route.pattern.route_id)
+            if key not in seen or (
+                route.result.covered_share > seen[key].result.covered_share
+            ):
+                seen[key] = route
+    if not seen:
+        return "_No route matched the BHNS/express keywords._"
+    lines = [
+        "| Network | Route | Short name | Long name | Share of stops on bus "
+        "infrastructure |",
+        "|---|---|---|---|---:|",
+    ]
+    for (network, route_id), route in sorted(seen.items()):
+        lines.append(
+            f"| {network} | {route_id} | {route.pattern.short_name or '-'} | "
+            f"{route.pattern.long_name or '-'} | "
+            f"{route.result.covered_share:.0%} |"
+        )
+    return "\n".join(lines)
+
+
+def _candidate_review_section(pt_changes_path: str | Path) -> str:
+    path = Path(pt_changes_path)
+    if not path.is_file():
+        return "_No calibration has written `config/pt_changes.yaml` yet._"
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    to_review = raw.get("to_review", [])
+    not_applied = raw.get("not_applied", [])
+    lines = [f"Full evidence for every candidate is in `{path}`.", ""]
+    lines.append(
+        f"### To review ({len(to_review)} of up to 50, networks with "
+        "coverage >= 90%, ranked BHNS/express first then by trips)"
+    )
+    if to_review:
+        lines.append(
+            "\n| Network | Route | BHNS | Trips | Pass | Outcomes by date | "
+            "Covered share |"
+        )
+        lines.append("|---|---|---|---:|---|---|---:|")
+        for candidate in to_review:
+            outcomes = ", ".join(
+                f"{date}: {outcome}"
+                for date, outcome in candidate["outcomes_by_date"].items()
+            )
+            lines.append(
+                f"| {candidate['network']} | {candidate['route_id']} | "
+                f"{'yes' if candidate.get('is_bhns') else 'no'} | "
+                f"{candidate.get('trip_count', 0)} | "
+                f"{candidate['match_pass'] or '-'} | {outcomes} | "
+                f"{candidate['covered_share']:.0%} |"
+            )
+    else:
+        lines.append("\n_None eligible._")
+    lines.append(
+        f"\n### Not applied ({len(not_applied)} candidates kept as evidence, "
+        "never auto-applied)"
+    )
+    by_network: dict[str, int] = {}
+    for candidate in not_applied:
+        by_network[candidate["network"]] = by_network.get(candidate["network"], 0) + 1
+    if by_network:
+        lines.append("")
+        lines.extend(
+            f"- `{network}`: {count}" for network, count in sorted(by_network.items())
+        )
+    else:
+        lines.append("\n_None._")
+    return "\n".join(lines)
+
+
 def write_report(
     run: RelationCalibrationRun,
     config: GtfsRebuildConfig,
     path: str | Path,
+    *,
+    pt_changes_path: str | Path = "config/pt_changes.yaml",
 ) -> None:
     """Write all calibration evidence required by section 5.6."""
     text = f"""# Step 0: GTFS rebuilding test (section 5.6)
@@ -181,6 +290,17 @@ This implementation replaces the stop-only test with **name matching followed
 by geometry matching**, then spatially verifies the matched relation portions.
 Results come from each route's most-travelled pattern on
 **{config.reference_date}**.
+
+## Bus and ferry policy (2026-10-14 decision)
+
+Every 2026 bus and ferry route is kept in both past states by default; only
+`confirmed` entries of `config/pt_changes.yaml` are ever applied. BHNS/express
+routes are the one exception: they are identified by name or description
+(`Express`, `BHNS`, `Liane(s)`, `Chronobus`) and verified like a tram, cut at
+uncovered ends before `theta`, using dedicated bus infrastructure in OSM
+(`highway=busway`/`bus_guideway`, `busway=*`, `lanes:bus=*`, not under
+construction or proposed) instead of the regular kept/dropped rule. All other
+detected bus/ferry changes are candidates for manual review only (see below).
 
 ## Recommended parameters
 
@@ -204,6 +324,21 @@ false-change rate is the share of other test-area routes presumed unchanged
 that were incorrectly cut or dropped; `kept-renamed` is not a false change.
 
 {_score_table(run.grid)}
+
+## Bus and ferry OSM relation coverage, by network and date
+
+Share of each network's main patterns that found any OSM relation by name or
+geometry; the review-list eligibility filter below requires at least 90%.
+
+{_bus_coverage_table(run)}
+
+## BHNS/express bus classification
+
+{_bhns_classification(run)}
+
+## Candidate route changes for manual review
+
+{_candidate_review_section(pt_changes_path)}
 
 ## Routes requiring review, by test EPCI
 

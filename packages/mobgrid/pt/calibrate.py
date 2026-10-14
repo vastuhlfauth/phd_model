@@ -69,6 +69,7 @@ def load_all_network_patterns(
     gtfs_inventory_csv: str | Path,
     contours_path: str | Path,
     scratch_dir: str | Path,
+    restrict_networks: list[str] | None = None,
 ) -> tuple[dict[str, pa.Table], dict[str, dict[str, int]]]:
     """Load every configured network's patterns, restricting regional feeds.
 
@@ -91,6 +92,8 @@ def load_all_network_patterns(
     }
     tables: dict[str, pa.Table] = {}
     for key, network in config.networks.items():
+        if restrict_networks is not None and key not in restrict_networks:
+            continue
         local_path = resolve_gtfs_local_path(gtfs_inventory_csv, network.resource_id)
         table_dir = Path(scratch_dir) / key
         extract_gtfs_tables(local_path, table_dir)
@@ -140,6 +143,66 @@ def load_all_network_patterns(
                     connection, tables[key], contours_path
                 )
     return tables, coverage
+
+
+def reduce_to_main_test_area_patterns(
+    connection: duckdb.DuckDBPyConnection,
+    tables: dict[str, pa.Table],
+    config: GtfsRebuildConfig,
+    contours_path: str | Path,
+) -> dict[str, pa.Table]:
+    """Keep one main pattern per route in a test EPCI, plus known cases."""
+    load_epci_polygons_3035(
+        connection,
+        contours_path,
+        [reference.siren for reference in config.test_epcis.values()],
+    )
+    reduced = {}
+    for network, table in tables.items():
+        metadata = connection.from_arrow(table).query(
+            "patterns",
+            """
+            SELECT pattern_id, route_id, route_short_name, trip_count
+            FROM patterns
+            QUALIFY row_number() OVER (
+                PARTITION BY route_id
+                ORDER BY trip_count DESC, pattern_id
+            ) = 1
+            """,
+        ).fetchall()
+        main_ids = {row[0] for row in metadata}
+        main_table = table.filter(
+            pc.is_in(
+                table.column("pattern_id"),
+                value_set=pa.array(sorted(main_ids), type=pa.string()),
+            )
+        )
+        area_ids: set[str] = set()
+        for reference in config.test_epcis.values():
+            area_ids |= pattern_ids_within_epci(
+                connection, main_table, reference.siren
+            )
+        known_route_keys = {
+            case.route_id for case in config.known_cases if case.network == network
+        }
+        known_ids = {
+            pattern_id
+            for pattern_id, route_id, short_name, _trip_count in metadata
+            if route_id in known_route_keys or short_name in known_route_keys
+        }
+        keep_ids = area_ids | known_ids
+        reduced[network] = main_table.filter(
+            pc.is_in(
+                main_table.column("pattern_id"),
+                value_set=pa.array(sorted(keep_ids), type=pa.string()),
+            )
+        )
+        logger.info(
+            "reduced %s to %s main patterns in test areas or known cases",
+            network,
+            len(keep_ids),
+        )
+    return reduced
 
 
 def compute_bboxes(
