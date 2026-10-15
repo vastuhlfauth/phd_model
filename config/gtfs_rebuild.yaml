@@ -35,16 +35,25 @@ chosen:
     # high at every grid point (an OSM bus-route mapping-completeness gap,
     # not a tuning issue). Candidates go to config/pt_changes.yaml's
     # to_review/not_applied for manual confirmation.
+    # 2026-10-15: outcome no longer uses a calibrated theta or cutting --
+    # kept/kept-renamed/dropped now come from a fixed 50%/30%/50% name-
+    # then-geometry match share (section 5.6 point 2), so theta and k are
+    # null (no longer meaningful for this family). r_m/geometry_share below
+    # are the pre-fix values; pending the national recompute.
     r_m: 100
-    k: 1
+    k: null
     geometry_share: 0.3
-    theta: 0.9
+    theta: null
   ferry:
     # TODO(confirm): screening only; same rule as bus (never auto-applied).
+    # 2026-10-15: same fixed-share outcome rule as bus (theta/k null);
+    # coverage uses member stops/piers only, within a fixed 200 m,
+    # regardless of r_m. r_m/geometry_share below are the pre-fix values;
+    # pending the national recompute.
     r_m: 100
-    k: 1
+    k: null
     geometry_share: 0.3
-    theta: 0.9
+    theta: null
   metro:
     # Confirmed 2026-10-14: known cases 9/9, F1 1.00, 0 presumed-unchanged
     # routes (IDFM/STAR Rennes are restricted to known-case metro lines).
@@ -114,15 +123,40 @@ test_epcis:
 manual_review_networks:
 - sncf
 known_cases:
-- id: bordeaux_tram_a_airport
+- id: bordeaux_tram_a_restructuring
   network: tbm_bordeaux
   route_id: '59'
   mode_family: tram
   epci: bordeaux_metropole
-  opened: '2023-04-01'
-  expected_2022: cut
+  opened: '2025-12-06'
+  expected_2022: kept
   expected_2024: kept
-  notes: Tram A extended to the airport, about 5 km, 5 stations.
+  notes: >-
+    2026-10-15 correction of the former "bordeaux_tram_a_airport" case: the
+    2026 GTFS main pattern for route 59 (tram A) is Le Haillan Rostand <->
+    La Gardette-Bassens-Carbon-Blanc and no longer reaches the airport
+    (confirmed from real stop names in the cached GTFS extract). The
+    openings CSV's row NAQ-12 (confidence medium) describes the Dec 2025
+    restructuring that transferred the airport and Floirac Dravemont
+    branches to lines F and E; A's own remaining core corridor predates
+    2022 unchanged, so A is expected kept at both dates. The airport
+    branch's own history is tracked under bordeaux_tram_f_rename (route F)
+    and the bordeaux_tram_a_merignac_airport confirmed edit in
+    pt_changes.yaml, itself corrected 2026-10-15 to target route 164 (F),
+    not 59 (A).
+- id: bordeaux_tram_c_blanquefort_branch
+  network: tbm_bordeaux
+  route_id: '61'
+  mode_family: tram
+  epci: bordeaux_metropole
+  opened: '2025-12-06'
+  expected_2022: kept
+  expected_2024: kept
+  notes: >-
+    Openings CSV row NAQ-13 (confidence medium): tram C's Blanquefort
+    branch was transferred to E in Dec 2025; C's own remaining corridor
+    (Parc des Expositions-Stade Atlantique <-> Villenave Pyrenees)
+    predates 2022 unchanged.
 - id: bordeaux_tram_e_rename
   network: tbm_bordeaux
   route_id: E
@@ -144,6 +178,90 @@ known_cases:
     Line F did not exist on 1 Jan 2022 or 1 Jan 2024 (opened 2025-12-06);
     only kept on stops served by whichever line's tram tracks were in
     service on that date.
+- id: bordeaux_ter_42_le_verdon
+  network: sncf
+  route_id: 'FR:Line::3ebed947-d25a-4cb1-ad23-a6db52a6f082:'
+  mode_family: rail
+  epci: bordeaux_metropole
+  opened: '2023-06-05'
+  expected_2022: kept
+  expected_2024: kept
+  notes: >-
+    TER 42 Le Verdon-Macau-Bordeaux/Pessac (route_short_name L42; F42 is
+    the same corridor, route_id
+    FR:Line::daa8bf5f-7be6-4fbc-ad6a-0d2c30d39013:). Openings CSV rows
+    NAQ-02 (Le Bouscat-Sainte-Germaine infill halt, opened Jun 2023,
+    confidence high) and NAQ-10 (Talence-Medoquine infill halt, opened Sep
+    2025, confidence high): both are mid-route infill stations, not
+    endpoints, so the route-level outcome stays kept at both dates despite
+    the CSV's state_2022/2024 being partly "remove" at the single-stop
+    level.
+- id: bordeaux_ter_41_arcachon
+  network: sncf
+  route_id: 'FR:Line::40f9734e-088d-42d9-9e13-c91880169554:'
+  mode_family: rail
+  epci: bordeaux_metropole
+  opened: '2023-09-01'
+  expected_2022: kept
+  expected_2024: kept
+  notes: >-
+    TER 41 Bordeaux-Arcachon (route_short_name F41; F41+ is the Libourne
+    variant, route_id FR:Line::6831fb72-94d3-417c-915f-b9656db78b1a:).
+    Openings CSV row NAQ-04 (confidence medium): "RER metropolitain" is a
+    Sep 2023 service-level rebrand of the already-running
+    Arcachon-Libourne through-service (no new track); route-level outcome
+    stays kept at both dates.
+- id: bordeaux_ter_13_angouleme
+  network: sncf
+  route_id: 'FR:Line::6973a1d6-1ab5-447c-b47e-d20af934f64d:'
+  mode_family: rail
+  epci: bordeaux_metropole
+  opened: '2023-12-10'
+  expected_2022: kept
+  expected_2024: kept
+  notes: >-
+    TER 13 Angouleme-Bordeaux (route_short_name L13). Openings CSV row
+    NAQ-06 (confidence high): La Couronne reopened halt is a mid-route
+    infill station, not an endpoint; route-level outcome stays kept at
+    both dates.
+- id: niort_saintes_royan_17
+  network: sncf
+  route_id: 'FR:Line::d283aaa9-f32b-4b43-99a9-48ecc10044ba:'
+  mode_family: rail
+  epci: bordeaux_metropole
+  opened: null
+  expected_2022: kept
+  expected_2024: kept
+  notes: >-
+    TER 17 Niort-Saintes-Royan (route_short_name L17; D17 is the same
+    corridor, route_id FR:Line::c3f96b2e-6783-498a-9e87-3364aecbd9b5:),
+    one stop of which falls within the Gironde + 50 km pilot halo.
+    Openings CSV row NAQ-07 (confidence medium): no change at either
+    reference date, confirming the baseline.
+- id: lyon_metro_b_extension
+  network: tcl_lyon
+  route_id: B
+  mode_family: metro
+  epci: metropole_de_lyon
+  opened: '2023-10-20'
+  expected_2022: cut
+  expected_2024: kept
+  notes: >-
+    Metro B extended to Oullins Centre and Saint-Genis-Laval Hopital Lyon
+    Sud (openings CSV row ARA-02, confidence high).
+- id: lyon_tram_t4_feyssine
+  network: tcl_lyon
+  route_id: T4
+  mode_family: tram
+  epci: metropole_de_lyon
+  opened: '2026-08-31'
+  expected_2022: kept
+  expected_2024: kept
+  notes: >-
+    T4 extended in school weeks only to INSA Einstein, Croix-Luizet and
+    IUT Feyssine, inferred to run over the existing T1 track rather than
+    new infrastructure (openings CSV row ARA-11, confidence low, single
+    press source); expected unaffected at both reference dates.
 - id: bordeaux_bus_express_g
   network: tbm_bordeaux
   route_id: '901'

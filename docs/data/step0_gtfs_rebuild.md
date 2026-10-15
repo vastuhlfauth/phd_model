@@ -1,5 +1,11 @@
 # Step 0: GTFS rebuilding test (section 5.6)
 
+> **Pending recompute (2026-10-15):** this report still reflects the
+> calibrated-theta bus/ferry rule. The fixes below change bus/ferry's
+> outcome rule, ferry's coverage source, and the review-list selection;
+> all figures and candidate lists here are stale until the full national
+> `calibrate` command (given in `docs/progress.md`) is re-run.
+
 This implementation replaces the stop-only test with **name matching followed
 by geometry matching**, then spatially verifies the matched relation portions.
 Results come from each route's most-travelled pattern on

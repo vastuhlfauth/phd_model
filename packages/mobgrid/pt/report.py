@@ -14,6 +14,8 @@ from mobgrid.pt.relation_pipeline import (
     network_relation_coverage,
 )
 
+_INERT_OUTCOME_FAMILIES = frozenset(("bus", "ferry"))
+
 
 def _recommended(run: RelationCalibrationRun) -> str:
     lines = [
@@ -23,8 +25,14 @@ def _recommended(run: RelationCalibrationRun) -> str:
     ]
     for family, point in sorted(run.chosen.items()):
         score = point.score
+        # Bus/ferry no longer cut or use theta to decide their outcome
+        # (2026-10-15 decision): both are shown as not applicable rather
+        # than the grid's arbitrary tie-break value.
+        inert = family in _INERT_OUTCOME_FAMILIES
+        k_cell = "n/a" if inert else str(point.k)
+        theta_cell = "n/a" if inert else f"{point.theta:.1f}"
         lines.append(
-            f"| {family} | {point.r_m} | {point.k} | {point.theta:.1f} | "
+            f"| {family} | {point.r_m} | {k_cell} | {theta_cell} | "
             f"{point.geometry_share:.1f} | {score.known_correct}/"
             f"{score.known_total} | {score.f1:.2f} | "
             f"{score.false_change_rate:.2%} |"
@@ -236,8 +244,10 @@ def _candidate_review_section(pt_changes_path: str | Path) -> str:
     not_applied = raw.get("not_applied", [])
     lines = [f"Full evidence for every candidate is in `{path}`.", ""]
     lines.append(
-        f"### To review ({len(to_review)} of up to 50, networks with "
-        "coverage >= 90%, ranked BHNS/express first then by trips)"
+        f"### To review ({len(to_review)} candidates: every BHNS/express "
+        "bus/ferry route, plus every bus/ferry route dropped under the "
+        "fixed name/geometry-share rule, with no cap; rail keeps its own "
+        "90%-coverage gate and top-30-by-trips cap, ranked by trips)"
     )
     if to_review:
         lines.append(
@@ -291,7 +301,7 @@ by geometry matching**, then spatially verifies the matched relation portions.
 Results come from each route's most-travelled pattern on
 **{config.reference_date}**.
 
-## Bus and ferry policy (2026-10-14 decision)
+## Bus and ferry policy (2026-10-15 decision)
 
 Every 2026 bus and ferry route is kept in both past states by default; only
 `confirmed` entries of `config/pt_changes.yaml` are ever applied. BHNS/express
@@ -299,7 +309,14 @@ routes are the one exception: they are identified by name or description
 (`Express`, `BHNS`, `Liane(s)`, `Chronobus`) and verified like a tram, cut at
 uncovered ends before `theta`, using dedicated bus infrastructure in OSM
 (`highway=busway`/`bus_guideway`, `busway=*`, `lanes:bus=*`, not under
-construction or proposed) instead of the regular kept/dropped rule. All other
+construction or proposed) instead of the regular kept/dropped rule. Every
+other bus/ferry route uses a fixed, non-calibrated outcome rule instead of
+`theta`: a name match covering at least 50% of stops is `kept`; a name match
+below 30% is treated as a homonym (a coincidental ref/name match, not the
+same line) and discarded in favour of the geometry pass; a geometry match
+reaching 50% is `kept-renamed`; otherwise the route is `dropped`. Ferry
+coverage is checked against a relation's member stops and piers only, never
+its ways, within a fixed 200 m regardless of the calibrated `r_m`. All other
 detected bus/ferry changes are candidates for manual review only (see below).
 
 ## Recommended parameters
@@ -328,7 +345,9 @@ that were incorrectly cut or dropped; `kept-renamed` is not a false change.
 ## Bus and ferry OSM relation coverage, by network and date
 
 Share of each network's main patterns that found any OSM relation by name or
-geometry; the review-list eligibility filter below requires at least 90%.
+geometry. Recorded for every candidate as context; it no longer gates
+bus/ferry review eligibility (2026-10-15 decision -- see the policy above),
+but rail's own review list still requires at least 90%.
 
 {_bus_coverage_table(run)}
 

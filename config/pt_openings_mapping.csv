@@ -1,0 +1,8 @@
+opening_id,network,mode,line_2026,section_from,section_to,candidate_route_ids,candidate_refs,match_confidence,notes
+NAQ-01,TBM (Bordeaux Métropole),tram,F,Carrefour des Quatre Chemins (Mérignac),Mérignac Aéroport,164,F,exact,unique corridor by name and mode
+NAQ-08,TBM (Bordeaux Métropole),bhns,G (Bus Express),Bordeaux Gare Saint-Jean,Saint-Aubin-de-Médoc,901,G,exact,unique corridor by name and mode
+NAQ-11,TBM (Bordeaux Métropole),bhns,H (Bus Express),Cenon Gare (circular H1/H2),"Cenon Gare (via boulevards, Pont Simone-Veil, Pont Chaban-Delmas)",911|912,H1|H2,ambiguous,2 distinct corridors shared this name/mode; narrowed by section_from/section_to
+NAQ-12,TBM (Bordeaux Métropole),tram,A,Le Haillan Rostand,Lormont La Gardette–Bassens–Carbon-Blanc,59,A,exact,unique corridor by name and mode
+NAQ-13,TBM (Bordeaux Métropole),tram,C,Parc des Expositions–Stade Atlantique,Villenave Pyrénées,61,C,exact,unique corridor by name and mode
+NAQ-14,TBM (Bordeaux Métropole),tram,E,Gare de Blanquefort,Floirac Dravemont (via Quinconces),163,E,exact,unique corridor by name and mode
+NAQ-15,TBM (Bordeaux Métropole),tram,F,Mérignac Aéroport,"Gare de Bègles (via Gare Saint-Jean, Hôtel de Ville)",164,F,exact,unique corridor by name and mode

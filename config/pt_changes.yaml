@@ -25,15 +25,17 @@ confirmed:
   type: pt_extend
   network: tbm_bordeaux
   route_ids:
-  - '59'
+  - '164'
   opened: '2023-04-01'
-  description: >-
-    Bordeaux tram A, Merignac Centre - Merignac Aeroport branch, opened in
-    2023. In the 2022 state A ends at Merignac Centre; in the 2024 state it
-    is kept.
-  notes: >-
-    OSM 2022 already tagged these tracks in service (data gap); applied
-    from the documented opening.
+  description: Bordeaux tram, Merignac Centre - Merignac Aeroport branch, opened
+    in 2023 (as part of tram A at the time; served by tram F since the Dec 2025
+    restructuring, so route 164/F carries it in the 2026 feed, not route 59/A).
+    In the 2022 state the branch is removed; in the 2024 state it is kept.
+  notes: 2026-10-15 correction - this edit previously targeted route 59 (A), which
+    no longer reaches the airport in the 2026 feed (confirmed from real GTFS
+    terminal stop names; its main pattern is Le Haillan Rostand <-> La
+    Gardette-Bassens-Carbon-Blanc). OSM 2022 already tagged these tracks in
+    service (data gap); applied from the documented opening.
 to_review:
 - id: candidate_tcl_lyon_102
   network: tcl_lyon
@@ -194,24 +196,6 @@ to_review:
   - 10E
   covered_share: 1.0
   trip_count: 32
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_112
-  network: tcl_lyon
-  route_id: '112'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: geometry
-  relation_ids:
-  - 2667821
-  - 8388079
-  relation_refs:
-  - '12'
-  covered_share: 0.697674
-  trip_count: 37
   is_bhns: false
   network_coverage_by_date:
     '2022-01-01': 0.917738
@@ -446,24 +430,6 @@ to_review:
   network_coverage_by_date:
     '2022-01-01': 0.917738
     '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_143
-  network: tcl_lyon
-  route_id: '143'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: geometry
-  relation_ids:
-  - 11751667
-  - 11751668
-  relation_refs:
-  - S8
-  covered_share: 0.529412
-  trip_count: 35
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
 - id: candidate_tcl_lyon_36
   network: tcl_lyon
   route_id: '36'
@@ -499,44 +465,6 @@ to_review:
   network_coverage_by_date:
     '2022-01-01': 0.917738
     '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_49
-  network: tcl_lyon
-  route_id: '49'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 11497938
-  - 11497939
-  relation_refs:
-  - '49'
-  covered_share: 0.85
-  trip_count: 66
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_52
-  network: tcl_lyon
-  route_id: '52'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 7962789
-  - 7968845
-  - 8013510
-  - 8013511
-  relation_refs:
-  - '52'
-  covered_share: 0.833333
-  trip_count: 69
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
 - id: candidate_tcl_lyon_59
   network: tcl_lyon
   route_id: '59'
@@ -552,111 +480,6 @@ to_review:
   covered_share: 0.866667
   trip_count: 51
   is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_68
-  network: tcl_lyon
-  route_id: '68'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 8013403
-  - 8013404
-  relation_refs:
-  - '68'
-  covered_share: 0.814815
-  trip_count: 63
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_69
-  network: tcl_lyon
-  route_id: '69'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 2811534
-  - 11010765
-  relation_refs:
-  - '69'
-  covered_share: 0.666667
-  trip_count: 55
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_7601
-  network: tcl_lyon
-  route_id: '7601'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: geometry
-  relation_ids:
-  - 7230994
-  - 7230995
-  relation_refs:
-  - Vaporetto
-  covered_share: 0.666667
-  trip_count: 41
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_77
-  network: tcl_lyon
-  route_id: '77'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 2566286
-  - 5471093
-  relation_refs:
-  - '77'
-  covered_share: 0.882353
-  trip_count: 37
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_85
-  network: tcl_lyon
-  route_id: '85'
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 8018416
-  - 8018418
-  relation_refs:
-  - '85'
-  covered_share: 0.884615
-  trip_count: 44
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_98EX
-  network: tcl_lyon
-  route_id: 98EX
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: null
-  relation_ids: []
-  relation_refs: []
-  covered_share: 0.0
-  trip_count: 4
-  is_bhns: true
   network_coverage_by_date:
     '2022-01-01': 0.917738
     '2024-01-01': 0.917738
@@ -697,42 +520,6 @@ to_review:
   - N748
   covered_share: 0.666667
   trip_count: 48
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_C12
-  network: tcl_lyon
-  route_id: C12
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 5650339
-  - 5657813
-  relation_refs:
-  - C12
-  covered_share: 0.866667
-  trip_count: 92
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_C18
-  network: tcl_lyon
-  route_id: C18
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 2110102
-  - 3281330
-  relation_refs:
-  - C18
-  covered_share: 0.833333
-  trip_count: 77
   is_bhns: false
   network_coverage_by_date:
     '2022-01-01': 0.917738
@@ -821,24 +608,6 @@ to_review:
   - C3
   covered_share: 0.5
   trip_count: 78
-  is_bhns: false
-  network_coverage_by_date:
-    '2022-01-01': 0.917738
-    '2024-01-01': 0.917738
-- id: candidate_tcl_lyon_C26
-  network: tcl_lyon
-  route_id: C26
-  outcomes_by_date:
-    '2022-01-01': dropped
-    '2024-01-01': dropped
-  match_pass: name
-  relation_ids:
-  - 2296951
-  - 5738338
-  relation_refs:
-  - C26
-  covered_share: 0.35
-  trip_count: 104
   is_bhns: false
   network_coverage_by_date:
     '2022-01-01': 0.917738
@@ -9893,3 +9662,249 @@ rejected:
     just clears theta=0.9) and 2024 falls to 66.7% (4/6) after cutting, below theta=0.9.
     User confirms the line has existed well before 2022, so this is a false positive
     from OSM bus-lane tagging incompleteness, not a real change.'
+- id: candidate_tcl_lyon_112
+  network: tcl_lyon
+  route_id: '112'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: geometry
+  relation_ids:
+  - 2667821
+  - 8388079
+  relation_refs:
+  - '12'
+  covered_share: 0.697674
+  trip_count: 37
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_143
+  network: tcl_lyon
+  route_id: '143'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: geometry
+  relation_ids:
+  - 11751667
+  - 11751668
+  relation_refs:
+  - S8
+  covered_share: 0.529412
+  trip_count: 35
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_49
+  network: tcl_lyon
+  route_id: '49'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 11497938
+  - 11497939
+  relation_refs:
+  - '49'
+  covered_share: 0.85
+  trip_count: 66
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_52
+  network: tcl_lyon
+  route_id: '52'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 7962789
+  - 7968845
+  - 8013510
+  - 8013511
+  relation_refs:
+  - '52'
+  covered_share: 0.833333
+  trip_count: 69
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_68
+  network: tcl_lyon
+  route_id: '68'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 8013403
+  - 8013404
+  relation_refs:
+  - '68'
+  covered_share: 0.814815
+  trip_count: 63
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_69
+  network: tcl_lyon
+  route_id: '69'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 2811534
+  - 11010765
+  relation_refs:
+  - '69'
+  covered_share: 0.666667
+  trip_count: 55
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_7601
+  network: tcl_lyon
+  route_id: '7601'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: geometry
+  relation_ids:
+  - 7230994
+  - 7230995
+  relation_refs:
+  - Vaporetto
+  covered_share: 0.666667
+  trip_count: 41
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_77
+  network: tcl_lyon
+  route_id: '77'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 2566286
+  - 5471093
+  relation_refs:
+  - '77'
+  covered_share: 0.882353
+  trip_count: 37
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_85
+  network: tcl_lyon
+  route_id: '85'
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 8018416
+  - 8018418
+  relation_refs:
+  - '85'
+  covered_share: 0.884615
+  trip_count: 44
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_98EX
+  network: tcl_lyon
+  route_id: 98EX
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: null
+  relation_ids: []
+  relation_refs: []
+  covered_share: 0.0
+  trip_count: 4
+  is_bhns: true
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_C12
+  network: tcl_lyon
+  route_id: C12
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 5650339
+  - 5657813
+  relation_refs:
+  - C12
+  covered_share: 0.866667
+  trip_count: 92
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_C18
+  network: tcl_lyon
+  route_id: C18
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 2110102
+  - 3281330
+  relation_refs:
+  - C18
+  covered_share: 0.833333
+  trip_count: 77
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)
+- id: candidate_tcl_lyon_C26
+  network: tcl_lyon
+  route_id: C26
+  outcomes_by_date:
+    '2022-01-01': dropped
+    '2024-01-01': dropped
+  match_pass: name
+  relation_ids:
+  - 2296951
+  - 5738338
+  relation_refs:
+  - C26
+  covered_share: 0.35
+  trip_count: 104
+  is_bhns: false
+  network_coverage_by_date:
+    '2022-01-01': 0.917738
+    '2024-01-01': 0.917738
+  notes: existed before 2022 (reviewer check)

@@ -21,8 +21,18 @@ from mobgrid.pt.route_relations import (
     classify_bhns,
 )
 
-_CACHE_VERSION = 3
+_CACHE_VERSION = 4
 _FIXED_MODES = frozenset(("tram", "metro", "rail"))
+# Ferry coverage is checked against a relation's member stops/piers only,
+# never its ways, within a fixed radius independent of the r_m grid
+# (2026-10-15 decision, section 5.6 point 3 of the latest review).
+_FERRY_COVERAGE_RADIUS_M = 200
+# Below this covered share, a bus/ferry name match is treated as a
+# homonym (coincidental ref/name match, not the same line) and discarded
+# in favour of the geometry pass; a name match at or above 0.5 is kept
+# outright (2026-10-15 decision, section 5.6).
+_BUS_FERRY_HOMONYM_SHARE = 0.3
+_BUS_FERRY_KEPT_SHARE = 0.5
 _MODE_SQL = """
 CASE route
     WHEN 'bus' THEN 'bus'
@@ -370,6 +380,11 @@ def _write_names(
 
 
 def _distance_query(max_r_m: int, include_fallback: bool) -> str:
+    # Ferry coverage never uses ways (member stops/piers only, within a
+    # fixed 200 m regardless of the r_m grid), so its stop-distance bound
+    # must reach at least that far even when every calibrated r_m is
+    # smaller (2026-10-15 decision).
+    stop_bound = max(max_r_m, _FERRY_COVERAGE_RADIUS_M)
     relation_distances = f"""
         WITH way_distances AS (
             SELECT candidates.date_key, candidates.network,
@@ -391,7 +406,8 @@ def _distance_query(max_r_m: int, include_fallback: bool) -> str:
               USING (network, pattern_id)
             JOIN calibration_relation_ways ways
               USING (date_key, relation_id)
-            WHERE ways.xmax >= patterns.x - {max_r_m}
+            WHERE patterns.transport_mode != 'ferry'
+              AND ways.xmax >= patterns.x - {max_r_m}
               AND ways.xmin <= patterns.x + {max_r_m}
               AND ways.ymax >= patterns.y - {max_r_m}
               AND ways.ymin <= patterns.y + {max_r_m}
@@ -411,15 +427,15 @@ def _distance_query(max_r_m: int, include_fallback: bool) -> str:
               USING (date_key, relation_id)
             WHERE (candidates.mode = 'ferry'
                    OR (candidates.mode = 'bus' AND NOT patterns.is_bhns))
-              AND stops.x BETWEEN patterns.x - {max_r_m}
-                              AND patterns.x + {max_r_m}
-              AND stops.y BETWEEN patterns.y - {max_r_m}
-                              AND patterns.y + {max_r_m}
+              AND stops.x BETWEEN patterns.x - {stop_bound}
+                              AND patterns.x + {stop_bound}
+              AND stops.y BETWEEN patterns.y - {stop_bound}
+                              AND patterns.y + {stop_bound}
         ),
         relation_rows AS (
             SELECT * FROM way_distances WHERE distance_m <= {max_r_m}
             UNION ALL
-            SELECT * FROM member_stop_distances WHERE distance_m <= {max_r_m}
+            SELECT * FROM member_stop_distances WHERE distance_m <= {stop_bound}
         )
         SELECT date_key, network, pattern_id, stop_sequence,
                relation_id, relation_ref, in_service,
@@ -748,10 +764,59 @@ def _bulk_evaluation_sql(
             SELECT date_key, network, pattern_id, relation_id, relation_ref
             FROM names WHERE affiliation_score = best_affiliation
         ),
+        name_match_covered AS (
+            -- Covered share of the name-matched relation(s) alone, at
+            -- each r_m, independent of geometry_share: used to tell a
+            -- genuine (if under-covered) name match from a homonym for
+            -- bus/ferry (2026-10-15 decision).
+            SELECT DISTINCT radii.r_m, names.date_key, names.network,
+                   names.pattern_id, patterns.stop_sequence
+            FROM selected_names_base names
+            CROSS JOIN radii
+            JOIN patterns
+              ON patterns.network = names.network
+             AND patterns.pattern_id = names.pattern_id
+            JOIN pattern_meta meta
+              ON meta.network = names.network AND meta.pattern_id = names.pattern_id
+            JOIN read_parquet('{_sql_path(summary.distances_path)}') distances
+              ON distances.date_key = names.date_key
+             AND distances.network = names.network
+             AND distances.pattern_id = names.pattern_id
+             AND distances.stop_sequence = patterns.stop_sequence
+             AND distances.relation_id = names.relation_id
+             AND NOT distances.is_fallback
+             AND distances.in_service
+             AND distances.distance_m <= (
+                 CASE WHEN meta.mode = 'ferry'
+                      THEN {_FERRY_COVERAGE_RADIUS_M} ELSE radii.r_m END
+             )
+        ),
+        name_match_share AS (
+            SELECT r_m, date_key, network, pattern_id,
+                   count(DISTINCT stop_sequence)::DOUBLE
+                       / any_value(meta.stop_count) AS share
+            FROM name_match_covered
+            JOIN pattern_meta meta USING (network, pattern_id)
+            GROUP BY r_m, date_key, network, pattern_id
+        ),
         selected_names AS (
+            -- A bus/ferry name match below the homonym threshold is a
+            -- coincidental ref/name match, not the same line: it is
+            -- dropped here so the geometry pass below can find the real
+            -- relation instead (tram/metro/rail keep every name match,
+            -- regardless of share, exactly as before).
             SELECT params.r_m, params.geometry_share, names.*,
                    'name' AS match_pass
-            FROM match_params params CROSS JOIN selected_names_base names
+            FROM match_params params
+            CROSS JOIN selected_names_base names
+            JOIN pattern_meta meta
+              ON meta.network = names.network AND meta.pattern_id = names.pattern_id
+            LEFT JOIN name_match_share share
+              ON share.r_m = params.r_m AND share.date_key = names.date_key
+             AND share.network = names.network
+             AND share.pattern_id = names.pattern_id
+            WHERE meta.mode NOT IN ('bus', 'ferry')
+               OR coalesce(share.share, 0) >= {_BUS_FERRY_HOMONYM_SHARE}
         ),
         relation_coverage AS (
             SELECT radii.r_m, distances.date_key, distances.network,
@@ -759,7 +824,11 @@ def _bulk_evaluation_sql(
                    any_value(distances.relation_ref) AS relation_ref,
                    count(DISTINCT distances.stop_sequence)
                        FILTER (WHERE distances.in_service
-                                      AND distances.distance_m <= radii.r_m)
+                                      AND distances.distance_m <= (
+                                          CASE WHEN meta.mode = 'ferry'
+                                               THEN {_FERRY_COVERAGE_RADIUS_M}
+                                               ELSE radii.r_m END
+                                      ))
                        / any_value(meta.stop_count)::DOUBLE AS covered_share
             FROM read_parquet('{_sql_path(summary.distances_path)}') distances
             JOIN pattern_meta meta USING (network, pattern_id)
@@ -772,15 +841,31 @@ def _bulk_evaluation_sql(
             SELECT coverage.*, geometries.geometry_share,
                    max(covered_share) OVER (
                        PARTITION BY coverage.r_m, geometries.geometry_share,
-                                    date_key, network, pattern_id
+                                    coverage.date_key, coverage.network,
+                                    coverage.pattern_id
                    ) AS best_share
-            FROM relation_coverage coverage CROSS JOIN geometries
+            FROM relation_coverage coverage
+            CROSS JOIN geometries
+            JOIN pattern_meta meta
+              ON meta.network = coverage.network
+             AND meta.pattern_id = coverage.pattern_id
+            LEFT JOIN name_match_share share
+              ON share.r_m = coverage.r_m AND share.date_key = coverage.date_key
+             AND share.network = coverage.network
+             AND share.pattern_id = coverage.pattern_id
             WHERE coverage.covered_share >= geometries.geometry_share
-              AND NOT EXISTS (
-                  SELECT 1 FROM selected_names_base names
-                  WHERE names.date_key = coverage.date_key
-                    AND names.network = coverage.network
-                    AND names.pattern_id = coverage.pattern_id
+              AND (
+                  CASE
+                      WHEN meta.mode IN ('bus', 'ferry')
+                          THEN coalesce(share.share, 0)
+                               < {_BUS_FERRY_HOMONYM_SHARE}
+                      ELSE NOT EXISTS (
+                          SELECT 1 FROM selected_names_base names
+                          WHERE names.date_key = coverage.date_key
+                            AND names.network = coverage.network
+                            AND names.pattern_id = coverage.pattern_id
+                      )
+                  END
               )
         ),
         selected_geometry AS (
@@ -828,6 +913,9 @@ def _bulk_evaluation_sql(
                    patterns.stop_sequence, matches.date_key
             FROM patterns
             JOIN matches USING (network, pattern_id)
+            JOIN pattern_meta meta
+              ON meta.network = patterns.network
+             AND meta.pattern_id = patterns.pattern_id
             JOIN read_parquet('{_sql_path(summary.distances_path)}') distances
               ON distances.date_key = matches.date_key
              AND distances.network = matches.network
@@ -836,7 +924,10 @@ def _bulk_evaluation_sql(
              AND distances.relation_id = matches.relation_id
              AND NOT distances.is_fallback
              AND distances.in_service
-             AND distances.distance_m <= matches.r_m
+             AND distances.distance_m <= (
+                 CASE WHEN meta.mode = 'ferry'
+                      THEN {_FERRY_COVERAGE_RADIUS_M} ELSE matches.r_m END
+             )
         ),
         track_covered AS (
             -- Relations give identity (via `matches`); tracks give
@@ -980,7 +1071,8 @@ def _bulk_evaluation_sql(
                      THEN CASE
                        WHEN remaining.remaining_n > 0
                          AND remaining.remaining_covered
-                             / remaining.remaining_n::DOUBLE >= thetas.theta
+                             / remaining.remaining_n::DOUBLE
+                             >= {_BUS_FERRY_KEPT_SHARE}
                        THEN CASE WHEN match_meta.match_pass = 'geometry'
                                  THEN 'kept-renamed' ELSE 'kept' END
                        ELSE 'dropped' END

@@ -646,3 +646,290 @@ def test_rail_chosen_score_is_computed_on_rail_routes_not_aliased_from_metro(
     assert chosen["rail"].score.false_change_rate == 1.0
     assert chosen["metro"].score.presumed_unchanged_total == 1
     assert chosen["rail"].score.presumed_unchanged_total == 1
+
+
+def _bus_homonym_pattern_table() -> pa.Table:
+    # Route "Z": 4 equally-spaced stops, so the weak name match below
+    # covers exactly 1/4 = 0.25 (a homonym, < 0.3). Route "M": 3 stops, so
+    # its weak name match covers exactly 1/3 = 0.333 (not a homonym, but
+    # below the 0.5 "kept" bar -- the ambiguous zone of section 5.6 point 2).
+    stops_z = [0.0, 10.0, 20.0, 30.0]
+    stops_m = [0.0, 10.0, 20.0]
+    return pa.table(
+        {
+            "pattern_id": ["p-z"] * 4 + ["p-m"] * 3,
+            "route_id": ["Z"] * 4 + ["M"] * 3,
+            "direction_id": ["0"] * 7,
+            "mode_family": ["bus"] * 7,
+            "transport_mode": ["bus"] * 7,
+            "route_short_name": ["Z"] * 4 + ["M"] * 3,
+            "route_long_name": ["Zed"] * 4 + ["Mu"] * 3,
+            "agency_name": ["Operator"] * 7,
+            "trip_count": [10] * 7,
+            "stop_sequence": [1, 2, 3, 4, 1, 2, 3],
+            "stop_id": [f"z{i}" for i in range(4)] + [f"m{i}" for i in range(3)],
+            "lon": [0.0] * 7,
+            "lat": [0.0] * 7,
+            "x": stops_z + stops_m,
+            "y": [0.0] * 7,
+        }
+    )
+
+
+def _write_bus_homonym_route_cache(
+    connection: duckdb.DuckDBPyConnection, root: Path
+) -> None:
+    root.mkdir(parents=True)
+    connection.execute(
+        """
+        COPY (
+            SELECT * FROM VALUES
+                -- ref "Z" is a homonym: its own way covers only 1 of 4 stops
+                (1, 'Z', 'Not the real Z', 'Network', 'Operator', 'bus'),
+                -- unmatched by name, but its way covers every "Z" stop
+                (2, 'W', 'Renamed Z', 'Network', 'Operator', 'bus'),
+                -- ref "M" covers 1 of 3 stops: not a homonym (>= 0.3), but
+                -- short of "kept" (< 0.5); no geometry fallback should run
+                (3, 'M', 'Weak M', 'Network', 'Operator', 'bus'),
+                -- unmatched by name; would fully cover "M" if it were ever
+                -- considered, which it must not be in the 0.3-0.5 zone
+                (4, 'N', 'Renamed M', 'Network', 'Operator', 'bus')
+            AS t(relation_id, ref, name, network, operator, route)
+        ) TO ? (FORMAT PARQUET)
+        """,
+        [str(root / "relations.parquet")],
+    )
+    connection.execute(
+        """
+        COPY (
+            SELECT relation_id, 1::BIGINT AS sequence, '' AS role,
+                   relation_id * 10 AS way_id, NULL::VARCHAR AS railway,
+                   'service' AS highway, NULL::VARCHAR AS busway,
+                   NULL::VARCHAR AS lanes_bus, NULL::VARCHAR AS construction,
+                   false AS lifecycle,
+                   []::STRUCT(x DOUBLE, y DOUBLE)[] AS points,
+                   ST_AsWKB(ST_MakeLine([
+                       ST_Point(x1, 0.0), ST_Point(x2, 0.0)
+                   ])) AS geometry
+            FROM VALUES
+                (1, -1.0, 1.0),
+                (2, -5.0, 35.0),
+                (3, -1.0, 1.0),
+                (4, -5.0, 25.0)
+            AS t(relation_id, x1, x2)
+        ) TO ? (FORMAT PARQUET)
+        """,
+        [str(root / "ways.parquet")],
+    )
+    connection.execute(
+        """
+        COPY (
+            SELECT NULL::BIGINT AS relation_id, NULL::BIGINT AS sequence,
+                   NULL::VARCHAR AS role, NULL::BIGINT AS node_id,
+                   NULL::VARCHAR AS public_transport,
+                   NULL::VARCHAR AS railway, NULL::VARCHAR AS highway,
+                   NULL::DOUBLE AS x, NULL::DOUBLE AS y,
+                   NULL::BLOB AS geometry
+            WHERE false
+        ) TO ? (FORMAT PARQUET)
+        """,
+        [str(root / "stops.parquet")],
+    )
+    (root / "_SUCCESS.json").write_text("{}", encoding="utf-8")
+
+
+def test_bus_homonym_name_match_falls_back_to_geometry(tmp_path) -> None:
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    route_cache = tmp_path / "routes"
+    _write_bus_homonym_route_cache(connection, route_cache)
+    summary = precompute_relation_tables(
+        connection,
+        {"network": _bus_homonym_pattern_table()},
+        {"2022-01-01": route_cache},
+        {},
+        tmp_path / "precompute",
+        _config(),
+        max_r_m=2,
+    )
+
+    runs, _ = evaluate_cached_grid_point(
+        connection,
+        summary,
+        _config(),
+        family="bus",
+        r_m=2,
+        k=1,
+        theta=0.9,
+        geometry_share=0.5,
+    )
+
+    result = {run.pattern.route_id: run.result for run in runs}["Z"]
+    assert result.match_pass == "geometry"
+    assert result.relation_ids == (2,)
+    assert result.covered_share == 1.0
+    assert result.outcome == "kept-renamed"
+
+
+def test_bus_name_match_in_the_ambiguous_zone_is_dropped_without_geometry_rescue(
+    tmp_path,
+) -> None:
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    route_cache = tmp_path / "routes"
+    _write_bus_homonym_route_cache(connection, route_cache)
+    summary = precompute_relation_tables(
+        connection,
+        {"network": _bus_homonym_pattern_table()},
+        {"2022-01-01": route_cache},
+        {},
+        tmp_path / "precompute",
+        _config(),
+        max_r_m=2,
+    )
+
+    runs, _ = evaluate_cached_grid_point(
+        connection,
+        summary,
+        _config(),
+        family="bus",
+        r_m=2,
+        k=1,
+        theta=0.9,
+        geometry_share=0.5,
+    )
+
+    result = {run.pattern.route_id: run.result for run in runs}["M"]
+    # Not a homonym (0.333 >= 0.3), but below the 0.5 "kept" bar: dropped,
+    # not rescued by relation "N" even though it would fully cover "M".
+    assert result.match_pass == "name"
+    assert result.relation_ids == (3,)
+    assert abs(result.covered_share - 1 / 3) < 1e-9
+    assert result.outcome == "dropped"
+
+
+def _ferry_pattern_table() -> pa.Table:
+    return pa.table(
+        {
+            "pattern_id": ["p-ferry"] * 2,
+            "route_id": ["F"] * 2,
+            "direction_id": ["0"] * 2,
+            "mode_family": ["ferry"] * 2,
+            "transport_mode": ["ferry"] * 2,
+            "route_short_name": ["F"] * 2,
+            "route_long_name": ["Ferry F"] * 2,
+            "agency_name": ["Operator"] * 2,
+            "trip_count": [10, 10],
+            "stop_sequence": [1, 2],
+            "stop_id": ["f1", "f2"],
+            "lon": [0.0, 0.0],
+            "lat": [0.0, 0.0],
+            "x": [0.0, 1000.0],
+            "y": [0.0, 0.0],
+        }
+    )
+
+
+def _write_ferry_route_cache(
+    connection: duckdb.DuckDBPyConnection, root: Path
+) -> None:
+    root.mkdir(parents=True)
+    connection.execute(
+        """
+        COPY (
+            SELECT * FROM VALUES
+                -- name-matched: its own way runs straight through both
+                -- stops (a decoy -- must be ignored), its member piers are
+                -- 150 m away, within the fixed 200 m ferry radius
+                (1, 'F', 'Ferry F', 'Network', 'Operator', 'ferry'),
+                -- never name-matched: also has a decoy way straight
+                -- through both stops, but its piers are 5 km away, well
+                -- outside 200 m, so it must never be picked as a match
+                (2, 'G', 'Ferry G', 'Network', 'Operator', 'ferry')
+            AS t(relation_id, ref, name, network, operator, route)
+        ) TO ? (FORMAT PARQUET)
+        """,
+        [str(root / "relations.parquet")],
+    )
+    connection.execute(
+        """
+        COPY (
+            SELECT relation_id, 1::BIGINT AS sequence, '' AS role,
+                   relation_id * 10 AS way_id, NULL::VARCHAR AS railway,
+                   NULL::VARCHAR AS highway, NULL::VARCHAR AS busway,
+                   NULL::VARCHAR AS lanes_bus, NULL::VARCHAR AS construction,
+                   false AS lifecycle,
+                   []::STRUCT(x DOUBLE, y DOUBLE)[] AS points,
+                   ST_AsWKB(ST_MakeLine([
+                       ST_Point(0.0, 0.0), ST_Point(1000.0, 0.0)
+                   ])) AS geometry
+            FROM VALUES (1), (2) AS t(relation_id)
+        ) TO ? (FORMAT PARQUET)
+        """,
+        [str(root / "ways.parquet")],
+    )
+    connection.execute(
+        """
+        COPY (
+            SELECT relation_id, sequence, '' AS role, node_id,
+                   'platform' AS public_transport, NULL::VARCHAR AS railway,
+                   NULL::VARCHAR AS highway, x, y,
+                   ST_AsWKB(ST_Point(x, y)) AS geometry
+            FROM VALUES
+                (1, 1, 1, 0.0, 150.0),
+                (1, 2, 2, 1000.0, 150.0),
+                (2, 1, 3, 0.0, 5000.0),
+                (2, 2, 4, 1000.0, 5000.0)
+            AS t(relation_id, sequence, node_id, x, y)
+        ) TO ? (FORMAT PARQUET)
+        """,
+        [str(root / "stops.parquet")],
+    )
+    (root / "_SUCCESS.json").write_text("{}", encoding="utf-8")
+
+
+def test_ferry_coverage_uses_member_piers_not_ways_within_a_fixed_200m(
+    tmp_path,
+) -> None:
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    route_cache = tmp_path / "routes"
+    _write_ferry_route_cache(connection, route_cache)
+    summary = precompute_relation_tables(
+        connection,
+        {"network": _ferry_pattern_table()},
+        {"2022-01-01": route_cache},
+        {},
+        tmp_path / "precompute",
+        _config(),
+        max_r_m=25,
+    )
+
+    distances = connection.execute(
+        "SELECT relation_id, min(distance_m) FROM read_parquet(?) "
+        "WHERE NOT is_fallback GROUP BY relation_id ORDER BY relation_id",
+        [str(summary.distances_path)],
+    ).fetchall()
+    # Neither relation's 0 m decoy way survives into the cached distances:
+    # relation 1 shows its 150 m pier distance, relation 2 (piers 5 km
+    # away) is absent entirely, not the 0 m its decoy way would give.
+    assert distances == [(1, 150.0)]
+
+    runs, _ = evaluate_cached_grid_point(
+        connection,
+        summary,
+        _config(),
+        family="bus",
+        r_m=25,
+        k=1,
+        theta=0.9,
+        geometry_share=0.3,
+    )
+
+    result = runs[0].result
+    # r_m=25 is far smaller than the 150 m pier distance: ferry coverage
+    # uses the fixed 200 m radius regardless of the calibrated r_m.
+    assert result.match_pass == "name"
+    assert result.relation_ids == (1,)
+    assert result.covered_share == 1.0
+    assert result.outcome == "kept"
