@@ -2,7 +2,7 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-15 by Copilot_
+_Last updated: 2026-10-15 by Copilot (step 0 national recompute finalized)_
 
 ## Steps (table of section 14.5)
 
@@ -594,6 +594,39 @@ Status values: not started, in progress, review, merged.
   same cache-invalidation and will rebuild together) is repeated in the
   final chat response; its output's known-case table and false-change
   rates should be read back for the final report once it completes.
+- 2026-10-15, step 0 national recompute finalized, the user ran the
+  full national `calibrate` command handed off above
+  (`logs/2026-10-15_gtfs_calibration.log`/`_summary.md`); 1,294
+  route/date outcomes scored, one flagged network/date pair
+  (`star_rennes` 2022-01-01, below 50% OSM relation coverage, retained
+  `not-testable`). Results, regenerating `config/gtfs_rebuild.yaml`,
+  `config/pt_changes.yaml` and `docs/data/step0_gtfs_rebuild.md`:
+  - bus: known 7/10, false-change 29.23% (`r_m=100`, fixed-share rule,
+    `k`/`theta` null -- screening only, never auto-applied).
+  - ferry: known 7/10, false-change 29.23% (reuses bus's parameters and
+    known cases, `k`/`theta` null -- screening only, never auto-applied).
+  - metro: known 11/11, F1 1.00, false-change 20.00% (`r_m=25, k=2,
+    theta=0.5, geometry_share=0.3`, down from the former 0.7 now that
+    the known-case set also covers the Lyon metro B and Paris metro
+    4/12 extensions) -- **confirmed**.
+  - rail: known 0/6, false-change 20.74% (reuses metro's parameters for
+    screening only; every Nouvelle-Aquitaine TER known case -- Bordeaux
+    TER 42/41/13 -- is obtained as `kept-renamed` instead of the
+    expected `kept`, a genuine OSM rail-relation-naming gap, not a
+    parameter issue -- screening only, never auto-applied).
+  - tram: known 12/12, F1 1.00, false-change 0.00% (`r_m=25, k=1,
+    theta=0.5, geometry_share=0.3`, now including the Lyon T4/T6 and
+    Bordeaux tram C/E/F cases) -- **confirmed**.
+  `config/gtfs_rebuild.yaml`'s blanket `TODO(confirm)` header (rewritten
+  by the `calibrate` CLI on every run) was replaced again with the
+  per-family comments above: tram and metro marked confirmed with their
+  evidence inline; bus, ferry and rail keep a per-family `TODO(confirm)`
+  stating they are screening/review only. `to_review` holds 180
+  candidates (every BHNS/express bus/ferry route, plus every bus/ferry
+  route dropped under the fixed name/geometry-share rule, with no cap;
+  rail keeps its own 90%-coverage gate and top-30-by-trips cap); 340
+  more are `not_applied` (kept as evidence, never auto-applied). Step 0
+  is complete: Ruff clean; 211 tests pass, 2 pilot tests deselected.
 - 2026-10-09, bootstrap, use a four-member uv workspace with per-package setuptools metadata, so each package can be developed and installed independently.
 - 2026-10-09, bootstrap, keep the pilot's area, years, halo and data directories in YAML; validate generic formats and positive/unique values in Pydantic.
 - 2026-10-09, bootstrap, pin the project to Python 3.12 with `uv python pin 3.12` (writes `.python-version`); the sandbox's system Python (3.14) is only used to bootstrap `uv` itself. `.python-version` and `uv.lock` are committed so every agent and CI run uses the same interpreter and locked dependency set.
