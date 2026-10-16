@@ -15,7 +15,11 @@ from pathlib import Path
 import duckdb
 import yaml
 
-from mobgrid.pt.config import GtfsRebuildConfig, load_gtfs_rebuild_config
+from mobgrid.pt.config import (
+    GtfsRebuildConfig,
+    OpeningsListPolicy,
+    load_gtfs_rebuild_config,
+)
 from mobgrid.pt.osm_route_extraction import (
     configure_extraction_connection,
     estimate_run,
@@ -23,7 +27,14 @@ from mobgrid.pt.osm_route_extraction import (
     process_peak_memory_bytes,
     write_extraction_summary,
 )
-from mobgrid.pt.pt_openings import resolve_and_extract, run_mapping
+from mobgrid.pt.pt_changes import write_from_openings
+from mobgrid.pt.pt_openings import (
+    apply_openings_matches,
+    resolve_and_extract,
+    run_mapping,
+    run_mapping_for_networks,
+    run_mapping_grouped,
+)
 from mobgrid.pt.relation_pipeline import (
     RelationCalibrationRun,
     network_relation_coverage,
@@ -163,6 +174,53 @@ def _parser() -> argparse.ArgumentParser:
         "--output", type=Path, default=Path("config/pt_openings_mapping.csv")
     )
     map_openings.add_argument("--log", type=Path)
+
+    apply_openings = subparsers.add_parser("apply-openings")
+    apply_openings.add_argument(
+        "--config", type=Path, default=Path("config/gtfs_rebuild.yaml")
+    )
+    apply_openings.add_argument(
+        "--openings-csv",
+        type=Path,
+        default=Path("config/French transit openings 2022 to 2026.csv"),
+    )
+    apply_openings.add_argument(
+        "--mapping-csv", type=Path, default=Path("config/pt_openings_mapping.csv")
+    )
+    apply_openings.add_argument(
+        "--pt-changes", type=Path, default=Path("config/pt_changes.yaml")
+    )
+    apply_openings.add_argument("--log", type=Path)
+
+    map_and_apply_all = subparsers.add_parser("map-and-apply-all")
+    map_and_apply_all.add_argument(
+        "--config", type=Path, default=Path("config/gtfs_rebuild.yaml")
+    )
+    map_and_apply_all.add_argument(
+        "--openings-csv",
+        type=Path,
+        default=Path("config/French transit openings 2022 to 2026.csv"),
+    )
+    map_and_apply_all.add_argument(
+        "--gtfs-inventory", type=Path, default=Path("config/gtfs_inventory.csv")
+    )
+    map_and_apply_all.add_argument(
+        "--mapping-csv", type=Path, default=Path("config/pt_openings_mapping.csv")
+    )
+    map_and_apply_all.add_argument(
+        "--pt-changes", type=Path, default=Path("config/pt_changes.yaml")
+    )
+    map_and_apply_all.add_argument(
+        "--scratch-root", type=Path, default=Path("data/interim/pt_openings_mapping")
+    )
+    map_and_apply_all.add_argument(
+        "--networks",
+        nargs="+",
+        default=None,
+        help="Optional subset of CSV network strings to map (for testing)",
+    )
+    map_and_apply_all.add_argument("--log", type=Path)
+    map_and_apply_all.add_argument("--summary", type=Path)
     return parser
 
 
@@ -442,6 +500,209 @@ def _run_map_openings(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_openings_list_policy(config_path: Path) -> OpeningsListPolicy:
+    config = load_gtfs_rebuild_config(config_path)
+    policy = config.national_policy
+    if policy is None:
+        raise ValueError(
+            f"{config_path} has no national_policy; configure "
+            "national_policy.openings_list before running apply-openings"
+        )
+    return policy.openings_list
+
+
+def _log_openings_application(result, pt_changes_path: Path) -> None:
+    """Log one ``apply_openings_matches`` result (2026-10-16 logging fix).
+
+    WARNING only for a row carrying a real ``remove`` instruction that
+    could not be applied (a genuine gap); everything not applied by
+    design (low confidence, no ``remove`` state yet, or a change_type
+    that never gives an instruction) is an INFO count per reason, never
+    one line per row. "Applied" is reported by row (``opening_id``), with
+    the route-level edit count given separately (2026-10-16 bookkeeping
+    fix): a row may resolve to several routes, so the two numbers differ
+    and must not be added together with the other, row-level counts.
+    """
+    for line in result.warnings:
+        logger.warning("remove instruction not applied: %s", line)
+    for reason, count in sorted(result.not_applied_by_design.items()):
+        logger.info("not applied by design (%s): %d row(s)", reason, count)
+    for line in result.closed_before_2026:
+        logger.info("known gap: %s", line)
+    logger.info(
+        "applied %d openings-list rows (%d route-level edits) to %s (%d "
+        "warnings -- remove instructions that failed to match, %d not "
+        "applied by design, %d known gaps)",
+        len(result.applied_opening_ids),
+        len(result.applied),
+        pt_changes_path,
+        len(result.warnings),
+        sum(result.not_applied_by_design.values()),
+        len(result.closed_before_2026),
+    )
+
+
+def _run_apply_openings(args: argparse.Namespace) -> int:
+    openings_list = _load_openings_list_policy(args.config)
+    result = apply_openings_matches(
+        args.openings_csv,
+        args.mapping_csv,
+        include_row_confidence=openings_list.include_row_confidence,
+        apply_match_confidence=openings_list.apply_match_confidence,
+    )
+    write_from_openings(args.pt_changes, result.applied)
+    _log_openings_application(result, args.pt_changes)
+    return 0
+
+
+def _write_map_and_apply_all_summary(
+    path: Path,
+    *,
+    mapped_networks: list[str],
+    failed_networks: list[str],
+    elapsed_seconds: float,
+    result,
+    mapping_csv: Path,
+    pt_changes: Path,
+) -> None:
+    text = f"""# PT openings: map and apply all networks, summary
+
+## Inputs and outputs
+
+- Mapping CSV: `{mapping_csv}`
+- PT changes: `{pt_changes}`
+- Networks mapped this run: {len(mapped_networks)}
+- Networks that failed to map (download/extraction error; batch
+  continued): {len(failed_networks)}
+- Elapsed: {elapsed_seconds / 60:.1f} minutes
+
+## Applied
+
+- Applied: {len(result.applied_opening_ids)} rows ({len(result.applied)}
+  route-level edits -- a row may resolve to several routes)
+- Remove instructions not applied (needs attention; one WARNING logged
+  for each): {len(result.warnings)}
+- Not applied by design (low confidence, no remove state yet, or a
+  change_type that never gives an instruction), by reason:
+{chr(10).join(
+    f"  - {reason}: {count}"
+    for reason, count in sorted(result.not_applied_by_design.items())
+) or "  - None."}
+- Closed before 2026 (known gap): {len(result.closed_before_2026)}
+
+## Warnings
+
+{chr(10).join(f"- {line}" for line in failed_networks) or "- None."}
+"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _run_map_and_apply_all(args: argparse.Namespace) -> int:
+    config = load_gtfs_rebuild_config(args.config)
+    policy = config.national_policy
+    if policy is None:
+        raise ValueError(
+            f"{args.config} has no national_policy; run map-and-apply-all after "
+            "configuring national_policy.openings_list.network_resource_ids"
+        )
+    openings_list = policy.openings_list
+    started = time.perf_counter()
+    mapped: list[str] = []
+    failed: list[str] = []
+    wanted = set(args.networks) if args.networks else None
+
+    # Resolved resource ids are shared across several network-name
+    # aliases (e.g. "IDFM"/"RATP (IDFM)"/"Keolis Tisse (IDFM)" all read
+    # resource 80921) and sometimes the mode-split entries too; extracted
+    # at most once per run regardless of how many places reference it
+    # (2026-10-16 fix, section 5.6 point 4).
+    extracted_table_dirs: dict[int, Path] = {}
+
+    def get_table_dir(resource_id: int) -> Path:
+        if resource_id not in extracted_table_dirs:
+            scratch = args.scratch_root / str(resource_id)
+            extracted_table_dirs[resource_id] = resolve_and_extract(
+                args.gtfs_inventory, resource_id, scratch
+            )
+        return extracted_table_dirs[resource_id]
+
+    networks_by_resource: dict[int, list[str]] = {}
+    for network, resource_id in openings_list.network_resource_ids.items():
+        if wanted is not None and network not in wanted:
+            continue
+        networks_by_resource.setdefault(resource_id, []).append(network)
+
+    for resource_id, networks in sorted(networks_by_resource.items()):
+        networks = sorted(networks)
+        label = ", ".join(networks)
+        try:
+            table_dir = get_table_dir(resource_id)
+            proposals = run_mapping_for_networks(
+                args.openings_csv, table_dir, networks, args.mapping_csv
+            )
+            logger.info(
+                "mapped %s (resource %s): %d rows", label, resource_id, len(proposals)
+            )
+            mapped.extend(networks)
+        except Exception as error:  # noqa: BLE001 -- one resource must not abort the batch
+            logger.warning(
+                "failed to map %s (resource %s): %s", label, resource_id, error
+            )
+            failed.append(f"{label} (resource {resource_id}): {error}")
+
+    for network, resource_by_mode in sorted(
+        openings_list.mode_split_network_resource_ids.items()
+    ):
+        if wanted is not None and network not in wanted:
+            continue
+        try:
+            table_dirs = {
+                mode: get_table_dir(resource_id)
+                for mode, resource_id in resource_by_mode.items()
+            }
+            proposals = run_mapping_grouped(
+                args.openings_csv, network, table_dirs, args.mapping_csv
+            )
+            logger.info("mapped %r (mode-split): %d rows", network, len(proposals))
+            mapped.append(network)
+        except Exception as error:  # noqa: BLE001 -- one network must not abort the batch
+            logger.warning("failed to map %r (mode-split): %s", network, error)
+            failed.append(f"{network} (mode-split): {error}")
+
+    for network, reason in sorted(openings_list.unresolved_networks.items()):
+        logger.info("skipped %r (no configured resource): %s", network, reason)
+
+    result = apply_openings_matches(
+        args.openings_csv,
+        args.mapping_csv,
+        include_row_confidence=openings_list.include_row_confidence,
+        apply_match_confidence=openings_list.apply_match_confidence,
+    )
+    write_from_openings(args.pt_changes, result.applied)
+    _log_openings_application(result, args.pt_changes)
+    logger.info(
+        "mapped %d networks (%d failed), applied %d openings-list rows to %s",
+        len(mapped),
+        len(failed),
+        len(result.applied_opening_ids),
+        args.pt_changes,
+    )
+    summary = args.summary or _default_artifact(
+        "pt_openings_map_and_apply_all", "_summary.md"
+    )
+    _write_map_and_apply_all_summary(
+        summary,
+        mapped_networks=mapped,
+        failed_networks=failed,
+        elapsed_seconds=time.perf_counter() - started,
+        result=result,
+        mapping_csv=args.mapping_csv,
+        pt_changes=args.pt_changes,
+    )
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one resumable extraction or calibration job."""
     args = _parser().parse_args(argv)
@@ -449,6 +710,10 @@ def main(argv: list[str] | None = None) -> int:
         task = f"osm_pt_routes_{args.date}"
     elif args.command == "map-openings":
         task = f"pt_openings_mapping_{args.resource_id}"
+    elif args.command == "apply-openings":
+        task = "pt_openings_apply"
+    elif args.command == "map-and-apply-all":
+        task = "pt_openings_map_and_apply_all"
     else:
         task = "gtfs_calibration"
     _configure_logging(args.log or _default_artifact(task, ".log"))
@@ -504,6 +769,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "map-openings":
         return _run_map_openings(args)
+    if args.command == "apply-openings":
+        return _run_apply_openings(args)
+    if args.command == "map-and-apply-all":
+        return _run_map_and_apply_all(args)
     return _run_calibration(args)
 
 

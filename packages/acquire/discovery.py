@@ -8,9 +8,11 @@ import time
 import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
+from typing import Literal
 from urllib.parse import urlsplit
 from xml.etree import ElementTree as ET
 
@@ -40,6 +42,7 @@ class AcquisitionConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     transport_api: str
+    aom_api: str
     bdalti_feed: str
     metadata_max_bytes: int = Field(gt=0)
     request_timeout_seconds: float = Field(gt=0)
@@ -556,3 +559,199 @@ def merge_discovered(
         )
     ]
     return retained + replacements
+
+
+class Aom(BaseModel):
+        """One registered Autorité Organisatrice de la Mobilité (AOM)."""
+
+        model_config = ConfigDict(extra="forbid")
+        nom: str
+        departement: str
+        insee_commune_principale: str
+        siren: str
+        forme_juridique: str
+
+
+def discover_aoms(client: httpx.Client, settings: AcquisitionConfig) -> list[Aom]:
+        """Fetch every registered AOM from the PAN's national registry.
+
+        Used to catch producer feeds that exist (e.g. on a producer's own open
+        data portal, or on the general data.gouv.fr catalogue) but were never
+        referenced with transport.data.gouv.fr's PAN -- ``discover_gtfs`` only
+        ever sees PAN-referenced datasets, by design (section 5.1), so such a
+        producer is invisible to it even though its AOM is registered.
+        """
+        payload = metadata(client, settings.aom_api, settings)
+        data = json.loads(payload)
+        return [
+            Aom.model_validate(feature["properties"]) for feature in data["features"]
+        ]
+
+
+# 2026 metropolitan region INSEE code -> member department codes (2-char,
+# "2A"/"2B" for Corse), used only to decide whether an AOM is at least
+# indirectly covered by a region-wide GTFS aggregate (section 5.1 follow-up:
+# the Caen la mer/Twisto gap). Completeness against
+# ``AcquisitionConfig.metropolitan_departments`` is checked by
+# ``test_region_departments_cover_every_metropolitan_department``.
+_REGION_DEPARTMENTS: dict[str, frozenset[str]] = {
+        "11": frozenset(("75", "77", "78", "91", "92", "93", "94", "95")),  # IDF
+        "24": frozenset(("18", "28", "36", "37", "41", "45")),  # Centre-Val de Loire
+        "27": frozenset(("21", "25", "39", "58", "70", "71", "89", "90")),  # BFC
+        "28": frozenset(("14", "27", "50", "61", "76")),  # Normandie
+        "32": frozenset(("02", "59", "60", "62", "80")),  # Hauts-de-France
+        "44": frozenset(
+            ("08", "10", "51", "52", "54", "55", "57", "67", "68", "88")
+        ),  # Grand Est
+        "52": frozenset(("44", "49", "53", "72", "85")),  # Pays de la Loire
+        "53": frozenset(("22", "29", "35", "56")),  # Bretagne
+        "75": frozenset(
+            ("16", "17", "19", "23", "24", "33", "40", "47", "64", "79", "86", "87")
+        ),  # Nouvelle-Aquitaine
+        "76": frozenset(
+            (
+                "09", "11", "12", "30", "31", "32", "34", "46", "48", "65", "66",
+                "81", "82",
+            )
+        ),  # Occitanie
+        "84": frozenset(
+            ("01", "03", "07", "15", "26", "38", "42", "43", "63", "69", "73", "74")
+        ),  # Auvergne-Rhone-Alpes
+        "93": frozenset(("04", "05", "06", "13", "83", "84")),  # PACA
+        "94": frozenset(("2A", "2B")),  # Corse
+}
+_DEPARTMENT_TO_REGION: dict[str, str] = {
+        department: region
+        for region, departments in _REGION_DEPARTMENTS.items()
+        for department in departments
+}
+
+
+def _normalise_department_code(code: str) -> str:
+        """Zero-pad a 2-character AOM department code to the project's 3-char form."""
+        if len(code) == 2:
+            return f"0{code}"
+        return code
+
+
+AomCoverageStatus = Literal["dedicated", "indirect", "uncovered"]
+
+
+@dataclass(frozen=True)
+class AomCoverage:
+        """One AOM's GTFS coverage status in ``config/gtfs_inventory.csv``."""
+
+        aom: Aom
+        status: AomCoverageStatus
+        covering_resource_ids: tuple[str, ...]
+
+
+def _is_valid_for_reference(row: dict[str, str], reference_date: date) -> bool:
+        if row.get("available") != "True":
+            return False
+        if row.get("gtfs_valid_zip") != "True" or row.get("gtfs_is_gtfs") != "True":
+            return False
+        last = row.get("gtfs_last_service_date")
+        if not last:
+            return False
+        try:
+            last_date = date.fromisoformat(last)
+        except ValueError:
+            return False
+        return last_date >= reference_date
+
+
+def classify_aom_coverage(
+        aoms: list[Aom],
+        inventory_rows: list[dict[str, str]],
+        reference_date: date,
+        metropolitan_departments: set[str],
+) -> list[AomCoverage]:
+        """Classify each AOM's GTFS coverage in the inventory for ``reference_date``.
+
+        Three levels, from most to least precise (section 5.1 follow-up, the
+        Twisto/Caen la mer gap): ``dedicated`` -- a valid resource's
+        ``covered_area`` lists an ``epci`` entry whose INSEE code equals the
+        AOM's own SIREN (true for most urban AOMs, which are themselves the
+        EPCI); ``indirect`` -- no dedicated resource, but a valid resource's
+        ``covered_area`` lists the AOM's own department or region (a broader
+        aggregate that bundles the AOM's network as one of several agencies,
+        like Twisto inside the Normandy aggregate); ``uncovered`` -- no valid
+        resource at any level. Non-metropolitan AOMs (``metropolitan_departments``
+        uses the project's own 3-char department codes) are skipped entirely,
+        since this project covers only metropolitan France.
+        """
+        valid_rows = [
+            row
+            for row in inventory_rows
+            if _is_valid_for_reference(row, reference_date)
+        ]
+        epci_to_resources: dict[str, list[str]] = {}
+        department_to_resources: dict[str, list[str]] = {}
+        region_to_resources: dict[str, list[str]] = {}
+        for row in valid_rows:
+            try:
+                area = json.loads(row.get("covered_area") or "[]")
+            except json.JSONDecodeError:
+                area = []
+            for entry in area:
+                insee = entry.get("insee")
+                if not insee:
+                    continue
+                if entry.get("type") == "epci":
+                    epci_to_resources.setdefault(insee, []).append(row["resource_id"])
+                elif entry.get("type") == "departement":
+                    department_to_resources.setdefault(insee, []).append(
+                        row["resource_id"]
+                    )
+                elif entry.get("type") == "region":
+                    region_to_resources.setdefault(insee, []).append(row["resource_id"])
+
+        results = []
+        for aom in aoms:
+            department = _normalise_department_code(aom.departement)
+            if department not in metropolitan_departments:
+                continue
+            dedicated = epci_to_resources.get(aom.siren, [])
+            if dedicated:
+                results.append(AomCoverage(aom, "dedicated", tuple(dedicated)))
+                continue
+            region = _DEPARTMENT_TO_REGION.get(aom.departement)
+            indirect = list(department_to_resources.get(aom.departement, []))
+            indirect += region_to_resources.get(region, []) if region else []
+            if indirect:
+                results.append(AomCoverage(aom, "indirect", tuple(indirect)))
+            else:
+                results.append(AomCoverage(aom, "uncovered", ()))
+        return results
+
+
+def write_aom_coverage_report(path: Path, coverages: list[AomCoverage]) -> None:
+        """Write one row per AOM, worst (``uncovered``) first, then ``indirect``."""
+        order = {"uncovered": 0, "indirect": 1, "dedicated": 2}
+        rows = sorted(coverages, key=lambda item: (order[item.status], item.aom.nom))
+        temporary = path.with_name(path.name + ".tmp")
+        with temporary.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(
+                [
+                    "nom",
+                    "siren",
+                    "departement",
+                    "forme_juridique",
+                    "status",
+                    "resource_ids",
+                ]
+            )
+            for coverage in rows:
+                writer.writerow(
+                    [
+                        coverage.aom.nom,
+                        coverage.aom.siren,
+                        coverage.aom.departement,
+                        coverage.aom.forme_juridique,
+                        coverage.status,
+                        ";".join(coverage.covering_resource_ids),
+                    ]
+                )
+        replace_metadata(temporary, path)

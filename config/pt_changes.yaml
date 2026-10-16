@@ -21,21 +21,6 @@ confirmed:
   - A
   opened: '2026-01-05'
   description: Sete express bus A and RD2 bus-priority corridor.
-- id: bordeaux_tram_a_merignac_airport
-  type: pt_extend
-  network: tbm_bordeaux
-  route_ids:
-  - '164'
-  opened: '2023-04-01'
-  description: Bordeaux tram, Merignac Centre - Merignac Aeroport branch, opened in
-    2023 (as part of tram A at the time; served by tram F since the Dec 2025 restructuring,
-    so route 164/F carries it in the 2026 feed, not route 59/A). In the 2022 state
-    the branch is removed; in the 2024 state it is kept.
-  notes: 2026-10-15 correction - this edit previously targeted route 59 (A), which
-    no longer reaches the airport in the 2026 feed (confirmed from real GTFS terminal
-    stop names; its main pattern is Le Haillan Rostand <-> La Gardette-Bassens-Carbon-Blanc).
-    OSM 2022 already tagged these tracks in service (data gap); applied from the documented
-    opening.
 to_review:
 - id: candidate_lio_occitanie_456
   network: lio_occitanie
@@ -10417,3 +10402,922 @@ rejected:
     '2022-01-01': 0.917738
     '2024-01-01': 0.917738
   notes: existed before 2022 (reviewer check)
+from_openings:
+- opening_id: ARA-02
+  network: "TCL (SYTRAL Mobilit\xE9s)"
+  route_id: B
+  mode: metro
+  change_type: extension
+  line_2026: B
+  section_from: Oullins Gare
+  section_to: "Saint-Genis-Laval H\xF4pital Lyon Sud"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: ARA-07
+  network: "TCL (SYTRAL Mobilit\xE9s)"
+  route_id: T6
+  mode: tram
+  change_type: extension
+  line_2026: T6
+  section_from: "H\xF4pitaux Est-Pinel"
+  section_to: La Doua Gaston Berger
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: ARA-08
+  network: "TCL (SYTRAL Mobilit\xE9s)"
+  route_id: TB12
+  mode: bhns
+  change_type: new_line
+  line_2026: TB12
+  section_from: Part-Dieu Vivier Merle
+  section_to: "Kimmerling-Gen\xEAts (Montchat)"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: BRE-01
+  network: "STAR (Rennes M\xE9tropole)"
+  route_id: 7-1002
+  mode: metro
+  change_type: new_line
+  line_2026: b
+  section_from: "Saint-Jacques\u2013Ga\xEEt\xE9"
+  section_to: "Cesson\u2013Viasilva"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: BRE-04
+  network: "Bibus (Brest M\xE9tropole)"
+  route_id: D
+  mode: bhns
+  change_type: new_line
+  line_2026: D
+  section_from: Gare
+  section_to: "Lamb\xE9zellec"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: BRE-05
+  network: "Bibus (Brest M\xE9tropole)"
+  route_id: B
+  mode: tram
+  change_type: new_line
+  line_2026: B
+  section_from: Gare (SNCF)
+  section_to: CHU La Cavale Blanche
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: CVL-01
+  network: "Filibus (Chartres m\xE9tropole)"
+  route_id: B
+  mode: bhns
+  change_type: new_line
+  line_2026: "B (C'P\xE9gase)"
+  section_from: Gare de Chartres
+  section_to: "H\xF4pital (Le Coudray)"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: CVL-02
+  network: "Filibus (Chartres m\xE9tropole)"
+  route_id: A
+  mode: bhns
+  change_type: new_line
+  line_2026: "A (C'P\xE9gase)"
+  section_from: "Luc\xE9"
+  section_to: La Madeleine (via Chartres centre)
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: GES-03
+  network: "CTS (Eurom\xE9tropole de Strasbourg)"
+  route_id: D
+  mode: tram
+  change_type: new_station
+  line_2026: D
+  section_from: Starcoop
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: GES-04
+  network: "CTS (Eurom\xE9tropole de Strasbourg)"
+  route_id: G
+  mode: bhns
+  change_type: extension
+  line_2026: G
+  section_from: Gare Centrale
+  section_to: "Cit\xE9 Rotterdam (via boulevards Ouest and quais Sud)"
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: GES-05
+  network: "STAN (M\xE9tropole du Grand Nancy)"
+  route_id: '11'
+  mode: trolleybus
+  change_type: reopening
+  line_2026: '1'
+  section_from: "Brabois (CHU, Vand\u0153uvre)"
+  section_to: "Essey Mouzimpr\xE9"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: GES-05
+  network: "STAN (M\xE9tropole du Grand Nancy)"
+  route_id: '12'
+  mode: trolleybus
+  change_type: reopening
+  line_2026: '1'
+  section_from: "Brabois (CHU, Vand\u0153uvre)"
+  section_to: "Essey Mouzimpr\xE9"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: GES-05
+  network: "STAN (M\xE9tropole du Grand Nancy)"
+  route_id: '13'
+  mode: trolleybus
+  change_type: reopening
+  line_2026: '1'
+  section_from: "Brabois (CHU, Vand\u0153uvre)"
+  section_to: "Essey Mouzimpr\xE9"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: GES-05
+  network: "STAN (M\xE9tropole du Grand Nancy)"
+  route_id: '15'
+  mode: trolleybus
+  change_type: reopening
+  line_2026: '1'
+  section_from: "Brabois (CHU, Vand\u0153uvre)"
+  section_to: "Essey Mouzimpr\xE9"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: GES-05
+  network: "STAN (M\xE9tropole du Grand Nancy)"
+  route_id: '16'
+  mode: trolleybus
+  change_type: reopening
+  line_2026: '1'
+  section_from: "Brabois (CHU, Vand\u0153uvre)"
+  section_to: "Essey Mouzimpr\xE9"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: GES-05
+  network: "STAN (M\xE9tropole du Grand Nancy)"
+  route_id: '17'
+  mode: trolleybus
+  change_type: reopening
+  line_2026: '1'
+  section_from: "Brabois (CHU, Vand\u0153uvre)"
+  section_to: "Essey Mouzimpr\xE9"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: GES-07
+  network: "CTS (Eurom\xE9tropole de Strasbourg)"
+  route_id: F
+  mode: tram
+  change_type: extension
+  line_2026: F
+  section_from: Comtes (Koenigshoffen)
+  section_to: Wolfisheim Henri-Rendu
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: GES-08
+  network: "Grand Reims Mobilit\xE9s"
+  route_id: O1
+  mode: bhns
+  change_type: new_line
+  line_2026: "O1 (Or\xE9lys)"
+  section_from: Port Colbert
+  section_to: Campus Moulin de la Housse
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: GES-09
+  network: "Grand Reims Mobilit\xE9s"
+  route_id: O2
+  mode: bhns
+  change_type: new_line
+  line_2026: "O2 (Or\xE9lys)"
+  section_from: Gare de Reims
+  section_to: Centre commercial Cormontreuil
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: IDF-01
+  network: RATP (IDFM)
+  route_id: IDFM:C01374
+  mode: metro
+  change_type: extension
+  line_2026: M4
+  section_from: Mairie de Montrouge
+  section_to: "Bagneux\u2013Lucie Aubrac"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: IDF-02
+  network: RATP (IDFM)
+  route_id: IDFM:C01382
+  mode: metro
+  change_type: extension
+  line_2026: M12
+  section_from: Front Populaire
+  section_to: Mairie d'Aubervilliers
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: IDF-03
+  network: IDFM
+  route_id: IDFM:C02344
+  mode: tram_train
+  change_type: new_line
+  line_2026: T13
+  section_from: "Saint-Cyr-l'\xC9cole"
+  section_to: Saint-Germain-en-Laye (RER)
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: IDF-04
+  network: IDFM
+  route_id: IDFM:C02528
+  mode: tram
+  change_type: new_line
+  line_2026: T10
+  section_from: Antony (La Croix de Berny RER)
+  section_to: Clamart (Jardin Parisien)
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: IDF-07
+  network: IDFM
+  route_id: IDFM:C02529
+  mode: tram_train
+  change_type: new_line
+  line_2026: T12
+  section_from: Massy-Palaiseau
+  section_to: "\xC9vry-Courcouronnes"
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: IDF-08
+  network: RATP (IDFM)
+  route_id: IDFM:C01679
+  mode: tram
+  change_type: extension
+  line_2026: T3b
+  section_from: "Porte d'Asni\xE8res (renamed Marguerite Long)"
+  section_to: Porte Dauphine (via Porte Maillot)
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: IDF-09
+  network: SNCF Voyageurs (IDFM)
+  route_id: IDFM:C01729
+  mode: rail
+  change_type: extension
+  line_2026: RER E
+  section_from: Haussmann-Saint-Lazare
+  section_to: Nanterre-La Folie
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: IDF-10
+  network: RATP (IDFM)
+  route_id: IDFM:C01381
+  mode: metro
+  change_type: extension
+  line_2026: M11
+  section_from: Mairie des Lilas
+  section_to: "Rosny\u2013Bois-Perrier"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: IDF-11
+  network: RATP (IDFM)
+  route_id: IDFM:C01384
+  mode: metro
+  change_type: extension
+  line_2026: M14
+  section_from: Mairie de Saint-Ouen
+  section_to: Saint-Denis Pleyel
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: IDF-12
+  network: "RATP; Soci\xE9t\xE9 des grands projets (IDFM)"
+  route_id: IDFM:C01384
+  mode: metro
+  change_type: extension
+  line_2026: M14
+  section_from: Olympiades
+  section_to: "A\xE9roport d'Orly"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: IDF-14
+  network: "RATP; Soci\xE9t\xE9 des grands projets (IDFM)"
+  route_id: IDFM:C01384
+  mode: metro
+  change_type: new_station
+  line_2026: M14
+  section_from: "Villejuif\u2013Gustave Roussy"
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: IDF-16
+  network: IDFM (operator Transdev per Wikipedia)
+  route_id: IDFM:C02666
+  mode: cable
+  change_type: new_line
+  line_2026: C1
+  section_from: "Cr\xE9teil (Pointe du Lac, M8)"
+  section_to: Villeneuve-Saint-Georges (Villa Nova)
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: NAQ-01
+  network: "TBM (Bordeaux M\xE9tropole)"
+  route_id: '164'
+  mode: tram
+  change_type: extension
+  line_2026: F
+  section_from: "Carrefour des Quatre Chemins (M\xE9rignac)"
+  section_to: "M\xE9rignac A\xE9roport"
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: NAQ-02
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::145aae45-17eb-45b5-b5b4-facb8b6490f3:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 42 Bordeaux \u2013 Pointe-de-Grave"
+  section_from: Le Bouscat-Sainte-Germaine
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-02
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::1C59DA64-5D12-4600-9092-4E99FCBFAC7A:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 42 Bordeaux \u2013 Pointe-de-Grave"
+  section_from: Le Bouscat-Sainte-Germaine
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-02
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::2881AC3D-A347-4440-BEF8-23ACAB159588:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 42 Bordeaux \u2013 Pointe-de-Grave"
+  section_from: Le Bouscat-Sainte-Germaine
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-02
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::75E9980B-E8DF-4696-8E87-123692055B00:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 42 Bordeaux \u2013 Pointe-de-Grave"
+  section_from: Le Bouscat-Sainte-Germaine
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-02
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::9684FBBE-75D8-461A-B8F4-44181F11CFBC:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 42 Bordeaux \u2013 Pointe-de-Grave"
+  section_from: Le Bouscat-Sainte-Germaine
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-02
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::A74B127A-8882-4043-BAAA-F49A6703DE54:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 42 Bordeaux \u2013 Pointe-de-Grave"
+  section_from: Le Bouscat-Sainte-Germaine
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-02
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::B5CF3630-53A0-4E1C-BF67-9B0EC6B69C5E:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 42 Bordeaux \u2013 Pointe-de-Grave"
+  section_from: Le Bouscat-Sainte-Germaine
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-02
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::bfee86bc-5225-4c40-a6e6-785cfd43eae6:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 42 Bordeaux \u2013 Pointe-de-Grave"
+  section_from: Le Bouscat-Sainte-Germaine
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-06
+  network: "TER Nouvelle-Aquitaine (GrandAngoul\xEAme)"
+  route_id: 'FR:Line::6973a1d6-1ab5-447c-b47e-d20af934f64d:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER 13 Angoul\xEAme \u2013 Bordeaux"
+  section_from: La Couronne
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: NAQ-08
+  network: "TBM (Bordeaux M\xE9tropole)"
+  route_id: '901'
+  mode: bhns
+  change_type: new_line
+  line_2026: G (Bus Express)
+  section_from: Bordeaux Gare Saint-Jean
+  section_to: "Saint-Aubin-de-M\xE9doc"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: NAQ-10
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::1F038E5C-9CF4-4BFC-9D55-33F57B4DB04F:'
+  mode: rail
+  change_type: new_station
+  line_2026: TER 41+ / 42
+  section_from: "Talence-M\xE9doquine"
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-10
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::2C32F2C3-282A-4DCA-80AF-1B2FEAA61B11:'
+  mode: rail
+  change_type: new_station
+  line_2026: TER 41+ / 42
+  section_from: "Talence-M\xE9doquine"
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-10
+  network: "TER Nouvelle-Aquitaine (Bordeaux M\xE9tropole, R\xE9gion)"
+  route_id: 'FR:Line::62C16406-4390-4C30-B97A-94317527CF00:'
+  mode: rail
+  change_type: new_station
+  line_2026: TER 41+ / 42
+  section_from: "Talence-M\xE9doquine"
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-11
+  network: "TBM (Bordeaux M\xE9tropole)"
+  route_id: '911'
+  mode: bhns
+  change_type: new_line
+  line_2026: H (Bus Express)
+  section_from: Cenon Gare (circular H1/H2)
+  section_to: Cenon Gare (via boulevards, Pont Simone-Veil, Pont Chaban-Delmas)
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NAQ-11
+  network: "TBM (Bordeaux M\xE9tropole)"
+  route_id: '912'
+  mode: bhns
+  change_type: new_line
+  line_2026: H (Bus Express)
+  section_from: Cenon Gare (circular H1/H2)
+  section_to: Cenon Gare (via boulevards, Pont Simone-Veil, Pont Chaban-Delmas)
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: remove
+  notes: numbered/lettered variants of one circular or directional service, not a
+    real ambiguity
+- opening_id: NOR-01
+  network: Twisto (Caen la mer)
+  route_id: ATOUMOD029:Line:T3:LOC
+  mode: tram
+  change_type: extension
+  line_2026: T3
+  section_from: "Coll\xE8ge Hawking"
+  section_to: Hauts de l'Orne (Fleury-sur-Orne)
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: OCC-01
+  network: "Tiss\xE9o"
+  route_id: line:204
+  mode: cable
+  change_type: new_line
+  line_2026: "T\xE9l\xE9o"
+  section_from: "Universit\xE9 Paul Sabatier (metro B)"
+  section_to: Oncopole (via CHU Rangueil)
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: OCC-06
+  network: "Tiss\xE9o"
+  route_id: line:209
+  mode: bhns
+  change_type: new_line
+  line_2026: "L10 (Lin\xE9o)"
+  section_from: La Vache
+  section_to: Fenouillet Centre Commercial
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: OCC-08
+  network: "Tiss\xE9o"
+  route_id: line:216
+  mode: bhns
+  change_type: new_line
+  line_2026: "L11 (Lin\xE9o)"
+  section_from: Basso Cambo
+  section_to: Frouzins Complexe Sportif
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: OCC-10
+  network: "Tiss\xE9o"
+  route_id: line:264
+  mode: bhns
+  change_type: new_line
+  line_2026: "L14 (Lin\xE9o)"
+  section_from: Marengo SNCF
+  section_to: Basso Cambo
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: OCC-12
+  network: "TaM (Montpellier M\xE9diterran\xE9e M\xE9tropole)"
+  route_id: A
+  mode: bhns
+  change_type: new_line
+  line_2026: A (Bustram)
+  section_from: Place de l'Europe
+  section_to: Notre-Dame de Sablassou (Castelnau-le-Lez)
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: OCC-13
+  network: TER Occitanie (liO)
+  route_id: 'FR:Line::2B0506BC-0CB9-4FFC-B90C-E202497AE4F0:'
+  mode: rail
+  change_type: reopening
+  line_2026: "TER Montr\xE9jeau \u2013 Luchon"
+  section_from: "Montr\xE9jeau-Gourdan-Polignan"
+  section_to: "Bagn\xE8res-de-Luchon"
+  match_confidence: stop-confirmed
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: 'matched by section_from/section_to stop names alone within the ''rail''
+    mode family -- no usable line-name match (previously ''ambiguous'': 2 distinct
+    corridors shared this name/mode; narrowed by section_from/section_to)'
+- opening_id: OCC-14
+  network: "Tiss\xE9o"
+  route_id: line:269
+  mode: bhns
+  change_type: new_line
+  line_2026: "L12 (Lin\xE9o)"
+  section_from: Borderouge
+  section_to: Rangueil
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: OCC-15
+  network: "Tiss\xE9o"
+  route_id: line:171
+  mode: bhns
+  change_type: new_line
+  line_2026: "L7 (Lin\xE9o, new)"
+  section_from: "Universit\xE9 Paul Sabatier"
+  section_to: Saint-Orens-de-Gameville
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: OCC-16
+  network: "TaM (Montpellier M\xE9diterran\xE9e M\xE9tropole)"
+  route_id: '1'
+  mode: tram
+  change_type: extension
+  line_2026: '1'
+  section_from: Odysseum
+  section_to: Gare Montpellier Sud de France
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: OCC-17
+  network: "TaM (Montpellier M\xE9diterran\xE9e M\xE9tropole)"
+  route_id: '5'
+  mode: tram
+  change_type: new_line
+  line_2026: '5'
+  section_from: Clapiers
+  section_to: "Lav\xE9rune"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: OCC-18
+  network: "SAM (S\xE8te Agglop\xF4le M\xE9diterran\xE9e)"
+  route_id: A
+  mode: bhns
+  change_type: new_line
+  line_2026: A
+  section_from: Balaruc-le-Vieux Centre Commercial
+  section_to: "S\xE8te No\xEBl Guignon (via S\xE8te station hub)"
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: PAC-02
+  network: "TER (R\xE9gion Sud, SNCF R\xE9seau)"
+  route_id: 'FR:Line::0128E1D5-9183-4D58-B1CF-F5AA5A64A037:'
+  mode: rail
+  change_type: new_station
+  line_2026: "TER Marseille \u2013 Hy\xE8res / Toulon \u2013 Les Arcs"
+  section_from: Toulon Sainte-Musse
+  section_to: null
+  match_confidence: stop-confirmed
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: 19 distinct corridors shared this name/mode; narrowed by section_from/section_to
+- opening_id: PAC-04
+  network: Lebus+ (Aix-Marseille-Provence)
+  route_id: ULY-BAM
+  mode: bhns
+  change_type: new_line
+  line_2026: BAM
+  section_from: Jean Moulin
+  section_to: Village des Marques
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: PAC-06
+  network: RTM (Aix-Marseille-Provence)
+  route_id: RTM-10259
+  mode: bhns
+  change_type: new_line
+  line_2026: B4
+  section_from: "Capitaine G\xE8ze"
+  section_to: "La Fourrag\xE8re"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: PAC-07
+  network: RTM (Aix-Marseille-Provence)
+  route_id: RTM-48
+  mode: tram
+  change_type: extension
+  line_2026: T3
+  section_from: Arenc
+  section_to: "G\xE8ze (Capitaine G\xE8ze)"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: PAC-08
+  network: RTM (Aix-Marseille-Provence)
+  route_id: RTM-48
+  mode: tram
+  change_type: extension
+  line_2026: T3
+  section_from: Castellane
+  section_to: La Gaye
+  match_confidence: exact
+  csv_confidence: medium
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode
+- opening_id: PDL-01
+  network: "Irigo (Angers Loire M\xE9tropole)"
+  route_id: B
+  mode: tram
+  change_type: new_line
+  line_2026: B
+  section_from: Belle-Beille Campus
+  section_to: Monplaisir
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: PDL-02
+  network: "Irigo (Angers Loire M\xE9tropole)"
+  route_id: C
+  mode: tram
+  change_type: new_line
+  line_2026: C
+  section_from: Belle-Beille Campus
+  section_to: Angers-Roseraie
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: PDL-03
+  network: "TER Pays de la Loire (Al\xE9op)"
+  route_id: 'FR:Line::0359c353-2f81-4c49-a269-bc287ff237e0:'
+  mode: rail
+  change_type: new_station
+  line_2026: TER 22 / 24
+  section_from: "Le Mans H\xF4pital-Universit\xE9"
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: PDL-03
+  network: "TER Pays de la Loire (Al\xE9op)"
+  route_id: 'FR:Line::c9a1bd25-d84e-4bab-aa97-0c648522e2da:'
+  mode: rail
+  change_type: new_station
+  line_2026: TER 22 / 24
+  section_from: "Le Mans H\xF4pital-Universit\xE9"
+  section_to: null
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: keep
+  notes: unique corridor by name and mode
+- opening_id: PDL-04
+  network: "Naolib (Nantes M\xE9tropole)"
+  route_id: FR_NAOLIB:Line:1
+  mode: tram
+  change_type: extension
+  line_2026: '1'
+  section_from: Ranzay
+  section_to: "Babini\xE8re"
+  match_confidence: exact
+  csv_confidence: high
+  state_2022: remove
+  state_2024: remove
+  notes: unique corridor by name and mode

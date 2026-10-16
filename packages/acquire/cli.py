@@ -1,6 +1,7 @@
 """Command-line acquisition entry point."""
 
 import argparse
+import csv
 import logging
 from datetime import date
 from pathlib import Path
@@ -10,12 +11,16 @@ import httpx
 
 from acquire.checksums import checksum_file
 from acquire.discovery import (
+    AcquisitionConfig,
+    classify_aom_coverage,
+    discover_aoms,
     discover_bdalti,
     discover_gtfs,
     discover_osm,
     load_acquisition_config,
     merge_discovered,
     step0_coverage,
+    write_aom_coverage_report,
     write_gtfs_inventory,
 )
 from acquire.download import download_source
@@ -37,6 +42,15 @@ def _parser() -> argparse.ArgumentParser:
         help="inspect all configured local GTFS files offline and write inventory",
     )
     selection.add_argument(
+        "--check-aom-coverage",
+        action="store_true",
+        help=(
+            "fetch the PAN's AOM registry (one metadata GET) and cross-check it "
+            "against the existing gtfs_inventory.csv; no GTFS files are read or "
+            "downloaded"
+        ),
+    )
+    selection.add_argument(
         "--all", action="store_true", help="process every configured entry"
     )
     selection.add_argument(
@@ -54,6 +68,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--project-root", type=Path)
     parser.add_argument("--acquisition-config", type=Path)
+    parser.add_argument(
+        "--reference-date",
+        type=date.fromisoformat,
+        default=date.today(),
+        help="reference date for --check-aom-coverage's validity check (ISO format)",
+    )
     return parser
 
 
@@ -164,6 +184,37 @@ def _check_gtfs(sources: list[SourceFile], root: Path, inventory: Path) -> None:
             )
 
 
+def _check_aom_coverage(
+    client: httpx.Client,
+    settings: AcquisitionConfig,
+    inventory: Path,
+    report: Path,
+    reference_date: date,
+) -> None:
+    """Fetch the AOM registry (one metadata GET) and classify coverage offline."""
+    if not inventory.is_file():
+        raise ValueError(f"{inventory} not found; run GTFS discovery first")
+    with inventory.open(encoding="utf-8", newline="") as stream:
+        inventory_rows = list(csv.DictReader(stream))
+    aoms = discover_aoms(client, settings)
+    coverages = classify_aom_coverage(
+        aoms, inventory_rows, reference_date, settings.metropolitan_departments
+    )
+    write_aom_coverage_report(report, coverages)
+    counts = {"dedicated": 0, "indirect": 0, "uncovered": 0}
+    for coverage in coverages:
+        counts[coverage.status] += 1
+    print(
+        f"AOM coverage ({reference_date}): {len(coverages)} metropolitan AOMs -- "
+        f"dedicated resource: {counts['dedicated']}, "
+        f"indirect (region/department aggregate only): {counts['indirect']}, "
+        f"uncovered: {counts['uncovered']}"
+    )
+    for coverage in coverages:
+        if coverage.status == "uncovered":
+            print(f"uncovered AOM: {coverage.aom.nom} (siren {coverage.aom.siren})")
+
+
 def _register_restricted(
     sources: list[SourceFile],
     selector: str,
@@ -222,6 +273,31 @@ def main(argv: list[str] | None = None) -> int:
             _check_gtfs(sources, root, manifest_path.with_name("gtfs_inventory.csv"))
         except (OSError, ValueError) as error:
             logger.error("GTFS check failed: %s", error)
+            return 1
+        return 0
+    if args.check_aom_coverage:
+        if args.discover or args.dry_run:
+            logger.error(
+                "--check-aom-coverage cannot be combined with discovery or dry run"
+            )
+            return 1
+        try:
+            settings = load_acquisition_config(
+                args.acquisition_config or manifest_path.with_name("acquisition.yaml")
+            )
+            with httpx.Client(
+                follow_redirects=True,
+                timeout=settings.request_timeout_seconds,
+            ) as client:
+                _check_aom_coverage(
+                    client,
+                    settings,
+                    manifest_path.with_name("gtfs_inventory.csv"),
+                    manifest_path.with_name("gtfs_aom_coverage.csv"),
+                    args.reference_date,
+                )
+        except (httpx.HTTPError, OSError, ValueError) as error:
+            logger.error("AOM coverage check failed: %s", error)
             return 1
         return 0
     if args.discover:

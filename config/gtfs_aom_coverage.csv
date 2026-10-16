@@ -1,0 +1,1128 @@
+nom,siren,departement,forme_juridique,status,resource_ids
+Agglobus,251801239,18,Syndicat,indirect,83521;83530
+CA Grand Châtellerault,248600413,86,Communauté d'agglomération,indirect,82332;82321
+CA Mauges Communauté,200060010,49,Communauté d'agglomération,indirect,79818;80721
+CA Mont-Saint-Michel-Normandie,200069425,50,Communauté d'agglomération,indirect,81942;82317
+CA Saumur Val de Loire,200071876,49,Communauté d'agglomération,indirect,79818;80721
+CA Terres de Montaigu,200070233,85,Communauté d'agglomération,indirect,79818;80721
+CA Vitré Communauté,200039022,35,Communauté d'agglomération,indirect,81486;81559;81463;81462;81461;81464;81474
+CC  Sud Côte Chalonnaise,247104094,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC  Vallée des Baux-Alpilles (CC VBA),241300375,13,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Airvaudais-Val du Thouet,200041416,79,Communauté de communes,indirect,82334;82321
+CC Albret Communauté,200068948,47,Communauté de communes,indirect,82344;82321
+CC Alpes d'Azur,200039931,06,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Alsace Rhin Brisach,200066025,68,Communauté de communes,indirect,80419;83634;83635
+CC Altitude 800,242504488,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Amognes Coeur du Nivernais,200067908,58,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Andaine - Passais,200068443,61,Communauté de communes,indirect,81942;82317
+CC Anjou Bleu Communauté,244900809,49,Communauté de communes,indirect,79818;80721
+CC Anjou Loir et Sarthe,200068955,49,Communauté de communes,indirect,79818;80721
+"CC Arbois, Poligny, Salins, Coeur du Jura",200071595,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Arc Sud Bretagne,200027027,56,Communauté de communes,indirect,81559;81463;81462;81461;81464;81474
+CC Ardennes Thiérache,200041622,08,Communauté de communes,indirect,80413;83634;83635
+CC Ardèche Rhône Coiron,200071405,07,Communauté de communes,indirect,80961;83112
+CC Argonne-Meuse,200066116,55,Communauté de communes,indirect,80425;83634;83635
+"CC Avallon, Vézelay, Morvan",200039758,89,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Avre Luce Noye,200070969,80,Communauté de communes,indirect,82277;84110;83620
+CC Baud Communauté,200096675,56,Communauté de communes,indirect,81559;81463;81462;81461;81464;81474
+CC Baugeois Vallée,244900882,49,Communauté de communes,indirect,79818;80721
+CC Bazois Loire Morvan,200067882,58,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Blavet Bellevue Océan,245600440,56,Communauté de communes,indirect,81559;81463;81462;81461;81464;81474
+CC Bouzonvillois-Trois Frontières,200067486,57,Communauté de communes,indirect,80427;83634;83635
+CC Bresse Haute Seille,200069615,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Bresse Louhannaise Intercom',200071579,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Bresse Nord Intercom',247100647,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Bresse Revermont 71,200042414,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Bretagne Porte de Loire Communauté,200070662,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Bretagne Romantique,243500733,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Brionnais Sud Bourgogne,200070548,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Brocéliande Communauté,243500618,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Buëch-Dévoluy,200067445,05,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Campagne-de-Caux,247600505,76,Communauté de communes,indirect,82308;81942;82317
+CC Canaux et Forêts en Gâtinais,200067676,45,Communauté de communes,indirect,83521;83530
+CC Cap Sizun - Pointe du Raz,242900629,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC Centre Morbihan Communauté,200096683,56,Communauté de communes,indirect,81559;81463;81462;81461;81464;81474
+CC Chablis Villages et Terroirs,200067080,89,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Challans-Gois Communauté,200071629,85,Communauté de communes,indirect,79818;80721
+CC Champagnole Nozeroy Jura,200069623,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Chavanon Combrailles et Volcans,200071215,63,Communauté de communes,indirect,38888;83112
+CC Cingal-Suisse Normande,200066710,14,Communauté de communes,indirect,81942;82317
+CC Coeur Côte Fleurie,241400415,14,Communauté de communes,indirect,81942;82317
+CC Coeur de Nacre,241400860,14,Communauté de communes,indirect,81942;82317
+CC Coeur de Savoie,200041010,73,Communauté de communes,indirect,81244;83112
+CC Coeur du Perche,200068435,61,Communauté de communes,indirect,81942;82317
+CC Communauté Lesneven Côte des Légendes,242900793,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC Couesnon Marches de Bretagne,200070688,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Creuse Sud Ouest,200067189,23,Communauté de communes,indirect,82330;82321
+CC Côte Landes Nature,244000857,40,Communauté de communes,indirect,82342;82321
+CC Côte Ouest Centre Manche,200067031,50,Communauté de communes,indirect,81942;82317
+CC Côte d'Emeraude,243500725,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Côtes de Meuse Woëvre,200034874,55,Communauté de communes,indirect,80425;83634;83635
+CC Domfront Tinchebray Interco,200071520,61,Communauté de communes,indirect,81942;82317
+CC Dômes Sancy Artense,200069169,63,Communauté de communes,indirect,38888;83112
+"CC Entre Arroux, Loire et Somme",200070316,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Entre Saône et Grosne,247103765,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Falaises du Talou,247600729,76,Communauté de communes,indirect,82308;81942;82317
+CC Fier et Usses,247400567,74,Communauté de communes,indirect,80964;83112
+CC Flandre Lys,245900758,59,Communauté de communes,indirect,81832;81830;81829;81828;83620
+"CC Forêts, Lacs, Terres en Champagne",241000223,10,Communauté de communes,indirect,80415;83634;83635
+"CC Forêts, Seine et Suzon",200039063,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Fumel Vallée du Lot,200068930,47,Communauté de communes,indirect,82344;82321
+CC Giennoises,244500211,45,Communauté de communes,indirect,83521;83530
+CC Gérardmer Hautes Vosges,200096642,88,Communauté de communes,indirect,80429;83634;83635
+CC Haut Chemin-Pays de Pange,200067957,57,Communauté de communes,indirect,80427;83634;83635
+CC Haut Val de Sèvre,200041994,79,Communauté de communes,indirect,82334;82321
+CC Haut-Jura Arcade Communauté,243900479,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Haut-Jura Saint-Claude,200026573,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Haut-Léon Communauté,200067072,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC Haute Sarthe Alpes Mancelles,200072700,72,Communauté de communes,indirect,79818;80721
+CC Haute-Corrèze Communauté,200066744,19,Communauté de communes,indirect,82328;82321
+CC Houve-Pays Boulageois,200067650,57,Communauté de communes,indirect,80427;83634;83635
+CC Interco Normandie Sud Eure,200066462,27,Communauté de communes,indirect,81942;82317
+CC Isle Vern Salembre en Périgord,200040095,24,Communauté de communes,indirect,82336;82321
+CC Lacs et Gorges du Verdon,200040210,83,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Le Tonnerrois en Bourgogne,200039642,89,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Les Balcons du Dauphiné,200068542,38,Communauté de communes,indirect,40287;83112
+CC Les Bertranges,200068088,58,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Lieuvin Pays d'Auge,200066017,27,Communauté de communes,indirect,81942;82317
+CC Liffré-Cormier Communauté,243500774,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Loire Layon Aubance,200071553,49,Communauté de communes,indirect,79818;80721
+CC Loire et Allier,245801063,58,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Lot et Tolzac,244701405,47,Communauté de communes,indirect,82344;82321
+CC Loue-Lison,200068070,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Lyons Andelle,200070142,27,Communauté de communes,indirect,81942;82317
+CC Mad et Moselle,200070738,54,Communauté de communes,indirect,80423;83634;83635
+CC Marche Occitane - Val d'Anglin,200035137,36,Communauté de communes,indirect,83521;83530
+CC Marche et Combraille en Aquitaine,200067593,23,Communauté de communes,indirect,82330;82321
+CC Meuse Rognon,200069664,52,Communauté de communes,indirect,81989;83634;83635
+CC Mirebellois et Fontenois,200072825,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Mond'Arverne Communauté,200069177,63,Communauté de communes,indirect,38888;83112
+CC Montfort Communauté,243500550,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Monts d'Arrée Communauté,200067197,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC Morvan Sommets et Grands Lacs,200067890,58,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Nièvre et Somme,200071223,80,Communauté de communes,indirect,82277;84110;83620
+CC Norge et Tille,200069540,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Normandie-Cabourg-Pays d'Auge,200065563,14,Communauté de communes,indirect,81942;82317
+CC Océan Marais de Monts,248500258,85,Communauté de communes,indirect,79818;80721
+CC Osartis Marquion,200044048,62,Communauté de communes,indirect,82169;81833;83620
+CC Pays d'Opale,200072478,62,Communauté de communes,indirect,82169;81833;83620
+CC Pays de Blain communauté,244400453,44,Communauté de communes,indirect,79818;80721
+CC Pays de Chantonnay,248500340,85,Communauté de communes,indirect,79818;80721
+CC Pays de Châteaugiron Communauté,243500659,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Plateau de Caux,200069847,76,Communauté de communes,indirect,82308;81942;82317
+CC Pleyben-Châteaulin-Porzay,200067247,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC Poher Communauté,242900744,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC Porte du Jura,200072056,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Portes de la Creuse en Marche,200041556,23,Communauté de communes,indirect,82330;82321
+CC Presqu'île de Crozon-Aulne maritime,200066868,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC Provence Verdon,200040202,83,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Pré-Bocage Intercom,200069524,14,Communauté de communes,indirect,81942;82317
+CC Pévèle-Carembault,200041960,59,Communauté de communes,indirect,81832;81830;81829;81828;83620
+CC Questembert Communauté,245614383,56,Communauté de communes,indirect,81559;81463;81462;81461;81464;81474
+CC Rhône Lez Provence,200000628,84,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Rives de Saône,242101509,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Roi Morvan Communauté,245614417,56,Communauté de communes,indirect,81559;81463;81462;81461;81464;81474
+CC Roumois Seine,200066405,27,Communauté de communes,indirect,81942;82317
+CC Sarlat-Périgord Noir,200027217,24,Communauté de communes,indirect,82336;82321
+CC Sauer-Pechelbronn,200013050,67,Communauté de communes,indirect,80417;83634;83635
+CC Saône Doubs Bresse,200040038,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Seine et Aube,200070126,10,Communauté de communes,indirect,80415;83634;83635
+CC Serein et Armance,200067304,89,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Serre-Ponçon Val d'Avance,200067320,05,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Somme Sud-Ouest,200071181,80,Communauté de communes,indirect,82277;84110;83620
+CC Spelunca-Liamone,200067049,2A,Communauté de communes,indirect,82995;83200;81996;83510
+CC Sud Alsace Largue,200066033,68,Communauté de communes,indirect,80419;83634;83635
+CC Sud Sarthe,200073112,72,Communauté de communes,indirect,79818;80721
+CC Sud Vendée Littoral,200073260,85,Communauté de communes,indirect,79818;80721
+CC Sumène - Artense,241501055,15,Communauté de communes,indirect,81245;83112
+CC Sundgau,200066041,68,Communauté de communes,indirect,80419;83634;83635
+CC Sèvre et Loire,200067866,44,Communauté de communes,indirect,79818;80721
+CC Tannay-Brinon-Corbigny,200067692,58,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Terrassonnais Haut Périgord Noir,200041150,24,Communauté de communes,indirect,82336;82321
+CC Terre Lorraine du Longuyonnais,200043693,54,Communauté de communes,indirect,80423;83634;83635
+CC Terre d'Eau,200068682,88,Communauté de communes,indirect,80429;83634;83635
+CC Terre d'Émeraude Communauté,200090579,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Terres de Bresse,200071538,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Terres de Perche,200070167,28,Communauté de communes,indirect,83521;83530
+CC Terres de Saône,200041879,70,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Territoriale Sud-Luberon,248400285,84,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Terroir de Caux,200068534,76,Communauté de communes,indirect,82308;81942;82317
+CC Tille et Venelle,200070910,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Vaison Ventoux,248400335,84,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC Val d'Ille-Aubigné,243500667,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Val de Gray,200036549,70,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC Val ès Dunes,200065589,14,Communauté de communes,indirect,81942;82317
+CC Vallons de Haute-Bretagne Communauté,200043990,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC Vallées de l'Orne et de l'Odon,200066728,14,Communauté de communes,indirect,81942;82317
+CC Vallées et Plateau d'Ardenne,200067759,08,Communauté de communes,indirect,80413;83634;83635
+CC Vendée Grand Littoral,200071900,85,Communauté de communes,indirect,79818;80721
+"CC Vendée, Sèvre, Autise",248500563,85,Communauté de communes,indirect,79818;80721
+CC Xaintrie Val'Dordogne,200066751,19,Communauté de communes,indirect,82328;82321
+"CC d'Arcis, Mailly, Ramerupt",200071777,10,Communauté de communes,indirect,80415;83634;83635
+CC de Bayeux Intercom,241400555,14,Communauté de communes,indirect,81942;82317
+CC de Bénévent Grand Bourg,242320000,23,Communauté de communes,indirect,82330;82321
+CC de Calvi Balagne,242020105,2B,Communauté de communes,indirect,83200;81996;83510
+CC de Commercy - Void - Vaucouleurs,200066157,55,Communauté de communes,indirect,80425;83634;83635
+CC de Damvillers Spincourt,200066173,55,Communauté de communes,indirect,80425;83634;83635
+CC de Desvres-Samer,200018083,62,Communauté de communes,indirect,82169;81833;83620
+CC de Fium'Orbu Castellu,200033827,2B,Communauté de communes,indirect,83200;81996;83510
+CC de Freyming-Merlebach,245700398,57,Communauté de communes,indirect,80427;83634;83635
+CC de Gevrey-Chambertin et de Nuits-Saint-Georges,200070894,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de Hanau-La Petite Pierre,200067783,67,Communauté de communes,indirect,80417;83634;83635
+CC de Haute Cornouaille,242900561,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC de Londinières,247600604,76,Communauté de communes,indirect,82308;81942;82317
+CC de Marana-Golo,200036499,2B,Communauté de communes,indirect,83200;81996;83510
+CC de Marcigny,247100639,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de Mirecourt Dompaire,200068369,88,Communauté de communes,indirect,80429;83634;83635
+CC de Montbenoit,242500320,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de Nozay,244400537,44,Communauté de communes,indirect,79818;80721
+CC de Pont-Audemer / Val de Risle,200065787,27,Communauté de communes,indirect,81942;82317
+CC de Pouilly en Auxois/Bligny sur Ouche,200071207,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de Puisaye-Forterre,200067130,89,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de Saint-Méen Montauban,200038990,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC de Saulieu,242101442,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de Seille et Grand Couronné,200070589,54,Communauté de communes,indirect,80423;83634;83635
+CC de Semur en Brionnais,247103864,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de Sézanne-Sud Ouest Marnais,200066835,51,Communauté de communes,indirect,80421;83634;83635
+CC de Thann-Cernay,200036465,68,Communauté de communes,indirect,80419;83634;83635
+CC de Ventadour - Egletons - Monédières,241900133,19,Communauté de communes,indirect,82328;82321
+CC de Vie et Boulogne,200072882,85,Communauté de communes,indirect,79818;80721
+CC de Villedieu Intercom,200043354,50,Communauté de communes,indirect,81942;82317
+"CC de Vitry, Champagne et Der",200034718,51,Communauté de communes,indirect,80421;83634;83635
+CC de l'Aillantais en Bourgogne,248900524,89,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de l'Aire à l'Argonne,200066140,55,Communauté de communes,indirect,80425;83634;83635
+CC de l'Alsace Bossue,200067841,67,Communauté de communes,indirect,80417;83634;83635
+CC de l'Alta Rocca,242000495,2A,Communauté de communes,indirect,82995;83200;81996;83510
+CC de l'Argonne Ardennaise,240800920,08,Communauté de communes,indirect,80413;83634;83635
+CC de l'Ernée,245300355,53,Communauté de communes,indirect,79818;80721
+CC de l'Ile d'Oléron,241700624,17,Communauté de communes,indirect,82326;82321
+CC de l'Ile de Noirmoutier,248500191,85,Communauté de communes,indirect,79818;80721
+CC de l'Oise Picarde,200068005,60,Communauté de communes,indirect,81820;81823;81822;81821;83620
+CC de l'Orvin et de l'Ardusson,241000488,10,Communauté de communes,indirect,80415;83634;83635
+CC de l'Outre-Forêt,200040178,67,Communauté de communes,indirect,80417;83634;83635
+CC de la Baie du Cotentin,200042729,50,Communauté de communes,indirect,81942;82317
+CC de la Basse-Zorn,246700843,67,Communauté de communes,indirect,80417;83634;83635
+CC de la Beauce Loirétaine,200035764,45,Communauté de communes,indirect,83521;83530
+CC de la Brie Champenoise,245100888,51,Communauté de communes,indirect,80421;83634;83635
+CC de la Champagne Picarde,240200576,02,Communauté de communes,indirect,82170;82276;83620
+CC de la Costa Verde,200034205,2B,Communauté de communes,indirect,83200;81996;83510
+CC de la Côte d'Albâtre,200069839,76,Communauté de communes,indirect,82308;81942;82317
+CC de la Grande Vallée de la Marne,245100615,51,Communauté de communes,indirect,80421;83634;83635
+CC de la Haute Somme (Combles - Péronne - Roisel),200037059,80,Communauté de communes,indirect,82277;84110;83620
+CC de la Mossig et du Vignoble,200068864,67,Communauté de communes,indirect,80417;83634;83635
+CC de la Picardie Verte,246000848,60,Communauté de communes,indirect,81820;81823;81822;81821;83620
+CC de la Pieve de l'Ornano et du Taravo,200038958,2A,Communauté de communes,indirect,82995;83200;81996;83510
+CC de la Plaine Dijonnaise,200000925,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de la Plaine Jurassienne,243901089,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de la Plaine du Rhin,200041283,67,Communauté de communes,indirect,80417;83634;83635
+CC de la Porte des Vosges Méridionales,200068377,88,Communauté de communes,indirect,80429;83634;83635
+CC de la Région d'Audruicq,246200844,62,Communauté de communes,indirect,82169;81833;83620
+CC de la Région de Bar sur Aube,241000405,10,Communauté de communes,indirect,80415;83634;83635
+CC de la Région de Guebwiller,246800569,68,Communauté de communes,indirect,80419;83634;83635
+CC de la Région de Molsheim-Mutzig,246701064,67,Communauté de communes,indirect,80417;83634;83635
+CC de la Région de Rambervillers,200005957,88,Communauté de communes,indirect,80429;83634;83635
+CC de la Région de Suippes,200042620,51,Communauté de communes,indirect,80421;83634;83635
+CC de la Station des Rousses-Haut Jura,243900354,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC de la Terre des Deux Caps,246200380,62,Communauté de communes,indirect,82169;81833;83620
+CC de la Vallée de Kaysersberg,246800551,68,Communauté de communes,indirect,80419;83634;83635
+CC de la Vallée de Munster,246800585,68,Communauté de communes,indirect,80419;83634;83635
+CC de la Vallée de Saint-Amarin,246800205,68,Communauté de communes,indirect,80419;83634;83635
+CC de la Vallée de l'Homme,200041168,24,Communauté de communes,indirect,82336;82321
+CC de la Vallée de la Bruche,246700306,67,Communauté de communes,indirect,80417;83634;83635
+CC de la Vallée de la Doller et du Soultzbach,246800676,68,Communauté de communes,indirect,80419;83634;83635
+CC de la Vallée de la Haute Sarthe,200035103,61,Communauté de communes,indirect,81942;82317
+CC des 4 rivières,200069730,76,Communauté de communes,indirect,82308;81942;82317
+CC des 7 Vallées,200044030,62,Communauté de communes,indirect,82169;81833;83620
+CC des Ballons des Hautes-Vosges,200033868,88,Communauté de communes,indirect,80429;83634;83635
+CC des Bastides en Haut Agenais Périgord,200036523,47,Communauté de communes,indirect,82344;82321
+CC des Campagnes de l'Artois,200069482,62,Communauté de communes,indirect,82169;81833;83620
+CC des Collines du Perche Normand,200071504,61,Communauté de communes,indirect,81942;82317
+CC des Combes,247000367,70,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC des Coteaux et Landes de Gascogne,244701355,47,Communauté de communes,indirect,82344;82321
+CC des Crêtes Préardennaises,240800862,08,Communauté de communes,indirect,80413;83634;83635
+CC des Deux Vallées,246000772,60,Communauté de communes,indirect,81820;81823;81822;81821;83620
+CC des Forêts du Perche,200069912,28,Communauté de communes,indirect,83521;83530
+CC des Hautes Vosges,200096634,88,Communauté de communes,indirect,80429;83634;83635
+CC des Hauts de Flandre,200040954,59,Communauté de communes,indirect,81832;81830;81829;81828;83620
+CC des Hauts du Perche,200068856,61,Communauté de communes,indirect,81942;82317
+CC des Hauts du Val de Saône,200036150,70,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC des Lacs de Champagne,200040137,10,Communauté de communes,indirect,80415;83634;83635
+CC des Lacs et Montagnes du Haut-Doubs,200069565,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC des Lisières de l'Oise,246000749,60,Communauté de communes,indirect,81820;81823;81822;81821;83620
+CC des Monts de Gy,247000698,70,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC des Pays de L'Aigle,200068468,61,Communauté de communes,indirect,81942;82317
+CC des Paysages de la Champagne,200066850,51,Communauté de communes,indirect,80421;83634;83635
+CC des Portes de Meuse,200066108,55,Communauté de communes,indirect,80425;83634;83635
+CC des Portes de Romilly sur Seine,200000545,10,Communauté de communes,indirect,80415;83634;83635
+CC des Portes de Rosheim,246700744,67,Communauté de communes,indirect,80417;83634;83635
+CC des Portes de Sologne,200005932,45,Communauté de communes,indirect,83521;83530
+CC des Portes du Haut-Doubs,242504181,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC des Portes du Luxembourg,240800847,08,Communauté de communes,indirect,80413;83634;83635
+CC des Quatre Rivières,247000623,70,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC des Quatre Vallées,244500419,45,Communauté de communes,indirect,83521;83530
+CC des Sources de l'Orne,200035111,61,Communauté de communes,indirect,81942;82317
+CC des Terres d'Auxois,200071017,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC des Terres du Val de Loire,200070183,45,Communauté de communes,indirect,83521;83530
+CC des Trois Forêts,245200597,52,Communauté de communes,indirect,81989;83634;83635
+CC des Vallées d'Auge et du Merlerault,200069458,61,Communauté de communes,indirect,81942;82317
+CC des Vallées de la Braye et de l'Anille,200072692,72,Communauté de communes,indirect,79818;80721
+CC des Vallées de la Tille et de l'Ignon,242100154,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC des Vallées du Clain,200043628,86,Communauté de communes,indirect,82332;82321
+CC des Vallées du Haut-Anjou,200071868,49,Communauté de communes,indirect,79818;80721
+CC des Villes Soeurs,247600588,76,Communauté de communes,indirect,82308;81942;82317
+CC des Vosges côté Sud Ouest,200068773,88,Communauté de communes,indirect,80429;83634;83635
+CC du Barséquanais en Champagne,200069003,10,Communauté de communes,indirect,80415;83634;83635
+CC du Canton d'Erstein,200067924,67,Communauté de communes,indirect,80417;83634;83635
+CC du Canton d'Oulchy le Château,240200519,02,Communauté de communes,indirect,82170;82276;83620
+CC du Canton de Charly sur Marne,240200584,02,Communauté de communes,indirect,82170;82276;83620
+CC du Centre du Haut-Rhin,246800445,68,Communauté de communes,indirect,80419;83634;83635
+CC du Chaourçois et du Val d'Armance,200071041,10,Communauté de communes,indirect,80415;83634;83635
+CC du Chemin des Dames,240200592,02,Communauté de communes,indirect,82170;82276;83620
+CC du Clunisois,200040293,71,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Golfe de Saint-Tropez,200036077,83,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC du Grand Pontarlier,242500338,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Guillestrois et du Queyras,200067452,05,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC du Gévaudan,244800470,48,Communauté de communes,indirect,81026
+CC du Haut Béarn,200067262,64,Communauté de communes,indirect,82346;82321
+CC du Haut Pays Bigouden,242900710,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC du Haut Pays du Montreuillois,200069235,62,Communauté de communes,indirect,82169;81833;83620
+CC du Haut-Poitou,200069763,86,Communauté de communes,indirect,82332;82321
+CC du Jovinien,248900938,89,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Kochersberg,200034635,67,Communauté de communes,indirect,80417;83634;83635
+CC du Kreiz-Breizh (CCKB),242200715,22,Communauté de communes,indirect,81559;81463;81462;81461;81464;81474
+CC du Massif du Sancy,246300966,63,Communauté de communes,indirect,38888;83112
+CC du Massif du Vercors,243801024,38,Communauté de communes,indirect,40287;83112
+CC du Nivernais Bourbonnais,245804497,58,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Nogentais,200006716,10,Communauté de communes,indirect,80415;83634;83635
+CC du Pays Arnay Liernais,200071173,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Pays Bigouden Sud,242900702,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC du Pays Dunois,242320109,23,Communauté de communes,indirect,82330;82321
+CC du Pays Fléchois,247200348,72,Communauté de communes,indirect,79818;80721
+CC du Pays Fouesnantais,242900660,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC du Pays Orne Moselle,245701271,57,Communauté de communes,indirect,80427;83634;83635
+CC du Pays Rhénan,200041325,67,Communauté de communes,indirect,80417;83634;83635
+CC du Pays Réthelois,200043156,08,Communauté de communes,indirect,80413;83634;83635
+CC du Pays Solesmois,245901038,59,Communauté de communes,indirect,81832;81830;81829;81828;83620
+CC du Pays d'Alésia et de la Seine,242101459,21,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Pays d'Etain,245501242,55,Communauté de communes,indirect,80425;83634;83635
+CC du Pays d'Héricourt,247000722,70,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Pays d'Iroise,242900074,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC du Pays d'Othe,241000447,10,Communauté de communes,indirect,80415;83634;83635
+CC du Pays de Barr,200034270,67,Communauté de communes,indirect,80417;83634;83635
+CC du Pays de Bitche,200069441,57,Communauté de communes,indirect,80427;83634;83635
+CC du Pays de Bray,246000913,60,Communauté de communes,indirect,81820;81823;81822;81821;83620
+CC du Pays de Colombey et du Sud Toulois,245400510,54,Communauté de communes,indirect,80423;83634;83635
+CC du Pays de Conches,242700276,27,Communauté de communes,indirect,81942;82317
+CC du Pays de Cruseilles,247400112,74,Communauté de communes,indirect,80964;83112
+CC du Pays de Dol et de la Baie du Mont Saint-Michel,200070670,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+CC du Pays de Duras,244700449,47,Communauté de communes,indirect,82344;82321
+CC du Pays de Falaise,241400514,14,Communauté de communes,indirect,81942;82317
+CC du Pays de Fayence,200004802,83,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC du Pays de Fontenay-Vendée,200071934,85,Communauté de communes,indirect,79818;80721
+CC du Pays de Lauzun,244700464,47,Communauté de communes,indirect,82344;82321
+CC du Pays de Lumbres,246201016,62,Communauté de communes,indirect,82169;81833;83620
+CC du Pays de Maîche,200023075,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Pays de Montbozon et du Chanois,200041853,70,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Pays de Mormal,200043321,59,Communauté de communes,indirect,81832;81830;81829;81828;83620
+CC du Pays de Mortagne,248500662,85,Communauté de communes,indirect,79818;80721
+CC du Pays de Mortagne au Perche,200036069,61,Communauté de communes,indirect,81942;82317
+CC du Pays de Niederbronn-les-Bains,246701098,67,Communauté de communes,indirect,80417;83634;83635
+CC du Pays de Phalsbourg,245700950,57,Communauté de communes,indirect,80427;83634;83635
+CC du Pays de Pouzauges,248500464,85,Communauté de communes,indirect,79818;80721
+CC du Pays de Revigny sur Ornain,245501184,55,Communauté de communes,indirect,80425;83634;83635
+CC du Pays de Ribeauvillé,246800577,68,Communauté de communes,indirect,80419;83634;83635
+"CC du Pays de Rouffach, Vignobles et Châteaux",246800494,68,Communauté de communes,indirect,80419;83634;83635
+CC du Pays de Saint-Eloy,200072080,63,Communauté de communes,indirect,38888;83112
+CC du Pays de Saverne,200068112,67,Communauté de communes,indirect,80417;83634;83635
+CC du Pays de Stenay et du Val Dunois,200066132,55,Communauté de communes,indirect,80425;83634;83635
+CC du Pays de Wissembourg,246700926,67,Communauté de communes,indirect,80417;83634;83635
+CC du Pays de l'Huisne Sarthoise,247200686,72,Communauté de communes,indirect,79818;80721
+CC du Pays de la Châtaigneraie,248500415,85,Communauté de communes,indirect,79818;80721
+CC du Pays de la Zorn,246700959,67,Communauté de communes,indirect,80417;83634;83635
+CC du Pays des Abers,242900553,29,Communauté de communes,indirect,82872;81559;81463;81462;81461;81464;81474
+CC du Pays des Achards,248500530,85,Communauté de communes,indirect,79818;80721
+CC du Pays des Herbiers,248500621,85,Communauté de communes,indirect,79818;80721
+CC du Pays des Sorgues et des Monts de Vaucluse,248400319,84,Communauté de communes,indirect,82137;82285;82136;83990;83448
+CC du Pays du Coquelicot,248000747,80,Communauté de communes,indirect,82277;84110;83620
+CC du Pays du Neubourg,242700607,27,Communauté de communes,indirect,81942;82317
+CC du Pays du Saintois,200035772,54,Communauté de communes,indirect,80423;83634;83635
+CC du Pays du Vermandois,240200493,02,Communauté de communes,indirect,82170;82276;83620
+CC du Plateau Picard,246000566,60,Communauté de communes,indirect,81820;81823;81822;81821;83620
+CC du Plateau de Frasne et du Val de Drugeon (CFD),242504496,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Plateau de Russey,242504355,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Romorantinais et du Monestois,200018406,41,Communauté de communes,indirect,83521;83530
+CC du Sammiellois,245500327,55,Communauté de communes,indirect,80425;83634;83635
+CC du Sartenais Valinco Taravo,242010130,2A,Communauté de communes,indirect,82995;83200;81996;83510
+CC du Saulnois,245701206,57,Communauté de communes,indirect,80427;83634;83635
+CC du Serein,200039709,89,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Sud Avesnois,200043404,59,Communauté de communes,indirect,81832;81830;81829;81828;83620
+CC du Sud Marnais,245100979,51,Communauté de communes,indirect,80421;83634;83635
+CC du Sud Messin,200039907,57,Communauté de communes,indirect,80427;83634;83635
+CC du Sud-Artois,200035442,62,Communauté de communes,indirect,82169;81833;83620
+CC du Ternois,200069672,62,Communauté de communes,indirect,82169;81833;83620
+CC du Territoire Nord Picardie,200070951,80,Communauté de communes,indirect,82277;84110;83620
+CC du Territoire de Fresnes en Woëvre,245501176,55,Communauté de communes,indirect,80425;83634;83635
+CC du Val d'Amour,243900420,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Val d'Orne,246100390,61,Communauté de communes,indirect,81942;82317
+CC du Val de Drôme en Biovallée,242600252,26,Communauté de communes,indirect,80960;83112
+CC du Val de Morteau,242504116,25,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CC du Val de Somme,248000499,80,Communauté de communes,indirect,82277;84110;83620
+CC du Val de l'Oise,200040426,02,Communauté de communes,indirect,82170;82276;83620
+CC du Vexin Normand,200071843,27,Communauté de communes,indirect,81942;82317
+CC du Vexin-Thelle,246000707,60,Communauté de communes,indirect,81820;81823;81822;81821;83620
+CC du Vimeu,200070944,80,Communauté de communes,indirect,82277;84110;83620
+CC du Warndt,245701164,57,Communauté de communes,indirect,80427;83634;83635
+CC entre Beauce et Perche,200058360,28,Communauté de communes,indirect,83521;83530
+CC inter-Caux-Vexin,200070449,76,Communauté de communes,indirect,82308;81942;82317
+CC interrégionale Aumale - Blangy-sur-Bresle,200069722,76,Communauté de communes,indirect,82308;81942;82317
+CC la Grandvallière,243900610,39,Communauté de communes,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+CU Caen la Mer,200065597,14,Communauté urbaine,indirect,81942;82317
+CU d'Alençon,246100663,61,Communauté urbaine,indirect,81942;82317
+Communauté Bray-Eawy,200070068,76,Communauté de communes,indirect,82308;81942;82317
+Creuse Confluence,200067544,23,Communauté de communes,indirect,82330;82321
+L'Île-d'Yeu,218501138,85,Commune,indirect,79818;80721
+LBN Communauté,200040475,72,Communauté de communes,indirect,79818;80721
+Loire Forez Agglomération (LFA),200065886,42,Communauté d'agglomération,indirect,83114;83112
+PETR du Doubs Central,200075166,25,Pôle d'équilibre territorial et rural,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+PETR du Pays de Langres,200060754,52,Pôle d'équilibre territorial et rural,indirect,81989;83634;83635
+PETR du Pays de Thiérache,200051118,02,Pôle d'équilibre territorial et rural,indirect,82170;82276;83620
+PETR du Pays du Lunévillois,200051134,54,Pôle d'équilibre territorial et rural,indirect,80423;83634;83635
+Ploërmel Communauté,200066777,56,Communauté de communes,indirect,81559;81463;81462;81461;81464;81474
+Pôle Métropolitain Mobilités Le Mans – Sarthe,200051944,72,Pôle Métropolitain,indirect,79818;80721
+Roche aux Fées Communauté,243500634,35,Communauté de communes,indirect,81486;81559;81463;81462;81461;81464;81474
+Région Auvergne-Rhône-Alpes (CC Ambert Livradois Forez),200053767,63,Région,indirect,38888;83112
+Région Auvergne-Rhône-Alpes (CC Ardèche des Sources et Volcans),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC Auzon Communauté),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC Berg et Coiron),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC Billom Communauté),200053767,63,Région,indirect,38888;83112
+Région Auvergne-Rhône-Alpes (CC Bièvre Isère),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC Bresse et Saône),200053767,01,Région,indirect,83113;83112
+Région Auvergne-Rhône-Alpes (CC Brioude Sud Auvergne),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC Bugey Sud),200053767,01,Région,indirect,83113;83112
+Région Auvergne-Rhône-Alpes (CC Charlieu-Belmont),200053767,42,Région,indirect,83114;83112
+Région Auvergne-Rhône-Alpes (CC Coeur de Chartreuse),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC Coeur de Tarentaise),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC Collines Isère Nord Communauté),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC Combrailles Sioule et Morge),200053767,63,Région,indirect,38888;83112
+Région Auvergne-Rhône-Alpes (CC Commentry Montmarault Néris Communauté),200053767,03,Région,indirect,38889;83112
+Région Auvergne-Rhône-Alpes (CC Cère et Goul en Carladès),200053767,15,Région,indirect,81245;83112
+Région Auvergne-Rhône-Alpes (CC Dieulefit-Bourdeaux),200053767,26,Région,indirect,80960;83112
+Région Auvergne-Rhône-Alpes (CC Drôme Sud Provence),200053767,26,Région,indirect,80960;83112
+Région Auvergne-Rhône-Alpes (CC Entr'Allier Besbre et Loire),200053767,03,Région,indirect,38889;83112
+Région Auvergne-Rhône-Alpes (CC Entre Bièvre et Rhône),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC Entre Dore et Allier),200053767,63,Région,indirect,38888;83112
+Région Auvergne-Rhône-Alpes (CC Haute Maurienne Vanoise),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC Hautes Terres),200053767,15,Région,indirect,81245;83112
+Région Auvergne-Rhône-Alpes (CC Les Vals du Dauphiné),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC Les Versants d'Aime),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC Loire et Semène),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC Lyon-Saint-Exupéry en Dauphiné),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC Marches du Velay-Rochebaron),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC Maurienne Galibier),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC Mézenc-Loire-Meygal),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC Pays des Vans en Cévennes),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC Pays du Mont-Blanc),200053767,74,Région,indirect,80964;83112
+Région Auvergne-Rhône-Alpes (CC Plaine Limagne),200053767,63,Région,indirect,38888;83112
+Région Auvergne-Rhône-Alpes (CC Porte de Dromardèche),200053767,26,Région,indirect,80960;83112
+Région Auvergne-Rhône-Alpes (CC Porte de Maurienne),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC Rives de l'Ain - Pays du Cerdon),200053767,01,Région,indirect,83113;83112
+Région Auvergne-Rhône-Alpes (CC Saint-Marcellin Vercors Isère Communauté),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC Saint-Pourçain Sioule Limagne),200053767,03,Région,indirect,38889;83112
+Région Auvergne-Rhône-Alpes (CC Usses et Rhône),200053767,74,Région,indirect,80964;83112
+Région Auvergne-Rhône-Alpes (CC Val Eyrieux),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC Val Guiers),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC Val Vanoise),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC Val de Ligne),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC Val de Saône Centre),200053767,01,Région,indirect,83113;83112
+Région Auvergne-Rhône-Alpes (CC de Bièvre Est),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC de Forez-Est),200053767,42,Région,indirect,83114;83112
+Région Auvergne-Rhône-Alpes (CC de Haute-Tarentaise),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC de Saint-Flour),200053767,15,Région,indirect,81245;83112
+Région Auvergne-Rhône-Alpes (CC de Yenne),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC de l'Oisans),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC de la Châtaigneraie Cantalienne),200053767,15,Région,indirect,81245;83112
+Région Auvergne-Rhône-Alpes (CC de la Dombes),200053767,01,Région,indirect,83113;83112
+Région Auvergne-Rhône-Alpes (CC de la Matheysine),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC de la Montagne d'Ardèche),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC de la Plaine de l'Ain),200053767,01,Région,indirect,83113;83112
+Région Auvergne-Rhône-Alpes (CC de la Vallée Verte),200053767,74,Région,indirect,80964;83112
+Région Auvergne-Rhône-Alpes (CC de la Veyle),200053767,01,Région,indirect,83113;83112
+Région Auvergne-Rhône-Alpes (CC des Baronnies en Drôme Provençale),200053767,26,Région,indirect,80960;83112
+Région Auvergne-Rhône-Alpes (CC des Gorges de l'Ardèche),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC des Montagnes du Giffre),200053767,74,Région,indirect,80964;83112
+Région Auvergne-Rhône-Alpes (CC des Monts du Pilat),200053767,42,Région,indirect,83114;83112
+Région Auvergne-Rhône-Alpes (CC des Pays de Cayres et de Pradelles),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC des Rives du Haut Allier),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC des Sucs),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC des Vallées d'Aigueblanche),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC des Vallées de Thônes),200053767,74,Région,indirect,80964;83112
+Région Auvergne-Rhône-Alpes (CC des Vals d'Aix et Isable),200053767,42,Région,indirect,83114;83112
+Région Auvergne-Rhône-Alpes (CC des sources du lac d'Annecy),200053767,74,Région,indirect,80964;83112
+Région Auvergne-Rhône-Alpes (CC du Bassin d'Aubenas),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC du Bocage Bourbonnais),200053767,03,Région,indirect,38889;83112
+Région Auvergne-Rhône-Alpes (CC du Canton de La Chambre),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC du Crestois et de Pays de Saillans Coeur de Drôme),200053767,26,Région,indirect,80960;83112
+Région Auvergne-Rhône-Alpes (CC du Diois),200053767,26,Région,indirect,80960;83112
+Région Auvergne-Rhône-Alpes (CC du Haut Lignon),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC du Haut-Chablais),200053767,74,Région,indirect,80964;83112
+Région Auvergne-Rhône-Alpes (CC du Lac d'Aiguebelette (CCLA)),200053767,73,Région,indirect,81244;83112
+Région Auvergne-Rhône-Alpes (CC du Pays Beaume-Drobie),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC du Pays Bellegardien (CCPB)),200053767,01,Région,indirect,83113;83112
+Région Auvergne-Rhône-Alpes (CC du Pays Entre Loire et Rhône),200053767,42,Région,indirect,83114;83112
+Région Auvergne-Rhône-Alpes (CC du Pays Gentiane),200053767,15,Région,indirect,81245;83112
+Région Auvergne-Rhône-Alpes (CC du Pays d'Huriel),200053767,03,Région,indirect,38889;83112
+Région Auvergne-Rhône-Alpes (CC du Pays d'Urfé),200053767,42,Région,indirect,83114;83112
+Région Auvergne-Rhône-Alpes (CC du Pays de Lamastre),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC du Pays de Lapalisse),200053767,03,Région,indirect,38889;83112
+Région Auvergne-Rhône-Alpes (CC du Pays de Mauriac),200053767,15,Région,indirect,81245;83112
+Région Auvergne-Rhône-Alpes (CC du Pays de Montfaucon),200053767,43,Région,indirect,38881;83112
+Région Auvergne-Rhône-Alpes (CC du Pays de Salers),200053767,15,Région,indirect,81245;83112
+Région Auvergne-Rhône-Alpes (CC du Pays de Tronçais),200053767,03,Région,indirect,38889;83112
+Région Auvergne-Rhône-Alpes (CC du Pilat Rhodanien),200053767,42,Région,indirect,83114;83112
+Région Auvergne-Rhône-Alpes (CC du Rhône aux Gorges de l'Ardèche),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC du Royans-Vercors),200053767,26,Région,indirect,80960;83112
+Région Auvergne-Rhône-Alpes (CC du Trièves),200053767,38,Région,indirect,40287;83112
+Région Auvergne-Rhône-Alpes (CC du Val d'Ay),200053767,07,Région,indirect,80961;83112
+Région Auvergne-Rhône-Alpes (CC du Val de Cher),200053767,03,Région,indirect,38889;83112
+Région Bourgogne-Franche-Comté (CC Auxonne Pontailler Val de Saône),200053726,21,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC Haut Nivernais-Val d'Yonne),200053726,58,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC Jura Nord),200053726,39,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC Mâconnais - Tournugeois),200053726,71,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC Ouche et Montagne),200053726,21,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC Rahin et Chérimont),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC Saint Cyr Mère Boitier entre Charolais et Mâconnais),200053726,71,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC Sud Nivernais),200053726,58,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC Yonne Nord),200053726,89,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC de l'Agglomération Migennoise),200053726,89,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC de la Haute Comté),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC de la Vanne et du Pays d'Othe),200053726,89,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC des 1000 étangs),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Gâtinais en Bourgogne),200053726,89,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Montbardois),200053726,21,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Pays Châtillonnais),200053726,21,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Pays Riolais),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Pays de Lure),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Pays de Luxeuil),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Pays de Villersexel),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Triangle Vert),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bourgogne-Franche-Comté (CC du Val Marnaysien),200053726,70,Région,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+Région Bretagne (CC Leff Armor Communauté),233500016,22,Région,indirect,81559;81463;81462;81461;81464;81474
+Région Bretagne (CC Loudéac Communauté - Bretagne Centre),233500016,22,Région,indirect,81559;81463;81462;81461;81464;81474
+Région Bretagne (CC de Belle Ile en Mer),233500016,56,Région,indirect,81559;81463;81462;81461;81464;81474
+Région Bretagne (CC du Pays de Landivisiau),233500016,29,Région,indirect,82872;81559;81463;81462;81461;81464;81474
+Région Centre-Val de Loire (CC Arnon Boischaut Cher),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Autour de Chenonceaux Bléré-Val de Cher),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Beauce Val de Loire),234500023,41,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Berry Grand Sud),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Berry Loire Puisaye),234500023,45,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Berry-Loire-Vauvise),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Brenne - Val de Creuse),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Chabris - Pays de Bazelle),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Champagne Boischauts),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Coeur de Beauce),234500023,28,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Coeur de Berry),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Coeur de Brenne),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Coeur de France),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Coeur de Sologne),234500023,41,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Ecueillé-Valençay),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Eguzon - Argenton - Vallée de la Creuse),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC FerCher),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Levroux Boischaut Champagne),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Loches Sud Touraine),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Pays Fort Sancerrois Val de Loire),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Pays de Nérondes),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Portes du Berry entre Loire et Val d'Aubois),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Sauldre et Sologne),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Terres du Haut Berry),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Touraine Ouest Val de Loire),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Touraine Val de Vienne),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Touraine Vallée de l'Indre),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Touraine-Est Vallées),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Val de l'Indre - Brenne),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Val-de-Cher-Controis),234500023,41,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC Vierzon-Sologne-Berry),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC de Gâtine-Racan),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC de la Châtre et Sainte-Sévère),234500023,36,Région,indirect,83521;83530
+"Région Centre-Val de Loire (CC de la Cléry, du Betz et de l'Ouanne)",234500023,45,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC de la Forêt),234500023,45,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC de la Marche Berrichonne),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC de la Plaine du Nord Loiret),234500023,45,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC de la Sologne des Etangs),234500023,41,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC de la Sologne des Rivières),234500023,41,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC des Collines du Perche),234500023,41,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC des Loges),234500023,45,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Bonnevalais),234500023,28,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Castelrenaudais),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Châtillonnais en Berry),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Grand Chambord),234500023,41,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Grand Châteaudun),234500023,28,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Pays d'Issoudun),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Perche et Haut Vendômois),234500023,41,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Perche),234500023,28,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Pithiverais),234500023,45,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Pithiverais-Gâtinais),234500023,45,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Val d Amboise),234500023,37,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Val de Bouzanne),234500023,36,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC du Val de Sully),234500023,45,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC la Septaine),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC le Dunois),234500023,18,Région,indirect,83521;83530
+Région Centre-Val de Loire (CC les Trois Provinces),234500023,18,Région,indirect,83521;83530
+Région Corse (CC Celavu-Prunelli),200076958,2A,Région,indirect,82995;83200;81996;83510
+Région Corse (CC Nebbiu - Conca d'Oro),200076958,2B,Région,indirect,83200;81996;83510
+Région Corse (CC Pasquale Paoli),200076958,2B,Région,indirect,83200;81996;83510
+Région Corse (CC de l'Oriente),200076958,2B,Région,indirect,83200;81996;83510
+Région Corse (CC de la Castagniccia-Casinca),200076958,2B,Région,indirect,83200;81996;83510
+Région Corse (CC du Cap Corse),200076958,2B,Région,indirect,83200;81996;83510
+Région Corse (CC du Centre Corse),200076958,2B,Région,indirect,83200;81996;83510
+"Région Grand Est (CC Ardenne, Rives de Meuse)",200052264,08,Région,indirect,80413;83634;83635
+Région Grand Est (CC Bruyères-Vallons des Vosges),200052264,88,Région,indirect,80429;83634;83635
+Région Grand Est (CC Côtes de Champagne et Val de Saulx),200052264,51,Région,indirect,80421;83634;83635
+Région Grand Est (CC Perthois-Bocage et Der),200052264,51,Région,indirect,80421;83634;83635
+Région Grand Est (CC Val de Meuse - Voie Sacrée),200052264,55,Région,indirect,80425;83634;83635
+Région Grand Est (CC de Vendeuvre-Soulaines),200052264,10,Région,indirect,80415;83634;83635
+Région Grand Est (CC de l'Arc Mosellan),200052264,57,Région,indirect,80427;83634;83635
+Région Grand Est (CC de la Moivre à la Coole),200052264,51,Région,indirect,80421;83634;83635
+Région Grand Est (CC du Bassin de Joinville en Champagne),200052264,52,Région,indirect,81989;83634;83635
+Région Grand Est (CC du District Urbain de Faulquemont (DUF)),200052264,57,Région,indirect,80427;83634;83635
+Région Grand Est (CC du Pays de Montmédy),200052264,55,Région,indirect,80425;83634;83635
+Région Hauts-de-France (CC Coeur de l'Avesnois),200053742,59,Région,indirect,81832;81830;81829;81828;83620
+Région Hauts-de-France (CC Picardie des Châteaux),200053742,02,Région,indirect,82170;82276;83620
+Région Hauts-de-France (CC Ponthieu-Marquenterre),200053742,80,Région,indirect,82277;84110;83620
+Région Hauts-de-France (CC Senlis Sud Oise),200053742,60,Région,indirect,81820;81823;81822;81821;83620
+Région Hauts-de-France (CC Terre de Picardie),200053742,80,Région,indirect,82277;84110;83620
+Région Hauts-de-France (CC de l'Est de la Somme),200053742,80,Région,indirect,82277;84110;83620
+Région Hauts-de-France (CC du Grand Roye),200053742,80,Région,indirect,82277;84110;83620
+Région Hauts-de-France (CC du Pays de la Serre),200053742,02,Région,indirect,82170;82276;83620
+Région Hauts-de-France (CC du Pays des Sources),200053742,60,Région,indirect,81820;81823;81822;81821;83620
+Région Hauts-de-France (CC du Val de l'Aisne),200053742,02,Région,indirect,82170;82276;83620
+Région Normandie (CC Isigny-Omaha Intercom),200053403,14,Région,indirect,81942;82317
+Région Normandie (CC Seulles Terre et Mer),200053403,14,Région,indirect,81942;82317
+Région Normandie (CC Terre d'Auge),200053403,14,Région,indirect,81942;82317
+Région Normandie (CC du Pays Fertois et du Bocage Carrougien),200053403,61,Région,indirect,81942;82317
+Région Nouvelle Aquitaine (CC Aunis Sud),200053759,17,Région,indirect,82326;82321
+Région Nouvelle Aquitaine (CC Briance Sud Haute Vienne),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC Briance-Combade),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC Castillon/Pujols),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC Chalosse Tursan),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC Coeur Haute Lande),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC Coeur de Charente),200053759,16,Région,indirect,82324;82321
+Région Nouvelle Aquitaine (CC Coeur de Saintonge),200053759,17,Région,indirect,82326;82321
+Région Nouvelle Aquitaine (CC Coteaux et Vallées des Luys),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC Creuse Grand Sud),200053759,23,Région,indirect,82330;82321
+Région Nouvelle Aquitaine (CC Dronne et Belle),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC Elan Limousin Avenir Nature),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC Gartempe - Saint Pardoux),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC Haut Limousin en Marche),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC Isle Double Landais),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC Isle et Crempse en Périgord),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC Isle-Loue-Auvézère en Périgord),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC La Rochefoucauld porte du Périgord),200053759,16,Région,indirect,82324;82321
+Région Nouvelle Aquitaine (CC Latitude Nord Gironde),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC Lavalette Tude Dronne),200053759,16,Région,indirect,82324;82321
+Région Nouvelle Aquitaine (CC Les rives de la Laurence),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC Mellois en Poitou),200053759,79,Région,indirect,82334;82321
+Région Nouvelle Aquitaine (CC Midi Corrézien),200053759,19,Région,indirect,82328;82321
+Région Nouvelle Aquitaine (CC Médoc Atlantique),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC Médoc Coeur de Presqu'île),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC Médoc Estuaire),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC Médullienne),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC Ouest Limousin),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC Pays d'Orthe et Arrigans),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC Pays de Nay),200053759,64,Région,indirect,82346;82321
+Région Nouvelle Aquitaine (CC Pays de Nexon Monts de Chalus),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC Porte Océane du Limousin),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC Périgord-Limousin),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC Terres de Chalosse),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC Val de Charente),200053759,16,Région,indirect,82324;82321
+Région Nouvelle Aquitaine (CC Val de Gâtine),200053759,79,Région,indirect,82334;82321
+Région Nouvelle Aquitaine (CC Vallée de la Dordogne et Forêt Bessède),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC Vienne et Gartempe),200053759,86,Région,indirect,82332;82321
+Région Nouvelle Aquitaine (CC Vézère-Monédières-Millesources),200053759,19,Région,indirect,82328;82321
+Région Nouvelle Aquitaine (CC d'Aire-sur-l'Adour),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC de Blaye),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC de Charente Limousine),200053759,16,Région,indirect,82324;82321
+Région Nouvelle Aquitaine (CC de Domme- Villefranche du Périgord),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC de Gémozac et de la Saintonge Viticole),200053759,17,Région,indirect,82326;82321
+Région Nouvelle Aquitaine (CC de Lacq-Orthez),200053759,64,Région,indirect,82346;82321
+Région Nouvelle Aquitaine (CC de Mimizan),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC de Montaigne Montravel et Gurson),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC de Noblat),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC de Parthenay-Gâtine),200053759,79,Région,indirect,82334;82321
+Région Nouvelle Aquitaine (CC de Portes Sud Périgord),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC de l'Estuaire),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC de l'Ile de Ré),200053759,17,Région,indirect,82326;82321
+Région Nouvelle Aquitaine (CC de la Haute Saintonge),200053759,17,Région,indirect,82326;82321
+Région Nouvelle Aquitaine (CC de la Vallée d'Ossau),200053759,64,Région,indirect,82346;82321
+Région Nouvelle Aquitaine (CC des 4B Sud Charente),200053759,16,Région,indirect,82324;82321
+Région Nouvelle Aquitaine (CC des Bastides Dordogne-Périgord),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC des Grands Lacs),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC des Landes d'Armagnac),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC des Luys en Béarn),200053759,64,Région,indirect,82346;82321
+Région Nouvelle Aquitaine (CC des Portes de Vassivière),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC des Portes de l'Entre-Deux-Mers),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC du Bassin de Marennes),200053759,17,Région,indirect,82326;82321
+Région Nouvelle Aquitaine (CC du Bazadais),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC du Béarn des Gaves),200053759,64,Région,indirect,82346;82321
+Région Nouvelle Aquitaine (CC du Civraisien en Poitou),200053759,86,Région,indirect,82332;82321
+Région Nouvelle Aquitaine (CC du Confluent et des Coteaux de Prayssas),200053759,47,Région,indirect,82344;82321
+Région Nouvelle Aquitaine (CC du Créonnais),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC du Fronsadais),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC du Grand Cubzaguais),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC du Grand Saint Emilionnais),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC du Nord Est Béarn),200053759,64,Région,indirect,82346;82321
+Région Nouvelle Aquitaine (CC du Pays Foyen),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC du Pays Grenadois),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC du Pays Loudunais),200053759,86,Région,indirect,82332;82321
+Région Nouvelle Aquitaine (CC du Pays Morcenais),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC du Pays Sostranien),200053759,23,Région,indirect,82330;82321
+Région Nouvelle Aquitaine (CC du Pays Tarusate),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC du Pays d'Uzerche),200053759,19,Région,indirect,82328;82321
+Région Nouvelle Aquitaine (CC du Pays de Fénelon),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC du Pays de Lubersac-Pompadour),200053759,19,Région,indirect,82328;82321
+Région Nouvelle Aquitaine (CC du Pays de Saint Aulaye),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC du Pays de Saint Yrieix),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC du Pays de Villeneuve en Armagnac Landais),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC du Périgord Nontronnais),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC du Périgord Ribéracois),200053759,24,Région,indirect,82336;82321
+Région Nouvelle Aquitaine (CC du Rouillacais),200053759,16,Région,indirect,82324;82321
+Région Nouvelle Aquitaine (CC du Seignanx),200053759,40,Région,indirect,82342;82321
+Région Nouvelle Aquitaine (CC du Val de Vienne),200053759,87,Région,indirect,82340;82321
+Région Nouvelle Aquitaine (CC du Val de l'Eyre),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC les Coteaux Bordelais),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (CC rurales de l'Entre-Deux-Mers),200053759,33,Région,indirect,82338;82382;82321
+Région Nouvelle Aquitaine (Vals de Saintonge Communauté),200053759,17,Région,indirect,82326;82321
+Région Occitanie (CC Adour Madiran),200053791,65,Région,indirect,81026
+Région Occitanie (CC Agly Fenouillèdes),200053791,66,Région,indirect,81026
+Région Occitanie (CC Arize Lèze),200053791,09,Région,indirect,81026
+Région Occitanie (CC Armagnac Adour),200053791,32,Région,indirect,81026
+Région Occitanie (CC Artagnan de Fezensac),200053791,32,Région,indirect,81026
+Région Occitanie (CC Astarac Arros en Gascogne),200053791,32,Région,indirect,81026
+Région Occitanie (CC Aubrac Lot Causses Tarn),200053791,48,Région,indirect,81026
+"Région Occitanie (CC Aubrac, Carladez et Viadène)",200053791,12,Région,indirect,81026
+Région Occitanie (CC Aure Louron),200053791,65,Région,indirect,81026
+Région Occitanie (CC Aveyron Bas Ségala Viaur),200053791,12,Région,indirect,81026
+Région Occitanie (CC Bastides de Lomagne),200053791,32,Région,indirect,81026
+Région Occitanie (CC Bastides et Vallons du Gers),200053791,32,Région,indirect,81026
+Région Occitanie (CC Beaucaire Terre d'Argence),200053791,30,Région,indirect,81026
+Région Occitanie (CC Cagire Garonne Salat),200053791,31,Région,indirect,81026
+Région Occitanie (CC Carmausin-Ségala),200053791,81,Région,indirect,81026
+Région Occitanie (CC Castelnaudary Lauragais Audois),200053791,11,Région,indirect,81026
+Région Occitanie (CC Causses Aigoual Cévennes),200053791,30,Région,indirect,81026
+Région Occitanie (CC Causses et Vallée de la Dordogne),200053791,46,Région,indirect,81026
+Région Occitanie (CC Cazals-Salviac),200053791,46,Région,indirect,81026
+Région Occitanie (CC Centre Tarn),200053791,81,Région,indirect,81026
+Région Occitanie (CC Coeur d'Astarac en Gascogne),200053791,32,Région,indirect,81026
+Région Occitanie (CC Coeur de Garonne),200053791,31,Région,indirect,81026
+Région Occitanie (CC Coeur de Lozère),200053791,48,Région,indirect,81026
+Région Occitanie (CC Coeur et Coteaux du Comminges),200053791,31,Région,indirect,81026
+Région Occitanie (CC Comtal Lot et Truyère),200053791,12,Région,indirect,81026
+Région Occitanie (CC Conflent-Canigó),200053791,66,Région,indirect,81026
+Région Occitanie (CC Conques-Marcillac),200053791,12,Région,indirect,81026
+Région Occitanie (CC Corbières Salanque Méditerranée),200053791,66,Région,indirect,81026
+Région Occitanie (CC Couserans-Pyrénées),200053791,09,Région,indirect,81026
+Région Occitanie (CC Gorges Causses Cévennes),200053791,48,Région,indirect,81026
+Région Occitanie (CC Grand Orb communauté de communes en Languedoc),200053791,34,Région,indirect,81026
+Région Occitanie (CC Grand Sud Tarn et Garonne),200053791,82,Région,indirect,81026
+Région Occitanie (CC Grand-Figeac),200053791,46,Région,indirect,81026
+Région Occitanie (CC Larzac et Vallées),200053791,12,Région,indirect,81026
+Région Occitanie (CC Lauragais Revel Sorezois),200053791,31,Région,indirect,81026
+Région Occitanie (CC Les Avant-Monts),200053791,34,Région,indirect,81026
+Région Occitanie (CC Lodévois et Larzac),200053791,34,Région,indirect,81026
+Région Occitanie (CC Mont Lozère),200053791,48,Région,indirect,81026
+"Région Occitanie (CC Monts, Rance et Rougier)",200053791,12,Région,indirect,81026
+Région Occitanie (CC Neste Barousse),200053791,65,Région,indirect,81026
+Région Occitanie (CC Pays d'Uzès),200053791,30,Région,indirect,81026
+Région Occitanie (CC Piège Lauragais Malepère),200053791,11,Région,indirect,81026
+Région Occitanie (CC Pyrénées Catalanes),200053791,66,Région,indirect,81026
+Région Occitanie (CC Pyrénées Cerdagne),200053791,66,Région,indirect,81026
+Région Occitanie (CC Pyrénées Haut Garonnaises),200053791,31,Région,indirect,81026
+Région Occitanie (CC Pyrénées Vallées des Gaves),200053791,65,Région,indirect,81026
+Région Occitanie (CC Pyrénées audoises),200053791,11,Région,indirect,81026
+Région Occitanie (CC Quercy - Bouriane),200053791,46,Région,indirect,81026
+Région Occitanie (CC Quercy Vert-Aveyron),200053791,82,Région,indirect,81026
+Région Occitanie (CC Randon - Margeride),200053791,48,Région,indirect,81026
+"Région Occitanie (CC Rhony, Vistre, Vidourle)",200053791,30,Région,indirect,81026
+Région Occitanie (CC Roussillon-Conflent),200053791,66,Région,indirect,81026
+"Région Occitanie (CC Région Lézignanaise, Corbières et Minervois)",200053791,11,Région,indirect,81026
+"Région Occitanie (CC Saint Affricain, Roquefort, Sept Vallons)",200053791,12,Région,indirect,81026
+Région Occitanie (CC Sidobre Vals et Plateaux),200053791,81,Région,indirect,81026
+Région Occitanie (CC Sud-Hérault),200053791,34,Région,indirect,81026
+Région Occitanie (CC Sud-Roussillon),200053791,66,Région,indirect,81026
+Région Occitanie (CC Tarn-Agout),200053791,81,Région,indirect,81026
+Région Occitanie (CC Terre de Camargue),200053791,30,Région,indirect,81026
+Région Occitanie (CC Terres des Confluences),200053791,82,Région,indirect,81026
+Région Occitanie (CC Thoré Montagne Noire),200053791,81,Région,indirect,81026
+Région Occitanie (CC Val 81),200053791,81,Région,indirect,81026
+Région Occitanie (CC Val de Gers),200053791,32,Région,indirect,81026
+Région Occitanie (CC Val'Aïgo),200053791,31,Région,indirect,81026
+Région Occitanie (CC Vallée de l'Hérault),200053791,34,Région,indirect,81026
+Région Occitanie (CC de Cèze Cévennes),200053791,30,Région,indirect,81026
+Région Occitanie (CC de Lévézou Pareloup),200053791,12,Région,indirect,81026
+Région Occitanie (CC de Petite Camargue),200053791,30,Région,indirect,81026
+Région Occitanie (CC de la Gascogne Toulousaine),200053791,32,Région,indirect,81026
+Région Occitanie (CC de la Haute Ariège),200053791,09,Région,indirect,81026
+Région Occitanie (CC de la Haute-Bigorre),200053791,65,Région,indirect,81026
+Région Occitanie (CC de la Lomagne Gersoise),200053791,32,Région,indirect,81026
+Région Occitanie (CC de la Lomagne Tarn-et-Garonnaise),200053791,82,Région,indirect,81026
+Région Occitanie (CC de la Montagne Noire),200053791,11,Région,indirect,81026
+Région Occitanie (CC de la Muse et des Raspes du Tarn),200053791,12,Région,indirect,81026
+Région Occitanie (CC de la Tenarèze),200053791,32,Région,indirect,81026
+Région Occitanie (CC de la Vallée du Lot et du Vignoble),200053791,46,Région,indirect,81026
+"Région Occitanie (CC des Albères, de la Côte Vermeille et de l'Illibéris)",200053791,66,Région,indirect,81026
+Région Occitanie (CC des Aspres),200053791,66,Région,indirect,81026
+Région Occitanie (CC des Causses à l'Aubrac),200053791,12,Région,indirect,81026
+Région Occitanie (CC des Coteaux Arrats Gimone),200053791,32,Région,indirect,81026
+Région Occitanie (CC des Coteaux Bellevue),200053791,31,Région,indirect,81026
+Région Occitanie (CC des Coteaux du Girou),200053791,31,Région,indirect,81026
+Région Occitanie (CC des Coteaux du Val d'Arros),200053791,65,Région,indirect,81026
+Région Occitanie (CC des Cévennes Gangeoises et Suménoises),200053791,34,Région,indirect,81026
+Région Occitanie (CC des Cévennes au Mont Lozère),200053791,48,Région,indirect,81026
+Région Occitanie (CC des Deux Rives),200053791,82,Région,indirect,81026
+Région Occitanie (CC des Hautes Terres de l'Aubrac),200053791,48,Région,indirect,81026
+Région Occitanie (CC des Hauts-Tolosans),200053791,31,Région,indirect,81026
+Région Occitanie (CC des Monts d'Alban et du Villefranchois),200053791,81,Région,indirect,81026
+Région Occitanie (CC des Monts de Lacaune et de la Montagne du Haut Languedoc),200053791,81,Région,indirect,81026
+Région Occitanie (CC des Portes d'Ariège Pyrénées),200053791,09,Région,indirect,81026
+Région Occitanie (CC des Terres d'Apcher-Margeride-Aubrac),200053791,48,Région,indirect,81026
+Région Occitanie (CC des Terres du Lauragais),200053791,31,Région,indirect,81026
+Région Occitanie (CC du Bas Armagnac),200053791,32,Région,indirect,81026
+Région Occitanie (CC du Bassin Auterivain Haut-Garonnais),200053791,31,Région,indirect,81026
+Région Occitanie (CC du Causse de Labastide Murat),200053791,46,Région,indirect,81026
+Région Occitanie (CC du Clermontais),200053791,34,Région,indirect,81026
+Région Occitanie (CC du Cordais et du Causse (4 C)),200053791,81,Région,indirect,81026
+Région Occitanie (CC du Frontonnais),200053791,31,Région,indirect,81026
+Région Occitanie (CC du Grand Armagnac),200053791,32,Région,indirect,81026
+Région Occitanie (CC du Grand Pic Saint-Loup),200053791,34,Région,indirect,81026
+Région Occitanie (CC du Haut Allier),200053791,48,Région,indirect,81026
+Région Occitanie (CC du Haut Vallespir),200053791,66,Région,indirect,81026
+Région Occitanie (CC du Lautrécois et du Pays d'Agout),200053791,81,Région,indirect,81026
+Région Occitanie (CC du Limouxin),200053791,11,Région,indirect,81026
+Région Occitanie (CC du Minervois au Caroux),200053791,34,Région,indirect,81026
+Région Occitanie (CC du Pays Rignacois),200053791,12,Région,indirect,81026
+Région Occitanie (CC du Pays Viganais),200053791,30,Région,indirect,81026
+Région Occitanie (CC du Pays d'Olmes),200053791,09,Région,indirect,81026
+Région Occitanie (CC du Pays de Lafrançaise),200053791,82,Région,indirect,81026
+Région Occitanie (CC du Pays de Lalbenque-Limogne),200053791,46,Région,indirect,81026
+Région Occitanie (CC du Pays de Lunel),200053791,34,Région,indirect,81026
+Région Occitanie (CC du Pays de Mirepoix),200053791,09,Région,indirect,81026
+Région Occitanie (CC du Pays de Salars),200053791,12,Région,indirect,81026
+Région Occitanie (CC du Pays de Serres en Quercy),200053791,82,Région,indirect,81026
+Région Occitanie (CC du Pays de Sommières),200053791,30,Région,indirect,81026
+Région Occitanie (CC du Pays de Tarascon),200053791,09,Région,indirect,81026
+Région Occitanie (CC du Pays de Trie et du Magnoac),200053791,65,Région,indirect,81026
+Région Occitanie (CC du Piémont Cévenol),200053791,30,Région,indirect,81026
+Région Occitanie (CC du Plateau de Lannemezan),200053791,65,Région,indirect,81026
+Région Occitanie (CC du Plateau de Montbazens),200053791,12,Région,indirect,81026
+Région Occitanie (CC du Pont du Gard),200053791,30,Région,indirect,81026
+Région Occitanie (CC du Quercy Blanc),200053791,46,Région,indirect,81026
+Région Occitanie (CC du Quercy Caussadais),200053791,82,Région,indirect,81026
+Région Occitanie (CC du Quercy Rouergue et des Gorges de l'Aveyron),200053791,82,Région,indirect,81026
+Région Occitanie (CC du Réquistanais),200053791,12,Région,indirect,81026
+Région Occitanie (CC du Saves),200053791,32,Région,indirect,81026
+Région Occitanie (CC du Sor et de l'Agout),200053791,81,Région,indirect,81026
+Région Occitanie (CC du Vallespir),200053791,66,Région,indirect,81026
+Région Occitanie (CC du Volvestre),200053791,31,Région,indirect,81026
+Région Occitanie (CC la Domitienne),200053791,34,Région,indirect,81026
+Région Occitanie (Le Grand Ouest Toulousain),200053791,31,Région,indirect,81026
+Région Occitanie (Ouest Aveyron Communauté),200053791,12,Région,indirect,81026
+Région Occitanie (Pays Ségali Communauté),200053791,12,Région,indirect,81026
+Région Pays de la Loire (CC Maine Saosnois),234400034,72,Région,indirect,79818;80721
+Région Pays de la Loire (CC du Pays de Saint-Fulgent - Les Essarts),234400034,85,Région,indirect,79818;80721
+"Région Provence-Alpes-Côte d'Azur (CC Alpes-Provence-Verdon ""Sources de lumière"")",231300021,04,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Aygues-Ouvèze en Provence (CCAOP)),231300021,84,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Champsaur-Valgaudemar),231300021,05,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Coeur du Var),231300021,83,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Enclave des Papes-Pays de Grignan),231300021,84,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Haute-Provence-Pays de Banon),231300021,04,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Jabron-Lure-Vançon-Durance),231300021,04,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Méditerranée Porte des Maures),231300021,83,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Pays Forcalquier et Montagne de Lure),231300021,04,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Pays d'Apt-Luberon),231300021,84,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Vallée de l'Ubaye - Serre-Ponçon),231300021,04,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC Ventoux Sud),231300021,84,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC de la Vallée du Gapeau),231300021,83,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC du Pays des Paillons),231300021,06,Région,indirect,82137;82285;82136;83990;83448
+Région Provence-Alpes-Côte d'Azur (CC du Sisteronais-Buëch),231300021,04,Région,indirect,82137;82285;82136;83990;83448
+SI de mobilité et d'organisation urbaine du Valenciennois,200046639,59,Syndicat,indirect,81832;81830;81829;81828;83620
+SI des transports urbains de l'agglomération du Calaisis (SITAC),256204033,62,Syndicat,indirect,82169;81833;83620
+SI des transports urbains soissonnais (SITUS),250204120,02,Syndicat,indirect,82170;82276;83620
+"SM ""Pau Béarn Pyrénées mobilités""",200024883,64,Syndicat,indirect,82346;82321
+SM Artois Mobilités,256204165,62,Syndicat,indirect,82169;81833;83620
+SM de transports urbains de la Sambre,255902827,59,Syndicat,indirect,81832;81830;81829;81828;83620
+SM des transports du Douaisis (SMTD),255900441,59,Syndicat,indirect,81832;81830;81829;81828;83620
+SM des transports du bassin de Briey,200041846,54,Syndicat,indirect,80423;83634;83635
+SM des transports en commun de l'agglomération clermontoise (SMTC),256300120,63,Syndicat,indirect,38888;83112
+SM des transports en commun de l'agglomération toulousaine,253100986,31,Syndicat,indirect,81026
+SM des transports en commun du Territoire-de-Belfort,259000016,90,Syndicat,indirect,84075;84077;84074;84078;83931;84073;84076;84072
+SM des transports urbains Thionville Fensch,255701880,57,Syndicat,indirect,80427;83634;83635
+SM intercommunal des transports de l'agglomération de Longwy,200071694,57,Syndicat,indirect,80427;83634;83635
+SM transports publics du bassin d'Alès,200003325,30,Syndicat,indirect,81026
+SM4CC,200031268,74,Syndicat,indirect,80964;83112
+Syndicat Mixte des Mobilités de l'Aire Grenobloise,253800825,38,Syndicat,indirect,40287;83112
+Syndicat des Mobilités de Touraine,200085108,37,Syndicat,indirect,83521;83530
+Syndicat des mobilités Pays Basque - Adour,256401605,64,Syndicat,indirect,82346;82321
+Syndicat mixte des transports urbains du bassin thiernois,200092013,63,Syndicat,indirect,38888;83112
+Valence-Romans déplacements,200024818,26,Syndicat,indirect,80960;83112
+Île-de-France Mobilités,287500078,75,Établissement Public,indirect,80921;67595
+Ardenne Métropole,200041630,08,Communauté d'agglomération,dedicated,80451
+Bordeaux Métropole,243300316,33,Métropole,dedicated,83024
+Brest Métropole,242900314,29,Métropole,dedicated,43286
+CA Agglo Pays d'Issoire,200070407,63,Communauté d'agglomération,dedicated,81643
+CA Agglo du Pays de Dreux,200040277,28,Communauté d'agglomération,dedicated,83529
+CA Agglomération d'Agen,200096956,47,Communauté d'agglomération,dedicated,80245
+CA Agglomération du Choletais,200071678,49,Communauté d'agglomération,dedicated,79352
+CA Amiens Métropole,248000531,80,Communauté d'agglomération,dedicated,80223;80705
+CA Annonay Rhône Agglo,200072015,07,Communauté d'agglomération,dedicated,83872;83716;82904
+CA Arche Agglo,200073096,07,Communauté d'agglomération,dedicated,84226
+CA Arlysère,200068997,73,Communauté d'agglomération,dedicated,84135
+CA Bassin d'Arcachon Sud (COBAS),243300563,33,Communauté d'agglomération,dedicated,82319
+"CA Beaune, Côte et Sud - Communauté Beaune-Chagny-Nolay",200006682,21,Communauté d'agglomération,dedicated,82660
+CA Bergeracoise,200070647,24,Communauté d'agglomération,dedicated,82373
+CA Cannes Pays de Lérins,200039915,06,Communauté d'agglomération,dedicated,79420
+CA Carcassonne Agglo,200035715,11,Communauté d'agglomération,dedicated,81876
+CA Caux Seine Agglo,200010700,76,Communauté d'agglomération,dedicated,83783
+CA Chartres Métropole,200033181,28,Communauté d'agglomération,dedicated,80587
+CA Chauny Tergnier La Fère,200071785,02,Communauté d'agglomération,dedicated,80221
+CA Châteauroux Métropole,243600327,36,Communauté d'agglomération,dedicated,84169
+CA Clisson Sèvre et Maine Agglo,200067635,44,Communauté d'agglomération,dedicated,81394
+CA Colmar Agglomération,246800726,68,Communauté d'agglomération,dedicated,80479
+CA Concarneau Cornouaille Agglomération,242900769,29,Communauté d'agglomération,dedicated,81476
+CA Creil Sud Oise,200068047,60,Communauté d'agglomération,dedicated,81645;81072
+CA Dinan Agglomération,200068989,22,Communauté d'agglomération,dedicated,79545
+CA Durance-Lubéron-Verdon Agglomération,200034700,04,Communauté d'agglomération,dedicated,83291;83789
+CA ECLA  (Espace Communautaire Lons Agglomération),200071116,39,Communauté d'agglomération,dedicated,82415
+"CA Epernay, Coteaux et Plaine de Champagne",200067684,51,Communauté d'agglomération,dedicated,80443
+CA Evreux Portes de Normandie,200071454,27,Communauté d'agglomération,dedicated,80613
+CA Flers Agglo,200035814,61,Communauté d'agglomération,dedicated,82094;83782
+CA Fougères Agglomération,200072452,35,Communauté d'agglomération,dedicated,64280
+CA Fécamp Caux Littoral Agglomération,200069821,76,Communauté d'agglomération,dedicated,82311
+CA Gaillac-Graulhet,200066124,81,Communauté d'agglomération,dedicated,82196
+CA Gap-Tallard-Durance,200067825,05,Communauté d'agglomération,dedicated,81547
+CA Golfe du Morbihan - Vannes Agglomération,200067932,56,Communauté d'agglomération,dedicated,82553
+CA Grand Auch Coeur de Gascogne,200066926,32,Communauté d'agglomération,dedicated,84228
+CA Grand Lac,200068674,73,Communauté d'agglomération,dedicated,71223
+CA Grand Montauban,248200099,82,Communauté d'agglomération,dedicated,84120
+CA Guingamp-Paimpol Agglomération de l'Armor à l'Argoat,200067981,22,Communauté d'agglomération,dedicated,72361
+CA Hérault-Méditerranée,243400819,34,Communauté d'agglomération,dedicated,64163
+CA La Roche sur Yon - Agglomération,248500589,85,Communauté d'agglomération,dedicated,79520
+CA Lamballe Terre et Mer,200069391,22,Communauté d'agglomération,dedicated,79528
+CA Lannion-Trégor Communauté,200065928,22,Communauté d'agglomération,dedicated,81770
+CA Le Grand Chalon,247100589,71,Communauté d'agglomération,dedicated,82664
+CA Le Grand Narbonne,241100593,11,Communauté d'agglomération,dedicated,82661
+CA Le Grand Périgueux,200040392,24,Communauté d'agglomération,dedicated,82357
+CA Les Sables d'Olonne Agglomération,200071165,85,Communauté d'agglomération,dedicated,81421
+CA Lisieux Normandie,200069532,14,Communauté d'agglomération,dedicated,82140
+CA Lorient Agglomération,200042174,56,Communauté d'agglomération,dedicated,80611
+CA Luberon Monts de Vaucluse,200040442,84,Communauté d'agglomération,dedicated,83394
+CA Mont de Marsan Agglomération,244000808,40,Communauté d'agglomération,dedicated,82377
+CA Montargoise et Rives du Loing (AME),244500203,45,Communauté d'agglomération,dedicated,83326
+CA Montluçon Communauté,200071082,03,Communauté d'agglomération,dedicated,84114;84065
+CA Montélimar Agglomération,200040459,26,Communauté d'agglomération,dedicated,82545
+CA Morlaix Communauté,242900835,29,Communauté d'agglomération,dedicated,82291
+CA Moulins Communauté,200071140,03,Communauté d'agglomération,dedicated,83839
+CA Mulhouse Alsace Agglomération,200066009,68,Communauté d'agglomération,dedicated,80787;80492
+CA Mâconnais Beaujolais Agglomération,200070308,71,Communauté d'agglomération,dedicated,84156
+CA Pays Foix-Varilhes,200067791,09,Communauté d'agglomération,dedicated,25381
+CA Pays de Montbéliard Agglomération,200065647,25,Communauté d'agglomération,dedicated,81944
+CA Pornic Agglo Pays de Retz,200067346,44,Communauté d'agglomération,dedicated,81394
+CA Porte de l'Isère (CAPI),243800604,38,Communauté d'agglomération,dedicated,52937
+CA Privas Centre Ardèche,200071413,07,Communauté d'agglomération,dedicated,81342;79272
+CA Provence-Alpes-Agglomération,200067437,04,Communauté d'agglomération,dedicated,83915
+CA Quimper Bretagne Occidentale,200068120,29,Communauté d'agglomération,dedicated,83408
+CA Quimperlé Communauté,242900694,29,Communauté d'agglomération,dedicated,80671
+CA Redon Agglomération,243500741,35,Communauté d'agglomération,dedicated,83126;83512
+CA Riom Limagne et Volcans,200070753,63,Communauté d'agglomération,dedicated,82547
+CA Roannais Agglomération,200035731,42,Communauté d'agglomération,dedicated,79861
+CA Rochefort Océan,200041762,17,Communauté d'agglomération,dedicated,82367
+CA Rodez Agglomération,241200187,12,Communauté d'agglomération,dedicated,81175
+CA Royan Atlantique,241700640,17,Communauté d'agglomération,dedicated,79499;82361
+CA Saint-Avold Synergie,200067502,57,Communauté d'agglomération,dedicated,82413
+CA Saint-Brieuc Armor Agglomération,200069409,22,Communauté d'agglomération,dedicated,67655
+CA Saint-Louis Agglomération,200066058,68,Communauté d'agglomération,dedicated,80437
+CA Saint-Lô Agglo,200066389,50,Communauté d'agglomération,dedicated,84189
+CA Sarreguemines Confluences,200070746,57,Communauté d'agglomération,dedicated,80469
+CA Seine Normandie Agglomération,200072312,27,Communauté d'agglomération,dedicated,80655
+CA Seine-Eure,200089456,27,Communauté d'agglomération,dedicated,81338
+CA Sud Sainte Baume,248300394,83,Communauté d'agglomération,dedicated,83893
+CA Sète Agglopôle Méditerranée,200066355,34,Communauté d'agglomération,dedicated,81575
+CA Tarbes-Lourdes-Pyrénées,200069300,65,Communauté d'agglomération,dedicated,83134
+CA Terre de Provence,200035087,13,Communauté d'agglomération,dedicated,84230
+CA Territoires Vendômois,200072072,41,Communauté d'agglomération,dedicated,82832
+CA Thonon Agglomération,200067551,74,Communauté d'agglomération,dedicated,82178;84108
+CA Troyes Champagne Métropole,200069250,10,Communauté d'agglomération,dedicated,79847
+CA Tulle Agglo,241927201,19,Communauté d'agglomération,dedicated,82379
+CA Val de Garonne Agglomération,200030674,47,Communauté d'agglomération,dedicated,82370
+CA Ventoux-Comtat-Venaissin (COVE),248400053,84,Communauté d'agglomération,dedicated,84237
+CA Vichy Communauté,200071363,03,Communauté d'agglomération,dedicated,84137
+CA Vienne Condrieu,200077014,38,Communauté d'agglomération,dedicated,52917
+CA d'Arles-Crau-Camargue-Montagnette,241300417,13,Communauté d'agglomération,dedicated,82662
+CA d'Epinal,200068757,88,Communauté d'agglomération,dedicated,80461
+CA de Bar-le-Duc - Sud Meuse,200033025,55,Communauté d'agglomération,dedicated,80441
+CA de Bastia,242000354,2B,Communauté d'agglomération,dedicated,83962
+CA de Blois ''Agglopolys'',200030385,41,Communauté d'agglomération,dedicated,83526
+CA de Béziers-Méditerranée,243400769,34,Communauté d'agglomération,dedicated,83368
+CA de Cambrai,200068500,59,Communauté d'agglomération,dedicated,80751
+CA de Castres Mazamet,248100430,81,Communauté d'agglomération,dedicated,79508
+CA de Chaumont,200068658,52,Communauté d'agglomération,dedicated,80410
+CA de Châlons-en-Champagne,200066876,51,Communauté d'agglomération,dedicated,80457
+CA de Forbach Porte de France,245700372,57,Communauté d'agglomération,dedicated,80467
+CA de Haguenau,200067874,67,Communauté d'agglomération,dedicated,80449;79014
+CA de La Rochelle,241700434,17,Communauté d'agglomération,dedicated,82350
+CA de Nevers,245804406,58,Communauté d'agglomération,dedicated,81227
+CA de Nîmes Métropole,243000643,30,Communauté d'agglomération,dedicated,82911
+CA de Saint-Dizier Der et Blaise,200068666,52,Communauté d'agglomération,dedicated,80477
+CA de Saint-Dié-des-Vosges,200071066,88,Communauté d'agglomération,dedicated,80453
+CA de Saintes,200036473,17,Communauté d'agglomération,dedicated,12601;82375
+CA de Sophia Antipolis,240600585,06,Communauté d'agglomération,dedicated,79342
+CA de Vesoul,247000011,70,Communauté d'agglomération,dedicated,81222
+CA de l'Albigeois (C2A),248100737,81,Communauté d'agglomération,dedicated,79728;79687;81522
+CA de l'Auxerrois,200067114,89,Communauté d'agglomération,dedicated,78934
+CA de la Baie de Somme,200070993,80,Communauté d'agglomération,dedicated,84232
+CA de la Presqu'île de Guérande Atlantique (CAP ATLANTIQUE),244400610,44,Communauté d'agglomération,dedicated,83762
+CA de la Provence Verte,200068104,83,Communauté d'agglomération,dedicated,83429
+CA de la Riviera Française,240600551,06,Communauté d'agglomération,dedicated,79559
+CA de la Région Dieppoise,247600786,76,Communauté d'agglomération,dedicated,80680
+CA de la Région Nazairienne et de l'Estuaire (CARENE),244400644,44,Communauté d'agglomération,dedicated,83881
+CA de la Région de Château-Thierry,200072031,02,Communauté d'agglomération,dedicated,83793
+CA de la Région de Compiègne et de la Basse Automne,200067965,60,Communauté d'agglomération,dedicated,81146;81066;81158
+CA des Deux Baies en Montreuillois,200069029,62,Communauté d'agglomération,dedicated,83315
+CA des Sorgues du Comtat,248400293,84,Communauté d'agglomération,dedicated,84186;84187
+CA du Bassin d'Arcachon Nord,243301504,33,Communauté d'agglomération,dedicated,82155
+CA du Bassin d'Aurillac,241500230,15,Communauté d'agglomération,dedicated,84136
+CA du Bassin de Bourg-en-Bresse,200071751,01,Communauté d'agglomération,dedicated,84243;84244;80147
+CA du Bassin de Brive,200043172,19,Communauté d'agglomération,dedicated,82355
+CA du Beauvaisis,200067999,60,Communauté d'agglomération,dedicated,81138;81650;81074
+CA du Bocage Bressuirais,200040244,79,Communauté d'agglomération,dedicated,82363
+CA du Boulonnais,246200729,62,Communauté d'agglomération,dedicated,51449
+CA du Caudrésis et du Catésis,200030633,59,Communauté d'agglomération,dedicated,83396
+CA du Cotentin,200067205,50,Communauté d'agglomération,dedicated,79831
+CA du Gard Rhodanien,200034692,30,Communauté d'agglomération,dedicated,83042
+CA du Grand Angoulême,200071827,16,Communauté d'agglomération,dedicated,82093
+CA du Grand Annecy,200066793,74,Communauté d'agglomération,dedicated,80100
+CA du Grand Avignon (COGA),248400251,84,Communauté d'agglomération,dedicated,84115
+CA du Grand Cahors,200023737,46,Communauté d'agglomération,dedicated,81432
+CA du Grand Chambéry,200069110,73,Communauté d'agglomération,dedicated,82272
+CA du Grand Cognac,200070514,16,Communauté d'agglomération,dedicated,82365
+CA du Grand Dax,244000675,40,Communauté d'agglomération,dedicated,83418
+CA du Grand Dole,200010650,39,Communauté d'agglomération,dedicated,81254
+CA du Grand Guéret,200034825,23,Communauté d'agglomération,dedicated,79483
+CA du Grand Sénonais,248900334,89,Communauté d'agglomération,dedicated,81898
+CA du Grand Verdun,200049187,55,Communauté d'agglomération,dedicated,80772
+CA du Grand Villeneuvois,200023307,47,Communauté d'agglomération,dedicated,82189
+CA du Libournais,200070092,33,Communauté d'agglomération,dedicated,82359
+CA du Niortais,200041317,79,Communauté d'agglomération,dedicated,82352
+CA du Pays Ajaccien,242010056,2A,Communauté d'agglomération,dedicated,83836
+CA du Pays de Gex,240100750,01,Communauté d'agglomération,dedicated,81585
+CA du Pays de Grasse,200039857,06,Communauté d'agglomération,dedicated,79821;79822
+CA du Pays de Landerneau-Daoulas,242900801,29,Communauté d'agglomération,dedicated,81459
+CA du Pays de Laon,200043495,02,Communauté d'agglomération,dedicated,80707
+CA du Pays de Saint Malo Agglomération,243500782,35,Communauté d'agglomération,dedicated,82555
+CA du Pays de Saint-Gilles-Croix-de-Vie,200023778,85,Communauté d'agglomération,dedicated,82097
+CA du Pays de Saint-Omer,200069037,62,Communauté d'agglomération,dedicated,83987
+CA du Pays de l'Or,243400470,34,Communauté d'agglomération,dedicated,84099
+CA du Puy-en-Velay,200073419,43,Communauté d'agglomération,dedicated,83906;83903
+CA du Saint-Quentinois,200071892,02,Communauté d'agglomération,dedicated,82704
+CC Argentan Intercom,200068450,61,Communauté de communes,dedicated,82315
+CC Aunis Atlantique,200041499,17,Communauté de communes,dedicated,83982
+CC Auray Quiberon Terre Atlantique,200043123,56,Communauté de communes,dedicated,83300
+CC Caux - Austreberthe,247600646,76,Communauté de communes,dedicated,82309
+"CC Chinon, Vienne et Loire",200043081,37,Communauté de communes,dedicated,82150
+CC Châteaubriant-Derval,200072726,44,Communauté de communes,dedicated,81394;84105
+CC Cluses-Arve et Montagnes,200033116,74,Communauté de communes,dedicated,83578;84192
+CC Coeur de Loire,200067916,58,Communauté de communes,dedicated,83859
+CC Coutances Mer et Bocage,200067023,50,Communauté de communes,dedicated,82312
+CC Decazeville Communauté,200067064,12,Communauté de communes,dedicated,11492
+CC Dombes Saône Vallée,200042497,01,Communauté de communes,dedicated,79859
+CC Douarnenez Communauté,242900645,29,Communauté de communes,dedicated,81927
+CC Estuaire et Sillon,200072734,44,Communauté de communes,dedicated,81394
+CC Intercom Bernay Terres de Normandie,200066413,27,Communauté de communes,dedicated,84161;83775
+CC Intercom de la Vire au Noireau,200068799,14,Communauté de communes,dedicated,83769;83846;83770
+CC Jalle-Eau-Bourde,243301165,33,Communauté de communes,dedicated,81557
+CC Le Grand Charolais,200071884,71,Communauté de communes,dedicated,84245
+CC Loir-Lucé-Bercé,200070373,72,Communauté de communes,dedicated,81394
+CC Maremne Adour Côte Sud,244000865,40,Communauté de communes,dedicated,83416
+CC Mayenne Communauté,200055887,53,Communauté de communes,dedicated,81394
+CC Moselle et Madon,245400171,54,Communauté de communes,dedicated,80431;82388
+CC Pays d'Evian Vallée d'Abondance,200071967,74,Communauté de communes,dedicated,80973
+CC Pontivy Communauté,245614433,56,Communauté de communes,dedicated,81179
+CC Retz en Valois,200071991,02,Communauté de communes,dedicated,82154;82689
+CC Rives de Moselle,200039949,57,Communauté de communes,dedicated,80459;83277
+CC Rumilly Terre de Savoie,247400740,74,Communauté de communes,dedicated,80092
+CC Sarrebourg Moselle Sud,200068146,57,Communauté de communes,dedicated,80447
+CC Serre-Ponçon,200067742,05,Communauté de communes,dedicated,84175
+CC Sud Retz Atlantique,200071546,44,Communauté de communes,dedicated,81394
+CC Terres Touloises,200070563,54,Communauté de communes,dedicated,80463
+CC Thelloise,200067973,60,Communauté de communes,dedicated,81068;81648
+CC Yvetot Normandie,247600620,76,Communauté de communes,dedicated,81975
+CC d'Erdre et Gesvres,244400503,44,Communauté de communes,dedicated,81394
+CC de Flandre Intérieure,200040947,59,Communauté de communes,dedicated,83202
+"CC de Granville, Terre et Mer",200042604,50,Communauté de communes,dedicated,82721
+CC de Millau Grands Causses,241200567,12,Communauté de communes,dedicated,83978
+CC de Miribel et du Plateau,240100800,01,Communauté de communes,dedicated,79810
+CC de Montesquieu,243301264,33,Communauté de communes,dedicated,81555
+CC de l'Aire Cantilienne,246000764,60,Communauté de communes,dedicated,81042
+CC de l'Argonne Champenoise,200042703,51,Communauté de communes,dedicated,80471
+CC de l'Ile-Rousse - Balagne,200073104,2B,Communauté de communes,dedicated,82997
+CC de l'Ouest Vosgien,200068559,88,Communauté de communes,dedicated,79814
+CC de l'Oust à Brocéliande,200066785,56,Communauté de communes,dedicated,84235
+CC de la Côtière à Montluel,240100610,01,Communauté de communes,dedicated,79864
+CC de la Plaine d'Estrées,246000897,60,Communauté de communes,dedicated,81519
+CC de la Vallée de Chamonix-Mont-Blanc,200023372,74,Communauté de communes,dedicated,82663
+CC des Coëvrons,200033298,53,Communauté de communes,dedicated,81394
+CC des Pays d'Oise et d'Halatte,246000921,60,Communauté de communes,dedicated,81034
+CC des Pays du Sel et du Vermois,245400189,54,Communauté de communes,dedicated,80431;82907
+CC des Portes Euréliennes d'Ile de France,200069953,28,Communauté de communes,dedicated,84205
+CC des Sablons,246000582,60,Communauté de communes,dedicated,81651;81070
+CC du Bassin de Pompey,245400601,54,Communauté de communes,dedicated,80431;80475
+CC du Bassin de Pont-à-Mousson,200041515,54,Communauté de communes,dedicated,80465
+CC du Bocage Mayennais,245300389,53,Communauté de communes,dedicated,81394
+CC du Briançonnais,240500439,05,Communauté de communes,dedicated,81455
+CC du Clermontois,246000376,60,Communauté de communes,dedicated,81056
+CC du Grand Autunois Morvan,200070530,71,Communauté de communes,dedicated,83383
+CC du Liancourtois,246000129,60,Communauté de communes,dedicated,83922;83921
+CC du Mont des Avaloirs,200042182,53,Communauté de communes,dedicated,81394
+CC du Pays Noyonnais,246000756,60,Communauté de communes,dedicated,81054
+CC du Pays Sabolien,247200090,72,Communauté de communes,dedicated,79537
+CC du Pays d'Ancenis,244400552,44,Communauté de communes,dedicated,81394
+CC du Pays de Château-Gontier,245300447,53,Communauté de communes,dedicated,81394
+CC du Pays de Craon,200048551,53,Communauté de communes,dedicated,81394
+CC du Pays de Honfleur-Beuzeville,200066827,14,Communauté de communes,dedicated,82711
+CC du Pays de Meslay-Grez,245300223,53,Communauté de communes,dedicated,81394
+CC du Pays de Pontchâteau St-Gildas-des-Bois,200000438,44,Communauté de communes,dedicated,81394
+CC du Pays de Sainte-Odile,246701080,67,Communauté de communes,dedicated,80439
+CC du Pays de Valois,246000871,60,Communauté de communes,dedicated,81058
+CC du Pays des Ecrins,240500462,05,Communauté de communes,dedicated,83467
+CC du Sud Corse,200040764,2A,Communauté de communes,dedicated,81252
+CC du Sud Estuaire,244400586,44,Communauté de communes,dedicated,79151
+CC du Thouarsais,247900798,79,Communauté de communes,dedicated,83533
+CU Angers Loire Métropole,244900015,49,Communauté urbaine,dedicated,80036
+CU Grand Besançon Métropole,242500361,25,Communauté urbaine,dedicated,80590
+CU Le Creusot Montceau-les-Mines,247100290,71,Communauté urbaine,dedicated,82999
+CU Le Mans Métropole,247200132,72,Communauté urbaine,dedicated,84170;79601;84233
+CU Limoges Métropole,248719312,87,Communauté urbaine,dedicated,82348
+CU Perpignan Méditerranée Métropole,200027183,66,Communauté urbaine,dedicated,83735;82900;83734
+CU d'Arras,200033579,62,Communauté urbaine,dedicated,83372
+CU de Dunkerque,245900428,59,Communauté urbaine,dedicated,82683
+CU du Grand Poitiers,200069854,86,Communauté urbaine,dedicated,83389
+CU du Grand Reims,200067213,51,Communauté urbaine,dedicated,80594
+Dijon Métropole,242100410,21,Métropole,dedicated,80742
+Dracénie Provence Verdon Agglomération,248300493,83,Communauté d'agglomération,dedicated,84188;81907
+Estérel Côte d'Azur Agglomération,200035319,83,Communauté d'agglomération,dedicated,82294
+Eurométropole de Strasbourg,246700488,67,Métropole,dedicated,79220
+Grand Lieu Communauté,244400438,44,Communauté de communes,dedicated,81394
+Haut - Bugey Agglomération,200042935,01,Communauté d'agglomération,dedicated,84112
+Laval Agglomération,200083392,53,Communauté d'agglomération,dedicated,81018
+Le Havre Seine Métropole,200084952,76,Communauté urbaine,dedicated,84037
+Metz Métropole,200039865,57,Métropole,dedicated,80725
+Montpellier Méditerranée Métropole,243400017,34,Métropole,dedicated,84199
+Métropole Européenne de Lille,200093201,59,Métropole,dedicated,83405;81995
+Métropole Nice Côte d'Azur,200030195,06,Métropole,dedicated,83178
+Métropole Rouen Normandie,200023414,76,Métropole,dedicated,64973
+Métropole Toulon-Provence-Méditerranée,248300543,83,Métropole,dedicated,79560
+Métropole d'Aix-Marseille-Provence,200054807,13,Métropole,dedicated,39595;39596;39589;39602;39601;39592;39591;39594;39597;39599;39593;39603;39598;80736;81969
+Métropole du Grand Nancy,245400676,54,Métropole,dedicated,80431;83710
+Nantes Métropole,244400404,44,Métropole,dedicated,84101
+Orléans Métropole,244500468,45,Métropole,dedicated,83751
+Pays d'Orange en Provence,248400236,84,Communauté de communes,dedicated,82715
+Rennes Métropole,243500139,35,Métropole,dedicated,83282;83281
+Saint-Etienne Métropole,244200770,42,Métropole,dedicated,81023

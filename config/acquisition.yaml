@@ -1,4 +1,5 @@
 transport_api: https://transport.data.gouv.fr/api/datasets
+aom_api: https://transport.data.gouv.fr/api/aoms/geojson
 bdalti_feed: https://data.geopf.fr/telechargement/resource/BDALTI
 metadata_max_bytes: 8388608
 request_timeout_seconds: 30

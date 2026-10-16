@@ -9,6 +9,126 @@ osm_source_ids:
   '2024-01-01': osm-2024
 osm_cache_root: data/interim/osm_pt_stops
 osm_route_cache_root: data/interim/osm_pt_routes
+national_policy:
+  # 2026-10-15 decision: the goal is a national model built with no manual
+  # review step. The per-family OSM-calibrated automatic rule below
+  # (``chosen``) is retired for every family except tram -- including the
+  # former BHNS/express bus automatic cut rule, which is retired too.
+  # Metro, rail, bus and ferry keep every 2026 route in both past states
+  # by default, changed only by the PT openings list's auto-applied
+  # matches (``config/pt_changes.yaml``'s ``from_openings``, written by
+  # ``mobgrid.pt apply-openings``). See docs/progress.md (2026-10-15,
+  # "step 0 national policy") for the full decision record and
+  # ``mobgrid.pt.pt_policy.resolve_route_presence`` for the precedence
+  # rule, tested in tests/mobgrid/pt/test_pt_policy.py.
+  decision_date: '2026-10-15'
+  precedence:
+  - openings_list
+  - tram_automatic_rule
+  - default_keep
+  families:
+    tram:
+      rule: automatic_osm
+      notes: Uses chosen.tram's confirmed parameters below (r_m=25, k=1,
+        theta=0.5, geometry_share=0.3), applied automatically.
+    metro:
+      rule: default_keep_except_openings
+      notes: The automatic rule's historical calibration (chosen.metro
+        below, known 11/11, false-change 20.00%) is kept for reference
+        only and no longer applied; metro changes come only from the
+        openings list. Its false changes are not investigated further
+        (2026-10-15 decision).
+    rail:
+      rule: default_keep_except_openings
+      notes: Never applied automatically (unchanged policy); chosen.rail
+        below is kept as a screening/review reference only.
+    bus:
+      rule: default_keep_except_openings
+      notes: Never applied automatically, including the former BHNS/
+        express automatic cut rule (now retired); chosen.bus below is kept
+        as a screening/review reference only.
+    ferry:
+      rule: default_keep_except_openings
+      notes: Never applied automatically (unchanged policy); chosen.ferry
+        below is kept as a screening/review reference only.
+  openings_list:
+    source_csv: config/French transit openings 2022 to 2026.csv
+    mapping_csv: config/pt_openings_mapping.csv
+    include_row_confidence:
+    - high
+    - medium
+    apply_match_confidence:
+    - exact
+    - stop-confirmed
+    known_gap_state: add
+    notes: 'Mapped with ``mobgrid.pt map-openings`` (one network at a
+      time) or, for all networks in one resumable/logged run,
+      ``mobgrid.pt map-and-apply-all``. Applied with ``mobgrid.pt
+      apply-openings``, which writes config/pt_changes.yaml''s
+      ``from_openings`` and logs every ambiguous/none/low-confidence row
+      and every closed-before-2026 (state ``add``) row, one line each.
+      2026-10-16: what a ``remove`` row does depends on its
+      ``change_type`` (``new_line``/``reopening`` drop the route;
+      ``extension`` cuts it at its old terminus; ``new_station`` removes
+      only that stop -- see ``mobgrid.pt.pt_changes.OpeningDerivedChange
+      .instruction_at`` and ``mobgrid.pt.route_edits``); ``keep``/
+      ``modify`` are never an instruction and fall through to the tram
+      rule or default keep.'
+    network_resource_ids:
+      Aix-Marseille-Provence: 81969
+      Bibus (Brest Métropole): 43286
+      CTS (Eurométropole de Strasbourg): 79220
+      Citézen (SMiTU Thionville-Fensch): 80459
+      Filibus (Chartres métropole): 80587
+      Geneva tram 17 (Annemasse Agglo / Pôle métropolitain du Genevois français): 76779
+      Grand Reims Mobilités: 80594
+      IDFM: 80921
+      IDFM (operator Transdev per Wikipedia): 80921
+      Irigo (Angers Loire Métropole): 80036
+      Keolis Tisse (IDFM): 80921
+      Le Met' (Eurométropole de Metz): 80725
+      Lebus+ (Aix-Marseille-Provence): 81969
+      M réso (SMMAG): 83459
+      Naolib (Nantes Métropole): 84101
+      Péribus (Grand Périgueux): 82357
+      RATP (IDFM): 80921
+      RATP; Société des grands projets (IDFM): 80921
+      RTM (Aix-Marseille-Provence): 81969
+      SAM (Sète Agglopôle Méditerranée): 81575
+      SNCF Réseau / RFI; TER Auvergne-Rhône-Alpes: 83582
+      SNCF Voyageurs (IDFM): 80921
+      SNCF Voyageurs / SNCF Réseau (IDFM): 80921
+      STAN (Métropole du Grand Nancy): 83710
+      STAR (Rennes Métropole): 83281
+      Société des grands projets (IDFM): 80921
+      Stretto (Keolis + SNCF) (IDFM): 80921
+      T2C (SMTC Clermont): 83465
+      TBM (Bordeaux Métropole): 83024
+      TCL (SYTRAL Mobilités): 81943
+      TER (Région Sud, SNCF Réseau): 83582
+      TER Auvergne-Rhône-Alpes (SNCF Réseau): 83582
+      TER Bourgogne-Franche-Comté (SNCF Réseau): 83582
+      TER BreizhGo (SNCF Réseau): 83582
+      TER Grand Est (Région Grand Est, Eurométropole): 83582
+      TER Hauts-de-France (SNCF Réseau): 83582
+      TER Normandie (Région Normandie): 83582
+      TER Nouvelle-Aquitaine: 83582
+      TER Nouvelle-Aquitaine (Bordeaux Métropole, Région): 83582
+      TER Nouvelle-Aquitaine (GrandAngoulême): 83582
+      TER Nouvelle-Aquitaine (SNCF Réseau): 83582
+      TER Occitanie / Auvergne-Rhône-Alpes (SNCF Réseau): 83582
+      TER Pays de la Loire (Aléop): 83582
+      TaM (Montpellier Méditerranée Métropole): 84199
+      Tisséo: 81678
+      Twisto (Caen la mer): 81942
+    mode_split_network_resource_ids:
+      TER Occitanie (liO):
+        bhns: 81026
+        bus: 81026
+        rail: 83582
+        trolleybus: 81026
+    unresolved_networks: {}
+  to_review_is_informational: true
 calibration:
   r_m:
   - 25
@@ -40,6 +160,9 @@ chosen:
     # calibrated theta or cutting -- kept/kept-renamed/dropped come from a
     # fixed 50%/30%/50% name-then-geometry match share (section 5.6 point
     # 2), so theta and k are null (no longer meaningful for this family).
+    # 2026-10-15 national policy: retired, not applied even as a screening
+    # cut rule any more (national_policy.families.bus) -- these values are
+    # a historical reference only.
     r_m: 100
     k: null
     geometry_share: 0.3
@@ -50,6 +173,8 @@ chosen:
     # (reuses bus's parameters and known cases; theta/k null for the same
     # reason). Coverage is checked against member stops/piers only, within
     # a fixed 200 m, regardless of r_m.
+    # 2026-10-15 national policy: retired, historical reference only
+    # (national_policy.families.ferry).
     r_m: 100
     k: null
     geometry_share: 0.3
@@ -60,6 +185,11 @@ chosen:
     # geometry_share moved from the former 0.7 (2026-10-14, 9/9 known
     # cases) to 0.3 now that the known-case set also covers the Lyon
     # metro B and Paris metro 4/12 extensions.
+    # 2026-10-15 national policy: the goal is a national model with no
+    # manual review, so this automatic rule is retired (not applied) even
+    # though it scored well -- metro changes come only from the openings
+    # list now (national_policy.families.metro); the false changes above
+    # are not investigated further.
     r_m: 25
     k: 2
     geometry_share: 0.3
@@ -72,6 +202,8 @@ chosen:
     # kept-renamed rather than the expected kept -- a genuine OSM
     # rail-relation-naming gap, not a parameter issue), false-change
     # 20.74% of presumed-unchanged SNCF routes.
+    # 2026-10-15 national policy: retired, historical reference only
+    # (national_policy.families.rail).
     r_m: 25
     k: 2
     geometry_share: 0.3
@@ -80,6 +212,10 @@ chosen:
     # Confirmed 2026-10-15 (national recompute): known cases 12/12, F1
     # 1.00, false-change 0.00% of presumed-unchanged test-area routes
     # (now including the Lyon T4/T6 and Bordeaux tram C/E/F cases).
+    # 2026-10-15 national policy: the only family still applied
+    # automatically (national_policy.families.tram); the former BHNS/
+    # express bus automatic cut rule is retired (BHNS now follows bus's
+    # own default-keep-except-openings policy).
     r_m: 25
     k: 1
     geometry_share: 0.3

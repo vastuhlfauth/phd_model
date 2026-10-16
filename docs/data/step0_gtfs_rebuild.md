@@ -5,30 +5,82 @@ by geometry matching**, then spatially verifies the matched relation portions.
 Results come from each route's most-travelled pattern on
 **2026-10-13**.
 
-## Bus and ferry policy (2026-10-15 decision)
+## National policy (2026-10-15 decision: a national model, no manual review)
+
+Decided 2026-10-15. Precedence, highest first: `openings_list` > `tram_automatic_rule` > `default_keep`.
+
+| Family | Rule | Notes |
+|---|---|---|
+| bus | `default_keep_except_openings` | Never applied automatically, including the former BHNS/ express automatic cut rule (now retired); chosen.bus below is kept as a screening/review reference only. |
+| ferry | `default_keep_except_openings` | Never applied automatically (unchanged policy); chosen.ferry below is kept as a screening/review reference only. |
+| metro | `default_keep_except_openings` | The automatic rule's historical calibration (chosen.metro below, known 11/11, false-change 20.00%) is kept for reference only and no longer applied; metro changes come only from the openings list. Its false changes are not investigated further (2026-10-15 decision). |
+| rail | `default_keep_except_openings` | Never applied automatically (unchanged policy); chosen.rail below is kept as a screening/review reference only. |
+| tram | `automatic_osm` | Uses chosen.tram's confirmed parameters below (r_m=25, k=1, theta=0.5, geometry_share=0.3), applied automatically. |
+
+Openings list: `config/French transit openings 2022 to 2026.csv` mapped per network with `mobgrid.pt map-openings` into `config/pt_openings_mapping.csv`, restricted to high/medium-confidence rows; applied with `mobgrid.pt apply-openings` when the match itself is exact/stop-confirmed. A row whose state is `add` at either date has no 2026 GTFS counterpart and is listed as a known gap below, never applied. `to_review`/`not_applied` candidates are informational only; nothing in the pipeline waits for them.
+
+## PT openings list: applied changes and known gaps
+
+2 of 47 high/medium-confidence networks mapped so far; 45 remaining (see `docs/progress.md` for the per-network `map-openings` command list).
+
+- Applied (written to `config/pt_changes.yaml`'s `from_openings`): 9
+- Not applied (ambiguous/none/low-confidence match, or not yet mapped; one line logged for each): 104
+- Closed before 2026 (`state_2022`/`state_2024` = `add`, no 2026 GTFS counterpart): 8
+
+| Opening id | Network | Route | Change type | 2022 instruction | 2024 instruction | Match |
+|---|---|---|---|---|---|---|
+| NAQ-01 | TBM (Bordeaux Métropole) | 164 | extension | cut | no instruction (falls through) | exact |
+| NAQ-08 | TBM (Bordeaux Métropole) | 901 | new_line | drop | drop | exact |
+| NAQ-11 | TBM (Bordeaux Métropole) | 911 | new_line | drop | drop | exact |
+| NAQ-11 | TBM (Bordeaux Métropole) | 912 | new_line | drop | drop | exact |
+| NAQ-12 | TBM (Bordeaux Métropole) | 59 | restructuring | no instruction (falls through) | no instruction (falls through) | exact |
+| NAQ-13 | TBM (Bordeaux Métropole) | 61 | restructuring | no instruction (falls through) | no instruction (falls through) | exact |
+| NAQ-14 | TBM (Bordeaux Métropole) | 163 | restructuring | no instruction (falls through) | no instruction (falls through) | exact |
+| NAQ-15 | TBM (Bordeaux Métropole) | 164 | restructuring | no instruction (falls through) | no instruction (falls through) | exact |
+| NOR-01 | Twisto (Caen la mer) | ATOUMOD029:Line:T3:LOC | extension | cut | no instruction (falls through) | exact |
+
+**Known gap -- lines closed before 2026:**
+
+- IDF-05 (SNCF Voyageurs (IDFM), RER C): state_2022=add, state_2024=keep -- closed before 2026, no 2026 GTFS counterpart, left out of every state
+- ARA-09 (TER Auvergne-Rhône-Alpes (SNCF Réseau), TER line 67 Aurillac – Brive): state_2022=add, state_2024=add -- closed before 2026, no 2026 GTFS counterpart, left out of every state
+- GES-02 (STAN (Métropole du Grand Nancy), 1): state_2022=add, state_2024=keep -- closed before 2026, no 2026 GTFS counterpart, left out of every state
+- HDF-03 (TER Hauts-de-France (SNCF Réseau), TER P64 Laon – Hirson): state_2022=add, state_2024=keep -- closed before 2026, no 2026 GTFS counterpart, left out of every state
+- NOR-02 (TER Normandie (Région Normandie), rail): state_2022=add, state_2024=add -- closed before 2026, no 2026 GTFS counterpart, left out of every state
+- NOR-03 (TER Normandie, rail): state_2022=add, state_2024=add -- closed before 2026, no 2026 GTFS counterpart, left out of every state
+- NAQ-09 (TER Nouvelle-Aquitaine, rail): state_2022=add, state_2024=add -- closed before 2026, no 2026 GTFS counterpart, left out of every state
+- OCC-09 (Tisséo, tram): state_2022=add, state_2024=keep -- closed before 2026, no 2026 GTFS counterpart, left out of every state
+
+## Former bus/ferry/BHNS automatic rule (historical, no longer applied)
 
 Every 2026 bus and ferry route is kept in both past states by default; only
-`confirmed` entries of `config/pt_changes.yaml` are ever applied. BHNS/express
-routes are the one exception: they are identified by name or description
-(`Express`, `BHNS`, `Liane(s)`, `Chronobus`) and verified like a tram, cut at
-uncovered ends before `theta`, using dedicated bus infrastructure in OSM
-(`highway=busway`/`bus_guideway`, `busway=*`, `lanes:bus=*`, not under
-construction or proposed) instead of the regular kept/dropped rule. Every
-other bus/ferry route uses a fixed, non-calibrated outcome rule instead of
-`theta`: a name match covering at least 50% of stops is `kept`; a name match
-below 30% is treated as a homonym (a coincidental ref/name match, not the
-same line) and discarded in favour of the geometry pass; a geometry match
-reaching 50% is `kept-renamed`; otherwise the route is `dropped`. Ferry
-coverage is checked against a relation's member stops and piers only, never
-its ways, within a fixed 200 m regardless of the calibrated `r_m`. All other
-detected bus/ferry changes are candidates for manual review only (see below).
+`confirmed` entries and now `from_openings` entries of `config/pt_changes.yaml`
+are ever applied -- see the national policy above. The rule below was the
+automatic bus/ferry/BHNS outcome rule used through 2026-10-15's calibration;
+it is kept here as a historical record of how the `chosen`/screening numbers
+in the next section were produced, but it is **not** applied to any built
+state any more. BHNS/express routes used to be the one exception: identified
+by name or description (`Express`, `BHNS`, `Liane(s)`, `Chronobus`) and
+verified like a tram, cut at uncovered ends before `theta`, using dedicated
+bus infrastructure in OSM (`highway=busway`/`bus_guideway`, `busway=*`,
+`lanes:bus=*`, not under construction or proposed) instead of the regular
+kept/dropped rule. Every other bus/ferry route used a fixed, non-calibrated
+outcome rule instead of `theta`: a name match covering at least 50% of stops
+is `kept`; a name match below 30% is treated as a homonym (a coincidental
+ref/name match, not the same line) and discarded in favour of the geometry
+pass; a geometry match reaching 50% is `kept-renamed`; otherwise the route is
+`dropped`. Ferry coverage was checked against a relation's member stops and
+piers only, never its ways, within a fixed 200 m regardless of the calibrated
+`r_m`. All detected bus/ferry/metro/rail changes below remain informational
+only (`to_review`/`not_applied`), never auto-applied.
 
-## Recommended parameters
+## Recommended parameters (historical reference; tram only is applied)
 
 The ranking maximises exact known-case outcomes, then known-case F1, then
 minimises the false-change rate among presumed-unchanged routes. Rail reuses
 metro parameters because section 5.6 has no labelled rail case; ferry reuses
-bus parameters and is never cut.
+bus parameters and is never cut. Under the 2026-10-15 national policy above,
+only **tram** is actually applied automatically; bus, ferry, metro and rail
+are shown for historical/screening reference only.
 
 | Family | r (m) | k | theta | geometry share | Known correct | Known F1 | False-change rate |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -37,8 +89,6 @@ bus parameters and is never cut.
 | metro | 25 | 2 | 0.5 | 0.3 | 11/11 | 1.00 | 20.00% |
 | rail | 25 | 2 | 0.5 | 0.3 | 0/6 | 0.00 | 20.74% |
 | tram | 25 | 1 | 0.5 | 0.3 | 12/12 | 1.00 | 0.00% |
-
-Values are written to `config/gtfs_rebuild.yaml` as `TODO(confirm)`.
 
 ## Known cases: expected versus obtained
 
@@ -480,12 +530,11 @@ that were incorrectly cut or dropped; `kept-renamed` is not a false change.
 | tram | 100 | 3 | 0.9 | 0.5 | 8 | 1.00 | 1.00 | 1.00 | 1.00 | 14 | 0.00% |
 | tram | 100 | 3 | 0.9 | 0.7 | 0 | 0.00 | 1.00 | 1.00 | 1.00 | 0 | 0.00% |
 
-## Bus and ferry OSM relation coverage, by network and date
+## Bus and ferry OSM relation coverage, by network and date (historical)
 
 Share of each network's main patterns that found any OSM relation by name or
-geometry. Recorded for every candidate as context; it no longer gates
-bus/ferry review eligibility (2026-10-15 decision -- see the policy above),
-but rail's own review list still requires at least 90%.
+geometry, from the retired calibration above. Kept as historical context
+only; no longer gates anything (2026-10-15 national policy -- see above).
 
 | Network | Date | Matched routes | Total routes | Coverage |
 |---|---|---:|---:|---:|
@@ -500,7 +549,11 @@ but rail's own review list still requires at least 90%.
 | tcl_lyon | 2022-01-01 | 344 | 375 | 92% |
 | tcl_lyon | 2024-01-01 | 344 | 375 | 92% |
 
-## BHNS/express bus classification
+## BHNS/express bus classification (historical)
+
+The former BHNS/express automatic cut rule's classification, kept as
+historical context only; BHNS now follows bus's default-keep-except-
+openings policy like any other bus route.
 
 | Network | Route | Short name | Long name | Share of stops on bus infrastructure |
 |---|---|---|---|---:|
@@ -521,7 +574,12 @@ but rail's own review list still requires at least 90%.
 | tbm_bordeaux | 912 | H2 | BUS EXPRESS H2 | 0% |
 | tcl_lyon | 98EX | 98EX | Gorge de Loup - Marcy Campus Sanofi (Express) | 0% |
 
-## Candidate route changes for manual review
+## Candidate route changes (informational only, section 5.6 point 6)
+
+Nothing in the pipeline waits for this list any more (2026-10-15 national
+policy): a route's presence in a built state comes only from
+`config/pt_changes.yaml`'s `confirmed`/`from_openings` entries (precedence
+above). Every other detected change below is kept purely as evidence.
 
 Full evidence for every candidate is in `config\pt_changes.yaml`.
 
@@ -717,7 +775,7 @@ Full evidence for every candidate is in `config\pt_changes.yaml`.
 - `tbm_bordeaux`: 35
 - `tcl_lyon`: 222
 
-## Routes requiring review, by test EPCI
+## Routes requiring review, by test EPCI (informational only)
 
 ### bordeaux_metropole
 
@@ -1807,7 +1865,7 @@ Every route in these network/date combinations is retained as `not-testable`.
 
 - 2022-01-01: `star_rennes`
 
-## Rail manual review
+## Rail manual review (informational only)
 
 Stops outside the configured OSM coverage are excluded from n. Routes 7601
 and 951-953 must remain buses when their GTFS `route_type` is 3.
