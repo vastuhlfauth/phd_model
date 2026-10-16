@@ -107,7 +107,7 @@ def _route_run(
     return RouteRun(network, date_key, pattern, match, result, "kept", False, None)
 
 
-def test_low_coverage_networks_stay_not_applied(tmp_path) -> None:
+def test_non_bhns_kept_renamed_candidate_stays_not_applied(tmp_path) -> None:
     path = tmp_path / "pt_changes.yaml"
     path.write_text(
         yaml.safe_dump({"confirmed": [], "to_review": [], "not_applied": []}),
@@ -115,8 +115,10 @@ def test_low_coverage_networks_stay_not_applied(tmp_path) -> None:
     )
     run = RelationCalibrationRun(
         final_routes=[
-            # Low network/date coverage: 1/5 matched -> 20% < 90%.
-            _route_run("rural", "2022-01-01", "A", "dropped"),
+            # Not BHNS and never dropped (kept-renamed only): not eligible
+            # under the new bus/ferry rule, regardless of network coverage
+            # (2026-10-15 decision).
+            _route_run("rural", "2022-01-01", "A", "kept-renamed"),
             *[
                 _route_run("rural", "2022-01-01", f"z{i}", "kept", relation_ids=())
                 for i in range(4)
@@ -132,6 +134,35 @@ def test_low_coverage_networks_stay_not_applied(tmp_path) -> None:
     assert raw["not_applied"][0]["network_coverage_by_date"] == {
         "2022-01-01": 0.2
     }
+
+
+def test_dropped_non_bhns_candidate_is_eligible_regardless_of_coverage(
+    tmp_path,
+) -> None:
+    path = tmp_path / "pt_changes.yaml"
+    path.write_text(
+        yaml.safe_dump({"confirmed": [], "to_review": [], "not_applied": []}),
+        encoding="utf-8",
+    )
+    run = RelationCalibrationRun(
+        final_routes=[
+            # Low network/date coverage (1/5 matched = 20%), but dropped
+            # under the new fixed name/geometry-share rule: eligible for
+            # review regardless (2026-10-15 decision).
+            _route_run("rural", "2022-01-01", "A", "dropped"),
+            *[
+                _route_run("rural", "2022-01-01", f"z{i}", "kept", relation_ids=())
+                for i in range(4)
+            ],
+        ]
+    )
+
+    _write_review_lists(path, run)
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert [c["route_id"] for c in raw["to_review"]] == ["A"]
+    assert raw["not_applied"] == []
+
 
 
 def test_bhns_ranks_before_higher_coverage_non_bhns_by_trips(tmp_path) -> None:
@@ -166,27 +197,44 @@ def test_rail_has_its_own_top_30_cap_separate_from_bus(tmp_path) -> None:
         yaml.safe_dump({"confirmed": [], "to_review": [], "not_applied": []}),
         encoding="utf-8",
     )
+    # Bus/ferry have no cap under the new rule (2026-10-15 decision): every
+    # one of these 55 dropped routes is eligible for review.
     bus_routes = [
         _route_run(
             "net", "2022-01-01", f"b{i}", "dropped", trip_count=1000 - i
         )
         for i in range(55)
     ]
-    rail_route = _route_run(
-        "net", "2022-01-01", "r1", "dropped", mode="rail", trip_count=1
-    )
-    run = RelationCalibrationRun(final_routes=[*bus_routes, rail_route])
+    # Rail keeps its own 90%-coverage gate and top-30-by-trips cap: every
+    # route here is matched (100% network coverage, eligible), and with 35
+    # dropped rail candidates, 5 must spill into not_applied.
+    rail_routes = [
+        _route_run(
+            "net",
+            "2022-01-01",
+            f"r{i}",
+            "dropped",
+            mode="rail",
+            trip_count=100 - i,
+        )
+        for i in range(35)
+    ] + [
+        _route_run("net", "2022-01-01", f"rk{i}", "kept", mode="rail")
+        for i in range(4)
+    ]
+    run = RelationCalibrationRun(final_routes=[*bus_routes, *rail_routes])
 
     _write_review_lists(path, run)
 
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    reviewed_ids = {c["route_id"] for c in raw["to_review"]}
-    not_applied_ids = {c["route_id"] for c in raw["not_applied"]}
-    # Bus is capped at 50 (5 of the 55 spill into not_applied), but the
-    # single rail candidate is never displaced by bus's top-trip ranking.
-    assert len(reviewed_ids) == 51
-    assert "r1" in reviewed_ids
-    assert len(not_applied_ids) == 5
+    reviewed = {c["route_id"] for c in raw["to_review"]}
+    not_applied = {c["route_id"] for c in raw["not_applied"]}
+    # All 55 bus candidates are reviewed; only 30 of the 35 rail
+    # candidates are, capped independently of bus's own (uncapped) count.
+    assert sum(1 for r in reviewed if r.startswith("b")) == 55
+    assert sum(1 for r in reviewed if r.startswith("r")) == 30
+    assert sum(1 for r in not_applied if r.startswith("r")) == 5
+    assert not_applied == {f"r{i}" for i in range(30, 35)}
 
 
 def test_confirmed_routes_are_excluded_from_both_lists(tmp_path) -> None:

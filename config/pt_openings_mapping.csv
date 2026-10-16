@@ -1,0 +1,110 @@
+opening_id,network,mode,line_2026,section_from,section_to,candidate_route_ids,candidate_refs,match_confidence,notes
+ARA-01,SNCF Réseau / RFI; TER Auvergne-Rhône-Alpes,rail,TER Chambéry – Modane (and Paris/Lyon – Turin),Saint-Michel-Valloire,Modane – Italian border (Fréjus),FR:Line::872DCA7D-6C9D-4E8C-8A79-C252C8957BD3:|FR:Line::A57CFA44-0C60-40FC-AAA6-D0624CF259FE:,621B|C1|C21|C31|K16|K3|K31|K41|P26|P3|P31|P41,ambiguous,11 distinct corridors shared this name/mode; narrowed by section_from/section_to
+ARA-02,TCL (SYTRAL Mobilités),metro,B,Oullins Gare,Saint-Genis-Laval Hôpital Lyon Sud,B,B,exact,unique corridor by name and mode
+ARA-03,M réso (SMMAG),tram,D,Les Taillées Universités,"Gares (Grenoble station), over line B track",94,D,exact,unique corridor by name and mode
+ARA-04,TCL (SYTRAL Mobilités),trolleybus,TB11,Gare Saint-Paul,Laurent Bonnevay (Astroballe),TB11,TB11,exact,unique corridor by name and mode
+ARA-05,T2C (SMTC Clermont),bhns,B,Royat (Place Allard),Aulnat (airport),B,B,exact,unique corridor by name and mode
+ARA-06,T2C (SMTC Clermont),bhns,C,Durtol,Cournon-d'Auvergne,C,C,exact,unique corridor by name and mode
+ARA-07,TCL (SYTRAL Mobilités),tram,T6,Hôpitaux Est-Pinel,La Doua Gaston Berger,T6,T6,exact,unique corridor by name and mode
+ARA-08,TCL (SYTRAL Mobilités),bhns,TB12,Part-Dieu Vivier Merle,Kimmerling-Genêts (Montchat),TB12,TB12,exact,unique corridor by name and mode
+ARA-09,TER Auvergne-Rhône-Alpes (SNCF Réseau),rail,TER line 67 Aurillac – Brive,Aurillac,Brive-la-Gaillarde,FR:Line::884A662A-9CC9-4133-94A5-88B4AE5206FD:,671A,exact,unique corridor by name and mode
+ARA-10,TCL (SYTRAL Mobilités),trolleybus,C27,Saxe-Gambetta,Vaulx-en-Velin La Grappinière,C27,C27,exact,unique corridor by name and mode
+ARA-11,TCL (SYTRAL Mobilités),tram,T4,La Doua Gaston Berger,IUT Feyssine,T4,T4,exact,unique corridor by name and mode
+BFC-01,TER Bourgogne-Franche-Comté (SNCF Réseau),rail,TER Nevers – Chagny,Montchanin,Chagny,FR:Line::11362bed-90c1-41ad-814c-c76567c69b6d:|FR:Line::1168BA7A-658F-406C-8925-11B53602684E:|FR:Line::1C9277F1-D8AC-4D6F-9DAD-E2A807CBC4FA:|FR:Line::b19f9a1a-8273-49f2-a932-5f85e4519718:,722A|C2|C71|K1|K2+|K31|K5+|K6|P12|P14|P2|P26|P5|P7|P71|P72,ambiguous,16 distinct corridors shared this name/mode; narrowed by section_from/section_to
+BFC-02,TER Bourgogne-Franche-Comté (SNCF Réseau),rail,TER Nevers – Chagny,Nevers,Montchanin,FR:Line::11362bed-90c1-41ad-814c-c76567c69b6d:|FR:Line::1168BA7A-658F-406C-8925-11B53602684E:|FR:Line::13DADBDA-4FB1-4AA3-8DAB-60E24EF4AAFF:|FR:Line::1C9277F1-D8AC-4D6F-9DAD-E2A807CBC4FA:|FR:Line::4FCCF995-7BFF-4F64-8F81-BCCA421B95D8:|FR:Line::560BC1BD-AE16-4EAE-B2A2-F57BCD2E271B:|FR:Line::5F71EC1D-5326-4515-A083-D211D668A970:|FR:Line::5aa9a0b2-0231-4d92-869e-0e5a6e6d8e0c:|FR:Line::661ca4b9-cc93-44f0-8dc8-f17e26082045:|FR:Line::76213942-0D07-48A2-9108-99253D13D093:|FR:Line::9E8A0A7B-FC96-452D-B101-08ACAC5E1547:|FR:Line::9F274BE1-3158-4AD4-9B2F-5D1AC4DBCE72:|FR:Line::A41B0332-BD0D-48BA-9F1E-C16519D8543E:|FR:Line::b19f9a1a-8273-49f2-a932-5f85e4519718:|FR:Line::cfa40ffd-5af4-49b0-99a9-99857ba5f7ff:|FR:Line::e1457a2a-2a61-4da0-8f95-cd641b28dfcd:|FR:Line::ff177a26-1548-4497-b111-55a3044e9b94:,722A|C2|C71|K1|K2+|K31|K5+|K6|P12|P14|P2|P26|P5|P7|P71|P72,ambiguous,16 distinct corridors shared this name/mode; narrowed by section_from/section_to
+BFC-03,TER Bourgogne-Franche-Comté (SNCF Réseau),rail,Ligne des Horlogers,Besançon,Morteau – Le Locle – La Chaux-de-Fonds,FR:Line::14254a37-7e25-43a2-8be1-db7eafb9b72c:|FR:Line::2474299f-32b6-4da6-bef4-69ae2cdcae85:|FR:Line::258E893F-88D3-472A-AD69-33519A7C864D:|FR:Line::3544567F-7F17-4253-85BB-D1E6A7B27A9A:|FR:Line::545d213e-22d3-4b62-9839-0693db5cfdb7:|FR:Line::8753D4FA-06CF-49A8-B412-13F55FD4A1A8:|FR:Line::DBB29EA6-8495-479C-B033-926E252847F8:|FR:Line::ffe6d3aa-3a90-47ea-aeeb-92fa84909329:,081A|081B|C24+|C42|C42+|C43|K16+|P20,ambiguous,7 distinct corridors shared this name/mode; narrowed by section_from/section_to
+BRE-01,STAR (Rennes Métropole),metro,b,Saint-Jacques–Gaîté,Cesson–Viasilva,7-1002,b,exact,unique corridor by name and mode
+BRE-02,TER BreizhGo (SNCF Réseau),rail,TER Dinan – Lamballe,Dinan,Lamballe-Armor,FR:Line::69E557E2-3900-42C6-87E5-9A35C4725755:|FR:Line::96E1C176-FBA0-4B52-9F21-EAA3A97DB2D2:|FR:Line::DFA7CADE-A1AC-4D44-AF8A-1157A2A9CD11:,P13|P31|P6,ambiguous,3 distinct corridors shared this name/mode; narrowed by section_from/section_to
+BRE-03,STAR (Rennes Métropole),metro,b,Saint-Jacques–Gaîté,Cesson–Viasilva,7-1002,b,exact,unique corridor by name and mode
+BRE-04,Bibus (Brest Métropole),bhns,D,Gare,Lambézellec,D,D,exact,unique corridor by name and mode
+BRE-05,Bibus (Brest Métropole),tram,B,Gare (SNCF),CHU La Cavale Blanche,B,B,exact,unique corridor by name and mode
+CVL-01,Filibus (Chartres métropole),bhns,B (C'Pégase),Gare de Chartres,Hôpital (Le Coudray),B,B,exact,unique corridor by name and mode
+CVL-02,Filibus (Chartres métropole),bhns,A (C'Pégase),Lucé,La Madeleine (via Chartres centre),A,A,exact,unique corridor by name and mode
+GES-01,"TER Grand Est (Région Grand Est, Eurométropole)",rail,REME,Strasbourg,Haguenau; Molsheim; Saverne – Sélestat through service,,,none,no route_short_name/route_long_name matched
+GES-02,STAN (Métropole du Grand Nancy),tram,1,Essey-lès-Nancy (Mouzimpré),Vandœuvre (CHU Brabois),,,none,no route_short_name/route_long_name matched
+GES-03,CTS (Eurométropole de Strasbourg),tram,D,Starcoop,,D,D,exact,unique corridor by name and mode
+GES-04,CTS (Eurométropole de Strasbourg),bhns,G,Gare Centrale,Cité Rotterdam (via boulevards Ouest and quais Sud),G,G,exact,unique corridor by name and mode
+GES-05,STAN (Métropole du Grand Nancy),trolleybus,1,"Brabois (CHU, Vandœuvre)",Essey Mouzimpré,11|12|13|15|16|17,11|12|13|15|16|17,exact,"numbered/lettered variants of one circular or directional service, not a real ambiguity"
+GES-06,Le Met' (Eurométropole de Metz),bhns,Mettis A,,Hôpital Robert-Schuman (via Actipôle de Borny),,,none,no route_short_name/route_long_name matched
+GES-07,CTS (Eurométropole de Strasbourg),tram,F,Comtes (Koenigshoffen),Wolfisheim Henri-Rendu,F,F,exact,unique corridor by name and mode
+GES-08,Grand Reims Mobilités,bhns,O1 (Orélys),Port Colbert,Campus Moulin de la Housse,O1,O1,exact,unique corridor by name and mode
+GES-09,Grand Reims Mobilités,bhns,O2 (Orélys),Gare de Reims,Centre commercial Cormontreuil,O2,O2,exact,unique corridor by name and mode
+HDF-01,TER Hauts-de-France (SNCF Réseau),rail,TER Amiens – Boulogne,Étaples-Le Touquet,Boulogne-sur-Mer,FR:Line::965C0279-4764-4FEA-B29B-363968EA28CE:,C10|K10|K11|K20|K21|K44|K45|K90+|P10|P20|P21|P22|P23|P24|P45,stop-confirmed,14 distinct corridors shared this name/mode; narrowed by section_from/section_to
+HDF-02,TER Hauts-de-France (SNCF Réseau),rail,TER P53 Arras – Étaples,Saint-Pol-sur-Ternoise,Étaples-Le Touquet,FR:Line::B3B007B6-E147-4DAB-AD5F-6455AE80CCD6:,P53,exact,unique corridor by name and mode
+HDF-03,TER Hauts-de-France (SNCF Réseau),rail,TER P64 Laon – Hirson,Laon,Hirson,,,none,no route_short_name/route_long_name matched
+IDF-01,RATP (IDFM),metro,M4,Mairie de Montrouge,Bagneux–Lucie Aubrac,IDFM:C01374,4,exact,unique corridor by name and mode
+IDF-02,RATP (IDFM),metro,M12,Front Populaire,Mairie d'Aubervilliers,IDFM:C01382,12,exact,unique corridor by name and mode
+IDF-03,IDFM,tram_train,T13,Saint-Cyr-l'École,Saint-Germain-en-Laye (RER),IDFM:C02344,T13,exact,unique corridor by name and mode
+IDF-04,IDFM,tram,T10,Antony (La Croix de Berny RER),Clamart (Jardin Parisien),IDFM:C02528,T10,exact,unique corridor by name and mode
+IDF-05,SNCF Voyageurs (IDFM),rail,RER C,Massy-Palaiseau,Petit Vaux,IDFM:C01727,C,exact,unique corridor by name and mode
+IDF-06,SNCF Voyageurs (IDFM),rail,V,Versailles-Chantiers,Massy-Palaiseau,IDFM:C02711,V,exact,unique corridor by name and mode
+IDF-07,IDFM,tram_train,T12,Massy-Palaiseau,Évry-Courcouronnes,IDFM:C02529,T12,exact,unique corridor by name and mode
+IDF-08,RATP (IDFM),tram,T3b,Porte d'Asnières (renamed Marguerite Long),Porte Dauphine (via Porte Maillot),IDFM:C01679,T3b,exact,unique corridor by name and mode
+IDF-09,SNCF Voyageurs (IDFM),rail,RER E,Haussmann-Saint-Lazare,Nanterre-La Folie,IDFM:C01729,E,exact,unique corridor by name and mode
+IDF-10,RATP (IDFM),metro,M11,Mairie des Lilas,Rosny–Bois-Perrier,IDFM:C01381,11,exact,unique corridor by name and mode
+IDF-11,RATP (IDFM),metro,M14,Mairie de Saint-Ouen,Saint-Denis Pleyel,IDFM:C01384,14,exact,unique corridor by name and mode
+IDF-12,RATP; Société des grands projets (IDFM),metro,M14,Olympiades,Aéroport d'Orly,IDFM:C01384,14,exact,unique corridor by name and mode
+IDF-13,SNCF Voyageurs (IDFM),rail,V,Versailles-Chantiers,Massy-Palaiseau,IDFM:C02711,V,exact,unique corridor by name and mode
+IDF-14,RATP; Société des grands projets (IDFM),metro,M14,Villejuif–Gustave Roussy,,IDFM:C01384,14,exact,unique corridor by name and mode
+IDF-15,Stretto (Keolis + SNCF) (IDFM),tram_train,T14,Esbly,Crécy-la-Chapelle,IDFM:C02732,T14,exact,unique corridor by name and mode
+IDF-16,IDFM (operator Transdev per Wikipedia),cable,C1,"Créteil (Pointe du Lac, M8)",Villeneuve-Saint-Georges (Villa Nova),IDFM:C02666,C1,exact,unique corridor by name and mode
+IDF-17,Keolis Tisse (IDFM),bhns,Tzen 4,Viry-Châtillon,Corbeil-Essonnes,IDFM:C00859|IDFM:C02636,Tzen1|Tzen4,ambiguous,2 distinct corridors shared this name/mode; narrowed by section_from/section_to
+NAQ-01,TBM (Bordeaux Métropole),tram,F,Carrefour des Quatre Chemins (Mérignac),Mérignac Aéroport,164,F,exact,unique corridor by name and mode
+NAQ-02,"TER Nouvelle-Aquitaine (Bordeaux Métropole, Région)",rail,TER 42 Bordeaux – Pointe-de-Grave,Le Bouscat-Sainte-Germaine,,FR:Line::145aae45-17eb-45b5-b5b4-facb8b6490f3:|FR:Line::1C59DA64-5D12-4600-9092-4E99FCBFAC7A:|FR:Line::2881AC3D-A347-4440-BEF8-23ACAB159588:|FR:Line::75E9980B-E8DF-4696-8E87-123692055B00:|FR:Line::9684FBBE-75D8-461A-B8F4-44181F11CFBC:|FR:Line::A74B127A-8882-4043-BAAA-F49A6703DE54:|FR:Line::B5CF3630-53A0-4E1C-BF67-9B0EC6B69C5E:|FR:Line::bfee86bc-5225-4c40-a6e6-785cfd43eae6:,421A|421B|421C|421D|421E|421F|421H|421I,exact,"numbered/lettered variants of one circular or directional service, not a real ambiguity"
+NAQ-03,Péribus (Grand Périgueux),bhns,BHNS Est-Ouest,Coulounieix-Chamiers,Boulazac Isle Manoire,,,none,no route_short_name/route_long_name matched
+NAQ-04,"TER Nouvelle-Aquitaine (Bordeaux Métropole, Région)",rail,RER métropolitain (TER 41/42),Arcachon,Libourne,,,none,no route_short_name/route_long_name matched
+NAQ-05,TER Nouvelle-Aquitaine,rail,TER 18 Limoges – Saillat-Chassenon,Limoges-Bénédictins,Saillat-Chassenon,FR:Line::3418b67d-a81f-4dde-b3b0-60cc96ed86f4:,180A,exact,unique corridor by name and mode
+NAQ-06,TER Nouvelle-Aquitaine (GrandAngoulême),rail,TER 13 Angoulême – Bordeaux,La Couronne,,FR:Line::6973a1d6-1ab5-447c-b47e-d20af934f64d:,L13,exact,unique corridor by name and mode
+NAQ-07,TER Nouvelle-Aquitaine (SNCF Réseau),rail,TER Niort – Saintes,Niort,Saintes,FR:Line::a45a3dd8-6a6b-4f95-9843-142901241f3b:|FR:Line::c3f96b2e-6783-498a-9e87-3364aecbd9b5:|FR:Line::d283aaa9-f32b-4b43-99a9-48ecc10044ba:|FR:Line::ec7d6d78-7792-4822-be8b-5e0bab24ba62:,D14|D17|L14|L17,ambiguous,2 distinct corridors shared this name/mode; narrowed by section_from/section_to
+NAQ-08,TBM (Bordeaux Métropole),bhns,G (Bus Express),Bordeaux Gare Saint-Jean,Saint-Aubin-de-Médoc,901,G,exact,unique corridor by name and mode
+NAQ-09,TER Nouvelle-Aquitaine,rail,,Busseau-sur-Creuse,Felletin,,,none,no line_2026 text or unrecognised mode
+NAQ-10,"TER Nouvelle-Aquitaine (Bordeaux Métropole, Région)",rail,TER 41+ / 42,Talence-Médoquine,,FR:Line::1F038E5C-9CF4-4BFC-9D55-33F57B4DB04F:|FR:Line::2C32F2C3-282A-4DCA-80AF-1B2FEAA61B11:|FR:Line::62C16406-4390-4C30-B97A-94317527CF00:,411A|411B|411C,exact,"numbered/lettered variants of one circular or directional service, not a real ambiguity"
+NAQ-11,TBM (Bordeaux Métropole),bhns,H (Bus Express),Cenon Gare (circular H1/H2),"Cenon Gare (via boulevards, Pont Simone-Veil, Pont Chaban-Delmas)",911|912,H1|H2,exact,"numbered/lettered variants of one circular or directional service, not a real ambiguity"
+NAQ-12,TBM (Bordeaux Métropole),tram,A,Le Haillan Rostand,Lormont La Gardette–Bassens–Carbon-Blanc,59,A,exact,unique corridor by name and mode
+NAQ-13,TBM (Bordeaux Métropole),tram,C,Parc des Expositions–Stade Atlantique,Villenave Pyrénées,61,C,exact,unique corridor by name and mode
+NAQ-14,TBM (Bordeaux Métropole),tram,E,Gare de Blanquefort,Floirac Dravemont (via Quinconces),163,E,exact,unique corridor by name and mode
+NAQ-15,TBM (Bordeaux Métropole),tram,F,Mérignac Aéroport,"Gare de Bègles (via Gare Saint-Jean, Hôtel de Ville)",164,F,exact,unique corridor by name and mode
+NOR-01,Twisto (Caen la mer),tram,T3,Collège Hawking,Hauts de l'Orne (Fleury-sur-Orne),ATOUMOD029:Line:T3:LOC,T3,exact,unique corridor by name and mode
+NOR-02,TER Normandie (Région Normandie),rail,,Serqueux,Gisors,,,none,no line_2026 text or unrecognised mode
+OCC-01,Tisséo,cable,Téléo,Université Paul Sabatier (metro B),Oncopole (via CHU Rangueil),line:204,TELEO,exact,unique corridor by name and mode
+OCC-05,TER Occitanie (liO),rail,TER Pont-Saint-Esprit – Avignon (– Nîmes),Pont-Saint-Esprit,Avignon-Centre (some trains to Nîmes-Centre),,,none,no route_short_name/route_long_name matched
+OCC-06,Tisséo,bhns,L10 (Linéo),La Vache,Fenouillet Centre Commercial,line:209,L10,exact,unique corridor by name and mode
+OCC-07,Tisséo,bhns,L9 (Linéo),L'Union Grande Halle,Saint-Orens Centre Commercial,line:174,L9,exact,unique corridor by name and mode
+OCC-08,Tisséo,bhns,L11 (Linéo),Basso Cambo,Frouzins Complexe Sportif,line:216,L11,exact,unique corridor by name and mode
+OCC-09,Tisséo,tram,,Jean Maga roundabout (Ancely),Aéroport,,,none,no line_2026 text or unrecognised mode
+OCC-10,Tisséo,bhns,L14 (Linéo),Marengo SNCF,Basso Cambo,line:264,L14,exact,unique corridor by name and mode
+OCC-11,TER Occitanie / Auvergne-Rhône-Alpes (SNCF Réseau),rail,Ligne des Cévennes,Génolhac,Langogne,FR:Line::14254a37-7e25-43a2-8be1-db7eafb9b72c:|FR:Line::2474299f-32b6-4da6-bef4-69ae2cdcae85:|FR:Line::258E893F-88D3-472A-AD69-33519A7C864D:|FR:Line::3544567F-7F17-4253-85BB-D1E6A7B27A9A:|FR:Line::545d213e-22d3-4b62-9839-0693db5cfdb7:|FR:Line::8753D4FA-06CF-49A8-B412-13F55FD4A1A8:|FR:Line::DBB29EA6-8495-479C-B033-926E252847F8:|FR:Line::ffe6d3aa-3a90-47ea-aeeb-92fa84909329:,081A|081B|C24+|C42|C42+|C43|K16+|P20,ambiguous,7 distinct corridors shared this name/mode; narrowed by section_from/section_to
+OCC-12,TaM (Montpellier Méditerranée Métropole),bhns,A (Bustram),Place de l'Europe,Notre-Dame de Sablassou (Castelnau-le-Lez),A,A,exact,unique corridor by name and mode
+OCC-13,TER Occitanie (liO),rail,TER Montréjeau – Luchon,Montréjeau-Gourdan-Polignan,Bagnères-de-Luchon,FR:Line::2B0506BC-0CB9-4FFC-B90C-E202497AE4F0:,P15,stop-confirmed,matched by section_from/section_to stop names alone within the 'rail' mode family -- no usable line-name match (previously 'ambiguous': 2 distinct corridors shared this name/mode; narrowed by section_from/section_to)
+OCC-14,Tisséo,bhns,L12 (Linéo),Borderouge,Rangueil,line:269,L12,exact,unique corridor by name and mode
+OCC-15,Tisséo,bhns,"L7 (Linéo, new)",Université Paul Sabatier,Saint-Orens-de-Gameville,line:171,L7,exact,unique corridor by name and mode
+OCC-16,TaM (Montpellier Méditerranée Métropole),tram,1,Odysseum,Gare Montpellier Sud de France,1,1,exact,unique corridor by name and mode
+OCC-17,TaM (Montpellier Méditerranée Métropole),tram,5,Clapiers,Lavérune,5,5,exact,unique corridor by name and mode
+OCC-18,SAM (Sète Agglopôle Méditerranée),bhns,A,Balaruc-le-Vieux Centre Commercial,Sète Noël Guignon (via Sète station hub),A,A,exact,unique corridor by name and mode
+PAC-02,"TER (Région Sud, SNCF Réseau)",rail,TER Marseille – Hyères / Toulon – Les Arcs,Toulon Sainte-Musse,,FR:Line::0128E1D5-9183-4D58-B1CF-F5AA5A64A037:,180A|631B|633A|633E|671A|C2|C4|C5|C6|C7|K14|K2|K34|K4|K6|K7|K9|P14,stop-confirmed,19 distinct corridors shared this name/mode; narrowed by section_from/section_to
+PAC-03,"TER (Région Sud, SNCF Réseau)",rail,TER Nice – Breil – Tende,Nice,Tende (via Breil-sur-Roya),FR:Line::0c436faa-ccd8-4cb5-9b79-1c8a701364c4:|FR:Line::12b11167-efd2-4576-8d30-f057d227530d:|FR:Line::1f77c095-1e8b-4abb-a437-36f56063d197:|FR:Line::31C14D7B-0326-431A-B8DC-341B53D22453:|FR:Line::96809d68-f37d-4e68-ac3c-3c0540f4e2f2:|FR:Line::D1E5AD07-58C1-456A-B4E2-928E91061B0B:,633B|770B|C13|C3|P1,ambiguous,5 distinct corridors shared this name/mode; narrowed by section_from/section_to
+PAC-04,Lebus+ (Aix-Marseille-Provence),bhns,BAM,Jean Moulin,Village des Marques,ULY-BAM,BAM,exact,unique corridor by name and mode
+PAC-05,Lebus+ (Aix-Marseille-Provence),bhns,Lebus+ Aubagne – Gémenos,Gare d'Aubagne,Plaine de Jouques (Gémenos),,,none,no route_short_name/route_long_name matched
+PAC-06,RTM (Aix-Marseille-Provence),bhns,B4,Capitaine Gèze,La Fourragère,RTM-10259,B4,exact,unique corridor by name and mode
+PAC-07,RTM (Aix-Marseille-Provence),tram,T3,Arenc,Gèze (Capitaine Gèze),RTM-48,T3,exact,unique corridor by name and mode
+PAC-08,RTM (Aix-Marseille-Provence),tram,T3,Castellane,La Gaye,RTM-48,T3,exact,unique corridor by name and mode
+PDL-01,Irigo (Angers Loire Métropole),tram,B,Belle-Beille Campus,Monplaisir,B,B,exact,unique corridor by name and mode
+PDL-02,Irigo (Angers Loire Métropole),tram,C,Belle-Beille Campus,Angers-Roseraie,C,C,exact,unique corridor by name and mode
+PDL-03,TER Pays de la Loire (Aléop),rail,TER 22 / 24,Le Mans Hôpital-Université,,FR:Line::0359c353-2f81-4c49-a269-bc287ff237e0:|FR:Line::c9a1bd25-d84e-4bab-aa97-0c648522e2da:,D22|L22,exact,unique corridor by name and mode
+PDL-04,Naolib (Nantes Métropole),tram,1,Ranzay,Babinière,FR_NAOLIB:Line:1,1,exact,unique corridor by name and mode
+PDL-05,Naolib (Nantes Métropole),bhns,C8 (Chronobus),Marcel-Paul (Saint-Herblain),Marcel-Saupin (Nantes),FR_NAOLIB:Line:C8,C8,exact,unique corridor by name and mode
+PLN-02,Société des grands projets (IDFM),metro,M18,Massy-Palaiseau,Christ de Saclay,,,none,no route_short_name/route_long_name matched
+PLN-03,Société des grands projets (IDFM),metro,M15,Pont de Sèvres,Noisy-Champs,,,none,no route_short_name/route_long_name matched
+PLN-04,SNCF Voyageurs / SNCF Réseau (IDFM),rail,RER E,Nanterre-La Folie,Mantes-la-Jolie,IDFM:C01729,E,exact,unique corridor by name and mode
+PLN-05,Société des grands projets (IDFM),metro,M16,Saint-Denis Pleyel,Parc du Blanc-Mesnil (first section),,,none,no route_short_name/route_long_name matched
+PLN-06,Société des grands projets (IDFM),metro,M17,Saint-Denis Pleyel,Le Bourget Aéroport,,,none,no route_short_name/route_long_name matched
+PLN-07,TCL (SYTRAL Mobilités),tram,T10,Gerland (Halle Tony Garnier),Gare de Vénissieux (via Saint-Fons),,,none,no route_short_name/route_long_name matched
+PLN-08,Geneva tram 17 (Annemasse Agglo / Pôle métropolitain du Genevois français),tram,17,Parc Montessuit,Annemasse Perrier-Aubrac,,,none,no route_short_name/route_long_name matched
+PLN-09,TCL (SYTRAL Mobilités),tram,T9,Charpennes,"La Soie (via La Doua, Vaulx-en-Velin Hôtel de Ville)",,,none,no route_short_name/route_long_name matched
+PLN-10,TCL (SYTRAL Mobilités),bhns,TB12,Kimmerling-Genêts,Sept Chemins,TB12,TB12,exact,unique corridor by name and mode
+PLN-11,Citézen (SMiTU Thionville-Fensch),bhns,Citézen (2 lines),Hayange – Basse-Ham; Metzange – Yutz,via Thionville station,,,none,no route_short_name/route_long_name matched
+PLN-12,Tisséo,tram,Ligne Aéroport,Jean Maga hub,Aéroport,,,none,no route_short_name/route_long_name matched
+PLN-13,TER Occitanie (liO),rail,TER Alès – Bessèges,Alès,Bessèges (via Saint-Ambroix),,,none,no route_short_name/route_long_name matched
+PLN-14,Naolib (Nantes Métropole),tram,6 and 7,Babinière (line 6),Rezé (line 6); line 7 route not stated,,,none,no route_short_name/route_long_name matched
+PLN-15,Naolib (Nantes Métropole),bhns,8 (Busway),Bouguenais,"Thouaré-sur-Loire (via Rezé, Île de Nantes, Sainte-Luce)",FR_NAOLIB:Line:80|FR_NAOLIB:Line:81|FR_NAOLIB:Line:85|FR_NAOLIB:Line:86|FR_NAOLIB:Line:87|FR_NAOLIB:Line:88|FR_NAOLIB:Line:89,80|81|85|86|87|88|89,exact,"numbered/lettered variants of one circular or directional service, not a real ambiguity"
+PLN-16,Aix-Marseille-Provence,tram,Val'Tram,Aubagne,La Bouilladisse,,,none,no route_short_name/route_long_name matched

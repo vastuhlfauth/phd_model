@@ -2,14 +2,14 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-14 by Copilot_
+_Last updated: 2026-10-16 by Copilot (reconciliation and bookkeeping fix, 5 residual gaps accepted, map-and-apply-all reads each GTFS resource once; merged step/gtfs-rebuild-test into main)_
 
 ## Steps (table of section 14.5)
 
 | Step | Content | Status | Branch | Notes |
 |---|---|---|---|---|
 | — | Repository skeleton (`/bootstrap`) | done | `step/bootstrap-skeleton` | uv workspace, package layout, configuration validation; Ruff and 3 tests pass (pinned Python 3.12.15) |
-| 0 | GTFS rebuilding test | done | `step/gtfs-rebuild-test` | Relation-based rebuild (name match, then geometry; in-service tracks of any same-mode relation give coverage, not only the matched one; cut-then-theta for tram/metro/rail) replaces the failed stop-only calibration. Bus, ferry and rail are never auto-applied (screening/review only); tram and metro thresholds are confirmed. Known limitations: OSM sometimes tags tracks in service before their documented opening (a data gap, patched case by case in `pt_changes.yaml`'s `confirmed` list); bus and rail OSM relation/way mapping is incomplete nationally, kept to manual review via `to_review`/`not_applied`. |
+| 0 | GTFS rebuilding test | done | `step/gtfs-rebuild-test` | **2026-10-15/16 national policy (no manual review):** tram alone keeps the automatic OSM relation rule (confirmed parameters); metro, rail, bus and ferry (including BHNS/express, whose own automatic cut rule is retired) keep every 2026 route in both past states by default, changed only by the PT openings list's auto-applied exact/stop-confirmed, high/medium-confidence matches. A `keep`/`modify` row gives no instruction at all (falls through to the tram rule or default keep); a `remove` row's effect depends on `change_type` -- `new_line`/`reopening` drop the route, `extension` cuts it at its old terminus, `new_station` removes only that stop (`mobgrid.pt.pt_changes.OpeningDerivedChange.instruction_at`, `mobgrid.pt.route_edits`); several rows' cuts/stop-removals on one route combine rather than any one dropping it; a `suspension` row never produces an instruction (settled decision: a temporary works closure does not remove a line from a state meant to represent the normal network). Precedence: openings list > tram automatic rule > default keep (`mobgrid.pt.pt_policy.resolve_route_presence`, tested). `to_review`/`not_applied` are informational only; nothing in the pipeline reads them. Lines closed before 2026 (`state` `add`) are left out and listed in the report as a known gap. The metro/bus/ferry/rail calibration numbers are kept in `config/gtfs_rebuild.yaml`/the report as a historical/screening reference only; metro's false changes are not investigated further. All 47 high/medium-confidence networks now have a resolved GTFS resource, including `Twisto (Caen la mer)`, mapped against the existing Normandy regional aggregate (resource 81942) rather than acquiring a second, duplicate-trip dedicated feed (2026-10-16 decision: an aggregate-only network is an accepted, normal outcome, not a gap to close). `mobgrid.pt map-and-apply-all` maps and applies every network in one resumable, logged, offline-only batch run (never downloads; raises a clear error if a resource isn't acquired yet). `acquire --check-aom-coverage` confirmed 0 of 1,127 metropolitan AOMs are fully uncovered (865, including Twisto, have only indirect/aggregate coverage, accepted as sufficient -- no population filter needed). The future national PT-build step must keep only the dedicated producer feed's copy of an agency that also appears in a broader aggregate, before any trip-level dedup across feeds (recorded below under "Open points from the spec"). |
 | 1 | `common`: config, grid cells, DuckDB I/O | review | `step/common-foundations` | Config validation; cell ids/codes, nesting, neighbour stencil and tiles; Arrow/Parquet helpers; Ruff clean and 12 tests pass |
 | 2 | `acquire`: manifest and downloaders | review | `step/acquire` | Configured pilot source catalog; resumable, size-checked and checksum-verified HTTP downloads; Geofabrik MD5; restricted-file registration; API discovery helpers with per-source auth header/scheme; HTML-page detection; `verified` tracking; dry-run CLI. No real downloads run. Ruff clean; 40 tests pass. |
 | 2a | Source URLs and national acquisition coverage | review | `data/source-urls` | Both requested updates combined in one commit with user approval. 726 file/registration entries; direct INSEE/SDES/Géovélo/CARS/NUTS/Eurostat URLs; producer-only national GTFS inventory; 96 metropolitan BD ALTI archives; 26 neighbouring OSM extracts; anonymous Overture Parquet extraction with national box. Ruff clean; 61 tests pass. Metadata/HEAD requests only; no data files downloaded. |
@@ -378,6 +378,707 @@ Status values: not started, in progress, review, merged.
   parameters, which is why both remain manual-review-only rather than
   auto-applied. Final validation: Ruff clean; 197 tests pass, 2 pilot tests
   deselected.
+- 2026-10-15, step 0 TCL Lyon rejections (reviewer check), the user
+  reviewed `pt_changes.yaml`'s `to_review` candidates for `tcl_lyon` and
+  confirmed that routes 112, 143, 49, 52, 68, 69, 7601, 77, 85, 98EX, C12,
+  C18 and C26 existed long before 2022 (from 1910 to 2015); moved all 13
+  from `to_review` to `rejected` with the note "existed before 2022
+  (reviewer check)", so they are not re-surfaced on future reruns. One of
+  them ("7601") is classified `mode=ferry` in the 2026 TCL Lyon GTFS feed,
+  not bus, an unrelated upstream data-quality quirk noted but not changed.
+- 2026-10-15, `network_coverage_by_date` investigated (not a bug), the
+  user flagged that this field showed the identical ratio for 2022 and
+  2024 for every `tcl_lyon` candidate (0.917738 both dates). Traced
+  through `network_relation_coverage` (relation_pipeline.py) and the
+  underlying per-date `evaluate_networks`/`evaluate_cached_grid` SQL: both
+  already key every computation by `date_key`, confirmed by inspecting the
+  cached pickle directly -- 9 of TCL Lyon's 389 routes have a *different*
+  matched relation id or outcome between 2022 and 2024, but the network's
+  overall matched-route *set* (357 of 389) is identical in both years at
+  bus's then-chosen r_m=100 m (a generous radius at which OSM relation
+  *presence* for a long-mapped network barely shifts in two years, even
+  though which specific relation wins differs). Every other network
+  (tbm_bordeaux, lio_occitanie, sete_agglopole, sncf, star_rennes) already
+  shows genuinely different coverage between dates, confirming the
+  computation is correct and the identical TCL figure is a real property
+  of a stable network, not a caching or date-mixing bug -- consistent with
+  the user's own finding (above) that several TCL routes long predate
+  2022. No code change was needed for this point; the existing
+  `test_network_relation_coverage_is_the_matched_share_per_network_date`
+  regression test already proves per-date independence with routes that
+  differ between dates.
+- 2026-10-15, bus/ferry outcome rule replaced with fixed match shares (no
+  calibrated theta), section 5.6 point 2: a name match covering >=50% of a
+  route's stops is `kept`; a name match below 30% is treated as a homonym
+  (a coincidental ref/name match, not the same line) and discarded so the
+  geometry pass can find the real relation instead; a geometry match
+  reaching >=50% is `kept-renamed`; otherwise `dropped`. A name match in
+  the ambiguous 30-49% zone is *not* rescued by geometry (literal reading
+  of the rule: only a match that itself reaches 50%, or a homonym's
+  geometry fallback, can avoid `dropped`) -- proven by
+  `test_bus_name_match_in_the_ambiguous_zone_is_dropped_without_geometry_rescue`.
+  BHNS/express buses (Bordeaux Express G/H, Sete A) are unaffected, since
+  they are verified like a tram via the pre-existing cut-then-theta path,
+  not this rule -- *however*, Sete's route A has `is_bhns=False` in the
+  2026 GTFS feed (its short/long name is "A"/"Ligne A", containing none of
+  the `classify_bhns` keywords `express`/`bhns`/`liane`/`chronobus`), so it
+  already went through the regular bus rule under both the old and the new
+  system; its 2024 known-case check already disagreed before this fix too
+  (covered_share reached 0.9-1.0 via geometry, `kept-renamed` instead of
+  the expected `dropped`), a pre-existing OSM/ground-truth gap unrelated to
+  today's change. Its removal from the 2026-to-past-state mapping is
+  unaffected either way, since it is in `confirmed`, applied regardless of
+  calibration scoring. Bus/ferry no longer calibrate `theta`/`k` at all (a
+  grid search over them now always ties, since the SQL no longer consults
+  either for their outcome); `calibrate_relations`'s grid loop still
+  iterates them unchanged for shared-code simplicity, but
+  `config/gtfs_rebuild.yaml`/the report now write `theta`/`k` as `null`
+  for bus and ferry rather than the grid's arbitrary tie-broken value.
+  Lyon's 2023 TCL network renumbering (new route numbers reusing OSM
+  relations of long-standing lines) is the motivating real-world example
+  of why geometry-based rename detection matters even for buses, not just
+  trams.
+- 2026-10-15, ferry coverage uses member stops/piers only, within a fixed
+  200 m, never ways (section 5.6 point 3): way-based distances are now
+  excluded from the precompute entirely for `mode=ferry` patterns, and the
+  member-stop distance bound is widened to `max(r_m grid max, 200 m)` so
+  real pier connections beyond the bus/tram/metro radii are not silently
+  dropped; the 200 m check applies regardless of the grid's own `r_m`.
+  This is a precompute-level (not just evaluation-level) change -- the
+  cached `relation_distances.parquet` must be rebuilt, since it does not
+  retain whether a cached distance came from a way or a member stop.
+  Bumped `_CACHE_VERSION` to 4 to force this. Proven by
+  `test_ferry_coverage_uses_member_piers_not_ways_within_a_fixed_200m`
+  (a relation with a 0 m decoy way and 150 m piers is covered via the
+  piers; a relation with a 0 m decoy way and 5 km piers is never a match).
+- 2026-10-15, bus/ferry review list simplified (section 5.6 point 4):
+  `to_review` now keeps every BHNS/express candidate plus every candidate
+  dropped (on any date) under the new fixed rule above, ranked by trips,
+  with no cap and no network-coverage eligibility gate (both removed,
+  since the fixed rule already filters out weak matches); everything else
+  (kept-renamed, non-BHNS, never dropped) goes to `not_applied`. Rail
+  keeps its separate 90%-coverage gate and top-30-by-trips cap unchanged,
+  since it has no BHNS concept and is always screening-only like bus.
+  `network_coverage_by_date` is still recorded on every candidate as
+  context even where it no longer gates bus/ferry eligibility.
+- 2026-10-15, validation: all four fixes above were proven on synthetic
+  fixtures (`tests/mobgrid/pt/test_relation_pipeline.py`,
+  `tests/mobgrid/pt/test_pt_cli.py`) and smoke-tested on real cached data
+  via a `--networks sete_agglopole` subset `calibrate` run (completed in
+  about 1m40s, well under the 2-minute budget) before being handed off;
+  the national re-score itself was *not* run (it needs a full precompute
+  rebuild -- ways/relations parsing over the full national caches, ~40
+  minutes, same order as the earlier busway/lanes_bus rebuild -- a genuine
+  long job per policy, left for the user to run with the same `calibrate`
+  command as before). Final validation: Ruff clean; 202 tests pass, 2
+  pilot tests deselected.
+- 2026-10-15, PT openings CSV (`config/French transit openings 2022 to
+  2026.csv` -- the user's "pt_openings_2022_2026.csv" refers to this
+  file, read-only, never edited) used to extend step 0's known cases and
+  `pt_changes.yaml`. Scope narrowed on review (87 high/medium-confidence
+  rows span 42 networks nationwide, far beyond the 8 networks step 0 has
+  GTFS data for): mapped now only (a) the pilot area (INSEE department 33
+  Gironde + 50 km halo, from `config/pilot.yaml`) and (b) the step-0 test
+  areas needed for known cases (Lyon, Rennes/Paris metro); the remaining
+  ~41 networks are deferred (see the open point below).
+- 2026-10-15, real-GTFS correction to `bordeaux_tram_a_airport`: the
+  openings CSV's row NAQ-12 describes tram A's Dec 2025 restructuring to a
+  single terminus at each end, transferring its airport and Floirac
+  Dravemont branches to F and E. Checked the cached GTFS extract directly
+  (real terminal stop names of route 59's trips): its 2026 main pattern is
+  Le Haillan Rostand <-> La Gardette-Bassens-Carbon-Blanc and never reaches
+  the airport at all (not even as a minor variant) -- the former known
+  case tested a scenario that no longer matches the feed. Renamed/fixed it
+  to `bordeaux_tram_a_restructuring` (expected kept/kept, A's core predates
+  2022 unchanged) and corrected `pt_changes.yaml`'s
+  `bordeaux_tram_a_merignac_airport` confirmed edit from `route_ids: ['59']`
+  to `['164']` (tram F, which carries the airport branch in the 2026
+  feed), since the manual override for the OSM 2022 data gap must target
+  the route that actually reaches the airport. Added
+  `bordeaux_tram_c_blanquefort_branch` (NAQ-13, kept/kept: C's Blanquefort
+  branch also moved to E, C's own remaining core is unaffected).
+- 2026-10-15, new known cases from the pilot area and Lyon (point 1),
+  reasoned per row rather than applying the remove/keep/modify mapping
+  guide literally where it does not fit the route-level, end-cut-based
+  outcome model: "new_station" events (a single infill stop, not an
+  endpoint) and purely service-level rebrands do not trigger `cut` (only a
+  contiguous uncovered *end* run does), so they are expected `kept`/`kept`
+  at the route level even where the CSV's per-stop state is "remove" for
+  that one stop. Added: `bordeaux_ter_42_le_verdon` (NAQ-02 + NAQ-10,
+  TER 42/route L42+F42, kept/kept), `bordeaux_ter_41_arcachon` (NAQ-04,
+  TER 41/F41+F41+, kept/kept), `bordeaux_ter_13_angouleme` (NAQ-06,
+  TER 13/L13, kept/kept), `niort_saintes_royan_17` (NAQ-07, TER 17/L17+D17,
+  a stop of which falls inside the Gironde+50km halo; kept/kept, confirms
+  the baseline), `lyon_metro_b_extension` (ARA-02, cut/kept, a normal
+  extension), `lyon_tram_t4_feyssine` (ARA-11, confidence low, single
+  press source, inferred to reuse existing T1 track; kept/kept). Checked a
+  further three Nouvelle-Aquitaine rail corridors (TER 18 Angouleme-
+  Limoges, TER 25 Felletin, TER 57 Aurillac-Brive) against the actual
+  buffered Gironde+50km polygon: none have a stop inside it, so none were
+  added. `ARA-07`/tram T6 and all four Paris-metro/Rennes-metro rows
+  already matched the existing known cases exactly (state values agree
+  with `expected_2022`/`expected_2024`); no duplicates were added.
+  `BRE-03` (a line-b suspension entirely within 2024, not spanning either
+  reference date) is subsumed by the existing `rennes_metro_line_b` case
+  for the same route id and was not added separately. Rail gained its
+  first-ever labelled known cases (previously 0/0); metro and tram each
+  gained one net-new case plus two renamed/corrected ones for Bordeaux.
+- 2026-10-15, reusable openings-to-GTFS mapping tool (point 2), added
+  `packages/mobgrid/pt/pt_openings.py` and a `mobgrid.pt.cli map-openings`
+  command: for one GTFS resource and a network-name substring filter,
+  proposes candidate 2026 route id(s) per opening row by normalised line
+  code (stripping `TER`/`RER`/`Ligne` prefixes, keeping just the code
+  token, e.g. "TER 42 Bordeaux - Pointe-de-Grave" -> "42") and GTFS mode
+  family, falling back to a restricted (never the shared extraction, never
+  the whole feed) `section_from`/`section_to` stop-name check when several
+  distinct corridors share a code or mode (for example two different rail
+  lines both coincidentally named "C"). Writes
+  `config/pt_openings_mapping.csv` (merging by `opening_id`, never
+  discarding other networks' rows) with a `match_confidence` column
+  (`exact`/`stop-confirmed`/`ambiguous`/`none`); never writes to
+  `pt_changes.yaml` itself. Tested on Bordeaux (resource 83024, `--network-
+  contains TBM`): 6 of 7 rows matched `exact` (A/C/E/F trams, Express G),
+  correctly including both mission-code variants of the same corridor
+  (`L42`+`F42`) as one match; Express H matched `ambiguous` with exactly
+  the right two circular-direction route ids (`911`/`912`, refs `H1`/`H2`)
+  -- confirming the existing `bordeaux_bus_express_h` confirmed edit is
+  correct, and NAQ-01's airport branch correctly resolved to route `164`
+  (F), independently corroborating the correction above. A single-letter
+  code needed a dedicated "prefix, not bare substring" tier (`H` matching
+  `H1`/`H2` but not an unrelated route whose long name merely contains the
+  letter "h") -- covered by
+  `test_single_letter_code_matches_numbered_circular_variants_by_prefix`.
+  Within today's narrowed scope (pilot area + Lyon/Rennes/Paris metro),
+  every row mapped successfully; nothing is in `pt_changes.yaml`'s
+  "could not map" sense for this batch. Most of the resulting
+  tram/metro/rail matches do not need a new `pt_changes.yaml` confirmed
+  entry at all: only bus/BHNS and the one OSM-data-gap override need a
+  manual edit, since tram/metro/rail changes are otherwise auto-applied
+  through the calibrated cut logic (the existing `confirmed` list already
+  had only 4 entries, none of them plain extensions).
+- 2026-10-15, open point for the national PT step: `config/French transit
+  openings 2022 to 2026.csv` has 87 high/medium-confidence rows across 42
+  networks; only the pilot area and step-0 test-area rows were mapped
+  today. Run `mobgrid.pt.cli map-openings` network by network for the
+  remaining ~41 networks (Strasbourg CTS, Nancy STAN, Montpellier TaM,
+  Nantes Naolib, Marseille RTM, Toulouse Tisseo, Caen Twisto, Brest Bibus,
+  Grenoble SMMAG, Nice tramway, and the other regional TER feeds), review
+  each network's `config/pt_openings_mapping.csv` proposals (especially
+  anything `ambiguous`/`none`), and only then add the confirmed ones to
+  `pt_changes.yaml`. Also open: 8 CSV rows have `state_2022` or
+  `state_2024` equal to `add` (a line/section that closed before 2026, so
+  it has no counterpart in the 2026 GTFS feed at all and cannot be scored
+  as a known case): ARA-09 (TER 67 Aurillac-Brive, 2026 planned works
+  closure), GES-02 (Nancy tram line 1, TVR withdrawn Mar 2023), HDF-03
+  (TER P64 Laon-Hirson, suspended Dec 2023), IDF-05 (RER C Massy-
+  Epinay-sur-Orge, replaced by T12 Dec 2023 -- `state_2024` is "keep", so
+  only its 2022 state is affected), NAQ-09 (Busseau-Felletin, closed Sep
+  2025), NOR-02 (Serqueux-Gisors, closed Jul 2024), NOR-03 (Le Havre-
+  Montivilliers Lezarde branch, closed Sep 2024), OCC-09 (Toulouse tram T2,
+  withdrawn Jun 2023). For each, decide per network whether to rebuild the
+  missing service from its OSM route relation with an estimated frequency,
+  or leave it out of `n` and report the gap -- not decided here.
+  `planned_not_open` rows (18 total, all `keep`/`keep`) need no past-state
+  action by design and are left for the scenario engine (section 11).
+- 2026-10-15, step 0 re-score pending: adding the known cases above (and
+  the `pt_changes.yaml` fix) only changes `config/gtfs_rebuild.yaml`/
+  `config/pt_changes.yaml` content, which the top-level calibration
+  signature already covers -- but the cached relation-table precompute was
+  bumped to `_CACHE_VERSION = 4` by the same-day ferry/bus fix earlier,
+  so it is already invalid pending that fix's own full national recompute
+  (handed off previously, not yet run by the user); a local, in-budget
+  re-score was not attempted a second time today for the same reason.
+  Tram/metro thresholds in `config/gtfs_rebuild.yaml` are unchanged by
+  today's edits and remain confirmed. The exact command to run (identical
+  to the one already given, since both days' changes are covered by the
+  same cache-invalidation and will rebuild together) is repeated in the
+  final chat response; its output's known-case table and false-change
+  rates should be read back for the final report once it completes.
+- 2026-10-15, step 0 national recompute finalized, the user ran the
+  full national `calibrate` command handed off above
+  (`logs/2026-10-15_gtfs_calibration.log`/`_summary.md`); 1,294
+  route/date outcomes scored, one flagged network/date pair
+  (`star_rennes` 2022-01-01, below 50% OSM relation coverage, retained
+  `not-testable`). Results, regenerating `config/gtfs_rebuild.yaml`,
+  `config/pt_changes.yaml` and `docs/data/step0_gtfs_rebuild.md`:
+  - bus: known 7/10, false-change 29.23% (`r_m=100`, fixed-share rule,
+    `k`/`theta` null -- screening only, never auto-applied).
+  - ferry: known 7/10, false-change 29.23% (reuses bus's parameters and
+    known cases, `k`/`theta` null -- screening only, never auto-applied).
+  - metro: known 11/11, F1 1.00, false-change 20.00% (`r_m=25, k=2,
+    theta=0.5, geometry_share=0.3`, down from the former 0.7 now that
+    the known-case set also covers the Lyon metro B and Paris metro
+    4/12 extensions) -- **confirmed**.
+  - rail: known 0/6, false-change 20.74% (reuses metro's parameters for
+    screening only; every Nouvelle-Aquitaine TER known case -- Bordeaux
+    TER 42/41/13 -- is obtained as `kept-renamed` instead of the
+    expected `kept`, a genuine OSM rail-relation-naming gap, not a
+    parameter issue -- screening only, never auto-applied).
+  - tram: known 12/12, F1 1.00, false-change 0.00% (`r_m=25, k=1,
+    theta=0.5, geometry_share=0.3`, now including the Lyon T4/T6 and
+    Bordeaux tram C/E/F cases) -- **confirmed**.
+  `config/gtfs_rebuild.yaml`'s blanket `TODO(confirm)` header (rewritten
+  by the `calibrate` CLI on every run) was replaced again with the
+  per-family comments above: tram and metro marked confirmed with their
+  evidence inline; bus, ferry and rail keep a per-family `TODO(confirm)`
+  stating they are screening/review only. `to_review` holds 180
+  candidates (every BHNS/express bus/ferry route, plus every bus/ferry
+  route dropped under the fixed name/geometry-share rule, with no cap;
+  rail keeps its own 90%-coverage gate and top-30-by-trips cap); 340
+  more are `not_applied` (kept as evidence, never auto-applied). Step 0
+  is complete: Ruff clean; 211 tests pass, 2 pilot tests deselected.
+- 2026-10-15, step 0 national policy (user-directed change of approach,
+  no manual review): the goal becomes a national model, so the per-family
+  OSM-calibrated automatic rule above is retired for every family except
+  tram. Metro, rail, bus and ferry (including BHNS/express, whose own
+  automatic cut rule is retired too -- it now follows bus's own policy)
+  keep every 2026 route in both past states by default, changed only by
+  the PT openings list's auto-applied matches. Metro's calibration (known
+  11/11, false-change 20.00%) is not investigated further, per the user's
+  explicit instruction, even though it scored well; it is kept in
+  `config/gtfs_rebuild.yaml`/the report as a historical/screening
+  reference only, like bus/ferry/rail's own numbers.
+  - **Precedence** (section 5.6 point 7): openings list > tram automatic
+    rule > default keep, implemented as
+    `mobgrid.pt.pt_policy.resolve_route_presence(family_rule,
+    opening_removed, tram_rule_removed)`, a pure function with its own
+    `tests/mobgrid/pt/test_pt_policy.py` (6 tests: openings override wins
+    both ways and for every family; the tram rule is only consulted for
+    `family_rule="automatic_osm"`, never for a default-keep family even if
+    a caller passes a value for it; default keep when no source has an
+    opinion).
+  - **Openings-list auto-application** (point 4): `OpeningDerivedChange`
+    (`pt_changes.py`) is a new model distinct from the manually-written
+    `PtChange` -- it reads `state_2022`/`state_2024` directly from the CSV
+    (`keep`/`remove`/`modify`) rather than a single `opened` date, since a
+    `modify` row (a restructuring, not a clean creation) has no such date;
+    `modify` is treated the same as `remove` (absent), reusing the
+    existing `pt_extend`-vs-full-removal caveat already documented for
+    manual edits. `PtChangeCatalogue` gained a `from_openings` list, read
+    by `removed_route_keys` alongside `confirmed`; the former
+    `sensitivity="confirmed_and_candidates"` option (which read
+    `to_review`/`not_applied`) is removed outright, since it directly
+    contradicted the new point 6 (see below). `mobgrid.pt.pt_openings
+    .apply_openings_matches(openings_csv, mapping_csv)` applies a row only
+    when its own CSV `confidence` is high/medium *and* its mapped
+    `match_confidence` is exact/stop-confirmed *and* it resolves to
+    exactly one 2026 route id; every other row becomes one log line
+    (`mobgrid.pt apply-openings`, a new CLI command, logs each via the
+    standard run log -- `logger.warning` for not-applied rows,
+    `logger.info` for known gaps -- rather than a bespoke log file format).
+    `write_from_openings` merges the result into `config/pt_changes.yaml`'s
+    `from_openings`, replacing it wholesale each run (unlike
+    `to_review`/`not_applied`, the openings CSV describes one ground
+    truth per route, not evidence to accumulate across reruns).
+  - **Multiple openings rows per 2026 route, found on real data:**
+    Bordeaux tram F (route 164) has two openings rows matched to it --
+    NAQ-01 (the 2023 Mérignac-airport branch, `state_2024="keep"`) and
+    NAQ-15 (route F's own Dec 2025 restructuring joining several old tram
+    A corridors, `state_2024="modify"`) -- that disagree about 2024.
+    `removed_route_keys` resolves this conservatively: the route counts as
+    removed at a state date as soon as *any* `from_openings` entry says so
+    (an OR across entries), which happens to be the technically correct
+    call here (route F in its 2026 form genuinely did not exist by Jan
+    2024, since the whole-line restructuring was Dec 2025, even though
+    NAQ-01's own narrower claim about just the airport branch is "keep").
+    Documented as a deliberate, tested simplification (a dedicated test in
+    `test_pt_changes.py`), not an oversight; a future CSV update that ever
+    pairs `add` with `remove`/`modify` in the same row's two states would
+    need re-examining (not observed in the current 120-row CSV: every
+    `add` only ever pairs with `keep` or `add`).
+  - **Closed-before-2026 rows** (point 5, CSV `state` `add`): 8 rows
+    (IDF-05, ARA-09, GES-02, HDF-03, NOR-02, NOR-03, NAQ-09, OCC-09) have
+    no 2026 GTFS counterpart at all; `apply_openings_matches` excludes the
+    whole row from both `applied` and the ambiguous/none log, returning it
+    separately as `closed_before_2026`, rendered in the report as a named
+    "known gap" list (not folded into the generic not-applied log, since
+    the reason is structural, not a matching failure).
+  - **Ran for real** (fast, no GTFS downloads needed, since
+    `config/pt_openings_mapping.csv` already had the 7 TBM Bordeaux rows
+    mapped on 2026-10-15 earlier): `uv run python -m mobgrid.pt
+    apply-openings` applied 6 of 7 (NAQ-11, a circular H1/H2 BHNS pair, is
+    still `ambiguous`), logged 106 not-applied rows and 8 known gaps.
+  - **`config/gtfs_rebuild.yaml`** gained a `national_policy` section
+    (new `NationalPolicy`/`FamilyPolicy`/`OpeningsListPolicy` Pydantic
+    models in `config.py`, optional/`None` by default so every existing
+    test fixture that builds a bare `GtfsRebuildConfig` still validates)
+    recording the decision date, precedence and per-family rule; `chosen`'s
+    per-family comments were updated in place (metro/bus/ferry/rail marked
+    "retired, historical reference only"; tram unchanged, still
+    confirmed/applied).
+  - **Report** (`report.py`/`docs/data/step0_gtfs_rebuild.md`): regenerated
+    from the *existing* calibration pickle (no recalibration -- the user
+    said to stop that work) with new "National policy" and "PT openings
+    list: applied changes and known gaps" sections at the top (the latter
+    calls `apply_openings_matches` live, so it always reflects the current
+    CSV/mapping state); the old calibration sections are relabelled
+    "historical reference"/"informational only" throughout rather than
+    removed, since they still document how the retired numbers were
+    produced and remain useful screening evidence.
+  - **Mapping all networks** (point 4's "for all networks"): only
+    TBM Bordeaux (1 of 47 high/medium-confidence networks) has been
+    mapped so far; running `map-openings` network by network for the
+    remaining 46 is a genuine long job (each needs its GTFS resource
+    downloaded/extracted) and was not run, per policy. Of those 46, 9
+    share IDFM's already-configured resource (80921: `IDFM`, `RATP
+    (IDFM)`, `RATP; Société des grands projets (IDFM)`, `Société des
+    grands projets (IDFM)`, `Stretto (Keolis + SNCF) (IDFM)`, `Keolis
+    Tisse (IDFM)`, `SNCF Voyageurs (IDFM)`, `SNCF Voyageurs / SNCF Réseau
+    (IDFM)`, `IDFM (operator Transdev per Wikipedia)`), 14 share SNCF's
+    already-configured resource (83582: every `TER ...` row except `TER
+    Occitanie (liO)`, plus `SNCF Réseau / RFI; TER Auvergne-Rhône-Alpes`),
+    and 3 more match an existing `networks` entry exactly (`SAM (Sète
+    Agglopôle Méditerranée)` -> `sete_agglopole` 81575, `STAR (Rennes
+    Métropole)` -> `star_rennes` 83281, `TCL (SYTRAL Mobilités)` ->
+    `tcl_lyon` 81943) -- all resolved by exact/substring matching on
+    already-known, human-confirmed resource ids, not guessed. `TER
+    Occitanie (liO)` is ambiguous between `lio_occitanie` (81026) and
+    `sncf` (83582) and needs a human decision. The remaining 19 networks
+    (Aix-Marseille-Provence/Lebus+/RTM, Bibus, CTS, Citézen, Filibus,
+    Geneva tram 17, Grand Reims Mobilités, Irigo, Le Met', M réso, Naolib,
+    Péribus, STAN, T2C, TaM, Tisséo, Twisto) have no configured resource id
+    yet; automated fuzzy name matching against `config/gtfs_inventory.csv`
+    only found weak, unreliable candidates for these (not applied, to
+    avoid silently guessing a wrong resource id), so they need a human to
+    pick the correct `resource_id` from `config/gtfs_inventory.csv` before
+    `map-openings` can run for them. The exact commands for the resolved
+    networks are given in the final chat response.
+- 2026-10-16, step 0 openings-list application fix (user-reported: the
+  2026-10-15 rule would have deleted whole lines nationally). Two errors
+  fixed:
+  1. **Fall-through, not removal, for `keep`/`modify`** (point 1):
+     `OpeningDerivedChange.instruction_at` now returns `None` (no
+     instruction) whenever a state is `keep` or `modify`, regardless of
+     `change_type` -- only `remove` ever produces an instruction. The
+     2026-10-15 version treated `modify` the same as `remove`, which
+     would have deleted Bordeaux trams A/C/E/F, Grenoble D, Clermont B/C
+     and Lyon T4/TB11/C27 nationwide (all real restructuring/renaming/
+     relocation rows describing a line that already existed in another
+     form). `add` is unaffected, still a reported gap (point 5's existing
+     logic).
+  2. **`remove`'s effect depends on `change_type`** (point 2):
+     `instruction_at` maps `new_line`/`reopening` + `remove` to `drop`
+     (whole route absent); `extension` + `remove` to `cut` (keep the
+     stops up to `section_from`, the old terminus, drop the stops toward
+     `section_to`); `new_station` + `remove` to `new_station` (remove
+     only that one stop, named in `section_from`). Every other
+     `change_type` (`restructuring`, `renaming`, `relocation`,
+     `suspension`, `closure`) gives no instruction even if its state
+     happens to be `remove` (5 real `suspension` rows do this -- see the
+     assumption below) -- logged via `unhandled_remove_at` rather than
+     guessed. New module `packages/mobgrid/pt/route_edits.py` resolves
+     `cut`/`new_station` edits against a route's ordered stop names:
+     `resolve_route_edits` narrows a kept index range (`cut`, anchored
+     by matching `section_from`/`section_to` against stop names,
+     direction-agnostic) and an excluded-index set (`new_station`); an
+     edit whose anchor(s) cannot be located is skipped and logged
+     (`unresolved_opening_ids`), never guessed, and never blocks another
+     resolvable edit on the same route. `collect_edit_specs` gathers every
+     active `cut`/`new_station` across a catalogue's `from_openings` for
+     one state, grouped by `(network, route_id)`.
+  3. **Combine, not OR, per route/state** (point 3): `removed_route_keys`
+     now only treats a `drop` instruction as removal; `cut`/`new_station`
+     edits from several rows on the same route combine (narrow the same
+     kept range further) rather than any one of them individually
+     deleting the route, replacing the 2026-10-15 OR rule across entire
+     `from_openings` entries (which is what made a restructuring row like
+     Bordeaux tram F's NAQ-15 wrongly combine with NAQ-01's real cut into
+     a full removal). Proven on the real metro 14 case (IDF-11 north
+     extension + IDF-12 south extension, both `remove`/`remove` at both
+     dates): both cuts apply together, the route is never dropped
+     (`test_metro_14_two_extensions_combine_without_ever_dropping_the_route`,
+     `test_metro_14_two_extensions_cut_both_ends_without_dropping`).
+  4. **NAQ-11 (circular Bus Express H1/H2) reclassified `exact`, not
+     `ambiguous`**: `propose_route_matches`'s prefix-match fallback (used
+     for numbered/lettered variants of one code, e.g. `H` -> `H1`/`H2`)
+     previously fell through to `ambiguous` whenever the generic stop-hint
+     disambiguation failed to narrow -- which it always does here, since
+     the CSV's `section_from`/`section_to` free text ("Cenon Gare
+     (circular H1/H2)") is not a real GTFS stop name. Since every variant
+     reached this way belongs to the one reported circular/directional
+     service (not a genuine collision between unrelated lines), it is now
+     `exact` with every variant's route id, not a human-reviewed
+     `ambiguous`. `TODO(confirm)`: this widens the prefix-match
+     heuristic's auto-apply surface slightly (a coincidental same-prefix,
+     *different* line could misfire the same way); flagged as an
+     assumption to check below, not blocking, since the heuristic's match
+     pool (short prefix diff <= 2 characters) was already deliberately
+     narrow.
+  - **Real-data validation** (`resolve_route_edits` against the cached
+    TBM Bordeaux GTFS, `data/interim/pt_openings_mapping/83024`, read-only,
+    one-off check, not a committed test per the isolation rule): route
+    164/F's main pattern (1,388 trips, Bègles <-> Aéroport) has 34 stops;
+    NAQ-01's cut (anchor "Carrefour des Quatre Chemins (Mérignac)" ->
+    "Mérignac Aéroport") resolves cleanly to 29 kept stops, dropping
+    exactly the 5 new stations the CSV's own notes list (Mérignac Soleil,
+    Chemin Long, Cadera-Issartier, Caroline Aigle, Aéroport) -- confirms
+    the engine's bidirectional stop-name containment match and direction-
+    agnostic cut logic against ground truth.
+  - **Redid the Bordeaux application** (`uv run python -m mobgrid.pt
+    apply-openings` after the fix, and `mobgrid.pt map-openings` rerun for
+    TBM to pick up the NAQ-11 reclassification): 8 applied (up from 6:
+    911 and 912 now both resolve), 105 not applied, 8 known gaps. Result,
+    matching the table given by the user: 1 Jan 2022 -- A (59), C (61), E
+    (163) kept (restructuring rows give no instruction); F (164) cut at
+    "Quatre Chemins" (NAQ-01's `extension`); G (901), H1 (911), H2 (912)
+    dropped (`new_line`). 1 Jan 2024 -- A, C, E kept; F has no active
+    openings instruction (falls through to the tram automatic rule,
+    i.e. the confirmed OSM-based cut/keep result applies); G, H1, H2
+    dropped. Proven in
+    `tests/mobgrid/pt/test_pt_openings.py::test_bordeaux_real_rows_match_the_documented_outcomes`,
+    reading only the two committed CSVs (the openings CSV and
+    `pt_openings_mapping.csv`), never `data/interim`, so it is isolated
+    and deterministic.
+  - **Retired a now-conflicting legacy manual edit**: `config/
+    pt_changes.yaml`'s `confirmed` list had a 2026-10-14-era
+    `bordeaux_tram_a_merignac_airport` (`type: pt_extend`, route `164`,
+    opened 2023-04-01) entry -- the same real-world fact as NAQ-01, but
+    using the coarser pre-openings-list mechanism (full route removal,
+    not a precise cut). With `removed_route_keys` ORing `confirmed` and
+    `from_openings` drops together, this legacy entry would have kept
+    route 164 wholly absent at 2022 regardless of the fix, contradicting
+    "F cut, not dropped". Removed it now that the openings list derives
+    the same fact more precisely; `bordeaux_bus_express_g`/`_h` (routes
+    901/911/912) are left as-is, since they duplicate but do not
+    conflict with NAQ-08/NAQ-11 (both mechanisms agree: drop).
+    **Fixed (2026-10-16 follow-up):** `confirmed` (keyed by the project's
+    own `networks:` slugs, e.g. `tbm_bordeaux`) and `from_openings` (keyed
+    by the CSV's raw `network` string, e.g. `TBM (Bordeaux Métropole)`)
+    used to mix two different, never-reconciled network-naming
+    conventions within the same `removed_route_keys()` result set.
+    `removed_route_keys` now takes a `network_resource_ids` mapping (built
+    by `mobgrid.pt.pt_changes.build_network_resource_ids`, merging
+    `GtfsRebuildConfig.networks` slugs with
+    `national_policy.openings_list.network_resource_ids`, plus an optional
+    `mode_split_network_resource_ids` for `"TER Occitanie (liO)"`) and
+    returns `(GTFS resource id, route_id)` keys throughout, so the same
+    physical network is counted once regardless of which source named it.
+    Tested in `tests/mobgrid/pt/test_pt_changes.py
+    ::test_removed_route_keys_counts_same_route_once_from_both_conventions`.
+    `mobgrid.pt.route_edits.collect_edit_specs` still keys its
+    `cut`/`new_station` edits by `from_openings`'s own raw CSV network
+    string (a single source, so no mixing risk there) -- left as-is.
+  - **Resolved the 19 unresolved networks from point 5** (a lookup over
+    `config/gtfs_inventory.csv`'s dataset title/AOM/agency-name columns,
+    no download): all 45 single-resource networks plus the IDFM (9) and
+    SNCF (14) groups are now recorded in `config/gtfs_rebuild.yaml`'s
+    `national_policy.openings_list.network_resource_ids`. Evidence
+    (dataset title | agency name | EPCI):
+
+    | Network | Resource id | Evidence |
+    |---|---:|---|
+    | Aix-Marseille-Provence / Lebus+ (...) / RTM (...) | 81969 | "Réseaux urbains de la Métropole Aix-Marseille-Provence", bundling every AMP sub-network (Marseille, Aubagne, Gémenos, ...) in one resource -- covers all three CSV network strings (RTM's Marseille rows, Lebus+'s Aubagne/Gémenos/Miramas rows) without picking one sub-area resource |
+    | Bibus (Brest Métropole) | 43286 | "Réseau urbain Bibus", agency "Bibus"/"TAD Bibus", EPCI Brest Métropole |
+    | CTS (Eurométropole de Strasbourg) | 79220 | "Réseau urbain CTS", agency "CTS", EPCI Eurométropole de Strasbourg |
+    | Citézen (SMiTU Thionville-Fensch) | 80459 | "Réseau urbain TeMo'b", agency "Keolis Thionville Fensch", EPCI CA Portes de France-Thionville (matches the CSV row's city: Thionville/Hayange/Yutz) |
+    | Filibus (Chartres métropole) | 80587 | "Réseau urbain Filibus", agency "Filibus", EPCI CA Chartres Métropole |
+    | Geneva tram 17 (Annemasse Agglo / ...) | 76779 | "Réseau urbain TAC Mobilité", agency "TAC Mobilités", EPCI CA Annemasse-Les Voirons-Agglomération (matches the CSV row's city: Annemasse) |
+    | Grand Reims Mobilités | 80594 | "Réseau urbain Grand Reims Mobilités", agency "Transdev Reims", EPCI CU du Grand Reims |
+    | Irigo (Angers Loire Métropole) | 80036 | "Réseau urbain Irigo", agency "IRIGO", EPCI CU Angers Loire Métropole |
+    | Le Met' (Eurométropole de Metz) | 80725 | "Réseau urbain Le Met'", agency "LE MET'", EPCI Metz Métropole |
+    | M réso (SMMAG) | 83459 | "Réseau urbain TAG", agency "M Réso - Métropole Grenobloise" (TAG is the old brand name), EPCI Grenoble-Alpes-Métropole |
+    | Naolib (Nantes Métropole) | 84101 | "Réseau urbain Naolib", agency "Naolib", EPCI Nantes Métropole |
+    | Péribus (Grand Périgueux) | 82357 | "Réseau urbain Péribus", agency "Périmouv (Grand Perigueux)", EPCI CA Le Grand Périgueux |
+    | STAN (Métropole du Grand Nancy) | 83710 | "Réseau urbain Stan", agency "STAN Nancy", EPCI Métropole du Grand Nancy |
+    | T2C (SMTC Clermont) | 83465 | "Réseau urbain T2C", agency "T2C", EPCI Clermont Auvergne Métropole |
+    | TaM (Montpellier Méditerranée Métropole) | 84199 | "Réseau urbain TaM", agency "TaM", EPCI Montpellier Méditerranée Métropole |
+    | Tisséo | 81678 | "Réseau urbain Tisséo", agency "Tisséo" |
+
+    **TER Occitanie (liO)** resolved by mode (point 5's rule): all three
+    of its CSV rows (OCC-05, OCC-13, PLN-13) are `mode=rail`, so every one
+    resolves to SNCF's resource (83582); recorded generically in
+    `mode_split_network_resource_ids` (rail -> 83582, bus/bhns/trolleybus
+    -> 81026/`lio_occitanie`) so a future CSV update adding a genuine
+    liO coach row is still handled correctly, not hard-coded to today's
+    all-rail reality. New `mobgrid.pt.pt_openings.run_mapping_grouped`
+    resolves each row only against its own mode's resource, writing one
+    merged `write_mapping_csv` call so neither mode group's run can
+    overwrite the other's result for a different row.
+
+    **Twisto (Caen la mer)** was initially left as a logged gap here
+    (no dedicated GTFS resource found in `config/gtfs_inventory.csv`,
+    only the Normandy regional aggregate); investigated 2026-10-16 (see
+    the decision entry below) and resolved by mapping it against the
+    existing Normandy aggregate (resource 81942), not by acquiring a
+    second, dedicated feed.
+  - **New batch command** `mobgrid.pt map-and-apply-all`: iterates every
+    configured `network_resource_ids`/`mode_split_network_resource_ids`
+    entry, resolving/extracting each resource (resumable: `extract_gtfs_
+    tables` already skips files already present under
+    `data/interim/pt_openings_mapping/<resource_id>`) and mapping it,
+    logging and continuing past any one network's download/extraction
+    failure rather than aborting the batch (`_run_map_and_apply_all`,
+    tested in `tests/mobgrid/pt/test_pt_cli_map_and_apply_all.py` with a
+    synthetic inventory where one of two resources is missing); finally
+    runs `apply_openings_matches`/`write_from_openings` once. Writes
+    `logs/{date}_pt_openings_map_and_apply_all.log` and `..._summary.md`
+    per the long-job convention. **Validated for real** (fast, reused the
+    already-cached TBM Bordeaux resource, `--networks "TBM (Bordeaux
+    Métropole)"`, 0.1 minutes): mapped 1 network, applied 8 changes,
+    identical result to the dedicated `map-openings`+`apply-openings`
+    pair above. The full national run (remaining ~44 networks, each
+    needing its own GTFS download/extraction) was not run, per policy;
+    the exact command is given in the final chat response.
+  - Ruff clean; 243 tests pass, 2 pilot tests deselected.
+- 2026-10-16, Twisto (Caen la mer) acquisition gap investigated and
+  national GTFS coverage checked (user follow-up to the three points
+  above).
+  1. **Root cause (not a discovery bug).** A full live dump of
+     `GET https://transport.data.gouv.fr/api/datasets` (802 datasets,
+     2026-10-16) contains no dataset for Twisto/Caen la mer at all.
+     Twisto's actual GTFS (data.gouv.fr dataset
+     `caen-la-mer-reseau-twisto-gtfs-siri-2`, id
+     `68f1879c2c4ca61855ff1994`, resource `GTFS_twisto.zip`, id
+     `71728bd6-b9a4-48e3-93ee-ac566e42fe99`, format zip, check:status 200
+     as of 2026-07-19, ~4.3 MB) exists only on the *general* data.gouv.fr
+     open-data catalogue, harvested there from Twisto's own portal
+     (data.twisto.fr) -- it was never referenced with transport.data.
+     gouv.fr's PAN (the national transport registry), which is the *only*
+     catalogue `acquire.discovery.discover_gtfs` queries, by design
+     (section 5.1: producer-owned GTFS resources from the national
+     transport portal). `discover_gtfs`'s classification logic (format
+     filter, community-resource exclusion, drop/override lists) is
+     correct and unaffected; there was nothing in it to fix, because the
+     dataset it needed to see was never in its input at all.
+  2. **Correction of scope.** Caen la mer's network is *not* fully absent
+     from the acquisition: "Twisto (Caen la mer)" already appears as one
+     of 31 agencies inside the already-configured Normandy regional
+     aggregate (resource 81942, valid 2026-09-30 to 2028-06-30, not
+     expired). Only a *dedicated*, single-producer resource was missing
+     -- exactly why the openings-list mapping work left it as a gap
+     earlier (resolving one specific network against a 31-agency
+     aggregate is unreliable), not because Caen has zero PT data in our
+     acquisition.
+  3. **Decision (2026-10-16 follow-up, superseding the paragraph below as
+     first written): no dedicated feed is acquired.** Twisto's real
+     producer feed (data.gouv.fr dataset
+     `caen-la-mer-reseau-twisto-gtfs-siri-2`, resource `GTFS_twisto.zip`)
+     was initially added to `config/sources.yaml` and a command was
+     handed off to download it, but the user decided against this:
+     Caen la mer is already covered by the Normandy aggregate, the same
+     as 865 other AOMs nationally (point 5 below); acquiring a second,
+     dedicated copy would duplicate its trips once a future PT-build step
+     merges every network's feed into one multimodal network (see the
+     2026-10-16 follow-up entry below for the new deduplication
+     requirement this raised). The
+     `config/sources.yaml` entry was **removed**. Instead, `Twisto (Caen
+     la mer)` was mapped directly against the already-downloaded
+     Normandy aggregate (`uv run python -m mobgrid.pt map-openings
+     --resource-id 81942 --network-contains Twisto`, offline, fast; its
+     one real row, NOR-01, line T3, matched `exact` to GTFS route
+     `ATOUMOD029:Line:T3:LOC`) and `config/gtfs_rebuild.yaml`'s
+     `national_policy.openings_list.network_resource_ids` gained
+     `Twisto (Caen la mer): 81942` (so all 47 high/medium-confidence
+     networks are now resolved, 0 remaining in `unresolved_networks`).
+     `uv run python -m mobgrid.pt apply-openings` rerun: 9 applied (up
+     from 8), `from_openings` now includes NOR-01 (`extension`, `remove`/
+     `keep` -> `cut` at 2022, no instruction at 2024, matching the
+     project's already-established cut-at-old-terminus rule).
+  4. **Fix the cause, systematically**: added real, tested
+     infrastructure (not a one-off script) to catch this whole class of
+     gap -- a producer registered with the PAM registry whose own feed
+     the PAN never sees -- for any French authority, not just Twisto.
+     `acquire.discovery.discover_aoms` fetches the PAN's own AOM registry
+     (`GET /api/aoms/geojson`, one metadata call, 1,148 AOMs with name/
+     SIREN/department); `classify_aom_coverage` cross-references each
+     AOM, offline, against `config/gtfs_inventory.csv`'s already-cached
+     `covered_area`/validity columns (no new downloads), three ways: a
+     `dedicated` resource (a valid resource's `covered_area` lists an
+     `epci` entry whose INSEE code equals the AOM's own SIREN -- true
+     for most urban AOMs, which are themselves the EPCI), `indirect`
+     coverage only (a department- or region-level aggregate bundles it,
+     like Twisto in the Normandy aggregate), or `uncovered` (nothing at
+     any level). New `acquire --check-aom-coverage` CLI flag runs both
+     steps and writes `config/gtfs_aom_coverage.csv`. Tested (13 new
+     tests in `tests/acquire/test_discovery.py`), including a
+     completeness check that the module's own department/region
+     crosswalk (`_REGION_DEPARTMENTS`) exactly covers
+     `AcquisitionConfig.metropolitan_departments`, so a typo in the
+     hand-written crosswalk cannot silently misclassify a department.
+  5. **National coverage result** (run for real, `--check-aom-coverage
+     --reference-date 2026-10-13`, one live API call plus an offline
+     cross-check against the existing inventory -- a few seconds, well
+     within budget): of 1,127 metropolitan AOMs, **0 are uncovered at any
+     level** -- every metropolitan authority has at least a region- or
+     department-level aggregate covering it. 262 have their own dedicated
+     resource; **865 (including Twisto) are covered only indirectly**,
+     via a broader aggregate, with no dedicated producer feed of their
+     own in our inventory. (13 overseas/DROM-COM AOMs are genuinely
+     uncovered at any level, but overseas territories are out of this
+     project's metropolitan-France scope, so this is not itself a gap to
+     close.) 865 is expected and not itself alarming -- most small/rural
+     AOMs are correctly served only by a regional aggregate, the same
+     pattern already used deliberately for bus/rail/TER networks
+     elsewhere in step 0 -- but it is not filtered by population, so it
+     mixes genuinely-negligible small AOMs with any large urban ones that
+     may be worth a dedicated feed.
+  6. **No population filter (2026-10-16 decision).** Narrowing the 865
+     "indirect only" AOMs by EPCI population was considered (it would
+     have needed INSEE's ~25.6 MB commune-level population table, a
+     genuine download-and-aggregate national computation, not run) but
+     the user decided it is unnecessary: since 0 metropolitan AOMs are
+     uncovered at any level (point 5), a population filter cannot change
+     that headline finding -- it would only have ranked which
+     indirect-only AOMs might be worth a dedicated feed, a question point
+     3 above now answers directly (no: aggregate-only coverage is an
+     accepted, normal outcome, not a gap to close, so there is nothing to
+     rank). The draft filtering script was removed rather than kept
+     unused. `config/gtfs_aom_coverage.csv` (the dedicated/indirect/
+     uncovered classification itself) is kept, since it remains the
+     useful, already-computed national coverage evidence.
+  7. **Suspensions, decided (not an open assumption any more):** a
+     `suspension`-change-type row paired with a `remove` state (5 real
+     CSV rows, e.g. ARA-01 TER Chambéry-Modane) gives no instruction --
+     the line is presumed kept for that state. A temporary works closure
+     spanning part of the 2022-2024 window does not remove a line from a
+     state meant to represent the *normal* network; `instruction_at`
+     already implemented this (only `new_line`/`reopening`/`extension`/
+     `new_station` ever produce an instruction), and this entry confirms
+     it is deliberate, settled behaviour, not a pending question.
+  8. **Offline guarantee made explicit.** `mobgrid.pt.pt_openings.
+     resolve_and_extract` (used by both `map-openings` and
+     `map-and-apply-all`) never downloaded anything to begin with --
+     ``resolve_gtfs_local_path`` only reads the ``local_path`` already
+     recorded by a prior ``acquire`` run, and extraction only opens that
+     local file -- but it now raises a clear, specific
+     ``FileNotFoundError`` naming the missing path and the ``acquire``
+     command to run when a configured resource is not yet downloaded,
+     instead of a generic error surfacing from inside ``zipfile``. Proven
+     with `test_resolve_and_extract_never_attempts_a_network_call` (the
+     module imports no network client at all) and two behavioural tests
+     (reads an already-downloaded feed; raises the clear error otherwise)
+     in `tests/mobgrid/pt/test_pt_openings.py`.
+  - Ruff clean; 256 tests pass, 2 pilot tests deselected (96 of them, all
+    passing, are in `packages/acquire`).
+- 2026-10-16, follow-up to the Twisto/AOM-coverage work above (two final
+  adjustments, user-directed):
+  1. **No dedicated Twisto feed.** Reverted the `config/sources.yaml`
+     addition; Twisto stays covered only via the Normandy aggregate
+     (resource 81942), the same as the other 865 indirect-only AOMs --
+     adding a dedicated feed for it specifically, while leaving the other
+     865 untouched, would have been an arbitrary, inconsistent exception,
+     and would duplicate its trips once a future PT-build step merges
+     every network's feed into one multimodal network. Mapped directly
+     against 81942 instead (see point 3 above for the exact result: 9
+     `from_openings` entries now, up from 8).
+  2. **New requirement recorded for the future PT-build step
+     (`00_prepare_public_transport.py`, section 14.5): when the same
+     agency's trips appear in both a dedicated producer feed and a
+     broader aggregate feed (now an expected, accepted situation for at
+     least 865 French authorities, confirmed above -- not a special case
+     limited to Twisto), the build must keep only one copy -- the
+     dedicated producer feed's -- before any trip-level deduplication
+     across feeds.** Rationale: a dedicated feed and an aggregate that
+     both include the same agency describe the *same* physical service
+     twice; a trip-level dedup alone (matching by trip/stop/time) is not
+     guaranteed to catch every duplicate (feeds can differ slightly in
+     ids, timestamps or shape precision even for the same real trip), so
+     the agency-level precedence rule must run first, as a coarse,
+     reliable pre-filter, with trip-level dedup handling only genuine
+     residual overlaps between *different* feeds/agencies. Not
+     implemented yet (the PT-build step itself has not started, step 6+
+     in the table above); tracked as a new entry under "Open points from
+     the spec" below.
 - 2026-10-09, bootstrap, use a four-member uv workspace with per-package setuptools metadata, so each package can be developed and installed independently.
 - 2026-10-09, bootstrap, keep the pilot's area, years, halo and data directories in YAML; validate generic formats and positive/unique values in Pydantic.
 - 2026-10-09, bootstrap, pin the project to Python 3.12 with `uv python pin 3.12` (writes `.python-version`); the sandbox's system Python (3.14) is only used to bootstrap `uv` itself. `.python-version` and `uv.lock` are committed so every agent and CI run uses the same interpreter and locked dependency set.
@@ -534,6 +1235,199 @@ Status values: not started, in progress, review, merged.
   network of its own" but showing that even the regional coach/rail
   networks named in the spec text do not call directly inside this
   EPCI's communes.
+- 2026-10-16, code-review follow-up on the openings-list policy
+  enforcement and the PT change catalogue:
+  - **`apply_openings_matches` no longer hardcodes its confidence
+    thresholds.** `include_row_confidence`/`apply_match_confidence` are
+    now keyword parameters (defaulting to today's configured values,
+    `high`/`medium` and `exact`/`stop-confirmed`, only for a caller with
+    no loaded policy); `mobgrid.pt apply-openings` (now also takes
+    `--config`, like `map-and-apply-all`) and `map-and-apply-all` both
+    pass `national_policy.openings_list.include_row_confidence`/
+    `apply_match_confidence` through explicitly, and `report.py` passes
+    the same fields from the config it already has when one is
+    configured. Previously, editing these two config fields would have
+    silently desynced the report's description from what was actually
+    applied. Tested in
+    `tests/mobgrid/pt/test_pt_openings.py
+    ::test_apply_openings_matches_uses_configured_confidence_thresholds`.
+  - **`write_from_openings` no longer crashes on an existing, empty
+    `pt_changes.yaml`.** `yaml.safe_load` returns `None` for an empty or
+    whitespace-only file; `raw = yaml.safe_load(...) or {}` restores the
+    previous "missing file" fallback for that case too. Tested in
+    `tests/mobgrid/pt/test_pt_changes.py
+    ::test_write_from_openings_treats_an_empty_file_as_an_empty_mapping`.
+  - **`removed_route_keys` now returns one `(GTFS resource id, route_id)`
+    key regardless of source**, fixing the network-naming mismatch
+    flagged below under "Fixed (2026-10-16 follow-up)": it takes a
+    `network_resource_ids` mapping (built by the new
+    `mobgrid.pt.pt_changes.build_network_resource_ids` from
+    `GtfsRebuildConfig.networks` plus
+    `national_policy.openings_list.network_resource_ids`) and an optional
+    `mode_split_network_resource_ids`, so `confirmed`'s config slug and
+    `from_openings`'s raw CSV network string resolve to the same key when
+    they name the same physical network. `resolve_route_presence` and
+    `resolve_route_edits`/`collect_edit_specs` remain uncalled by any
+    pipeline code (see the open point added below) -- this fix only
+    changes `removed_route_keys`'s own key space for whenever that future
+    consumer arrives.
+  - **Rewrote `test_only_confirmed_and_dropped_openings_changes_are_subtracted`**
+    (now `test_removed_route_keys_equals_confirmed_plus_openings_drops_only`):
+    it encoded a stale assumption that `to_review`/`not_applied` screening
+    candidates are always disjoint from applied drops, which is false for
+    real data (TCL Lyon's `TB12` is both `candidate_tcl_lyon_TB12`, old
+    automatic OSM screening, informational only, and `ARA-08`, a real
+    openings-list `new_line` drop). The acceptance test now asserts the
+    current policy directly: the routes removed from a past state equal
+    exactly `changes_after` plus the openings list's `drop` instructions,
+    and clearing `to_review`/`not_applied` entirely never changes
+    `removed_route_keys()`'s result, using TB12 as the proof case
+    (section 5.6 point 6: these lists are informational only).
+- 2026-10-16, national `map-and-apply-all` run follow-up: fixed the 15
+  rows that carried a real `remove` instruction but were not applied.
+  - **Paris metro "M"-prefix normalisation** (IDF-01 M4, IDF-02 M12,
+    IDF-10 M11, IDF-11/IDF-12/IDF-14 M14): the openings CSV conventionally
+    writes a numbered Paris metro line as `"M4"`/`"M11"`/`"M12"`/`"M14"`,
+    but every checked metro feed's own `route_short_name` (IDFM, Lyon,
+    Rennes) is bare -- IDFM's numbered lines never carry the `M` at all,
+    and letter-coded lines (Lyon A-D, Rennes a/b) were never `M`-prefixed
+    in the CSV either. `mobgrid.pt.pt_openings.normalise_line_name` now
+    takes an optional `mode` and strips a leading `M`/`m` only when
+    `mode="metro"` and it is immediately followed by a digit (never for a
+    bare letter code), so it only ever fires for the one real convention
+    mismatch, not by hardcoding the four known line numbers. Tested in
+    `tests/mobgrid/pt/test_pt_openings.py
+    ::test_normalise_line_name_strips_metro_m_prefix_for_numbered_lines`
+    and `::test_metro_m_prefix_matches_the_bare_gtfs_short_name` (plus a
+    regression test that letter codes are never touched).
+  - **Multi-route `new_station`/`extension` rows** (NAQ-02 TER 42, 8
+    routes; NAQ-10 TER 41/42, 3; PDL-03 TER 22/24, 2): a `new_station`/
+    `extension` row matched to several identically-named same-corridor
+    route variants (unlike `new_line`/`reopening`, safe to apply to every
+    variant by identity alone) is now narrowed by `mobgrid.pt.pt_openings
+    ._match_by_name` to only the variants that actually call at the
+    hinted stop (`section_from`/`section_to`), using the existing
+    `_disambiguate_by_stops` narrowing; a variant that does not call
+    there is excluded from the mapping CSV's `candidate_route_ids` and
+    named in its `notes`, never guessed in. `apply_openings_matches`'s
+    former `new_line`/`reopening`-only multi-route gate is retired
+    entirely, since the same four instruction-capable change types now
+    all either apply by identity (`new_line`/`reopening`) or have already
+    been narrowed to the calling routes by the mapping step
+    (`extension`/`new_station`) -- one `OpeningDerivedChange` per route
+    id either way. Tested in `tests/mobgrid/pt/test_pt_openings.py
+    ::test_new_station_narrows_same_corridor_routes_to_those_calling_there`,
+    `::test_extension_keeps_every_route_when_all_of_them_call_at_the_anchor`,
+    `::test_new_line_is_never_narrowed_by_the_new_station_extension_rule`
+    and `::test_apply_openings_matches_allows_a_multi_route_extension_match`.
+  - **Whole-mode-family stop-name fallback** (IDF-17 Tzen 4, GES-06 Mettis
+    A, NAQ-03 Péribus BHNS Est-Ouest, PAC-05 Lebus+ Aubagne-Gémenos, OCC-05
+    Pont-Saint-Esprit-Avignon, OCC-13 Montréjeau-Luchon): a row still left
+    `none`/`ambiguous` after ordinary line-name matching now falls back to
+    searching every route of its own mode family by `section_from`/
+    `section_to` stop names alone, ignoring line names entirely
+    (`mobgrid.pt.pt_openings._match_by_stop_names_within_mode`). Unlike
+    `_disambiguate_by_stops` (narrows an already name-matched handful,
+    where matching *either* hint is enough), this requires *every*
+    non-empty hint to be served by the *same* route -- a single-hint
+    match across a whole family (hundreds of routes) is far more likely
+    to be coincidental -- and is accepted only when it narrows to exactly
+    one route, never guessed. Spot-checked against the real cached IDFM
+    feed: IDF-17 (Tzen 4) stays correctly unresolved, since neither
+    Tzen1 nor Tzen4's real GTFS stops are named "Viry-Châtillon" at all
+    (a genuine CSV-vs-GTFS place-name mismatch, not a bug); the mechanism
+    itself is proven with synthetic fixtures in `tests/mobgrid/pt
+    /test_pt_openings.py
+    ::test_stop_name_fallback_resolves_a_row_with_no_line_name_match`,
+    `::test_stop_name_fallback_refuses_to_guess_between_two_matching_routes`
+    and `::test_stop_name_fallback_also_resolves_an_ambiguous_name_match`.
+    Some of the six rows may still end up correctly unresolved after a
+    real rerun, logged rather than guessed -- that is by design.
+  - **WARNING/INFO logging split** (section 5.6 point 6): `apply_openings
+    _matches` now classifies every not-applied row instead of logging all
+    of them the same way. A row whose `change_type` can never give an
+    instruction (`restructuring`/`renaming`/`suspension`/`closure`/
+    `relocation`) or whose state is never `remove` (e.g. a `planned_not_
+    open` line) is counted under `not_applied_by_design` (one count per
+    reason: `non_instruction_change_type`, `no_remove_state`,
+    `low_confidence`), logged at INFO; only a row that *does* carry a
+    real `remove` instruction (an accepted-confidence, instruction-capable
+    row) but whose match failed is logged at WARNING, in `OpeningsApplica
+    tion.warnings`, one line per row. `mobgrid.pt.cli._log_openings_appli
+    cation` and `report.py`'s `_openings_application` both use the new
+    fields; the now-impossible "missing change_type" check and the
+    `_MULTI_ROUTE_CHANGE_TYPES` multi-route gate were removed as dead
+    code (an instruction-necessary row's `change_type` is always one of
+    the four known values by construction). Tested in `tests/mobgrid/pt
+    /test_pt_openings.py::test_ambiguous_row_is_a_warning_and_low_confidence_row_is_info`
+    and `::test_apply_openings_matches_counts_rows_with_no_instruction_as_info`.
+- 2026-10-16, reconciliation of the full national run (no new run
+  needed, read from the existing `config/pt_changes.yaml`/
+  `config/pt_openings_mapping.csv` and the day's own
+  `logs/2026-10-16_pt_openings_map_and_apply_all.log`):
+  - **Confirmed no regression.** All 120 openings-list rows fall into
+    exactly one of six row-level categories (applied 53, remove-not-
+    applied/warnings 5, low confidence 19, no remove state 13,
+    non-instruction change type 22, known gap 8 -- sums to 120). The
+    reported "136" was `len(result.applied)` (route-level: 5 rows now
+    resolve to several routes -- `GES-05`×6, `NAQ-02`×8, `NAQ-10`×3,
+    `NAQ-11`×2, `PDL-03`×2, 16 extra entries -- 69+5+54+8 = 136) added to
+    the other, row-level counts; comparing the pre-fix run (11:43/14:06
+    in the same log, confirmed still pre-fix by `IDF-01 ... match_
+    confidence='none'`) to the current one by row shows 10 rows gained
+    (the metro six, `NAQ-02`, `NAQ-10`, `OCC-13`, `PDL-03`, as intended)
+    and 17 rows "lost" -- all 17 are `restructuring`/`renaming`/
+    `suspension` rows (never an instruction regardless of state) or
+    `extension`/`new_line` rows whose state is `keep`/`keep`
+    (`planned_not_open`, no instruction yet); none ever produced a real
+    instruction before or after, so today's `not_applied_by_design`
+    reclassification only stopped writing their old, functionally-inert
+    "for the record" entries into `from_openings` -- no route's presence
+    in a built state changes.
+  - **Fixed the bookkeeping**: `OpeningsApplication` gained
+    `applied_opening_ids` (row-level, distinct `opening_id`s) and
+    `row_counts()` (one count per the six categories, row-level
+    throughout); `apply_openings_matches` now raises if they do not sum
+    to the number of CSV rows read, so a future miscount or
+    double-counted row is caught immediately rather than silently
+    reported wrong. `cli.py`/`report.py` report applied rows and
+    route-level edits as two separate numbers. Tested in
+    `tests/mobgrid/pt/test_pt_openings.py
+    ::test_row_counts_sum_to_total_rows_and_distinguish_route_level_edits`
+    (synthetic, one row per category plus a multi-route row) and
+    `::test_real_openings_list_row_counts_reconcile_to_the_total` (the
+    real committed CSV/mapping/config, no new run).
+  - **5 residual warnings accepted as gaps** (IDF-17 Tzen 4, GES-06
+    Mettis A, NAQ-03 BHNS Est-Ouest, OCC-05 Pont-Saint-Esprit-Avignon,
+    PAC-05 Lebus+ Aubagne-Gémenos): each stays `match_confidence=
+    'none'`/`'ambiguous'` after both the ordinary line-name pipeline and
+    the whole-mode-family stop-name fallback, a genuine CSV-vs-GTFS
+    mismatch (free-text place names, e.g. "Viry-Châtillon", that do not
+    literally occur as a GTFS `stop_name` on the real feed, confirmed by
+    spot-checking IDF-17 against the cached IDFM feed in the previous
+    entry) rather than a code gap; recorded here rather than re-attempted
+    automatically, per the national policy's "log it, never guess" rule.
+  - **`map-and-apply-all` now reads each GTFS resource once.** Grouping
+    by network-name alias (one `run_mapping` call per
+    `network_resource_ids` key) read the same resource repeatedly --
+    IDFM's resource 80921 alone 5 times ("IDFM", "IDFM (operator
+    Transdev...)", "Keolis Tisse (IDFM)", "RATP (IDFM)", "RATP; Société
+    des grands projets (IDFM)"), since `load_openings_rows`'s substring
+    match already made some of those aliases redundant with each other
+    (e.g. `network_contains="IDFM"` alone already matches
+    `"RATP (IDFM)"` rows too). `_run_map_and_apply_all` now groups every
+    alias by its *resolved resource id* first and extracts/reads it once
+    per resource, via the new `mobgrid.pt.pt_openings
+    .run_mapping_for_networks`/`load_openings_rows_for_networks` (one
+    `propose_route_matches` call covering every alias's rows in a single
+    pass) and a `get_table_dir` cache shared with the mode-split loop (so
+    a resource used by both a flat alias and `"TER Occitanie (liO)"`'s
+    mode-split entry, e.g. SNCF's 83582, is also read only once). Tested
+    in `tests/mobgrid/pt/test_pt_cli_map_and_apply_all.py
+    ::test_map_and_apply_all_reads_each_resource_once` (two network-name
+    aliases sharing one resource id; asserts the extraction call is made
+    exactly once per distinct resource id, and both aliases' rows still
+    map correctly).
 
 ## Assumptions to check
 
@@ -545,6 +1439,15 @@ Status values: not started, in progress, review, merged.
 - 2026-10-13, step 0, routes not listed as labelled known cases in each test
   area are presumed unchanged for false-change scoring. This is not ground
   truth and is reported separately from known-case precision/recall/F1.
+- 2026-10-16, step 0 NAQ-11-style prefix-family reclassification (bus
+  express H -> H1/H2), a same-prefix match pool (code length diff <= 2)
+  that the generic stop-hint disambiguation cannot narrow at all is now
+  `exact` rather than `ambiguous`, since every real case so far is one
+  circular/directional service's own numbered variants, not two different
+  lines. `TODO(confirm)`: a coincidental same-prefix match between two
+  genuinely unrelated lines would misfire the same way and auto-apply
+  without review; not observed in any of today's mapped data, but worth
+  checking if a future network's mapped candidates look wrong.
 
 ## Open points from the spec
 
@@ -567,6 +1470,34 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [ ] Step 0 relation parameters: run the approved Luxembourg smoke, national
   relation extractions and calibration; review `kept-renamed`/`dropped`
   candidates and confirm recommended r, k, theta and geometry shares
+- [x] Step 0 PT openings list: resolve every network's GTFS resource id
+  (2026-10-16, see the decision entries above); all 47 of 47 high/medium-
+  confidence networks now have a configured `resource_id` (or, for `TER
+  Occitanie (liO)`, a per-mode resolution), including `Twisto (Caen la
+  mer)`, mapped against the existing Normandy aggregate rather than a
+  dedicated feed
+- [x] Step 0 PT openings list: run `mobgrid.pt map-and-apply-all` for
+  every network: completed 2026-10-16, 47 of 47 networks mapped, 0
+  failed, 53 rows applied (69 route-level edits), 5 rows left as
+  accepted residual gaps, see the decision entries above
+- [ ] Future PT-build step (`00_prepare_public_transport.py`, section
+  14.5): when the same agency's trips appear in both a dedicated
+  producer feed and a broader aggregate feed, keep only the dedicated
+  feed's copy before any trip-level deduplication across feeds
+  (2026-10-16 decision, see the decision entry above; not yet
+  implemented, since this step has not started)
+- [ ] Future PT state builder (same step as above): must call
+  `mobgrid.pt.pt_policy.resolve_route_presence` (per-route keep/drop
+  precedence: openings list > tram automatic rule > default keep) and
+  `mobgrid.pt.route_edits.resolve_route_edits`/`collect_edit_specs`
+  (combined `cut`/`new_station` edits per route) when it builds each
+  past state; both are implemented and tested (2026-10-15/16) but not
+  yet called from any pipeline code, since no state builder exists yet.
+  Pass `removed_route_keys` a `network_resource_ids` mapping built with
+  `mobgrid.pt.pt_changes.build_network_resource_ids` (2026-10-16 fix) so
+  `confirmed`'s config-slug networks and `from_openings`'s raw CSV
+  network names resolve to the same `(GTFS resource id, route_id)` key.
+
 - [ ] PT: rule for a regular service whose `calendar`/`calendar_dates` window has already expired by the state/reference date — shift it to its last valid week (e.g. same weekday pattern one week back) or drop it entirely (section 8.6/14.4)
 - [ ] Car ownership model: functional form, e.g. ordered or multinomial logit (section 6.4)
 - [ ] Public-sector jobs: default surface by amenity type when there is no building footprint (section 7.2)

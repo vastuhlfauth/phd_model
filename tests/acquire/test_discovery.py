@@ -11,7 +11,10 @@ from acquire.cli import main
 from acquire.discovery import (
     ATOM,
     GPF,
+    Aom,
     check_url,
+    classify_aom_coverage,
+    discover_aoms,
     discover_bdalti,
     discover_gtfs,
     discover_osm,
@@ -19,6 +22,7 @@ from acquire.discovery import (
     merge_discovered,
     metadata,
     step0_coverage,
+    write_aom_coverage_report,
     write_gtfs_inventory,
 )
 from acquire.manifest import SourceFile, load_manifest, save_manifest
@@ -727,6 +731,214 @@ def test_cli_metadata_discovery_persists_producer_inventory(
     assert (tmp_path / "gtfs_multiple_resources.csv").is_file()
     assert "2 producer resources across 1 distinct datasets" in capsys.readouterr().out
     assert not (tmp_path / "data").exists()
+
+
+def _aom(nom, departement, siren):
+    return Aom(
+        nom=nom,
+        departement=departement,
+        insee_commune_principale="00000",
+        siren=siren,
+        forme_juridique="Communaute urbaine",
+    )
+
+
+def _inventory_row(resource_id, covered_area, last_service_date="2028-01-01"):
+    return {
+        "resource_id": resource_id,
+        "available": "True",
+        "gtfs_valid_zip": "True",
+        "gtfs_is_gtfs": "True",
+        "gtfs_last_service_date": last_service_date,
+        "covered_area": json.dumps(covered_area),
+    }
+
+
+def test_classify_aom_coverage_finds_a_dedicated_epci_resource():
+    caen = _aom("CU Caen la Mer", "14", "200065597")
+    rows = [_inventory_row("83024", [{"type": "epci", "insee": "200065597"}])]
+    [coverage] = classify_aom_coverage(
+        [caen], rows, date(2026, 10, 13), {"014"}
+    )
+    assert coverage.status == "dedicated"
+    assert coverage.covering_resource_ids == ("83024",)
+
+
+def test_classify_aom_coverage_falls_back_to_region_level_aggregate():
+    # The real Twisto/Caen la mer case: no dedicated resource, but a
+    # regional aggregate (Normandie, region insee 28) covers it.
+    caen = _aom("CU Caen la Mer", "14", "200065597")
+    rows = [_inventory_row("81942", [{"type": "region", "insee": "28"}])]
+    [coverage] = classify_aom_coverage(
+        [caen], rows, date(2026, 10, 13), {"014"}
+    )
+    assert coverage.status == "indirect"
+    assert coverage.covering_resource_ids == ("81942",)
+
+
+def test_classify_aom_coverage_falls_back_to_department_level_aggregate():
+    caen = _aom("CU Caen la Mer", "14", "200065597")
+    rows = [_inventory_row("90001", [{"type": "departement", "insee": "14"}])]
+    [coverage] = classify_aom_coverage(
+        [caen], rows, date(2026, 10, 13), {"014"}
+    )
+    assert coverage.status == "indirect"
+
+
+def test_classify_aom_coverage_reports_uncovered_when_nothing_matches():
+    caen = _aom("CU Caen la Mer", "14", "200065597")
+    rows = [_inventory_row("11111", [{"type": "region", "insee": "99"}])]
+    [coverage] = classify_aom_coverage(
+        [caen], rows, date(2026, 10, 13), {"014"}
+    )
+    assert coverage.status == "uncovered"
+    assert coverage.covering_resource_ids == ()
+
+
+def test_classify_aom_coverage_ignores_an_expired_resource():
+    caen = _aom("CU Caen la Mer", "14", "200065597")
+    rows = [
+        _inventory_row(
+            "83024",
+            [{"type": "epci", "insee": "200065597"}],
+            last_service_date="2022-01-01",
+        )
+    ]
+    [coverage] = classify_aom_coverage(
+        [caen], rows, date(2026, 10, 13), {"014"}
+    )
+    assert coverage.status == "uncovered"
+
+
+def test_classify_aom_coverage_skips_non_metropolitan_aoms():
+    mayotte = _aom("CA du Grand Nord de Mayotte", "976", "200060465")
+    results = classify_aom_coverage([mayotte], [], date(2026, 10, 13), {"014"})
+    assert results == []
+
+
+def test_discover_aoms_parses_the_geojson_feature_collection():
+    payload = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": None,
+                "properties": {
+                    "nom": "CU Caen la Mer",
+                    "departement": "14",
+                    "insee_commune_principale": "14118",
+                    "siren": "200065597",
+                    "forme_juridique": "Communaute urbaine",
+                },
+            }
+        ],
+    }
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        assert str(request.url) == SETTINGS.aom_api
+        return httpx.Response(200, json=payload)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        aoms = discover_aoms(client, SETTINGS)
+    assert len(requests) == 1
+    assert aoms == [
+        Aom(
+            nom="CU Caen la Mer",
+            departement="14",
+            insee_commune_principale="14118",
+            siren="200065597",
+            forme_juridique="Communaute urbaine",
+        )
+    ]
+
+
+def test_write_aom_coverage_report_orders_uncovered_first(tmp_path):
+    caen = _aom("CU Caen la Mer", "14", "200065597")
+    rennes = _aom("Rennes Metropole", "35", "243500139")
+    coverages = classify_aom_coverage(
+        [rennes, caen],
+        [_inventory_row("83281", [{"type": "epci", "insee": "243500139"}])],
+        date(2026, 10, 13),
+        {"014", "035"},
+    )
+    output = tmp_path / "aom_coverage.csv"
+    write_aom_coverage_report(output, coverages)
+    with output.open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    assert [row["nom"] for row in rows] == ["CU Caen la Mer", "Rennes Metropole"]
+    assert rows[0]["status"] == "uncovered"
+    assert rows[1]["status"] == "dedicated"
+
+
+def test_region_departments_cover_every_metropolitan_department():
+    from acquire.discovery import _REGION_DEPARTMENTS
+
+    all_departments = {
+        department
+        for departments in _REGION_DEPARTMENTS.values()
+        for department in departments
+    }
+    normalised = {
+        f"0{code}" if len(code) == 2 else code for code in all_departments
+    }
+    assert normalised == SETTINGS.metropolitan_departments
+
+
+def test_cli_check_aom_coverage_persists_a_report(tmp_path, monkeypatch, capsys):
+    import acquire.cli as cli
+
+    manifest = tmp_path / "sources.yaml"
+    save_manifest(manifest, [])
+    inventory = tmp_path / "gtfs_inventory.csv"
+    with inventory.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            [
+                "resource_id", "available", "gtfs_valid_zip", "gtfs_is_gtfs",
+                "gtfs_last_service_date", "covered_area",
+            ]
+        )
+        writer.writerow(
+            [
+                "83024", "True", "True", "True", "2028-01-01",
+                json.dumps([{"type": "epci", "insee": "200065597"}]),
+            ]
+        )
+
+    payload = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "properties": {
+                    "nom": "CU Caen la Mer",
+                    "departement": "14",
+                    "insee_commune_principale": "14118",
+                    "siren": "200065597",
+                    "forme_juridique": "Communaute urbaine",
+                }
+            }
+        ],
+    }
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+    )
+    monkeypatch.setattr(cli.httpx, "Client", lambda **kwargs: client)
+    settings_path = Path(__file__).parents[2] / "config" / "acquisition.yaml"
+    assert (
+        main(
+            [
+                "--manifest", str(manifest),
+                "--check-aom-coverage",
+                "--acquisition-config", str(settings_path),
+                "--reference-date", "2026-10-13",
+            ]
+        )
+        == 0
+    )
+    assert (tmp_path / "gtfs_aom_coverage.csv").is_file()
+    assert "dedicated resource: 1" in capsys.readouterr().out
 
 
 def test_overture_parquet_filter_includes_corsica_and_box_edges(tmp_path):

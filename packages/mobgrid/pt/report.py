@@ -2,17 +2,150 @@
 
 from __future__ import annotations
 
+import csv
+from datetime import date
 from pathlib import Path
 
 import yaml
 
-from mobgrid.pt.config import GtfsRebuildConfig
+from mobgrid.pt.config import GtfsRebuildConfig, OpeningsListPolicy
+from mobgrid.pt.pt_changes import OpeningDerivedChange
+from mobgrid.pt.pt_openings import apply_openings_matches
 from mobgrid.pt.relation_pipeline import (
     GridPoint,
     RelationCalibrationRun,
     RouteRun,
     network_relation_coverage,
 )
+
+_INERT_OUTCOME_FAMILIES = frozenset(("bus", "ferry"))
+
+
+def _national_policy(config: GtfsRebuildConfig) -> str:
+    policy = config.national_policy
+    if policy is None:
+        return "_No `national_policy` configured._"
+    lines = [
+        f"Decided {policy.decision_date}. Precedence, highest first: "
+        + " > ".join(f"`{source}`" for source in policy.precedence) + ".",
+        "",
+        "| Family | Rule | Notes |",
+        "|---|---|---|",
+    ]
+    for family, family_policy in sorted(policy.families.items()):
+        lines.append(
+            f"| {family} | `{family_policy.rule}` | "
+            f"{family_policy.notes or '-'} |"
+        )
+    openings = policy.openings_list
+    lines.append("")
+    lines.append(
+        f"Openings list: `{openings.source_csv}` mapped per network with "
+        "`mobgrid.pt map-openings` into "
+        f"`{openings.mapping_csv}`, restricted to "
+        f"{'/'.join(openings.include_row_confidence)}-confidence rows; "
+        "applied with `mobgrid.pt apply-openings` when the match itself is "
+        f"{'/'.join(openings.apply_match_confidence)}. A row whose state is "
+        f"`{openings.known_gap_state}` at either date has no 2026 GTFS "
+        "counterpart and is listed as a known gap below, never applied. "
+        + ("`to_review`/`not_applied` candidates are informational only; "
+           "nothing in the pipeline waits for them."
+           if policy.to_review_is_informational else "")
+    )
+    return "\n".join(lines)
+
+
+def _openings_network_coverage(
+    openings_csv_path: str | Path, mapping_csv_path: str | Path
+) -> str:
+    """Share of high/medium-confidence networks mapped with `map-openings` so far."""
+    with Path(openings_csv_path).open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    high_medium_networks = {
+        row["network"] for row in rows if row.get("confidence") in ("high", "medium")
+    }
+    mapped_ids: set[str] = set()
+    mapping_path = Path(mapping_csv_path)
+    if mapping_path.is_file():
+        with mapping_path.open(encoding="utf-8", newline="") as stream:
+            mapped_ids = {row["opening_id"] for row in csv.DictReader(stream)}
+    mapped_networks = {
+        row["network"] for row in rows if row["id"] in mapped_ids
+    }
+    remaining = sorted(high_medium_networks - mapped_networks)
+    return (
+        f"{len(mapped_networks)} of {len(high_medium_networks)} high/medium-"
+        f"confidence networks mapped so far; {len(remaining)} remaining "
+        "(see `docs/progress.md` for the per-network `map-openings` "
+        "command list)."
+    )
+
+
+def _instruction_cell(change: OpeningDerivedChange, state_date: date) -> str:
+    instruction = change.instruction_at(state_date)
+    if instruction is not None:
+        return instruction
+    if change.unhandled_remove_at(state_date):
+        return f"remove (unhandled change_type={change.change_type!r})"
+    return "no instruction (falls through)"
+
+
+def _openings_application(
+    openings_csv_path: str | Path,
+    mapping_csv_path: str | Path,
+    pt_changes_path: str | Path,
+    openings_list: OpeningsListPolicy | None,
+) -> str:
+    kwargs = {}
+    if openings_list is not None:
+        kwargs = {
+            "include_row_confidence": openings_list.include_row_confidence,
+            "apply_match_confidence": openings_list.apply_match_confidence,
+        }
+    result = apply_openings_matches(openings_csv_path, mapping_csv_path, **kwargs)
+    lines = [
+        _openings_network_coverage(openings_csv_path, mapping_csv_path),
+        "",
+        f"- Applied (written to `{pt_changes_path}`'s `from_openings`): "
+        f"{len(result.applied_opening_ids)} rows ({len(result.applied)} "
+        f"route-level edits -- a row may resolve to several routes)",
+        f"- Remove instructions not applied, needs attention (one WARNING "
+        f"logged for each): {len(result.warnings)}",
+        f"- Not applied by design (low confidence, no `remove` state yet, "
+        f"or a change_type that never gives an instruction): "
+        f"{sum(result.not_applied_by_design.values())}",
+        f"- Closed before 2026 (`state_2022`/`state_2024` = "
+        f"`add`, no 2026 GTFS counterpart): {len(result.closed_before_2026)}",
+    ]
+    if result.not_applied_by_design:
+        lines.append("\n| Not-applied-by-design reason | Count |\n|---|---:|")
+        for reason, count in sorted(result.not_applied_by_design.items()):
+            lines.append(f"| {reason} | {count} |")
+    if result.warnings:
+        lines.append(
+            "\n**Needs attention -- remove instructions that failed to "
+            "match:**\n"
+        )
+        lines.extend(f"- {line}" for line in result.warnings)
+    if result.applied:
+        lines.append(
+            "\n| Opening id | Network | Route | Change type | 2022 "
+            "instruction | 2024 instruction | Match |"
+            "\n|---|---|---|---|---|---|---|"
+        )
+        for change in sorted(result.applied, key=lambda item: item.opening_id):
+            lines.append(
+                f"| {change.opening_id} | {change.network} | "
+                f"{change.route_id} | {change.change_type} | "
+                f"{_instruction_cell(change, date(2022, 1, 1))} | "
+                f"{_instruction_cell(change, date(2024, 1, 1))} | "
+                f"{change.match_confidence} |"
+            )
+    if result.closed_before_2026:
+        lines.append("\n**Known gap -- lines closed before 2026:**\n")
+        lines.extend(f"- {line}" for line in result.closed_before_2026)
+    return "\n".join(lines)
+
 
 
 def _recommended(run: RelationCalibrationRun) -> str:
@@ -23,8 +156,14 @@ def _recommended(run: RelationCalibrationRun) -> str:
     ]
     for family, point in sorted(run.chosen.items()):
         score = point.score
+        # Bus/ferry no longer cut or use theta to decide their outcome
+        # (2026-10-15 decision): both are shown as not applicable rather
+        # than the grid's arbitrary tie-break value.
+        inert = family in _INERT_OUTCOME_FAMILIES
+        k_cell = "n/a" if inert else str(point.k)
+        theta_cell = "n/a" if inert else f"{point.theta:.1f}"
         lines.append(
-            f"| {family} | {point.r_m} | {point.k} | {point.theta:.1f} | "
+            f"| {family} | {point.r_m} | {k_cell} | {theta_cell} | "
             f"{point.geometry_share:.1f} | {score.known_correct}/"
             f"{score.known_total} | {score.f1:.2f} | "
             f"{score.false_change_rate:.2%} |"
@@ -236,8 +375,10 @@ def _candidate_review_section(pt_changes_path: str | Path) -> str:
     not_applied = raw.get("not_applied", [])
     lines = [f"Full evidence for every candidate is in `{path}`.", ""]
     lines.append(
-        f"### To review ({len(to_review)} of up to 50, networks with "
-        "coverage >= 90%, ranked BHNS/express first then by trips)"
+        f"### To review ({len(to_review)} candidates: every BHNS/express "
+        "bus/ferry route, plus every bus/ferry route dropped under the "
+        "fixed name/geometry-share rule, with no cap; rail keeps its own "
+        "90%-coverage gate and top-30-by-trips cap, ranked by trips)"
     )
     if to_review:
         lines.append(
@@ -282,6 +423,8 @@ def write_report(
     path: str | Path,
     *,
     pt_changes_path: str | Path = "config/pt_changes.yaml",
+    openings_csv_path: str | Path = "config/French transit openings 2022 to 2026.csv",
+    mapping_csv_path: str | Path = "config/pt_openings_mapping.csv",
 ) -> None:
     """Write all calibration evidence required by section 5.6."""
     text = f"""# Step 0: GTFS rebuilding test (section 5.6)
@@ -291,27 +434,52 @@ by geometry matching**, then spatially verifies the matched relation portions.
 Results come from each route's most-travelled pattern on
 **{config.reference_date}**.
 
-## Bus and ferry policy (2026-10-14 decision)
+## National policy (2026-10-15 decision: a national model, no manual review)
+
+{_national_policy(config)}
+
+## PT openings list: applied changes and known gaps
+
+{_openings_application(
+        openings_csv_path,
+        mapping_csv_path,
+        pt_changes_path,
+        config.national_policy.openings_list if config.national_policy else None,
+    )}
+
+## Former bus/ferry/BHNS automatic rule (historical, no longer applied)
 
 Every 2026 bus and ferry route is kept in both past states by default; only
-`confirmed` entries of `config/pt_changes.yaml` are ever applied. BHNS/express
-routes are the one exception: they are identified by name or description
-(`Express`, `BHNS`, `Liane(s)`, `Chronobus`) and verified like a tram, cut at
-uncovered ends before `theta`, using dedicated bus infrastructure in OSM
-(`highway=busway`/`bus_guideway`, `busway=*`, `lanes:bus=*`, not under
-construction or proposed) instead of the regular kept/dropped rule. All other
-detected bus/ferry changes are candidates for manual review only (see below).
+`confirmed` entries and now `from_openings` entries of `config/pt_changes.yaml`
+are ever applied -- see the national policy above. The rule below was the
+automatic bus/ferry/BHNS outcome rule used through 2026-10-15's calibration;
+it is kept here as a historical record of how the `chosen`/screening numbers
+in the next section were produced, but it is **not** applied to any built
+state any more. BHNS/express routes used to be the one exception: identified
+by name or description (`Express`, `BHNS`, `Liane(s)`, `Chronobus`) and
+verified like a tram, cut at uncovered ends before `theta`, using dedicated
+bus infrastructure in OSM (`highway=busway`/`bus_guideway`, `busway=*`,
+`lanes:bus=*`, not under construction or proposed) instead of the regular
+kept/dropped rule. Every other bus/ferry route used a fixed, non-calibrated
+outcome rule instead of `theta`: a name match covering at least 50% of stops
+is `kept`; a name match below 30% is treated as a homonym (a coincidental
+ref/name match, not the same line) and discarded in favour of the geometry
+pass; a geometry match reaching 50% is `kept-renamed`; otherwise the route is
+`dropped`. Ferry coverage was checked against a relation's member stops and
+piers only, never its ways, within a fixed 200 m regardless of the calibrated
+`r_m`. All detected bus/ferry/metro/rail changes below remain informational
+only (`to_review`/`not_applied`), never auto-applied.
 
-## Recommended parameters
+## Recommended parameters (historical reference; tram only is applied)
 
 The ranking maximises exact known-case outcomes, then known-case F1, then
 minimises the false-change rate among presumed-unchanged routes. Rail reuses
 metro parameters because section 5.6 has no labelled rail case; ferry reuses
-bus parameters and is never cut.
+bus parameters and is never cut. Under the 2026-10-15 national policy above,
+only **tram** is actually applied automatically; bus, ferry, metro and rail
+are shown for historical/screening reference only.
 
 {_recommended(run)}
-
-Values are written to `config/gtfs_rebuild.yaml` as `TODO(confirm)`.
 
 ## Known cases: expected versus obtained
 
@@ -325,22 +493,32 @@ that were incorrectly cut or dropped; `kept-renamed` is not a false change.
 
 {_score_table(run.grid)}
 
-## Bus and ferry OSM relation coverage, by network and date
+## Bus and ferry OSM relation coverage, by network and date (historical)
 
 Share of each network's main patterns that found any OSM relation by name or
-geometry; the review-list eligibility filter below requires at least 90%.
+geometry, from the retired calibration above. Kept as historical context
+only; no longer gates anything (2026-10-15 national policy -- see above).
 
 {_bus_coverage_table(run)}
 
-## BHNS/express bus classification
+## BHNS/express bus classification (historical)
+
+The former BHNS/express automatic cut rule's classification, kept as
+historical context only; BHNS now follows bus's default-keep-except-
+openings policy like any other bus route.
 
 {_bhns_classification(run)}
 
-## Candidate route changes for manual review
+## Candidate route changes (informational only, section 5.6 point 6)
+
+Nothing in the pipeline waits for this list any more (2026-10-15 national
+policy): a route's presence in a built state comes only from
+`config/pt_changes.yaml`'s `confirmed`/`from_openings` entries (precedence
+above). Every other detected change below is kept purely as evidence.
 
 {_candidate_review_section(pt_changes_path)}
 
-## Routes requiring review, by test EPCI
+## Routes requiring review, by test EPCI (informational only)
 
 {_epci_sections(run, config)}
 
@@ -350,7 +528,7 @@ Every route in these network/date combinations is retained as `not-testable`.
 
 {_flagged_networks(run)}
 
-## Rail manual review
+## Rail manual review (informational only)
 
 Stops outside the configured OSM coverage are excluded from n. Routes 7601
 and 951-953 must remain buses when their GTFS `route_type` is 3.
