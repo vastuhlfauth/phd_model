@@ -1,6 +1,6 @@
 # 15. Risks and open points
 
-- **Rebuilt PT supply.** Both states use 2026 timetables: lines closed before 2026 are missing, frequencies are those of 2026, and the stop-matching rule can keep lines whose stops are shared or still mapped; the calibration measures this.
+- **Rebuilt PT supply.** Both states use 2026 timetables: lines closed before 2026 are missing (8 known), frequencies are those of 2026, and changes outside trams depend on the completeness of the openings list; ordinary bus routes are those of 2026. OSM route relations are too incomplete for buses and rail to support an automatic rule (section 5.6).
 - **BPE.** The retained groups are defined in two nomenclatures (2021 and 2023), and BPE 2025 stands for the 2023 state, two years later.
 - **Fichiers fonciers.** Restricted access; public premises poorly described (hence OSM for the public sector); `cconac` of medium quality; variables that change between millésimes.
 - **Origins imputation.** Large natural-level cells in rural areas leave most of the location to the keys; the validation by cell size measures this, and the 2023 Filosofi-like data rest on a model.

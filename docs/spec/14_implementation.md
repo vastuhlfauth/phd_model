@@ -35,7 +35,7 @@ mobility-france/
 │       ├── osm/             extract, edges, bike_infra, elevation, speeds
 │       ├── graph/           csr, dijkstra, simplify
 │       ├── layers/          gridgraph, walk, trunk
-│       ├── pt/              gtfs_clean, gtfs_rebuild, raptor, stop_tables, r5py
+│       ├── pt/              gtfs_clean, osm route relations, gtfs_rebuild, pt_changes, pt_openings, pt_policy, route_edits, raptor, r5py
 │       ├── energy/          rates, walk, bike, legs
 │       ├── od/              compute, products, aggregate, store
 │       ├── budget/          emp2019 days, daily energy
@@ -54,6 +54,8 @@ mobility-france/
 - Graphs are CSR arrays; searches always take a cutoff, support several sources with initial offsets, and fill the three products of section 10.2.
 - DuckDB for tables, numba for searches, no pandas in loops; parameters only in `config/`; every module tested on a pilot fixture (one département with its halo); outputs are deterministic.
 - Any change to output schemas or units updates this document and the tests.
+- Agents never start long jobs (national extractions, calibrations, downloads): they give the user the command. Long jobs are resumable, checkpoint completed stages and write a dated log and summary under `logs/`; the default test run excludes pilot tests.
+- `docs/progress.md` records every decision taken while coding, the status of each step and the open points; agents read it at the start of each task and update it at the end.
 
 ## 14.4 Review of the existing scripts
 
@@ -61,7 +63,7 @@ The current scripts contain useful logic to keep; most changes concern formats, 
 
 | Script | What it does | Keep | Change |
 |---|---|---|---|
-| `00_download_neighbor_pbf.py` | Downloads Geofabrik extracts dated 2022-01-01 for neighbouring countries and border sub-regions | The country and sub-region list; pinning a snapshot date | Move into `acquire` with the manifest; add the 2024-01-01 extracts and France; verify .md5 checksums; derive the list from the destination NUTS3 and halo |
+| `00_download_neighbor_pbf.py` | Downloads Geofabrik extracts dated 2022-01-01 for neighbouring countries and border sub-regions | The country and sub-region list; pinning a snapshot date | Move into `acquire` with the manifest; add the 2024-01-01 extracts and France; check sizes, since dated extracts have no .md5 file; derive the list from the destination NUTS3 and halo |
 | `00_data_import_preparation.py` | Imports BPE 2021 with a curated list of equipment types; turns Filosofi 2019 200 m cells into centroids; builds NUTS3 boundaries; extracts OSM beaches and ski areas | The NUTS3 neighbour logic; the principle of a curated list | Review the code list against the official labels and the 2023 code changes (section 7.3); BPE 2021 and 2025; Filosofi 2021 through section 6; Parquet in EPSG:3035 with cell ids; NUTS from GISCO; DuckDB reading |
 | `00_extract_parks_coast.py` | Extracts parks, protected areas and sea beaches as centroids (pyosmium, WSL only) | Tag selection; the sea-beach filter by distance to the coastline | Access points every 50 m on contours; parks of at least 2,500 m²; rivers; first in reach (section 7.4); DuckDB or QuackOSM instead of pyosmium, so it also runs on Windows; EPSG:3035 |
 | `00_prepare_public_transport.py` | Validates GTFS feeds, makes ids unique, filters calendars, snaps stops to grid points, groups stops, generates transfers | Validation checks, id prefixes, route_type repair, feed discovery | Rebuilding rule of section 5.6; the four points below the table |
@@ -75,15 +77,15 @@ Points to fix in the PT preparation, in addition to the move to DuckDB SQL:
 - **Stops are moved to grid-cell coordinates** when within 250 m of a grid point. Stop areas are network elements and access is computed from 200 m cells (section 3); stops should keep their own coordinates.
 - **Service selection.** The code keeps every service running on any weekday whose date range overlaps the reference date, and ignores removals in `calendar_dates.txt`. It should keep the services active on the exact reference date: day-of-week flag, date range, additions and removals.
 - **Time window.** Cutting `stop_times` to 07:00–09:30 truncates trips that start before or end after the window. Whole trips running in the 08:00–09:00 window (plus a margin) should be kept.
-- **Transfers and duplicates.** Transfers are straight-line pairs built in Python loops; they should come from the walking network. Trips duplicated across feeds (TER in national and regional feeds) are not removed yet.
+- **Transfers and duplicates.** Transfers are straight-line pairs built in Python loops; they should come from the walking network. Trips duplicated across feeds (TER in national and regional feeds) are not removed yet, and agencies repeated in regional aggregates are not handled (section 8.6).
 
 ## 14.5 First files to build
 
-In this order, on one pilot département with its halo and for the 2021 baseline; each step has a test that must pass before the next. Step 0 can start immediately.
+In this order, on one pilot département with its halo and for the 2021 baseline; each step has a test that must pass before the next. Status on 16 October 2026: steps 0, 1 and 2 are merged (acquisition is national); the status of each step is kept in `docs/progress.md`.
 
 | # | Package / files | Purpose | Acceptance test |
 |---|---|---|---|
-| 0 | GTFS rebuilding test (DuckDB only) | Stop matching between 2026 GTFS and OSM of 1 January 2022 and 2024 on the five test EPCIs and the metro cases; share thresholds by mode family; cutting of extensions | Score table; parameters r, θ and k chosen |
+| 0 | GTFS rebuilding (DuckDB only) | OSM route relations of 1 January 2022 and 2024; matching of 2026 routes by name then geometry; tram rule calibrated; national openings list mapped to the GTFS routes and applied (section 5.6) | Known cases and false-change rates per family reported; tram parameters chosen; every row of the openings list in exactly one category |
 | 1 | `common`: config, grid cells, DuckDB I/O | Parameters, cell ids and INSPIRE codes, nesting, 24-neighbour stencil, tiles; Parquet and Arrow helpers | Round trip with INSEE 200 m and 1 km codes; 25 children per 1 km cell; configuration rejects invalid values |
 | 2 | `acquire`: manifest and downloaders | INSEE files, data.gouv.fr, transport.data.gouv.fr, Géoplateforme, GISCO, Eurostat, Geofabrik, Overture S3; 2021 and 2023 vintages | Pilot inputs downloaded twice give identical checksums; manifest records every vintage; Overture extract archived |
 | 3 | `landgrid/origins` | Fichiers fonciers 2022 at building points, households, the two variants for individuals, Filosofi 2021 totals | Natural-level totals preserved exactly; comparison with INSEE 200 m and the Eurostat grid reported |
@@ -106,7 +108,7 @@ Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (time
 | API clients and downloads | httpx or requests; eurostat; pynsee for INSEE files in its catalogue (`get_file_list`, `download_file`), local data, BDM series and Sirene; direct calls to the Melodi API, which pynsee does not cover; overturemaps (optional) | All calls go through `acquire`; pynsee's file catalogue is maintained by volunteers, so each recent dataset (Filosofi 2021, EMP and MOBPRO 2021 and 2023, census 2023, BPE) is checked in step 2 |
 | Arrays and compiled searches | numpy, numba | CSR graphs, Dijkstra, RAPTOR, products |
 | Geometry | shapely 2 (vectorised), pyproj; exactextract | exactextract gives the exact share of each cell covered by a polygon, where rasterio.features only marks cells as in or out; contour access points with shapely |
-| Snapping and matching | scipy.spatial (cKDTree) | Nearest node per point; GTFS stops to OSM stops |
+| Snapping and matching | scipy.spatial (cKDTree); DuckDB spatial | Nearest node per point; GTFS stops to OSM route relations (section 5.6) |
 | Elevation | rasterio | Sampling IGN elevation at nodes |
 | Statistics | statsmodels or scikit-learn | Household size model; Filosofi-like 2023; daily energy budget |
 | Configuration and scenarios | pydantic, PyYAML | Typed validation of every parameter and edit |
@@ -123,7 +125,8 @@ Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (time
 | Redistribution preserving zone totals (dasymetric) | Origins at 200 m; jobs within EPCI | Key per variable; totals checked exactly |
 | Regression of household size on dwelling characteristics | Keys for individuals; Filosofi-like 2023 | Estimated across natural-level cells |
 | Iterative proportional fitting | Consistency of variables within cells | Age groups, household types |
-| Nearest-neighbour matching (KD-tree) | GTFS stops to OSM stops | Per mode family, with distance r |
+| Route-relation matching and track coverage | Past PT states (section 5.6) | Name pass, then geometry pass (share of stops within r); coverage by any in-service same-mode way; DuckDB spatial joins with a bounding-box prefilter |
+| Route edits | Openings list (section 5.6) | Cut at a named stop, skip a stop, combined per route; drop only for new lines |
 | Exact polygon-grid intersection; boundary crossings | Nature access points, land-use areas | Plus OSM entrances and points every 50 m |
 | Bounded multi-source Dijkstra with secondary weights | All road and walk searches, grid edges, access tables | Binary heap with stale-entry skipping; reusable workspace; Dial's bucket queue as a faster variant with integer times |
 | Binned accumulation and k-nearest labels during the search | Opportunity curves; nearest of each type | A few array updates per settled flagged cell |
@@ -143,7 +146,7 @@ Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (time
 
 | Phase | Content | Deliverable |
 |---|---|---|
-| 0. Data and origins | GTFS rebuilding test; acquisition package and manifest with 2021 and 2023 vintages; origins at 200 m on the pilot; BPE list review | Thresholds; versioned base tables; origins validation |
+| 0. Data and origins | GTFS rebuilding (done); acquisition package and manifest with 2021 and 2023 vintages (done, national); origins at 200 m on the pilot; BPE list review | Thresholds; versioned base tables; origins validation |
 | 1. Pilot | Opportunities and destination flags; all network layers with leg formulas; products; validation; r5py vs RAPTOR benchmark and fast variant; speed calibration against OSRM; storage decisions; EMP 2019 budget re-estimation | Validation report; engine, storage, allocation and energy choices |
 | 2. National baseline | Origins and opportunities nationally; tiled national run, all modes, for 2021 | Baseline 2021 tables and products |
 | 3. Second state and scenarios | 2023 build; scenario engine (timeline, triage, bounds, caching); back-test 2021 to 2023 | 2023 tables; back-test report; scenario runs with logs |

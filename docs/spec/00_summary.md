@@ -1,10 +1,12 @@
 # Fast, scenario-ready multimodal O-D costs for metropolitan France
 
-_This folder is the Markdown version of proposal v8. File index: [README.md](README.md)._
+_This folder is the Markdown version of proposal v9. File index: [README.md](README.md)._
 
 _Literature review and methodological proposal_
 
-_Working document · version 8 · 9 October 2026_
+_Working document · version 9 · 16 October 2026_
+
+> **Changes in version 9.** Past public transport supply is rebuilt by a national rule that needs no manual review: the stop-matching test of version 8 failed, and section 5.6 is rewritten around OSM route relations (an automatic rule for trams) and a curated national list of openings 2022–2026 applied automatically for every mode, with its results. Acquisition is national; Geofabrik dated extracts have no checksum files and are checked by size; the GTFS inventory and the coverage of transport authorities are described (sections 5.1, 5.3, 5.4). The PT build keeps one copy of each agency repeated in regional aggregates and rebuilds past states from the edits of section 5.6 (section 8.6). The earliest Géovélo file stands for 2021 (section 8.1). Planned lines of the openings list feed the scenario timeline (section 11.2). Validation, implementation status, conventions, algorithms and risks are updated (sections 13 to 15).
 
 > **Changes in version 8.** BPE 2025 stands for the 2023 state; NUTS boundaries are those of 2024; the 14 EMC² surveys are listed (section 5). Known network changes in the test EPCIs are set out for the GTFS rebuilding (section 5.6). Car ownership becomes a commune-level model of accessibility and income (section 6.4). The Géovélo cycle-infrastructure dataset is used for validation and possibly as the base network (section 8.1). The vehicle factor is replaced by the Compendium's riding rate and the crowding term (section 9.5). The monetary cost is simplified to fixed and per-km costs from the official mileage scale (section 9.10). The existing Google Maps validation scripts are reviewed and integrated (sections 12, 13 and 14.4).
 
@@ -17,7 +19,7 @@ The goal is to produce, for metropolitan France, travel time, distance and bodil
 The proposal rests on ten decisions:
 
 - **Two modules.** `landgrid` builds origins and opportunities per cell, year and scenario; `mobgrid` builds networks, O-D costs and accessibility. They share the grid and configuration, and can run independently.
-- **Two states: 2021 and 2023.** Physical stocks (buildings, networks, services) are taken at 1 January of the following year; statistics on people and jobs are taken for the state year. The 2023 state serves to back-test the scenario engine against observed change.
+- **Two states: 2021 and 2023.** Physical stocks (buildings, networks, services) are taken at 1 January of the following year; statistics on people and jobs are taken for the state year. Public transport of both states is rebuilt from the 2026 timetables. The 2023 state serves to back-test the scenario engine against observed change.
 - **Origins at 200 m.** Filosofi 2021 (natural level) is redistributed to 200 m cells with dwellings from the Fichiers fonciers located at building points, preserving INSEE totals; a model trained on 2021 generates a Filosofi-like 2023.
 - **Opportunities as control totals times allocation keys,** in one destination grid with a flag per type. Jobs: INSEE totals by EPCI, Fichiers fonciers premises as keys, compared with Overture. Services (BPE) and nature: first ones in reach. Jobs and social: radiative accessibility. Abroad, only jobs and nature.
 - **Resolutions by mode.** Walk and PT from 200 m to 200 m (access to stops is computed on foot at 200 m); bike and car from 1 km to 1 km. Motorways and PT keep their nodes; all other layers are gridded or point-based.

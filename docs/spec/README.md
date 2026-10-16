@@ -1,6 +1,6 @@
 # Specification index
 
-This folder is the Markdown version of the proposal (version 8, 9 October 2026), one file per section. "Section 9.3" in the text refers to subsection 9.3 of `09_trip_legs_energy.md`. Figures are in `figures/`.
+This folder is the Markdown version of the proposal (version 9, 16 October 2026), one file per section. "Section 9.3" in the text refers to subsection 9.3 of `09_trip_legs_energy.md`. Figures are in `figures/`.
 
 ## Files
 
@@ -11,7 +11,7 @@ This folder is the Markdown version of the proposal (version 8, 9 October 2026),
 | `02_literature.md` | 2 | Literature: grids, routing, accessibility, energy, downscaling |
 | `03_architecture.md` | 3 | Two modules, network layers, resolutions |
 | `04_spatial_frame.md` | 4 | Grids, cell ids, representative points, study area, tiles, storage |
-| `05_data_acquisition.md` | 5 | Sources, vintages for 2021 and 2023, access, GTFS rebuilding (5.6) |
+| `05_data_acquisition.md` | 5 | Sources, vintages for 2021 and 2023, access, GTFS inventory, rebuilding of past PT supply (5.6) |
 | `06_origins.md` | 6 | Population and households at 200 m, car ownership |
 | `07_opportunities.md` | 7 | Jobs, services (BPE groups), nature, social, destination flags |
 | `08_networks.md` | 8 | OSM edge table, bike infrastructure, walk, bike, car, trunk, PT |
@@ -26,7 +26,7 @@ This folder is the Markdown version of the proposal (version 8, 9 October 2026),
 
 ## Spec files to read for each step
 
-Steps are those of the table in section 14.5. Give the agent only these files.
+Steps are those of the table in section 14.5. Give the agent only these files. The status of each step is in `docs/progress.md`; steps 0, 1 and 2 are merged.
 
 | Step | Package | Spec files |
 |---|---|---|
@@ -49,6 +49,7 @@ Steps are those of the table in section 14.5. Give the agent only these files.
 |---|---|
 | Walk layer and access tables | `08_networks.md` (8.2) |
 | Car trunk layer | `08_networks.md` (8.5) |
+| PT build: feeds, one copy per agency, past states from the edits of 5.6 | `08_networks.md` (8.6), `05_data_acquisition.md` (5.4, 5.6) |
 | PT engine, fast variant, r5py benchmark | `08_networks.md` (8.6), `10_od_accessibility.md` |
 | Car ownership (needs accessibility) | `06_origins.md` (6.4) |
 | Monetary cost | `09_trip_legs_energy.md` (9.10) |

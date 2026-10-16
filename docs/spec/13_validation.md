@@ -4,7 +4,7 @@
 - **Jobs:** EPCI totals exact by construction; allocation tested at commune level by sector with INSEE EMP; Fichiers fonciers method against the Overture method.
 - **Services:** counts match BPE in each group, in both nomenclatures (section 7.3).
 - **Radiative accessibility:** extended-radiation parameter estimated on MOBPRO flows (jobs) and on the travel surveys (social).
-- **PT rebuilding:** lines correctly kept, dropped or cut on the five test EPCIs and the metro cases (section 5.6).
+- **PT rebuilding (section 5.6):** the tram rule on the known cases (12 of 12 right, no false change among routes presumed unchanged); the openings list checked at every run, each row in exactly one category, residuals and known gaps listed; the PT back-test of 2021 to 2023 limited to openings and extensions.
 - **Bike infrastructure:** OSM against the national cycle-infrastructure dataset (section 8.1).
 - **Mode choice and flows:** MOBPRO 2021 and 2023, modes of commuting and commune-to-commune work flows.
 - **Energy:** walking and cycling formulas against the reference rates of section 9.2; re-estimation of the daily budget on EMP 2019 and the EMC² surveys (section 9.9); sensitivity of mode shares to the rate set and the cycling convention.

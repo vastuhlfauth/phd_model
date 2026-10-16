@@ -2,10 +2,11 @@
 
 ## 5.1 Principles
 
-- **One acquisition package and one manifest.** Every dataset is described once in `config/sources.yaml`: provider, version or release, URL or API query, licence, expected checksum, download date and local path. Downloads are idempotent (skipped when the checksum matches), resumable and logged.
+- **One acquisition package and one manifest.** Every dataset is described once in `config/sources.yaml`: provider, version or release, URL or API query, licence, expected checksum or size, download date and local path. Downloads are idempotent (skipped when the recorded size and SHA-256 match), resumable and logged; a failed file does not stop the batch. A file is verified against the provider's checksum where one is published, otherwise against the advertised size, and its local SHA-256 is recorded.
 - **Raw files are never edited.** A separate conversion step writes Parquet in EPSG:3035 with grid cell ids; every later step reads only these converted tables.
 - **Discovery through APIs where they exist** (data.gouv.fr, transport.data.gouv.fr, IGN Géoplateforme, GISCO, Eurostat, INSEE catalogue); direct versioned URLs otherwise (INSEE files, Geofabrik, Overture).
-- **Restricted data stay local.** The Fichiers fonciers come through a Cerema convention and have no API; the manifest records their local path and millésime.
+- **Restricted data stay local.** The Fichiers fonciers come through a Cerema convention and have no API; the manifest records their local path and millésime, and the files are registered, never downloaded or modified by script.
+- **National coverage from the start.** All sources are acquired for metropolitan France and the destination area abroad, not for the pilot only; the pilot (the Gironde with a 50 km halo) is a processing area.
 - **Archive what cannot be fetched again.** Overture keeps each release online for 60 days only, and transit feeds change constantly: every extract used is stored under `data/raw` with its manifest entry.
 - **One geography for all years.** Communes and EPCI in their 2026 versions, NUTS in its 2024 version; data of 2021 and 2023 are recoded with INSEE's table de passage.
 
@@ -34,19 +35,21 @@ Long addresses are broken over several lines; they read as one URL.
 | Dataset | Vintages | Access | Use |
 |---|---|---|---|
 | Filosofi gridded data, natural level | 2021 | https://www.insee.fr/fr/statistiques/fichier/8735108/Filosofi2021_carreaux_nivNaturel_csv.zip | Origins (section 6) |
+| Filosofi gridded data, natural level and 200 m | 2019 | INSEE, same series | Temporal test of the origins model (section 6.5) |
 | Eurostat census grid (GISCO population grids) | 2021, 1 km (already downloaded) | https://ec.europa.eu/eurostat/web/gisco/geodata/population-distribution/population-grids | Validation of origins; residential change 2020–2021 |
 | Census commune data (RP) | 2021 and 2023, same source | https://www.insee.fr/fr/statistiques/5359146 | Commune control totals; 2023 origins |
 | Census home-to-work file (MOBPRO) | 2021, 2023 | 2021: https://www.insee.fr/fr/statistiques/8205896?sommaire=8205966; 2023: https://www.insee.fr/fr/statistiques/9004795?sommaire=9004842 | Validation of mode choice and of commune-to-commune work flows |
 | Employment at place of work (EMP), replacing Flores | 2021, 2023 | 2021: https://www.insee.fr/fr/statistiques/8202930?sommaire=8205947; 2023: https://www.insee.fr/fr/statistiques/9004561 | Job totals by EPCI and sector; commune validation |
 | BPE (permanent equipment base) | 2021 (downloaded); 2025 | INSEE; nomenclatures: INSEE lists of equipment types for BPE 2021 and BPE 2025; latest vintage: https://www.insee.fr/fr/statistiques/8217525?sommaire=8217537 | Services |
 | Fichiers fonciers | 2022, 2024 (2021 also available) | Cerema convention, local files | Dwellings, premises, sectors of premises |
-| OpenStreetMap | 1 January 2022 and 2024 | https://download.geofabrik.de/ (dated extracts with .md5) | Networks, bike infrastructure, nature, public-sector surfaces, PT stops |
-| Overture places | Release in use, archived | Public S3 GeoParquet, read with DuckDB | Comparison of job keys; foreign jobs |
-| GTFS | 2026 feeds | transport.data.gouv.fr API; foreign portals | Public transport, rebuilt per state (section 5.6) |
+| OpenStreetMap | 1 January 2022 and 2024 | https://download.geofabrik.de/ (dated extracts of France and 13 neighbouring regions; no checksum file is published for dated extracts, so files are checked by size) | Networks, bike infrastructure, nature, public-sector surfaces, PT stops and route relations (section 5.6) |
+| Overture places | Release 2026-09-23.1, archived | Public S3 GeoParquet, read with DuckDB | Comparison of job keys; foreign jobs |
+| GTFS | 2026 feeds, snapshot of October 2026 | transport.data.gouv.fr API, producer resources (section 5.4); foreign portals | Public transport, rebuilt per state (section 5.6) |
+| Openings and closures of public transport lines | 1 January 2022 to October 2026, plus planned lines | Compiled for this project from public sources, with sources per entry: `config/French transit openings 2022 to 2026.csv` | Past PT states (section 5.6); dated events for scenarios (section 11.2) |
 | National travel survey (EMP 2019) | 2018–2019 | SDES public tables, open licence (also on data.gouv.fr) | Daily energy budget; trip rates by purpose |
 | Households by number of cars (census, via the Tableau de bord des mobilités durables) | 2011, 2016, 2022; communes | https://www.data.gouv.fr/datasets/part-des-menages-selon-le-nombre-de-voiture-a-disposition | Car ownership grid (section 6.4) |
 | Territorial travel surveys (EMC², Cerema) | 14 territories, surveys 2018–2022 (section 5.4) | Cerema [TO CONFIRM: access conditions] | Daily energy budget at local scale; trip rates by purpose; validation |
-| Cycle infrastructure (Géovélo, national schema) | Monthly files since mid-2022 [TO CONFIRM: earlier version for 2021] | https://transport.data.gouv.fr/datasets/amenagements-cyclables-france-metropolitaine | Validation of OSM bike infrastructure; possibly the base bike network (section 8.1) |
+| Cycle infrastructure (Géovélo, national schema) | Monthly files since mid-2022; the earliest (18 July 2022) stands for the 2021 state, the January 2024 file for the 2023 state | https://transport.data.gouv.fr/datasets/amenagements-cyclables-france-metropolitaine | Validation of OSM bike infrastructure; possibly the base bike network (section 8.1) |
 | NUTS boundaries | NUTS 2024 | https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/territorial-units-statistics | Study area |
 | Communes to EPCI table | 2026 | https://www.insee.fr/fr/information/7671844 | Aggregation zones |
 | Communes table de passage | Since 2003 | https://www.insee.fr/fr/information/7671867 | Recoding 2021 and 2023 data to 2026 |
@@ -60,9 +63,11 @@ The national building reference (RNB) is not used.
 ## 5.4 Access notes
 
 - **transport.data.gouv.fr:** `/api/datasets` returns all datasets and their resources in one call, `/api/datasets/{id}` the details; no authentication or quota; documentation at `/swaggerui`.
+- **GTFS inventory.** Only producer resources are kept: community copies are excluded unless they are the producer's own feed under a community tag (TCL Lyon, resource 81943, forced in by configuration). Each resource is downloaded from the producer's URL; if that fails, from its own latest archive on transport.data.gouv.fr when it is less than 60 days old, never from older archives or other mirrors. The October 2026 snapshot has 552 producer resources in 486 datasets; 551 were downloaded, 536 pass the offline checks (valid archive, required files, service dates), 47 have expired calendars and 15 are unusable; all are listed with their errors in `config/gtfs_inventory.csv`, and none is repaired or deleted automatically. Regional and departmental aggregates overlap local feeds: of the 1,127 transport authorities (AOM) of metropolitan France, 262 have a feed of their own, 865 are covered only through an aggregate, and none is uncovered. Some networks publish only on data.gouv.fr and not on the national access point (Caen's Twisto); they are covered by their regional aggregate (Normandy). The PT build keeps one copy of each agency (section 8.6).
 - **GTFS history.** A 2026 feed cannot be filtered back to 2021 or 2023: its calendars only cover its own validity period. No archive goes further back than 2026 (transport.data.gouv.fr resource history, Mobility Database, Transitland), so past supply is rebuilt (section 5.6).
+- **Geofabrik:** dated extracts (`-220101`, `-240101`) are published without `.md5` files, unlike the current extracts; the advertised size is recorded at discovery and checked at download (4.14 GB for France on 1 January 2022, 4.50 GB on 1 January 2024).
 - **IGN Géoplateforme download:** `https://data.geopf.fr/telechargement/capabilities` lists resources, then `/resource/{name}`, `/resource/{name}/{sub}` and `/download/{name}/{sub}/{file}`; limited to 10 requests per second per IP address.
-- **Overture:** `s3://overturemaps-us-west-2/release/{release}/theme=places/type=place/*`, queried with DuckDB and a bounding-box filter. Release 2026-09-23.0 (schema v2.0.0) removed the `categories` field: queries must use `taxonomy.primary`, `taxonomy.hierarchy`, `taxonomy.alternates` or `basic_category`, and can filter on `operating_status`. The current scripts use `categories.primary` and will fail on newer releases. Releases stay online for 60 days, so the extract used must be archived locally.
+- **Overture:** `s3://overturemaps-us-west-2/release/{release}/theme=places/type=place/*`, queried with DuckDB and a bounding-box filter on the national box (west, south, east, north: −5.5, 40.4, 10.0, 51.6); the release in use is 2026-09-23.1. Release 2026-09-23.0 (schema v2.0.0) removed the `categories` field: queries must use `taxonomy.primary`, `taxonomy.hierarchy`, `taxonomy.alternates` or `basic_category`, and can filter on `operating_status`. The current scripts use `categories.primary` and will fail on newer releases. Releases stay online for 60 days, so the extract used must be archived locally.
 - **INSEE:** BPE 2023 and 2024 (situation at 1 January) are described in INSEE's metadata but cannot be downloaded, so BPE 2025 is used for the 2023 state; its two-year lead is a limitation of the back-test for services. The API catalogue also offers Sirene, BDM, Données locales and Métadonnées. Large files (Filosofi, MOBPRO, EMP) are downloaded as versioned zip or Parquet files.
 - **EMP 2019:** the SDES public tables include households, individuals and daily trips (`K_DEPLOC`, with modes and distances), with residence and trip ends coded by density grid, urban unit, attraction area and region, not by commune.
 - **EMC² surveys (Cerema):** household surveys in which each member describes all trips of the previous day; they were not carried out during COVID lockdowns, so they reflect ordinary mobility. They cover an EPCI or a département, with a finer zoning inside [TO CONFIRM: zoning and leg detail]. The 14 territories:
@@ -89,34 +94,98 @@ Building the whole pipeline for 2021 and for 2023 gives a test of the model on r
 
 ## 5.6 Rebuilding past public transport supply from current GTFS
 
-Both states use a representative school-period weekday of the 2026 feeds, from which the lines that did not exist at the state date are removed. The test is whether a line's stops were already mapped in OpenStreetMap at that date.
+No archived national timetables exist for the two state dates (section 5.4), so both states start from the 2026 feeds: services active on the reference day, Tuesday 13 October 2026 (a school-term weekday), each route being judged on its most-travelled stop pattern that day. For each 2026 route and each state date (1 January 2022 and 1 January 2024), the rebuild decides one of four outcomes: **keep** the route, **cut** it back to its former terminus (extension opened since), **skip** a stop (station opened since) or **drop** it (line opened since). Trips keep their 2026 times on what remains.
 
-1. **OSM stops at the state date.** From the dated extract (1 January 2022 or 2024): nodes and ways tagged `public_transport=platform`, `stop_position` or `station`, `highway=bus_stop`, `railway=station`, `halt`, `tram_stop` or `stop`, and `amenity=bus_station`. Objects carrying lifecycle prefixes (`construction:`, `proposed:`, `disused:`, `abandoned:`) or `railway=construction` are excluded.
-2. **Match each GTFS stop.** A stop is matched if an OSM stop of a compatible mode lies within a distance r of it.
-3. **Score each line** (GTFS route, per direction pattern): n stops, m matched, share s = m / n.
-4. **Drop new lines.** A line whose share s is below a threshold θ, set per mode family (bus, tram, metro, rail), did not exist at the state date and is dropped.
-5. **Cut extensions.** This is the main difficulty: a line extended between the state date and 2026 must lose only its new section, not disappear. The stops of each remaining pattern are read in order; a run of at least k consecutive unmatched stops at one end of the pattern is removed, and the pattern ends at the last matched stop. Trips keep their 2026 times on the remaining section. Isolated unmatched stops inside a pattern are kept, as they are more often gaps in OSM than new stations; a long unmatched run inside a pattern (a new branch or diversion) is listed for review. k, like θ, and the treatment of isolated unmatched stops are tested in the calibration.
+The method must run nationally without manual review. It combines two sources of evidence, in this order of precedence:
 
-**Calibration.** r, θ and k are chosen on cases where the truth is known:
+1. **The national openings list** (section 5.6.1), for every mode;
+2. **The automatic OSM rule** (section 5.6.2), for trams only;
+3. otherwise the route is **kept** as in 2026.
 
-- **Buses:** five test EPCIs covering very different networks: Bordeaux Métropole, Métropole de Lyon, CA Sète Agglopôle Méditerranée, CC Couserans-Pyrénées and CC Marche Occitane – Val d'Anglin, with the known changes listed below and bus changes checked by hand, with r in {25, 50, 100} m, θ in {0.5, 0.6, 0.7, 0.8, 0.9} and k in {1, 2, 3}.
-- **Metros:** line 14 south to Orly and line 11 to Rosny-Bois-Perrier (opened June 2024) must lose their extensions in both states. Line 4 to Bagneux (January 2022) and line 12 to Mairie d'Aubervilliers (May 2022) must lose their extensions on 1 January 2022 and keep them on 1 January 2024. Rennes metro line b (September 2022) must be absent on 1 January 2022 and present on 1 January 2024.
-- **Rail and tram:** the tram cases of Bordeaux and Lyon below; no rail case is available, so rail uses the metro thresholds and the lines dropped or cut are listed for manual review.
-- **Score:** share of lines correctly kept, dropped or cut (precision and recall) per mode family and parameter set; the retained parameters are reported with their scores.
+The first version of this section (proposal v8) matched GTFS stops to OSM stops mapped at each date. It was tested first and failed: 3 of 11 known cases right and a best F1 of 0.02 for buses over 1,574 routes. Stops are shared by several lines and stay mapped after a line changes, new stations are often mapped before they open, and bus stops are unevenly mapped. A line has to be tested as a line, which OSM route relations allow.
 
-Known changes in the test EPCIs, with the expected result of the rule:
+### 5.6.1 The national openings list
 
-| EPCI | Change | Opened | Expected on 1 Jan 2022 / 1 Jan 2024 |
-|---|---|---|---|
-| Bordeaux Métropole | Tram A extended to the airport (about 5 km, 5 stations) | April 2023 | Extension cut / kept |
-| Bordeaux Métropole | Bus Express G (BHNS), Saint-Jean – Saint-Aubin-de-Médoc | June 2024 | Dropped / dropped |
-| Bordeaux Métropole | Circular Bus Express H (temporary routes) | 2025 | Dropped / dropped |
-| Bordeaux Métropole | Tram lines E and F: new names and service patterns on existing tracks, replacing part of line A | December 2025 | Not detectable by stop matching: patterns of 2026 kept on old tracks (limitation) |
-| Métropole de Lyon | Tram T6 extended north, Hôpitaux-Est – La Doua (5.4 km, 10 stations) | 14 February 2026 | Extension cut / cut |
-| Métropole de Lyon | BHNS Part-Dieu – Sept-Chemins | [TO CONFIRM: opening date] | Dropped where opened after the state date |
-| Métropole de Lyon | Trams T9 and T10 | Not opened by October 2026 | Absent from the 2026 feeds; kept as planned projects for scenarios |
-| CA Sète Agglopôle Méditerranée | Express bus line A with the RD2 bus-priority corridor; network reorganised, more frequent | 5 January 2026 | Dropped / dropped; the reorganisation and frequencies are a limitation |
-| CC Couserans-Pyrénées | No new high-level service found (regional coaches, demand-responsive transport, TER at Boussens and Foix) | — | Bus and coach changes checked by hand |
-| CC Marche Occitane – Val d'Anglin | No new high-level service found yet (regional coaches, demand-responsive transport, rail connections) | — | Same |
+**Content.** A list compiled for this project from public sources (operators, transport authorities, press, Wikipedia), with its sources for each entry, of the changes to public transport lines in metropolitan France between 1 January 2022 and October 2026, plus planned openings (`config/French transit openings 2022 to 2026.csv`). Each row gives the network, mode, line, type of change (new line, extension, new station, reopening, restructuring, renaming, relocation, suspension, closure), the section concerned (from, to), the dates, the state of the line on 1 January 2022 and on 1 January 2024 (`keep`, `remove`, `modify` or `add`) and a confidence level (high, medium, low). It has 120 entries: 102 changes that took effect in 47 networks, and 18 planned lines or extensions, which give dated events for scenarios (section 11.2).
 
-**Limits.** Lines that closed before 2026 are not in the 2026 feeds and cannot be recovered. Frequencies and timetables remain those of 2026, and line renamings or reorganisations on existing infrastructure (Bordeaux trams E and F) cannot be detected. Stops can stay mapped after a line closes, and stops shared by several lines are matched whatever the line, which biases toward keeping lines; the calibration measures this bias.
+**Mapping.** Each network of the list is resolved to a GTFS resource of the national inventory (section 5.4); a network that has no feed of its own is resolved to the regional aggregate that carries it (Caen's Twisto network in the Normandy aggregate), and a network whose modes are published in different feeds is resolved per mode (TER Occitanie: rail in the SNCF feed, coaches in the liO feed). Each row is then matched to the 2026 routes of its mode by normalised line code (prefixes such as `TER`, `RER` or `Ligne` removed). When several lines share a code, the names of the stops in `section_from` and `section_to` decide; when no line code matches, a fallback looks for those stop names among the routes of the same mode. Each match is rated `exact`, `stop-confirmed`, `ambiguous` or `none`.
+
+**Application.** Only rows of high or medium confidence with an `exact` or `stop-confirmed` match are applied. Only a `remove` state is an instruction; its effect depends on the type of change:
+
+| Type of change | Effect where the state is `remove` |
+|---|---|
+| New line, reopening | The route is dropped |
+| Extension | The route is cut at `section_from` (its former terminus); the stops up to it are kept |
+| New station | That stop is removed from the route's patterns |
+| Restructuring, renaming, relocation (`modify`) | No instruction: the service existed in another form (Bordeaux trams E and F run on the former tracks of A and C) |
+| Suspension | No instruction: a temporary works closure on 1 January does not remove a line from a state meant to represent the normal network |
+| Closure (`add`) | Known gap: the line is absent from the 2026 feeds and cannot be rebuilt; it is left out of the state and reported |
+
+Several rows acting on one route combine: metro 14, extended at both ends in 2024, is cut at both ends, and several new stations are all skipped. Only a new line or a reopening drops a route. An extension or a new station applies to every route of the line where its anchor stop is found (the several missions of a TER line); if the anchor is not found, the edit is logged and the route is kept whole.
+
+**National run (16 October 2026).** All 47 networks were mapped. Every row of the list falls in exactly one category, which is checked at each run:
+
+| Category | Rows |
+|---|---:|
+| Applied (69 route-level edits) | 53 |
+| `remove` instruction not matched: accepted residuals (Tzen 4, Mettis A extension, Périgueux BHNS, Lebus+ Aubagne – Gémenos, Pont-Saint-Esprit – Avignon) | 5 |
+| Low confidence, not applied | 19 |
+| No `remove` state at either date (planned lines and extensions) | 13 |
+| Type of change that gives no instruction | 22 |
+| Absent from the 2026 feeds (closed or suspended): known gap (Nancy TVR, Toulouse tram T2 to the airport, RER C between Massy and Épinay-sur-Orge, and five regional rail lines or sections) | 8 |
+| **Total** | **120** |
+
+A full run reads each GTFS resource once, so entries can be added to the list and applied again at any time.
+
+### 5.6.2 The automatic OSM rule, for trams
+
+**Evidence.** OSM public-transport route relations at each date, with their member ways and stops, extracted from the dated France extracts with DuckDB `ST_ReadOSM` in three filtered passes and cached as Parquet: 19,030 relations and 2.3 million member ways on 1 January 2022, 23,376 relations and 3.0 million member ways on 1 January 2024.
+
+**Identity: which relation is the line.** A name pass looks for relations of the same mode with the same normalised `ref` or name, the `network` and `operator` tags breaking ties; a name match covering under 30% of the route's stops is a homonym and is discarded. Without a name match, a geometry pass takes the same-mode relation covering the largest share of the route's stops within a distance r; if that share reaches a minimum, the line existed under another name (`kept-renamed`), as for Bordeaux trams E and F.
+
+**Coverage: which stops were served.** Relations give identity, tracks give coverage. A stop is covered at a date if it lies within r of an in-service way of **any** relation of the same mode at that date, not only of the matched one, since lines share trunk sections. Ways tagged with a lifecycle prefix (`construction:`, `proposed:`, `disused:`, `abandoned:`), `railway=construction`, or an `opening_date` or `start_date` after the snapshot are not in service.
+
+**Decision.** A run of at least k uncovered stops at either end of the pattern is cut first; the route is then dropped if its covered share is below θ. Isolated uncovered stops inside a pattern are kept, being more often gaps in OSM than new stations; a long uncovered run inside a pattern is reported. A network whose lines are less than half covered by relations at a date is not testable at that date, and its routes are kept.
+
+**Calibration.** The parameters were chosen on known cases in five test EPCIs (Bordeaux Métropole, Métropole de Lyon, CA Sète Agglopôle Méditerranée, CC Couserans-Pyrénées and CC Marche Occitane – Val d'Anglin) and on metro extensions in Paris, Lyon and Rennes, over r ∈ {25, 50, 100} m, θ ∈ {0.5, …, 0.9}, k ∈ {1, 2, 3} and a minimum geometry share ∈ {0.3, 0.5, 0.7}. Parameter sets were ranked by exact known outcomes, then F1, then the false-change rate, the share of the other routes of the test areas, presumed unchanged, that a rule wrongly cuts or drops. The known cases:
+
+| Case | Expected on 1 Jan 2022 / 1 Jan 2024 |
+|---|---|
+| Bordeaux trams A and C (branches transferred to E and F in December 2025) | Kept / kept |
+| Bordeaux tram E (December 2025, on the tracks of A and C) | Kept-renamed / kept-renamed |
+| Bordeaux tram F (December 2025; airport branch opened in April 2023 as a branch of A) | Cut / cut |
+| Lyon tram T4 (school-week service extended over existing track, 2026) | Kept / kept |
+| Lyon tram T6 (extended north to La Doua, February 2026) | Cut / cut |
+| Lyon metro B (extended to Saint-Genis-Laval, October 2023) | Cut / kept |
+| Paris metro 14 (Saint-Denis Pleyel and Orly, June 2024) and 11 (Rosny-Bois-Perrier, June 2024) | Cut / cut |
+| Paris metro 4 (Bagneux, January 2022) and 12 (Mairie d'Aubervilliers, May 2022) | Cut / kept |
+| Rennes metro b (September 2022) | Dropped / kept |
+| TER 41, 42 and 13 around Bordeaux (new halts or a service rebrand only) | Kept / kept |
+| Bordeaux Express bus G (June 2024) and H (2025); Sète express bus A (January 2026) | Dropped / dropped |
+
+Results of the national recompute (15 October 2026):
+
+| Family | Retained parameters | Known outcomes right | False changes | Use |
+|---|---|---:|---:|---|
+| Tram | r = 25 m, k = 1, θ = 0.5, geometry share ≥ 0.3 | 12 / 12 | 0% | Applied automatically |
+| Metro | r = 25 m, k = 2, θ = 0.5, geometry share ≥ 0.3 | 11 / 11 | 20% | Not applied: metro changes come from the list |
+| Rail | As metro | 0 / 6 (lines found, but by geometry only) | 21% | Not applied |
+| Bus, ferry | r = 100 m; fixed match shares | 7 / 10 | 29% | Not applied |
+
+Only the tram rule is reliable enough to run unattended. OSM relations of bus and rail lines are incomplete nationally: on Bordeaux bus line 1, 16 of 50 stops have no relation way within 100 m. Metro changes are few and all in the list, which makes the metro rule unnecessary. The calibration values of the other families are kept in `config/gtfs_rebuild.yaml` as a reference only.
+
+**A known OSM data gap.** Track is sometimes mapped as in service before it opens, without any date tag: the airport branch of Bordeaux tram A, opened in April 2023, was mapped as ordinary tram track before 2022. The openings list, which takes precedence, corrects such cases.
+
+### 5.6.3 Edits file and use in the state builder
+
+`config/pt_changes.yaml` holds the edits applied to past states: confirmed manual edits and the edits written automatically from the openings list. Candidate changes detected by the screening rules of the other families (180 to review, 340 not applied) are kept in the same file as information only; nothing in the pipeline waits for them or reads them. Routes are identified everywhere by the pair (GTFS resource id, `route_id`).
+
+When the public transport network of a state is built (section 8.6), the presence of each route follows the precedence above, the cuts and skipped stops of each route are combined, and the remaining trips keep their 2026 times.
+
+### 5.6.4 Limits
+
+- Lines closed or suspended before the 2026 reference day are absent from the feeds; the 8 known cases are reported but not rebuilt. They could be rebuilt from their OSM relations with an estimated frequency [TO CONFIRM: whether to do so].
+- Frequencies and timetables are those of 2026, so reorganisations of existing networks (Sète in January 2026, Lyon's renumbering in 2023) are not captured.
+- Changes to ordinary bus routes that are not in the list are ignored: past bus networks are those of 2026, apart from the BHNS and major lines of the list.
+- The list is the main assumption of the method: its completeness decides what is rebuilt. Entries can be added and applied again at any time.
+- The back-test of 2021 to 2023 (section 5.5) therefore sees PT openings and extensions, not changes in frequency.

@@ -21,7 +21,7 @@ What a land-use change needs depends on what is stored for each mode:
 A scenario is a baseline state plus dated events:
 
 - **Land-use trajectories,** year by year: totals by EPCI and sector, population, services (for example continued metropolisation or decentralisation).
-- **Network events with commissioning dates:** new lines, station reopenings, motorway sections, speed-limit changes, bike networks.
+- **Network events with commissioning dates:** new lines, station reopenings, motorway sections, speed-limit changes, bike networks. The planned entries of the openings list of section 5.6 (18 lines and extensions, among them Grand Paris Express lines 15 to 18 and Lyon trams T9 and T10) give the dated PT events of a reference scenario.
 
 The network is constant between two consecutive event dates. Each such **network epoch** needs one routing run, full or incremental. Every year inside an epoch is table work only: the epoch's stored costs are combined with that year's opportunities and population (Figure 5). Grouping events into few epochs, for example by planning period, is the main way to control cost.
 
