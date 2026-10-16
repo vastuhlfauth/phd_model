@@ -67,3 +67,10 @@ Rules for speed:
 - Instead: make the code work on synthetic fixtures, and if useful on a small real sample that runs in under 2 minutes (e.g. the Monaco or Luxembourg OSM files in data/raw/osm, or --limit N); then give me the exact command to run in my own terminal, and stop.
 - Every long job is resumable (skips finished parts, checkpoints under data/interim), logs to logs/{YYYY-MM-DD}_{task}.log, and ends by writing logs/{YYYY-MM-DD}_{task}_summary.md (inputs, counts, timings, warnings, output paths).
 - When I come back with a summary, read only the summary, and the end of the log if there was an error.
+
+## Reporting and credit use
+- End every task with one report of at most 15 lines: files changed, test result (passed/failed counts), commands for me to run, and at most one question.
+- Never paste logs, diffs, code or long tables into the chat. Write details to docs/ or logs/ and give the path.
+- Do every point of my message, then report once. If one point is blocked, note it, skip it and continue with the others; do not stop to ask unless continuing would damage data or main.
+- Run only the tests of the module you changed while working, and the full suite once at the end.
+- Never start long runs or downloads; give me the command.
