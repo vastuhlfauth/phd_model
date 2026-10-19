@@ -147,17 +147,24 @@ class EbikeConfig(BaseModel):
 
 class StopsConfig(BaseModel):
     """Bike stop time parameters (section 9.7); not yet calibrated against
-    observed signal timings or braking/acceleration rates."""
+    observed signal timings or braking/acceleration rates.
+
+    ``stops_per_km`` is provisional, used only by the section 9.9
+    re-estimation (step 11)."""
 
     model_config = ConfigDict(extra="forbid")
     deceleration_m_per_s2: float = Field(gt=0)
     acceleration_m_per_s2: float = Field(gt=0)
     signal_cycle_s: float = Field(gt=0)
     red_time_s: float = Field(ge=0)
+    stops_per_km: float = Field(ge=0)
 
 
 class BikeConfig(BaseModel):
-    """Bike leg parameters (section 9.7)."""
+    """Bike leg parameters (section 9.7).
+
+    ``get_park_min`` is used by step 11's re-estimation to recover
+    ride-only time from a trip's declared duration."""
 
     model_config = ConfigDict(extra="forbid")
     bike_mass_kg: float = Field(gt=0)
@@ -167,6 +174,7 @@ class BikeConfig(BaseModel):
     rho_air_kg_per_m3: float = Field(gt=0)
     cda_m2: float = Field(gt=0)
     separated_infra_factor: float = Field(gt=0, le=1)
+    get_park_min: float = Field(ge=0)
     surface_crr: dict[str, float]
     power: BikePowerConfig
     ebike: EbikeConfig

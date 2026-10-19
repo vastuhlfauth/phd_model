@@ -42,8 +42,9 @@ def test_every_mode_group_is_classified(trip_legs: duckdb.DuckDBPyConnection) ->
         4: "car_passenger_household",
         5: "car_passenger_carpool",
         6: "urban_pt",
-        7: "train",
+        7: "train_long",
         8: "other",
+        11: "train_short",
     }
     for ident_ind, mode_group in expected.items():
         assert _mode_group(trip_legs, ident_ind) == mode_group
@@ -56,7 +57,7 @@ def test_classified_trips_have_positive_energy_in_both_rate_sets(
         "SELECT ident_ind, energy_kh_kj, energy_cp_kj FROM trip_legs "
         "WHERE mode_group != 'other'"
     ).fetchall()
-    assert len(rows) == 9  # 8 single-trip persons (except 'other') + 1 multimodal leg
+    assert len(rows) == 10  # 9 single-trip persons (except 'other') + 1 multimodal leg
     for _, energy_kh, energy_cp in rows:
         assert energy_kh > 0
         assert energy_cp > 0

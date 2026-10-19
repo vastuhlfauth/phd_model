@@ -189,6 +189,11 @@ bike:
   cda_m2: 0.55
   # phi_sep: calmer riding on separated infrastructure (sensitivity 0.90-1.00).
   separated_infra_factor: 0.97
+  # Fixed time to get and park the bike, minutes, each (section 9.7,
+  # "fixed times, about 1 min each"); used by the section 9.9
+  # re-estimation (step 11) to recover ride-only time/speed from a
+  # trip's declared duration.
+  get_park_min: 1.0
   surface_crr:
     asphalt_concrete_paved_default: 0.006
     concrete_plates_lanes: 0.007
@@ -238,3 +243,9 @@ bike:
     acceleration_m_per_s2: 1.0
     signal_cycle_s: 90.0
     red_time_s: 40.0
+    # Stops per km, used only by the section 9.9 re-estimation (step 11)
+    # to recover ride-only time from a trip's declared duration; the
+    # spec gives no value (no signal-density data).
+    # TODO(confirm): [TO CONFIRM: not calibrated against observed
+    # junction density].
+    stops_per_km: 2.0

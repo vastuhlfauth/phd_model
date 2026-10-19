@@ -34,7 +34,7 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
 
     assert exit_code == 0
     png_files = sorted(out_dir.glob("*.png"))
-    assert len(png_files) == 7
+    assert len(png_files) == 11
 
     md_path = out_dir.with_suffix(".md")
     assert md_path.is_file()
@@ -42,6 +42,8 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "Mean daily energy and time by main-mode group" in report
     assert "Calibrated v0 and P0" in report
     assert "car_passenger_household" in report
+    assert "F8 robustness" in report
+    assert "Density classes" in report
 
 
 @pytest.mark.pilot

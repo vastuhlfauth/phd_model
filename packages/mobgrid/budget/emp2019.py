@@ -89,20 +89,86 @@ _CV_KEY_BY_VEHICLE = {
     "interurban_coach": "bus_mixed_traffic",
 }
 
+#: Distance threshold splitting `train` into `train_short`/`train_long`
+#: day-mode groups (section 9.9 point 3).
+TRAIN_LONG_THRESHOLD_KM = 80.0
+
+#: Minimum ride-only time, seconds, below which the bike get-park/stops
+#: adjustment is considered unreliable (section 9.9's P0 calibration):
+#: fixed overheads cannot credibly exceed almost all of a very short
+#: trip's declared duration. The stricter of this absolute floor and
+#: `_BIKE_MIN_RIDE_FRACTION` of the declared duration applies.
+_BIKE_MIN_RIDE_TIME_S = 60.0
+
+#: Minimum share of the declared duration that must remain as ride time
+#: for the get-park/stops adjustment to be considered reliable.
+_BIKE_MIN_RIDE_FRACTION = 0.5
+
+#: Plausibility cap, km/h, on the adjusted ride speed (section 9.9's P0
+#: calibration): above this, a trip's declared distance/duration/stop
+#: count combination is not credible even though it passed the ride-time
+#: checks above (occasional, very short, very long-looking bike trips);
+#: it falls back to the naive whole-duration speed, like the ride-time
+#: checks above.
+_BIKE_MAX_PLAUSIBLE_SPEED_KMH = 45.0
+
+#: `mode_group = 'other'` day-mode-group contents, stated for the report
+#: (section 9.9 point 3, "State in the report what 'other' contains").
+OTHER_MODE_DESCRIPTION = (
+    "powered two-wheelers under 50cm3 or unspecified (mtp 2.3-2.7), "
+    "unspecified 3/4-wheeler (mtp 3.4), taxi/specialised/school transport "
+    "(mtp 4.x), plane (mtp 7.x), boat (mtp 8.1), other/unspecified "
+    "(mtp 9.1, missing, or the 9999 refusal code)"
+)
+
 #: `tcm_ind_kish_public`'s `SITUA` ("Situation principale vis-a-vis du
-#: travail") codes, mapped to section 9.9 point 3's age-activity groups.
-#: Codes 1/2 = employed or paid trainee; 3 = student; 4 = unemployed;
-#: 5 = retired; 6/7/8 = homemaker/other/unspecified inactive.
-_ACTIVITY_BY_SITUA = {
+#: travail") codes, mapped to section 6.1's five population categories
+#: (children 6-17, employed, unemployed, retired, other inactive).
+#: Codes 1/2 = employed or paid trainee; 4 = unemployed; 5 = retired;
+#: 3/6/7/8 = student/homemaker/other/unspecified inactive, all folded
+#: into "other_inactive" (section 6.1: "students aged 18 or more,
+#: homemakers, others").
+_POPULATION_CATEGORY_BY_SITUA = {
     "1": "employed",
     "2": "employed",
-    "3": "student",
+    "3": "other_inactive",
     "4": "unemployed",
     "5": "retired",
     "6": "other_inactive",
     "7": "other_inactive",
     "8": "other_inactive",
 }
+
+#: EMP's 4-level `DENSITECOM_ORI`/`DENSITECOM_DES` codes (section 9.9
+#: point 3: "the four levels of the INSEE density grid"), in the INSEE
+#: grid's own order and names (`emp2019-categories.pdf`, "Degre de
+#: densite"): 1 = densely populated, 2 = intermediate density, 3 =
+#: sparsely populated ("peu denses"), 4 = very sparsely populated
+#: ("tres peu denses").
+_DENSITY_LABEL_BY_CODE = {
+    1: "dense",
+    2: "intermediate",
+    3: "sparse",
+    4: "very_sparse",
+}
+
+#: `config.car`/`config.pt_ride`'s existing density-class keys (chosen for
+#: step 7) translated to the INSEE names above, so every density-keyed
+#: default (car terminal legs, PT access walk) can be looked up by the
+#: same label used for grouping and reporting.
+_DENSITY_KEY_TRANSLATION = {
+    "dense": "dense",
+    "urban": "intermediate",
+    "suburban": "sparse",
+    "rural": "very_sparse",
+}
+
+
+def _relabel_density(mapping: dict[str, float]) -> dict[str, float]:
+    """Re-key a `config.car`/`config.pt_ride` density dict (`dense`,
+    `urban`, `suburban`, `rural`) to the INSEE labels of
+    `_DENSITY_LABEL_BY_CODE`."""
+    return {_DENSITY_KEY_TRANSLATION[key]: value for key, value in mapping.items()}
 
 
 def extract_tables(
@@ -251,7 +317,13 @@ def _vehicle_ride_rate_kj_per_min(config: EnergyConfig) -> dict[str, float]:
     return result
 
 
-def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> None:
+def build_trip_legs(
+    con: duckdb.DuckDBPyConnection,
+    config: EnergyConfig,
+    *,
+    terminal_scale: float = 1.0,
+    bike_p0_override_w: float | None = None,
+) -> None:
     """Create the ``trip_legs`` view: one row per EMP 2019 trip, with time
     and energy above rest (both rate sets) by leg (section 9.9, point 1).
 
@@ -260,6 +332,15 @@ def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> Non
     Python, over the handful of vehicle/density keys); only the
     arithmetic over the EMP rows themselves (tens of thousands) runs as
     vectorised DuckDB SQL.
+
+    ``terminal_scale`` multiplies every terminal-leg time and energy
+    component (walk-to/from-car, parking search, carpool walk/wait, PT
+    access walk/wait/level-change, bike get-and-park and stops), with the
+    main/ride/drive leg taking the rest of the declared duration (section
+    9.9's F8 robustness check, "terminal legs x0.5, x1, x1.5").
+    ``bike_p0_override_w``, if given, replaces the per-trip recalibrated
+    P0 for every cycling trip's energy (the "P0 recalibrated vs 52.5 W"
+    robustness variant); ``p0_calibrated_w`` is still reported either way.
     """
     mass = config.reference_mass_kg
     walking = config.walking
@@ -292,17 +373,22 @@ def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> Non
     )
 
     v0_m_per_s = walking.v0_kmh * 1000.0 / 3600.0
-    access_walk_min_by_density = {
+    access_walk_min_by_density = _relabel_density({
         density: metres / v0_m_per_s / 60.0
         for density, metres in config.pt_ride.access_walk_m_by_density.items()
-    }
+    })
     stair_legs = _vehicle_stair_legs(config, (standing_kh, standing_cp))
     wait_minutes = _vehicle_wait_minutes(config)
     ride_rate = _vehicle_ride_rate_kj_per_min(config)
 
     car = config.car
     bike = config.bike
+    stops = bike.stops
     crr = bike.surface_crr["asphalt_concrete_paved_default"]
+    bike_total_mass = mass + bike.bike_mass_kg
+    walk_to_car_by_density = _relabel_density(car.walk_to_car.apartment_min_by_density)
+    parking_search_by_density = _relabel_density(car.parking_search_min_by_density)
+    walk_from_car_by_density = _relabel_density(car.walk_from_car_min_by_density)
 
     # DOUBLE-cast SQL literals of every scalar embedded directly below
     # (see `_dbl`'s docstring for why the cast matters).
@@ -312,6 +398,15 @@ def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> Non
     cda_sql = _dbl(bike.cda_m2)
     drivetrain_eff_sql = _dbl(bike.drivetrain_efficiency)
     muscular_eff_sql = _dbl(bike.gross_muscular_efficiency)
+    bike_total_mass_sql = _dbl(bike_total_mass)
+    stops_per_km_sql = _dbl(stops.stops_per_km)
+    stop_decel_term_sql = _dbl(1.0 / stops.deceleration_m_per_s2)
+    stop_accel_term_sql = _dbl(1.0 / stops.acceleration_m_per_s2)
+    stop_fixed_wait_s_sql = _dbl(stops.red_time_s**2 / (2.0 * stops.signal_cycle_s))
+    bike_get_park_total_min_sql = _dbl(2.0 * bike.get_park_min)
+    bike_p0_override_sql = (
+        "NULL" if bike_p0_override_w is None else _dbl(bike_p0_override_w)
+    )
     c0_kh_sql = _dbl(config.walking.c0_j_per_kg_m["kh"])
     c0_cp_sql = _dbl(config.walking.c0_j_per_kg_m["compendium"])
     walk_rate_kh_sql, walk_rate_cp_sql = _dbl(walk_rate_kh), _dbl(walk_rate_cp)
@@ -320,13 +415,24 @@ def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> Non
     driving_kh_sql, driving_cp_sql = _dbl(driving_kh), _dbl(driving_cp)
     carpool_walk_sql = _dbl(car.carpool_passenger.walk_to_meeting_point_min)
     carpool_wait_sql = _dbl(car.carpool_passenger.wait_standing_min)
+    terminal_scale_sql = _dbl(terminal_scale)
+    train_threshold_sql = _dbl(TRAIN_LONG_THRESHOLD_KM)
 
     vehicle_mapping_sql = "CASE mtp\n    " + "\n    ".join(
         f"WHEN {code} THEN '{vehicle}'" for code, vehicle in _VEHICLE_BY_MTP.items()
     ) + "\n    ELSE NULL\nEND"
-    activity_group_sql = _case_sql(
-        "k.SITUA", _ACTIVITY_BY_SITUA, default="'unknown'", quote_values=True
+    population_category_sql = _case_sql(
+        "k.SITUA", _POPULATION_CATEGORY_BY_SITUA, default="'unknown'",
+        quote_values=True,
     )
+    # `_case_sql`'s non-quoted branch wraps every value in `_dbl` (a DOUBLE
+    # cast); density labels are strings, so build the CASE directly here.
+    density_ori_sql = "CASE d.DENSITECOM_ORI\n    " + "\n    ".join(
+        f"WHEN {code} THEN '{label}'" for code, label in _DENSITY_LABEL_BY_CODE.items()
+    ) + "\n    ELSE 'intermediate'\nEND"
+    density_des_sql = "CASE d.DENSITECOM_DES\n    " + "\n    ".join(
+        f"WHEN {code} THEN '{label}'" for code, label in _DENSITY_LABEL_BY_CODE.items()
+    ) + "\n    ELSE 'intermediate'\nEND"
 
     sql = f"""
     CREATE OR REPLACE VIEW trip_legs AS
@@ -337,6 +443,7 @@ def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> Non
             d.IDENT_MEN AS ident_men,
             d.POND_JOUR AS pond_jour,
             d.TYPEJOUR AS typejour,
+            d.mobloc AS mobloc,
             d.num_dep AS num_dep,
             d.MORIDOM AS moridom,
             d.DUREE AS duration_min,
@@ -352,26 +459,27 @@ def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> Non
                     AND coalesce(d.MACCOMPM, 0) = 0 THEN 'car_passenger_carpool'
                 WHEN d.mtp = 3.2 THEN 'car_passenger_household'
                 WHEN d.mtp IN (5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7) THEN 'urban_pt'
-                WHEN d.mtp IN (5.8, 5.9) OR floor(d.mtp) = 6 THEN 'train'
+                WHEN (d.mtp IN (5.8, 5.9) OR floor(d.mtp) = 6)
+                    AND d.MDISTTOT_fin < {train_threshold_sql} THEN 'train_short'
+                WHEN d.mtp IN (5.8, 5.9) OR floor(d.mtp) = 6 THEN 'train_long'
                 ELSE 'other'
             END AS mode_group,
             {vehicle_mapping_sql} AS vehicle,
             -- EMP's 4-level DENSITECOM_ORI/DES (section 9.9 point 3: "the
-            -- four levels of the INSEE density grid"): 1 = densely
-            -- populated communes ... 4 = very low density; stray/missing
-            -- codes default to 'urban'.
-            CASE d.DENSITECOM_ORI WHEN 1 THEN 'dense' WHEN 2 THEN 'urban'
-                WHEN 3 THEN 'suburban' WHEN 4 THEN 'rural'
-                ELSE 'urban' END AS density_ori,
-            CASE d.DENSITECOM_DES WHEN 1 THEN 'dense' WHEN 2 THEN 'urban'
-                WHEN 3 THEN 'suburban' WHEN 4 THEN 'rural'
-                ELSE 'urban' END AS density_des,
+            -- four levels of the INSEE density grid"), in the INSEE
+            -- grid's own names and order; stray/missing codes default to
+            -- 'intermediate'.
+            {density_ori_sql} AS density_ori,
+            {density_des_sql} AS density_des,
             k.AGE AS age,
             k.AGE6 AS age_band,
+            -- Section 6.1's five population categories: children under
+            -- 18 (6-17 in this travel survey), employed, unemployed,
+            -- retired, other inactive (students 18+, homemakers, others).
             CASE
                 WHEN k.AGE BETWEEN 6 AND 17 THEN 'children_6_17'
-                ELSE {activity_group_sql}
-            END AS age_activity_group,
+                ELSE {population_category_sql}
+            END AS population_category,
             i.pond_indC AS pond_ind
         FROM k_deploc d
         JOIN tcm_ind_kish k ON k.IDENT_IND = d.IDENT_IND
@@ -382,23 +490,89 @@ def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> Non
             CASE WHEN duration_min > 0 THEN distance_km / (duration_min / 60.0) END
                 AS implied_speed_kmh,
             CASE WHEN mode_group = 'cycle' AND duration_min > 0 THEN
-                (distance_km * 1000.0 / (duration_min * 60.0))
+                distance_km * 1000.0 / (duration_min * 60.0)
+            END AS bike_naive_speed_m_per_s,
+            -- Bike-only: estimated terminal overhead (get/park, section
+            -- 9.7's "about 1 min each"; expected stop delays, section
+            -- 9.7's Webster 1958 formula) at the naive (whole-trip)
+            -- speed, used to recover ride-only time (section 9.9, step
+            -- 1's v0/P0 calibration).
+            CASE WHEN mode_group = 'cycle' AND duration_min > 0 THEN
+                {terminal_scale_sql} * (
+                    {bike_get_park_total_min_sql} * 60.0
+                    + {stops_per_km_sql} * distance_km * (
+                        (distance_km * 1000.0 / (duration_min * 60.0))
+                        * ({stop_decel_term_sql} + {stop_accel_term_sql})
+                        + {stop_fixed_wait_s_sql}
+                    )
+                )
+            END AS bike_terminal_s_estimate
+        FROM joined
+    ),
+    bike_ride AS (
+        SELECT *,
+            -- Below `_BIKE_MIN_RIDE_TIME_S`/`_BIKE_MIN_RIDE_FRACTION` of
+            -- ride time left, or above `_BIKE_MAX_PLAUSIBLE_SPEED_KMH`
+            -- once adjusted, the adjustment is unreliable: fixed
+            -- overheads cannot credibly consume almost all of a short
+            -- trip, nor can a credible ride speed be this high.
+            -- `bike_ride_time_s` is NULL and the energy formula falls
+            -- back to the naive, whole-duration speed instead (see
+            -- `bike_power` below).
+            CASE WHEN bike_terminal_s_estimate IS NOT NULL
+                AND duration_min * 60.0 - bike_terminal_s_estimate >= greatest(
+                    {_dbl(_BIKE_MIN_RIDE_TIME_S)},
+                    {_dbl(_BIKE_MIN_RIDE_FRACTION)} * duration_min * 60.0
+                )
+                AND distance_km * 3600.0
+                    / (duration_min * 60.0 - bike_terminal_s_estimate)
+                    <= {_dbl(_BIKE_MAX_PLAUSIBLE_SPEED_KMH)}
+            THEN duration_min * 60.0 - bike_terminal_s_estimate
+            END AS bike_ride_time_s
+        FROM walk_cycle
+    ),
+    bike_speed AS (
+        SELECT *,
+            coalesce(
+                CASE WHEN bike_ride_time_s IS NOT NULL THEN
+                    distance_km * 1000.0 / bike_ride_time_s
+                END,
+                bike_naive_speed_m_per_s
+            ) AS bike_ride_speed_m_per_s
+        FROM bike_ride
+    ),
+    bike_power AS (
+        SELECT *,
+            -- NULL (excluded from the v0/P0 calibration estimator) for
+            -- the unreliable short trips above; the energy formula below
+            -- uses `bike_ride_speed_m_per_s`, which always falls back to
+            -- the naive whole-duration speed, so every cycling trip
+            -- still gets an energy value.
+            CASE WHEN bike_ride_time_s IS NOT NULL THEN
+                bike_ride_speed_m_per_s
+                * ({mass_sql} * 9.81 * {crr_sql}
+                    + 0.5 * {rho_air_sql} * {cda_sql} * pow(bike_ride_speed_m_per_s, 2))
+                / {drivetrain_eff_sql}
+            END AS p0_calibrated_w,
+            coalesce(bike_ride_time_s, duration_min * 60.0)
+                AS bike_ride_time_for_energy_s,
+            -- Power at the fallback (naive, whole-duration) speed, used
+            -- by the energy formula when `p0_calibrated_w` is NULL.
+            CASE WHEN bike_naive_speed_m_per_s IS NOT NULL THEN
+                bike_naive_speed_m_per_s
                 * ({mass_sql} * 9.81 * {crr_sql}
                     + 0.5 * {rho_air_sql} * {cda_sql}
-                      * pow(distance_km * 1000.0 / (duration_min * 60.0), 2))
+                        * pow(bike_naive_speed_m_per_s, 2))
                 / {drivetrain_eff_sql}
-            END AS p0_calibrated_w
-        FROM joined
+            END AS bike_naive_power_w
+        FROM bike_speed
     ),
     car_terminal AS (
         SELECT *,
-            {_case_sql("density_ori", car.walk_to_car.apartment_min_by_density)}
-                AS walk_to_car_min,
-            {_case_sql("density_des", car.parking_search_min_by_density)}
-                AS parking_search_min,
-            {_case_sql("density_des", car.walk_from_car_min_by_density)}
-                AS walk_from_car_min
-        FROM walk_cycle
+            {_case_sql("density_ori", walk_to_car_by_density)} AS walk_to_car_min,
+            {_case_sql("density_des", parking_search_by_density)} AS parking_search_min,
+            {_case_sql("density_des", walk_from_car_by_density)} AS walk_from_car_min
+        FROM bike_power
     ),
     pt_terminal AS (
         SELECT *,
@@ -417,80 +591,129 @@ def build_trip_legs(con: duckdb.DuckDBPyConnection, config: EnergyConfig) -> Non
         FROM car_terminal
     )
     SELECT
-        ident_dep, ident_ind, ident_men, pond_jour, pond_ind, typejour,
+        ident_dep, ident_ind, ident_men, pond_jour, pond_ind, typejour, mobloc,
         num_dep, moridom, mode_group, vehicle, density_ori, density_des,
-        age, age_band, age_activity_group,
+        age, age_band, population_category,
         duration_min, distance_km, implied_speed_kmh, p0_calibrated_w,
+        bike_ride_time_s, bike_ride_time_for_energy_s,
 
         CASE mode_group
             WHEN 'walk' THEN {mass_sql} * {c0_kh_sql} * distance_km
-            WHEN 'cycle' THEN p0_calibrated_w / {muscular_eff_sql}
-                * duration_min * 60.0 / 1000.0
+            WHEN 'cycle' THEN
+                coalesce({bike_p0_override_sql}, p0_calibrated_w, bike_naive_power_w)
+                    / {muscular_eff_sql} * bike_ride_time_for_energy_s / 1000.0
+                + {standing_kh_sql} * {bike_get_park_total_min_sql}
+                    * {terminal_scale_sql}
+                + {stops_per_km_sql} * distance_km
+                    * 0.5 * {bike_total_mass_sql} * pow(bike_ride_speed_m_per_s, 2)
+                    / {muscular_eff_sql} / 1000.0 * {terminal_scale_sql}
             WHEN 'car_driver' THEN
-                {walk_rate_kh_sql} * (walk_to_car_min + walk_from_car_min)
-                + {driving_kh_sql} * parking_search_min
-                + {driving_kh_sql} * greatest(duration_min - walk_to_car_min
-                    - parking_search_min - walk_from_car_min, 0)
+                {walk_rate_kh_sql} * {terminal_scale_sql}
+                    * (walk_to_car_min + walk_from_car_min)
+                + {driving_kh_sql} * {terminal_scale_sql} * parking_search_min
+                + {driving_kh_sql} * greatest(duration_min
+                    - {terminal_scale_sql} * (walk_to_car_min
+                        + parking_search_min + walk_from_car_min), 0)
             WHEN 'car_passenger_household' THEN
-                {walk_rate_kh_sql} * (walk_to_car_min + walk_from_car_min)
-                + {sitting_kh_sql} * parking_search_min
-                + {sitting_kh_sql} * greatest(duration_min - walk_to_car_min
-                    - parking_search_min - walk_from_car_min, 0)
-            WHEN 'car_passenger_carpool' THEN
-                {walk_rate_kh_sql} * ({carpool_walk_sql} + walk_from_car_min)
-                + {standing_kh_sql} * {carpool_wait_sql}
-                + {sitting_kh_sql} * parking_search_min
+                {walk_rate_kh_sql} * {terminal_scale_sql}
+                    * (walk_to_car_min + walk_from_car_min)
+                + {sitting_kh_sql} * {terminal_scale_sql} * parking_search_min
                 + {sitting_kh_sql} * greatest(duration_min
-                    - {carpool_walk_sql} - {carpool_wait_sql}
-                    - parking_search_min - walk_from_car_min, 0)
+                    - {terminal_scale_sql} * (walk_to_car_min
+                        + parking_search_min + walk_from_car_min), 0)
+            WHEN 'car_passenger_carpool' THEN
+                {walk_rate_kh_sql} * {terminal_scale_sql}
+                    * ({carpool_walk_sql} + walk_from_car_min)
+                + {standing_kh_sql} * {terminal_scale_sql} * {carpool_wait_sql}
+                + {sitting_kh_sql} * {terminal_scale_sql} * parking_search_min
+                + {sitting_kh_sql} * greatest(duration_min
+                    - {terminal_scale_sql} * ({carpool_walk_sql}
+                        + {carpool_wait_sql} + parking_search_min
+                        + walk_from_car_min), 0)
             WHEN 'urban_pt' THEN
-                {walk_rate_kh_sql} * (access_walk_ori_min + access_walk_des_min)
-                + {standing_kh_sql} * wait_min + stairs_energy_kh_kj
+                {walk_rate_kh_sql} * {terminal_scale_sql}
+                    * (access_walk_ori_min + access_walk_des_min)
+                + {standing_kh_sql} * {terminal_scale_sql} * wait_min
+                + {terminal_scale_sql} * stairs_energy_kh_kj
                 + ride_rate_kj_per_min * greatest(duration_min
-                    - access_walk_ori_min - access_walk_des_min
-                    - wait_min - stairs_time_min, 0)
-            WHEN 'train' THEN
-                {walk_rate_kh_sql} * (access_walk_ori_min + access_walk_des_min)
-                + {standing_kh_sql} * wait_min + stairs_energy_kh_kj
+                    - {terminal_scale_sql} * (access_walk_ori_min
+                        + access_walk_des_min + wait_min + stairs_time_min), 0)
+            WHEN 'train_short' THEN
+                {walk_rate_kh_sql} * {terminal_scale_sql}
+                    * (access_walk_ori_min + access_walk_des_min)
+                + {standing_kh_sql} * {terminal_scale_sql} * wait_min
+                + {terminal_scale_sql} * stairs_energy_kh_kj
                 + ride_rate_kj_per_min * greatest(duration_min
-                    - access_walk_ori_min - access_walk_des_min
-                    - wait_min - stairs_time_min, 0)
+                    - {terminal_scale_sql} * (access_walk_ori_min
+                        + access_walk_des_min + wait_min + stairs_time_min), 0)
+            WHEN 'train_long' THEN
+                {walk_rate_kh_sql} * {terminal_scale_sql}
+                    * (access_walk_ori_min + access_walk_des_min)
+                + {standing_kh_sql} * {terminal_scale_sql} * wait_min
+                + {terminal_scale_sql} * stairs_energy_kh_kj
+                + ride_rate_kj_per_min * greatest(duration_min
+                    - {terminal_scale_sql} * (access_walk_ori_min
+                        + access_walk_des_min + wait_min + stairs_time_min), 0)
             ELSE NULL
         END AS energy_kh_kj,
 
         CASE mode_group
             WHEN 'walk' THEN {mass_sql} * {c0_cp_sql} * distance_km
-            WHEN 'cycle' THEN p0_calibrated_w / {muscular_eff_sql}
-                * duration_min * 60.0 / 1000.0
+            WHEN 'cycle' THEN
+                coalesce({bike_p0_override_sql}, p0_calibrated_w, bike_naive_power_w)
+                    / {muscular_eff_sql} * bike_ride_time_for_energy_s / 1000.0
+                + {standing_cp_sql} * {bike_get_park_total_min_sql}
+                    * {terminal_scale_sql}
+                + {stops_per_km_sql} * distance_km
+                    * 0.5 * {bike_total_mass_sql} * pow(bike_ride_speed_m_per_s, 2)
+                    / {muscular_eff_sql} / 1000.0 * {terminal_scale_sql}
             WHEN 'car_driver' THEN
-                {walk_rate_cp_sql} * (walk_to_car_min + walk_from_car_min)
-                + {driving_cp_sql} * parking_search_min
-                + {driving_cp_sql} * greatest(duration_min - walk_to_car_min
-                    - parking_search_min - walk_from_car_min, 0)
+                {walk_rate_cp_sql} * {terminal_scale_sql}
+                    * (walk_to_car_min + walk_from_car_min)
+                + {driving_cp_sql} * {terminal_scale_sql} * parking_search_min
+                + {driving_cp_sql} * greatest(duration_min
+                    - {terminal_scale_sql} * (walk_to_car_min
+                        + parking_search_min + walk_from_car_min), 0)
             WHEN 'car_passenger_household' THEN
-                {walk_rate_cp_sql} * (walk_to_car_min + walk_from_car_min)
-                + {sitting_cp_sql} * parking_search_min
-                + {sitting_cp_sql} * greatest(duration_min - walk_to_car_min
-                    - parking_search_min - walk_from_car_min, 0)
-            WHEN 'car_passenger_carpool' THEN
-                {walk_rate_cp_sql} * ({carpool_walk_sql} + walk_from_car_min)
-                + {standing_cp_sql} * {carpool_wait_sql}
-                + {sitting_cp_sql} * parking_search_min
+                {walk_rate_cp_sql} * {terminal_scale_sql}
+                    * (walk_to_car_min + walk_from_car_min)
+                + {sitting_cp_sql} * {terminal_scale_sql} * parking_search_min
                 + {sitting_cp_sql} * greatest(duration_min
-                    - {carpool_walk_sql} - {carpool_wait_sql}
-                    - parking_search_min - walk_from_car_min, 0)
+                    - {terminal_scale_sql} * (walk_to_car_min
+                        + parking_search_min + walk_from_car_min), 0)
+            WHEN 'car_passenger_carpool' THEN
+                {walk_rate_cp_sql} * {terminal_scale_sql}
+                    * ({carpool_walk_sql} + walk_from_car_min)
+                + {standing_cp_sql} * {terminal_scale_sql} * {carpool_wait_sql}
+                + {sitting_cp_sql} * {terminal_scale_sql} * parking_search_min
+                + {sitting_cp_sql} * greatest(duration_min
+                    - {terminal_scale_sql} * ({carpool_walk_sql}
+                        + {carpool_wait_sql} + parking_search_min
+                        + walk_from_car_min), 0)
             WHEN 'urban_pt' THEN
-                {walk_rate_cp_sql} * (access_walk_ori_min + access_walk_des_min)
-                + {standing_cp_sql} * wait_min + stairs_energy_cp_kj
+                {walk_rate_cp_sql} * {terminal_scale_sql}
+                    * (access_walk_ori_min + access_walk_des_min)
+                + {standing_cp_sql} * {terminal_scale_sql} * wait_min
+                + {terminal_scale_sql} * stairs_energy_cp_kj
                 + ride_rate_kj_per_min * greatest(duration_min
-                    - access_walk_ori_min - access_walk_des_min
-                    - wait_min - stairs_time_min, 0)
-            WHEN 'train' THEN
-                {walk_rate_cp_sql} * (access_walk_ori_min + access_walk_des_min)
-                + {standing_cp_sql} * wait_min + stairs_energy_cp_kj
+                    - {terminal_scale_sql} * (access_walk_ori_min
+                        + access_walk_des_min + wait_min + stairs_time_min), 0)
+            WHEN 'train_short' THEN
+                {walk_rate_cp_sql} * {terminal_scale_sql}
+                    * (access_walk_ori_min + access_walk_des_min)
+                + {standing_cp_sql} * {terminal_scale_sql} * wait_min
+                + {terminal_scale_sql} * stairs_energy_cp_kj
                 + ride_rate_kj_per_min * greatest(duration_min
-                    - access_walk_ori_min - access_walk_des_min
-                    - wait_min - stairs_time_min, 0)
+                    - {terminal_scale_sql} * (access_walk_ori_min
+                        + access_walk_des_min + wait_min + stairs_time_min), 0)
+            WHEN 'train_long' THEN
+                {walk_rate_cp_sql} * {terminal_scale_sql}
+                    * (access_walk_ori_min + access_walk_des_min)
+                + {standing_cp_sql} * {terminal_scale_sql} * wait_min
+                + {terminal_scale_sql} * stairs_energy_cp_kj
+                + ride_rate_kj_per_min * greatest(duration_min
+                    - {terminal_scale_sql} * (access_walk_ori_min
+                        + access_walk_des_min + wait_min + stairs_time_min), 0)
             ELSE NULL
         END AS energy_cp_kj
     FROM pt_terminal

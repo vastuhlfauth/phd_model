@@ -37,7 +37,7 @@ def test_single_trip_days_are_classified_by_their_only_mode(
     rows = dict(
         day_summary.sql(
             "SELECT ident_ind, day_mode_group FROM day_summary "
-            "WHERE ident_ind IN (1, 2, 3, 6, 7)"
+            "WHERE ident_ind IN (1, 2, 3, 6, 7, 11)"
         ).fetchall()
     )
     assert rows == {
@@ -45,7 +45,8 @@ def test_single_trip_days_are_classified_by_their_only_mode(
         2: "cycle",
         3: "car_driver",
         6: "urban_pt",
-        7: "train",
+        7: "train_long",
+        11: "train_short",
     }
 
 
@@ -58,7 +59,7 @@ def test_two_non_walk_modes_in_one_day_are_multimodal(
     assert group == "multimodal"
 
 
-def test_car_passenger_household_and_carpool_collapse_to_one_day_group(
+def test_car_passenger_household_and_carpool_are_distinct_day_groups(
     day_summary: duckdb.DuckDBPyConnection,
 ) -> None:
     rows = dict(
@@ -67,7 +68,7 @@ def test_car_passenger_household_and_carpool_collapse_to_one_day_group(
             "WHERE ident_ind IN (4, 5)"
         ).fetchall()
     )
-    assert rows == {4: "car_passenger", 5: "car_passenger"}
+    assert rows == {4: "car_passenger_household", 5: "car_passenger_carpool"}
 
 
 def test_other_only_day_is_its_own_group_not_multimodal(
@@ -132,3 +133,39 @@ def test_bootstrap_group_stats_point_estimate_matches_direct_computation() -> No
     # The CI must bracket the point estimate it is centred on.
     assert by_group["a"].mean_energy_kh_ci[0] <= by_group["a"].mean_energy_kh_kj
     assert by_group["a"].mean_energy_kh_ci[1] >= by_group["a"].mean_energy_kh_kj
+
+
+def test_bootstrap_mean_ci_matches_direct_weighted_mean() -> None:
+    household = np.array([1, 2, 3, 4])
+    weight = np.array([1.0, 1.0, 1.0, 1.0])
+    value = np.array([2.0, 4.0, 6.0, 8.0])
+    mean, ci = daily_energy.bootstrap_mean_ci(
+        household, weight, value, n_reps=50, seed=2
+    )
+    assert mean == pytest.approx(5.0)
+    assert ci[0] <= mean <= ci[1]
+
+
+def test_weighted_gaussian_kde_integrates_to_one() -> None:
+    rng = np.random.default_rng(0)
+    samples = rng.normal(size=2000)
+    weights = np.ones_like(samples)
+    bandwidth = daily_energy.weighted_gaussian_bandwidth(weights, samples)
+    grid = np.linspace(samples.min() - 1, samples.max() + 1, 500)
+    density = daily_energy.weighted_gaussian_kde(grid, samples, weights, bandwidth)
+    integral = np.trapezoid(density, grid)
+    assert integral == pytest.approx(1.0, abs=0.02)
+
+
+def test_robustness_row_ratio_and_cv() -> None:
+    group = np.array(["walking_only", "walking_only", "cycle", "cycle"])
+    weight = np.ones(4)
+    time_min = np.array([10.0, 10.0, 20.0, 20.0])
+    energy_kh = np.array([100.0, 100.0, 200.0, 200.0])
+    energy_cp = np.array([90.0, 90.0, 180.0, 180.0])
+    row = daily_energy.robustness_row(
+        "test", group, weight, time_min, energy_kh, energy_cp
+    )
+    assert row.energy_kh_ratio == pytest.approx(2.0)
+    assert row.energy_cp_ratio == pytest.approx(2.0)
+    assert row.time_ratio == pytest.approx(2.0)
