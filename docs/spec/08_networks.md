@@ -2,7 +2,7 @@
 
 ## 8.1 Base data: one edge table as the single source of truth
 
-All road-based layers derive from one OSM edge table (Parquet), which level 2 scenarios edit. Columns include way and node identifiers, length, `highway` class, `maxspeed`, lanes, direction, access per mode (car, bike, foot), bike infrastructure class, surface, bus lanes, elevation at both ends and grade per direction (from IGN elevation data), urban flag, tile and geometry. A node table holds traffic signals and junction types. Time, distance and energy per mode are computed per directed edge from these attributes and the formulas of section 9.
+All road-based layers derive from one OSM edge table (Parquet), built once per state; scenarios edit the reduced network built from it, never the table (section 11.4). Columns include way and node identifiers, length, `highway` class, `maxspeed`, lanes, direction, access per mode (car, bike, foot), bike infrastructure class, surface, bus lanes, elevation at both ends and grade per direction (from IGN elevation data), urban flag, tile and geometry. A node table holds traffic signals and junction types. Time, distance and energy per mode are computed per directed edge from these attributes and the formulas of section 9.
 
 **Bike infrastructure is included from the start.** A bike scenario needs a baseline that already distinguishes infrastructure; it changes time (cruising speed, fewer stops) and energy (stops, surface); route and mode choices value it (Broach, Dill & Gliebe 2012); and the 2022 and 2024 OSM extracts capture the growth of cycling networks since 2020 for the back-test.
 
@@ -29,16 +29,24 @@ All road-based layers derive from one OSM edge table (Parquet), which level 2 sc
 ## 8.3 Bike (1 km grid)
 
 - Edge speeds come from the force balance of section 9.7 (rider power, body and bike mass, slope, surface), by infrastructure class and direction; stops at signals and junctions add time and energy.
-- Grid edges: exact local bike times, distances and energy between each cell's representative point and its **24 neighbours**, directed: the 8 adjacent cells and the 16 cells of the second ring, i.e. the whole 5 × 5 block around the cell.
-- **Why the second ring.** With the 8 adjacent cells only, paths move in 8 directions, every 45°, and a straight trip at an intermediate angle is overstated by up to about 8%. Eight cells of the second ring (one step across and two along, the "knight moves") add 8 directions, at about 26.6° and 63.4° from the axes, which cuts the maximum overstatement to about 2.7% (van Bemmelen et al. 1993). The 8 other cells of the ring (two steps straight or diagonal) add no direction, but their edges carry the exact network time over 2 km instead of a path through the representative point of the cell in between, which removes part of the detour error. The full ring costs 50% more edges than 16 neighbours: about 13 million directed edges nationally instead of 8.7 million.
+- Grid edges: exact local bike times, distances and energy between each cell's representative point (section 4.2) and its neighbours, directed.
+- **Neighbourhood: three variants compared in the pilot.**
+
+| Neighbours | Cells | Directed edges nationally | Overstatement of a straight trip, mean / maximum |
+|---|---|---:|---|
+| 8 | The adjacent cells | about 4.4 million | 5.5% / 8.2% |
+| 16 | Plus the 8 "knight moves" (one step across, two along) | about 8.7 million | 1.4% / 2.7% |
+| 24 | The whole 5 × 5 block | about 13 million | 1.4% / 2.7%, with exact 2 km edges |
+
+  With 8 neighbours paths move every 45°; the knight moves add directions at about 26.6° and 63.4° from the axes (van Bemmelen et al. 1993). The 8 other cells of the second ring add no direction, but their edges carry the exact network time over 2 km instead of a path through the point of the cell in between, which removes part of the detour error. The overstatements are those of straight trips in uniformly spread directions; on real networks the errors are measured against OSRM (section 13). Search time grows with the number of edges, so 8 neighbours divide it by about three compared with 24; their bias is mostly systematic (+5.5% on average) and can be partly corrected by a calibrated factor. The 8-neighbour graph is also the simplest reduced network for congestion: each orthogonal edge crosses one cell boundary (section 12). The choice follows the pilot comparison of runtime and error.
 - **Stray check.** An edge is flagged or dropped if its path runs mostly outside the cells crossed by the straight segment between its two points, which catches missing bridges and barriers.
 - Each grid edge also stores its climb (sum of positive height differences) and its length on separated infrastructure, accumulated along searches.
 - Fastest path by time. A perceived-cost path that values infrastructure and avoids climbs (Broach, Dill & Gliebe 2012) can be added later for route choice.
 
 ## 8.4 Car: local roads (1 km grid)
 
-- Same construction as bike, with 24 neighbours, on car-accessible edges, excluding the trunk layer.
-- Each grid edge also stores its time split by road class (and speed-limit bucket). This is what makes level 1 scenarios exact when paths do not change: a speed-limit change rescales one component without rerunning any search on OSM.
+- Same construction and neighbourhood as bike, on car-accessible edges, excluding the trunk layer.
+- Each grid edge also stores its time split by road class (and speed-limit bucket) and a capacity (section 12). This is what makes scenarios exact when paths do not change: a speed-limit change rescales one component without rerunning any search on OSM, and a capacity change acts directly on the edge.
 - The split between local and trunk is by **access control, not by speed**. A 50 km/h threshold would move every 80–90 km/h départementale into the node-based layer; those roads can be joined at every intersection, so nodes would be needed everywhere. They are exactly what a grid represents well.
 
 ## 8.5 Car: trunk

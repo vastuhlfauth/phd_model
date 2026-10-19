@@ -192,7 +192,7 @@ Rolling resistance for city-bike tyres, by OSM `surface`:
 | Station crowding | Transfers | Walking speed (Fruin 1971) | Walking | Station loads from the PT assignment of the model | Later |
 | Bike traffic and signals | Bike ride; stops | Stops; speed caps on busy tracks | Stop energy | — | Later |
 
-Congestion and crowding are out-of-equilibrium loops: flows at period t set speeds, loads and penalties at period t+1 (section 12).
+Congestion comes from BPR functions on the reduced car network (section 12); crowding is a loop in which loads at period t set penalties at period t+1.
 
 ## 9.9 Daily energy budget per cell
 

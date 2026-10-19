@@ -38,21 +38,21 @@ Before running, the engine classifies every edit, estimates the cost of each opt
 | More or fewer jobs, residents or services in cells already flagged | No search: products recomputed from stored costs (table of section 11.1). |
 | Service closure | The second or third nearest becomes the nearest; only origins that lose all three are searched again. |
 | New destination cells (new employment zone, new service, newly populated cell) | One reverse search per new cell gives its cost from every origin; for nearest-of-type, the search is pruned where the stored nearest is already closer. |
-| Newly urbanised cells (new origins) | `urban_extension`: the cell's local edges take the speeds and detour factors of its built-up neighbours, with no OSM editing; one search per new origin cell. |
+| Newly developed cells (new origins or destinations) | `urban_extension`: no local road is built. The cell's grid edges take the properties (speeds, detour factors, capacities, bike infrastructure shares) of its built-up neighbours or of cells with the same type of development (housing estate, business park, town centre); its point is placed like those of comparable cells; one search per new cell. |
 | Gradual network levers (speed limits, PT speed or frequency, bike comfort) | Path-fixed update from the stored components (time per road class, PT components): exact when paths do not change, otherwise an upper bound. Origins where the bound may be loose are searched again (section 11.5). |
-| Few added elements (a motorway link, a few stops, a footbridge) | Forward and backward searches from each new element x, combined with the old costs: c_new(o,d) = min(c_old(o,d), min over x of c_old(o,x) + c_new(x,d)), with x the first new element on the path. Exact on static graphs; to validate for PT. The engine compares its cost with re-searching the affected origins and picks the cheaper. |
+| Few added elements (a trunk link, a few stops) | Forward and backward searches from each new element x, combined with the old costs: c_new(o,d) = min(c_old(o,d), min over x of c_old(o,x) + c_new(x,d)), with x the first new element on the path. Exact on static graphs; to validate for PT. The engine compares its cost with re-searching the affected origins and picks the cheaper. |
 | Mixed or large packages (station reopenings across France, a regional network redesign) | Affected origins from reverse reach and stored route groups; above 30% of origins for a mode, one full run for that mode, parallel by tile. |
 
 **Station reopenings are not pure additions.** A new stop slows every train that calls there (dwell, braking and acceleration: 2 min per added stop), so all trips using the line are affected; the stored route groups identify them without a search. The worst case for a very large scenario is one full national run per epoch, the same cost as building a reference year.
 
 ## 11.4 Edit levels and catalogue
 
-Network edits apply at one of three levels; land-use edits form a fourth kind that never touches the networks.
+Road scenarios are edits of the reduced network: speed limits and capacities of grid edges and trunk links, and new trunk sections with their connectors. Local road networks are not built: new development zones take the properties of comparable cells (`urban_extension`). Bike infrastructure scenarios change the shares of separated infrastructure carried by bike grid edges. Network edits apply at one of three levels; land-use edits form a fourth kind that never touches the networks.
 
 | Level | What is edited | Typical edits | Assessment |
 |---|---|---|---|
-| 1. Derived layers | Time components of grid edges, trunk links, PT stop times, rates of legs | Speed limits by class or area; PT speed or frequency; bike comfort; PT seats and capacity | Seconds to rescale; exact when paths do not change, bounded otherwise (11.5) |
-| 2. Source network | OSM edge table and GTFS, as small differences | New or removed roads and bridges, car-to-bike conversions, interchanges, new lines, extensions, stations | Rebuild of affected tiles, then triage; captures new topology and barriers |
+| 1. Reduced network | Time components and capacities of grid edges and trunk links; bike infrastructure shares of grid edges; edges of new development zones; PT stop times; rates of legs | Speed limits by class or area; capacities; bike infrastructure; new development zones; PT speed or frequency; PT seats and capacity | Seconds to rescale; exact when paths do not change, bounded otherwise (11.5) |
+| 2. Trunk graph and GTFS | New trunk links and interchanges; GTFS as small differences | New motorway sections; new lines, extensions, stations | Connectors or PT tables rebuilt where touched, then triage |
 | 3. Outputs | O-D costs directly | "Car times −5% everywhere" | Instant but without network propagation; sensitivity analysis only |
 | Land use | Control totals and keys | Sector growth; business park; school opening; new park; population | Tables, plus searches for new cells only |
 
@@ -63,10 +63,10 @@ _Figure 6. Scenario pipeline for network edits. Level 1 edits skip the tile rebu
 | Edit | Parameters | Level | Recomputed |
 |---|---|---|---|
 | `road_speed` | Selection (area, class); new speed limit or factor; date | 1 | Path-fixed update; re-search where bounds are loose |
-| `road_add`, `trunk_add` | Line geometry, class, speed, lanes, interchanges (motorways and major links only) | 2 | Grid edges, trunk graph and connectors in touched tiles; triage |
-| `urban_extension` | Polygon of the new urbanised area; date | 2 | Local edges from neighbouring speeds; searches for new origin cells |
-| `road_remove`, `car_to_bike` | Selection; car access off; bike infrastructure class | 2 | Car and bike grid edges; affected origins |
-| `bike_infra` | Way ids or line geometry; infrastructure class; surface | 2 | Bike speeds, stop probabilities and energy; affected origins |
+| `road_capacity` | Selection (area, class, edges); lanes or capacity factor; date | 1 | Congested costs (section 12); free-flow costs unchanged |
+| `trunk_add` | Line geometry, speed, lanes, interchanges (motorways and voies express only) | 2 | Trunk graph and connectors; triage |
+| `urban_extension` | Polygon of the new development zone; type of development or reference cells; date | 1 | Grid edges copied from comparable cells; searches for new cells |
+| `bike_infra` | Selection (area, class, edges); share of separated infrastructure or class; date | 1 | Bike speeds, stop probabilities and energy of the selected edges; affected origins |
 | `pt_speed`, `pt_frequency` | Routes; factor, segment times or headway by period | 1 | Stop times or trips regenerated; path-fixed update or affected origins |
 | `pt_quality` | Routes; seats, capacity, standing shares | 1 | Ride energy; no search |
 | `pt_extend`, `pt_new_line`, `station_reopen` | Stops, headways, speeds or segment times, dwell times | 2 | New stops and trips; walk access; affected origins via route groups |
@@ -115,6 +115,7 @@ events:
   - type: urban_extension
     date: 2033
     area: zones/new_district.geojson
+    development: housing_estate           # properties copied from cells of this type
 ```
 
 ## 11.7 Finding affected origins
@@ -127,6 +128,6 @@ events:
 
 - A scenario with no edits reproduces the baseline exactly.
 - Monotonicity: adding a road or raising a speed never increases any travel time; removing never decreases one.
-- Level 1 against level 2 on a sample: the same speed change applied both ways must agree within a tolerance; interpolated years stay within their bounds.
+- Path-fixed updates against full re-searches on a sample: the same speed change computed both ways must agree within a tolerance; interpolated years stay within their bounds.
 - Back-test: the 2021 baseline plus the observed changes, run incrementally, against a direct build of 2023 (section 5.5); this measures the engine's own error.
 - Every run logs the edits, the option chosen for each, the tiles rebuilt and the origins recomputed, so the cost of each edit is visible.

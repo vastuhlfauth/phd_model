@@ -1,6 +1,6 @@
 # Specification index
 
-This folder is the Markdown version of the proposal (version 9, 16 October 2026), one file per section. "Section 9.3" in the text refers to subsection 9.3 of `09_trip_legs_energy.md`. Figures are in `figures/`.
+This folder is the Markdown version of the proposal (version 10, 16 October 2026), one file per section. "Section 9.3" in the text refers to subsection 9.3 of `09_trip_legs_energy.md`. Figures are in `figures/`.
 
 ## Files
 
@@ -39,7 +39,7 @@ Steps are those of the table in section 14.5. Give the agent only these files. T
 | 6 | `mobgrid/osm` | `08_networks.md` (8.1, 8.4, 8.5), `09_trip_legs_energy.md` (9.7, surface table) |
 | 7 | `mobgrid/energy` | `09_trip_legs_energy.md` (9.1 to 9.8) |
 | 8 | `mobgrid/graph` | `10_od_accessibility.md` (10.2, 10.3), `14_implementation.md` (14.7) |
-| 9 | `mobgrid/layers/gridgraph.py` | `08_networks.md` (8.3, 8.4), `04_spatial_frame.md` (4.2) |
+| 9 | `mobgrid/layers/gridgraph.py` | `08_networks.md` (8.3, 8.4), `04_spatial_frame.md` (4.2), `12_congestion.md` (capacity) |
 | 10 | `mobgrid/od` | `10_od_accessibility.md`, `04_spatial_frame.md` (4.5), `13_validation.md` |
 | 11 | `mobgrid/budget` | `09_trip_legs_energy.md` (9.9), `05_data_acquisition.md` (5.4) |
 
@@ -55,4 +55,4 @@ Steps are those of the table in section 14.5. Give the agent only these files. T
 | Monetary cost | `09_trip_legs_energy.md` (9.10) |
 | Scenario engine | `11_scenario_engine.md` |
 | Google validation (rework of the legacy scripts) | `12_congestion.md`, `13_validation.md`, `14_implementation.md` (14.4) |
-| Congestion | `12_congestion.md` |
+| Congestion, AequilibraE | `12_congestion.md`, `14_implementation.md` (14.6) |

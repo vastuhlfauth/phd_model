@@ -94,7 +94,7 @@ In this order, on one pilot département with its halo and for the 2021 baseline
 | 6 | `mobgrid/osm` | Nodes and ways from PBF; directed edges with access per mode; bike infrastructure classes; gradients; free-flow times | Connectivity checks; car times on sample paths within tolerance of OSRM; bike infrastructure compared with the national dataset |
 | 7 | `mobgrid/energy` | Leg formulas of section 9 per mode and direction | Reproduces the reference rates of section 9.2 and the checks of sections 9.3 and 9.7 |
 | 8 | `mobgrid/graph` | CSR graph; bounded multi-source Dijkstra with secondary weights, predecessors and the three products | Same distances as scipy's Dijkstra on random graphs; products equal brute-force sums and minima |
-| 9 | `mobgrid/layers/gridgraph.py` | 1 km grid edges to 24 neighbours, stray check, time per road class | Edge times equal OSRM between neighbouring cells within tolerance |
+| 9 | `mobgrid/layers/gridgraph.py` | Representative points (section 4.2); 1 km grid edges to 8, 16 or 24 neighbours (the three variants built for the pilot comparison), stray check, time per road class, capacity | Edge times equal OSRM between neighbouring cells within tolerance; points on the network |
 | 10 | `mobgrid/od` | Car and bike O-D and products for the pilot, Parquet output | Validation metrics of section 13 against OSRM |
 | 11 | `mobgrid/budget` | EMP 2019 survey days rebuilt as legs; daily energy per person | Constancy tests of section 9.9 reported |
 
@@ -115,6 +115,7 @@ Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (time
 | Tile caching | xxhash | Content hash of each tile's inputs |
 | Parallelism | joblib or multiprocessing | One process per tile |
 | PT engine to benchmark | r5py | Against the numba RAPTOR |
+| Assignment and skims | aequilibrae (version 1.7, Python 3.11 or later) | Multi-class static user-equilibrium assignment (MSA, Frank-Wolfe, bi-conjugate Frank-Wolfe), skims, GTFS import and optimal-strategies transit assignment, multi-threaded; benchmarked on the pilot against the compiled searches; candidate engine for the congestion phase (section 12). Full skim matrices do not scale to 374,000 national origins, so cutoffs and the products of section 10.2 are checked in the benchmark |
 | Reference and validation | OSRM (existing), OTP | Not used in production |
 | Command line, tests, maps | typer, pytest; geopandas and pyogrio for maps only |  |
 
@@ -135,19 +136,20 @@ Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (time
 | Min-plus combination of tables | PT fast variant; land-use updates for PT | Stop-to-stop times with access and egress tables |
 | Path-fixed update and bounds | Gradual levers; interpolation between epochs | From stored time components |
 | Decomposition by first new element | Few added links or stops | Forward and backward searches per element |
-| Path tracing from predecessor edges | Stray check of grid edges, assignment later | Only for the 24 neighbour targets per cell |
+| Weighted 1-median on network nodes | Representative points (section 4.2) | Occupied dwellings as weights; candidate nodes of the cell's main component |
+| Path tracing from predecessor edges | Stray check of grid edges, assignment later | Only for the neighbour targets of each cell |
 | Degree-2 contraction, largest component | Shrinking the OSM graph | Keeps exact times, distances and energy |
 | RAPTOR and range RAPTOR (Delling et al. 2015) | PT over the departure window | Range RAPTOR reuses labels across departures |
 | ULTRA transfer shortcuts (Baum et al. 2023) | Unrestricted walking between stops | Later, if transfer limits matter |
 | Content hashing per tile | Rebuilding only changed tiles | Hash of inputs, parameters and code version |
-| Speed-flow models and regressions | Congestion (later) | Out-of-equilibrium loop |
+| BPR functions and static user-equilibrium assignment | Congestion on the reduced network (section 12) | Bi-conjugate Frank-Wolfe; AequilibraE or own implementation; calibration on Google times |
 
 ## 14.8 Roadmap
 
 | Phase | Content | Deliverable |
 |---|---|---|
 | 0. Data and origins | GTFS rebuilding (done); acquisition package and manifest with 2021 and 2023 vintages (done, national); origins at 200 m on the pilot; BPE list review | Thresholds; versioned base tables; origins validation |
-| 1. Pilot | Opportunities and destination flags; all network layers with leg formulas; products; validation; r5py vs RAPTOR benchmark and fast variant; speed calibration against OSRM; storage decisions; EMP 2019 budget re-estimation | Validation report; engine, storage, allocation and energy choices |
+| 1. Pilot | Opportunities and destination flags; representative points; all network layers with leg formulas; comparison of 8, 16 and 24 neighbours; products; validation; r5py vs RAPTOR benchmark and fast variant; AequilibraE benchmark; speed calibration against OSRM; storage decisions; EMP 2019 budget re-estimation | Validation report; neighbourhood, engine, storage, allocation and energy choices |
 | 2. National baseline | Origins and opportunities nationally; tiled national run, all modes, for 2021 | Baseline 2021 tables and products |
 | 3. Second state and scenarios | 2023 build; scenario engine (timeline, triage, bounds, caching); back-test 2021 to 2023 | 2023 tables; back-test report; scenario runs with logs |
-| 4. Congestion and crowding | Speed-flow models on Google Maps data; out-of-equilibrium loop; PT loads and crowding | Congested car costs; crowding-dependent PT energy |
+| 4. Congestion and crowding | Capacities of the reduced network; BPR functions calibrated on Google Maps data; equilibrium assignment; PT loads and crowding | Congested car costs; crowding-dependent PT energy |

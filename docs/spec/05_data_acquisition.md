@@ -88,7 +88,7 @@ The national building reference (RNB) is not used.
 
 Building the whole pipeline for 2021 and for 2023 gives a test of the model on real changes:
 
-1. **Engine consistency.** The changes observed between the two states (new roads and lines, speed limits, bike infrastructure, new buildings, services, jobs) are written as scenario edits and applied to the 2021 baseline with the incremental engine. The resulting O-D costs, opportunities and accessibility must match a direct build of 2023. This measures the error of the engine itself (section 11.8).
+1. **Engine consistency.** The changes observed between the two states that scenarios can represent (new trunk sections, speed limits, PT lines, bike infrastructure shares, newly developed cells, buildings, services, jobs) are written as scenario edits and applied to the 2021 baseline with the incremental engine. The resulting O-D costs, opportunities and accessibility must match a direct build of 2023. This measures the error of the engine itself (section 11.8).
 2. **Behavioural back-test.** The economic model, run on the 2021 baseline plus those edits, predicts changes in flows and mode shares that are compared with observed changes between MOBPRO 2021 and MOBPRO 2023.
 - **Caveats:** OSM differences between snapshots mix real infrastructure changes and mapping improvements, so the infrastructure edits must be curated (known projects, major road classes, PT lines). Census results pool five annual collections, so observed changes in commuting are smoothed. PT supply in both states is rebuilt from 2026 timetables (section 5.6), so the PT back-test is limited to line openings and extensions.
 
