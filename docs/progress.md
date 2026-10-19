@@ -2,7 +2,7 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-19 by Copilot (step 7 `mobgrid/energy` implemented, branch `step/mobgrid-energy`, awaiting review)_
+_Last updated: 2026-10-19 by Copilot (step 7 `mobgrid/energy` implemented plus its `checks` verification command, branch `step/mobgrid-energy`, awaiting review)_
 
 ## Steps (table of section 14.5)
 
@@ -21,7 +21,7 @@ _Last updated: 2026-10-19 by Copilot (step 7 `mobgrid/energy` implemented, branc
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | not started | | |
-| 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Leg formulas of section 9.1 to 9.8: `rates.py` (`config/energy.yaml` loader, KH/Compendium activity rates, `sedentary_energy_kj`), `walk.py` (Tobler speed, Minetti gradient factor, stairs), `bike.py` (force-balance speed solver, ride/stop energy, separated-infra factor, e-bike pedelec assist), `legs.py` (`Leg` chain T=sum(t)/E=sum(e), waiting, PT ride crowding, car congestion). Reproduces every section 9.2 reference rate and the 9.3/9.7 checks (gradient factors, 1 km flat walk 160/211 kJ, 10 m stairs 22.9 kJ, 16 km/h mechanical power ~52.5 W, +-mass speed changes, one-stop energy). Ruff clean; 59 new tests pass (331 total, 2 pilot deselected). |
+| 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Leg formulas of section 9.1 to 9.8: `rates.py` (`config/energy.yaml` loader, KH/Compendium activity rates, `sedentary_energy_kj`), `walk.py` (Tobler speed, Minetti gradient factor, stairs), `bike.py` (force-balance speed solver, ride/stop energy, separated-infra factor, e-bike pedelec assist), `legs.py` (`Leg` chain T=sum(t)/E=sum(e), waiting, PT ride crowding, car congestion). Reproduces every section 9.2 reference rate and the 9.3/9.7 checks (gradient factors, 1 km flat walk 160/211 kJ, 10 m stairs 22.9 kJ, 16 km/h mechanical power ~52.5 W, +-mass speed changes, one-stop energy). Verification command `python -m mobgrid.energy.checks --out docs/data/step7_energy` (`checks.py`, matplotlib dev dependency) writes 10 PNGs plus `docs/data/step7_energy_checks.md` (27 PASS/0 FAIL/9 COMPARE check table, F1-F10 figures, provisional-value and modelling-note sections); run once, committed. Ruff clean; 60 new tests pass (332 total, 2 pilot deselected). |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
 | 10 | `mobgrid/od` | not started | | |
@@ -55,6 +55,36 @@ Status values: not started, in progress, review, merged.
   general `activity_rates` table (sitting, standing, driving) does
   switch between KH and Compendium, since section 9.2 gives both for
   those.
+- 2026-10-19, step 7, added `mobgrid/energy/checks.py`
+  (`python -m mobgrid.energy.checks --out <dir>`), a verification command
+  producing 10 PNGs plus a Markdown check table, built only from
+  `rates`/`walk`/`bike`/`legs`' public functions. Provisional scenario
+  values requested by the user (bike power sets A/B, `v_max,desc`,
+  terminal-leg times, bus/metro/car parameters, trips per day) live only
+  in `checks.build_provisional`, never in `config/energy.yaml` (which
+  keeps its `null`/`TODO(confirm)` placeholders). Notable modelling
+  choices, documented in the generated report's own "Modelling notes"
+  section: (1) e-bike figures reuse bike set A's rider power profile
+  plus the configured pedelec assist factor, so rider effort does not
+  fall with more assistance in this simple model (flagged explicitly by
+  two F3 COMPARE rows against the Compendium's light/high-support MET
+  values); (2) F4's e-bike roll/climb/stops/drag split is computed at
+  the e-bike's own (faster) speed divided by the same efficiency, as if
+  unassisted, overstating the rider's real cost (F3's rider-only split
+  is the correct one); (3) PT legs in F7/F8/F9 use an illustrative
+  400 m each-way access/egress walk (not given by the task) and an
+  implied load factor `1/(1-standing_share)` from section 9.5's
+  first-phase standing shares; (4) F9-B's "train" mode reuses the metro
+  chain's terminal legs with its own seated rate, per the task's "Train:
+  metro terminal legs"; (5) bike/car stop and parking-search durations
+  count only energy, not an added time cost (section 9.7's stop-time
+  formula needs signal-timing data not configured). Ran
+  `python -m mobgrid.energy.checks --out docs/data/step7_energy` once:
+  27 PASS, 0 FAIL, 9 COMPARE; committed the 10 PNGs and the check table.
+  Added `tests/mobgrid/energy/test_checks.py` (smoke test: runs the
+  command into a tmp dir, asserts 10 PNGs, the report file, and no
+  `FAIL` table row). `matplotlib` added as a `dev` dependency
+  (`uv add --dev matplotlib`).
 - 2026-10-13, long-running job policy (task A), appended the user's exact
   instructions to [.github/copilot-instructions.md](../.github/copilot-instructions.md),
   ignored `logs/`, and configured pytest to exclude `pilot` tests by default.
@@ -1500,11 +1530,11 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [x] Exact earliest Géovélo 2022 monthly vintage and direct resource URL: 2022-07-18, proxy for 2021
 - [x] Filosofi 2021 imputed 200 m benchmark: published file URL configured
 - [x] Overture places: release 2026-09-23.1 and national Parquet extraction configured
-- [ ] Archive Overture before approximately 2026-11-22; no data acquisition has been run
+- [x] Archive Overture before approximately 2026-11-22; `data/raw/overture/2026-09-23.1/overture-places.parquet` exists
 - [x] Step 0: TCL Lyon GTFS now resolves to the current SYTRAL Mobilités resource 81943 (producer URL + Mobility Database fallback); the deprecated 65812 resource is dropped
 - [x] Step 0: verify liO/Rémi stops inside the 2026 Couserans-Pyrénées and Marche Occitane – Val d'Anglin EPCI polygons: Couserans-Pyrénées is covered (30 liO patterns); Marche Occitane has no liO/Rémi/SNCF stop inside its polygon
 - [x] Neighbouring OSM extracts: Geofabrik publishes no `.md5` sidecar for dated regional files; verified by `Content-Length`-based size instead
-- [x] France OSM extracts: same size-only verification for both vintages; section 5.3's dated-extract `.md5` claim is incorrect (user-approved override, specification left unchanged)
+- [x] France OSM extracts: same size-only verification for both vintages; section 5.3's dated-extract `.md5` claim is incorrect (user-approved override, 2026-10-09); already corrected in spec version 9, section 5.3 (the tracked `docs/spec/05_data_acquisition.md` now reads "dated extracts... are published without `.md5` files"), so no further specification edit is needed
 - [ ] Acquisition API resources: direct file URLs, source-specific licenses, and expected checksums where providers publish them
 - [ ] Lyon BHNS Part-Dieu – Sept-Chemins: opening date (section 5.6)
 - [ ] Step 0 relation parameters: run the approved Luxembourg smoke, national

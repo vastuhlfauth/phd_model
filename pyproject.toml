@@ -36,6 +36,7 @@ mobility-mobgrid = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "matplotlib>=3.11.2",
     "pytest",
     "ruff",
 ]
