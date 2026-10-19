@@ -113,15 +113,21 @@ _BIKE_MIN_RIDE_FRACTION = 0.5
 #: checks above.
 _BIKE_MAX_PLAUSIBLE_SPEED_KMH = 45.0
 
-#: Door-to-door implied speed plausibility ranges, km/h, by mode (a
-#: separate data-quality check: unlike the bike P0 calibration guards
-#: above, this flags whole trips for exclusion from the group tables, not
-#: a quantity derived from them). Declared durations are self-reported
-#: and often rounded to 5/15/30/60 min, so a trip can look implausibly
-#: fast or slow purely from rounding. Public: used by `emp.py`'s report.
-WALK_PLAUSIBLE_SPEED_KMH = (1.5, 7.0)
-CYCLE_PLAUSIBLE_SPEED_KMH = (5.0, 35.0)
-CAR_MAX_PLAUSIBLE_SPEED_KMH = 130.0
+#: Door-to-door implied speed upper bounds, km/h, by mode (a separate
+#: data-quality check: unlike the bike P0 calibration guards above, this
+#: flags individual trips for distance correction, not a quantity
+#: derived from them). Only an upper bound: declared durations are
+#: self-reported and often rounded to 5/15/30/60 min, so a trip can look
+#: implausibly fast purely from rounding; the lower end is left alone
+#: (round 4's two-sided filter dropped whole days -- round 5 corrects
+#: the implausible trips instead, so stricter lower-bound flagging would
+#: just replace more declared values with the sample median). Public:
+#: used by `emp.py`'s report. Cycling energy is time-based (not
+#: distance-based) since round 4's fix, so only walk's and car's
+#: corrected distances feed the energy formula.
+WALK_SPEED_UPPER_KMH = 7.0
+CYCLE_SPEED_UPPER_KMH = 35.0
+CAR_SPEED_UPPER_KMH = 130.0
 _CAR_MODE_GROUPS = (
     "car_driver", "car_passenger_household", "car_passenger_carpool",
 )
@@ -453,20 +459,21 @@ def build_trip_legs(
     terminal_scale_sql = _dbl(terminal_scale)
     train_threshold_sql = _dbl(TRAIN_LONG_THRESHOLD_KM)
     car_modes_sql = ", ".join(f"'{m}'" for m in _CAR_MODE_GROUPS)
-    speed_plausible_sql = f"""
+    # Flags only the upper bound, on the *declared* speed (before any
+    # correction): a trip this fast cannot credibly be the mode it is
+    # coded as, whatever the declared duration rounding.
+    speed_flagged_upper_sql = f"""
         coalesce(
             CASE
-                WHEN mode_group = 'walk' THEN implied_speed_kmh
-                    BETWEEN {_dbl(WALK_PLAUSIBLE_SPEED_KMH[0])}
-                    AND {_dbl(WALK_PLAUSIBLE_SPEED_KMH[1])}
-                WHEN mode_group = 'cycle' THEN implied_speed_kmh
-                    BETWEEN {_dbl(CYCLE_PLAUSIBLE_SPEED_KMH[0])}
-                    AND {_dbl(CYCLE_PLAUSIBLE_SPEED_KMH[1])}
+                WHEN mode_group = 'walk' THEN
+                    implied_speed_kmh_declared > {_dbl(WALK_SPEED_UPPER_KMH)}
+                WHEN mode_group = 'cycle' THEN
+                    implied_speed_kmh_declared > {_dbl(CYCLE_SPEED_UPPER_KMH)}
                 WHEN mode_group IN ({car_modes_sql}) THEN
-                    implied_speed_kmh <= {_dbl(CAR_MAX_PLAUSIBLE_SPEED_KMH)}
-                ELSE TRUE
+                    implied_speed_kmh_declared > {_dbl(CAR_SPEED_UPPER_KMH)}
+                ELSE FALSE
             END,
-            TRUE
+            FALSE
         )
     """
 
@@ -499,9 +506,19 @@ def build_trip_legs(
             d.num_dep AS num_dep,
             d.MORIDOM AS moridom,
             d.DUREE AS duration_min,
-            d.MDISTTOT_fin AS distance_km,
+            d.MDISTTOT_fin AS distance_km_declared,
             d.MACCOMPM AS maccompm,
             d.MACCOMPHM AS maccomphm,
+            -- Trips without a real destination (section 9.9's "leisure
+            -- loops"): EMP's own purpose code 7.7 "se promener sans
+            -- destination precise" (stroll, no specific destination);
+            -- code 7.8 ("go to a place for walking") has a destination
+            -- and does not count. EMP's public release has no
+            -- commune-level origin field (destination only, disclosure
+            -- control), so an "origin = destination" geometry check is
+            -- not available; this purpose code is EMP's own
+            -- operationalisation of the same concept.
+            d.MMOTIFDES = {_dbl(7.7)} AS is_loop_trip,
             CASE
                 WHEN d.mtp IS NULL OR d.mtp = 9999 THEN 'other'
                 WHEN floor(d.mtp) = 1 THEN 'walk'
@@ -537,6 +554,49 @@ def build_trip_legs(
         JOIN tcm_ind_kish k ON k.IDENT_IND = d.IDENT_IND
         JOIN k_individu i ON i.IDENT_IND = d.IDENT_IND
     ),
+    speed_quality AS (
+        SELECT *,
+            CASE WHEN duration_min > 0 THEN
+                distance_km_declared / (duration_min / 60.0)
+            END AS implied_speed_kmh_declared
+        FROM joined
+    ),
+    speed_flagged AS (
+        SELECT *,
+            ({speed_flagged_upper_sql}) AS speed_flagged_upper
+        FROM speed_quality
+    ),
+    speed_medians AS (
+        SELECT *,
+            -- One shared median per mode, from the *not*-flagged trips
+            -- (section 9.9's data-quality correction): the window has no
+            -- PARTITION BY, so every row of the walk (resp. car) rows
+            -- sees the same one value.
+            median(implied_speed_kmh_declared) FILTER (
+                WHERE mode_group = 'walk' AND NOT speed_flagged_upper
+            ) OVER () AS walk_median_speed_kmh,
+            median(implied_speed_kmh_declared) FILTER (
+                WHERE mode_group IN ({car_modes_sql}) AND NOT speed_flagged_upper
+            ) OVER () AS car_median_speed_kmh
+        FROM speed_flagged
+    ),
+    corrected AS (
+        SELECT *,
+            -- Correct, don't drop (section 9.9, step 11 round 5):
+            -- distance = declared duration x the mode's median speed,
+            -- for the trips flagged above the upper speed bound only.
+            -- Cycling energy is time-based (round 4), so only walk's and
+            -- car's corrected distances matter to the energy formulas
+            -- below; bike is flagged (reported) but not corrected.
+            CASE
+                WHEN mode_group = 'walk' AND speed_flagged_upper
+                    THEN duration_min / 60.0 * walk_median_speed_kmh
+                WHEN mode_group IN ({car_modes_sql}) AND speed_flagged_upper
+                    THEN duration_min / 60.0 * car_median_speed_kmh
+                ELSE distance_km_declared
+            END AS distance_km
+        FROM speed_medians
+    ),
     walk_cycle AS (
         SELECT *,
             CASE WHEN duration_min > 0 THEN distance_km / (duration_min / 60.0) END
@@ -559,7 +619,7 @@ def build_trip_legs(
                     )
                 )
             END AS bike_terminal_s_estimate
-        FROM joined
+        FROM corrected
     ),
     bike_ride AS (
         SELECT *,
@@ -636,9 +696,9 @@ def build_trip_legs(
     SELECT
         ident_dep, ident_ind, ident_men, pond_jour, pond_ind, typejour, mobloc,
         num_dep, moridom, mode_group, vehicle, density_ori, density_des,
-        age, age_band, population_category,
-        duration_min, distance_km, implied_speed_kmh, p0_calibrated_w,
-        ({speed_plausible_sql}) AS speed_plausible,
+        age, age_band, population_category, is_loop_trip,
+        duration_min, distance_km, distance_km_declared, implied_speed_kmh,
+        implied_speed_kmh_declared, speed_flagged_upper, p0_calibrated_w,
         bike_ride_time_s, bike_ride_time_for_energy_s,
 
         CASE mode_group

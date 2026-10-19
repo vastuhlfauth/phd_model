@@ -34,7 +34,10 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
 
     assert exit_code == 0
     png_files = sorted(out_dir.glob("*.png"))
-    assert len(png_files) == 11
+    # 11 figures x 2 loop-trip variants ("_all"/"_noloops", point 6).
+    assert len(png_files) == 22
+    assert any("_all" in p.name for p in png_files)
+    assert any("_noloops" in p.name for p in png_files)
 
     md_path = out_dir.with_suffix(".md")
     assert md_path.is_file()

@@ -24,7 +24,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from mobgrid.budget import daily_energy, emp2019
-from mobgrid.energy.rates import EnergyConfig, load_energy_config
+from mobgrid.energy.rates import (
+    MET_MINUTE_KJ_PER_KG,
+    EnergyConfig,
+    activity_rate_kj_per_min,
+    load_energy_config,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONFIG_PATH = ROOT / "config" / "energy.yaml"
@@ -37,6 +42,102 @@ MIN_CELL_N = 50
 #: Section 9.7's flat-ground P0 reference (16 km/h, 70 kg), used by F8's
 #: "P0 recalibrated (below) vs 52.5 W" robustness variant.
 P0_REFERENCE_W = 52.5
+
+
+def _compute_cycle_decomposition(
+    con: duckdb.DuckDBPyConnection, config: EnergyConfig
+) -> dict:
+    """Point 3 (section 9.9, step 11 round 5): the post-fix decomposition
+    of mean cycle-day energy into ride work, unloaded pedalling, stops,
+    get/park and the walking trips of the same day (kJ and minutes,
+    weighted by ``pond_jour``), plus the per-stop unit cost.
+
+    Ride work, unloaded pedalling and stops are the same formula in both
+    rate sets (section 9.7's mechanical/physiological terms); only
+    get/park (a standing activity rate) and the day's walking legs (c0)
+    differ by rate set. Every component is summed to one row per cycle
+    day *before* being weighted (``pond_jour`` is a day weight, repeated
+    on every leg of that day; weighting leg rows directly would count
+    each day's weight once per leg).
+    """
+    bike = config.bike
+    mass = config.reference_mass_kg
+    bike_total_mass = mass + bike.bike_mass_kg
+    eff = bike.gross_muscular_efficiency
+    p0_w = bike.power.p0_w
+    unloaded_rate_kj_per_min = (
+        bike.pedalling_unloaded_net_met * MET_MINUTE_KJ_PER_KG * mass
+    )
+    get_park_min_total = 2.0 * bike.get_park_min
+    stops_per_km = bike.stops.stops_per_km
+    standing_kh = activity_rate_kj_per_min(
+        config.activity_rates["standing_relaxed"], "kh", mass
+    )
+    standing_cp = activity_rate_kj_per_min(
+        config.activity_rates["standing_relaxed"], "compendium", mass
+    )
+    c0_kh = config.walking.c0_j_per_kg_m["kh"]
+    c0_cp = config.walking.c0_j_per_kg_m["compendium"]
+
+    rows = con.sql("""
+        SELECT ident_ind, mode_group, distance_km, bike_ride_time_for_energy_s,
+            duration_min, pond_jour
+        FROM trip_legs
+        WHERE ident_ind IN
+            (SELECT ident_ind FROM day_summary WHERE day_mode_group = 'cycle')
+    """).fetchnumpy()
+    cycle_mask = rows["mode_group"] == "cycle"
+    walk_mask = rows["mode_group"] == "walk"
+
+    ride_s = rows["bike_ride_time_for_energy_s"][cycle_mask]
+    dist_km = rows["distance_km"][cycle_mask]
+    speed_m_s = dist_km * 1000.0 / ride_s
+    work_kj = p0_w / eff * ride_s / 1000.0
+    unloaded_kj = unloaded_rate_kj_per_min * ride_s / 60.0
+    n_stops = stops_per_km * dist_km
+    stops_kj = 0.5 * bike_total_mass * speed_m_s**2 / eff / 1000.0 * n_stops
+
+    walk_dist_km = rows["distance_km"][walk_mask]
+    walk_kh_kj = mass * c0_kh * walk_dist_km
+    walk_cp_kj = mass * c0_cp * walk_dist_km
+
+    # One shared ident_ind -> day-index map (every row here belongs to a
+    # cycle day, so a leg's ident_ind is always one of ``cycle_days``);
+    # sums each component to one total per day (a day can have more than
+    # one leg of the same mode) via bincount, not a Python-level loop.
+    cycle_days, cycle_index = np.unique(rows["ident_ind"], return_inverse=True)
+    n_days = len(cycle_days)
+    weight_by_day = np.zeros(n_days)
+    weight_by_day[cycle_index[cycle_mask]] = rows["pond_jour"][cycle_mask]
+    total_weight = weight_by_day.sum()
+
+    def _day_sum(mask: np.ndarray, values: np.ndarray) -> np.ndarray:
+        return np.bincount(cycle_index[mask], weights=values, minlength=n_days)
+
+    def _weighted_mean(mask: np.ndarray, values: np.ndarray) -> float:
+        return float(np.sum(weight_by_day * _day_sum(mask, values)) / total_weight)
+
+    mean_n_stops = _weighted_mean(cycle_mask, n_stops)
+    mean_stops_kj = _weighted_mean(cycle_mask, stops_kj)
+
+    return {
+        "n_cycle_days": n_days,
+        "ride_minutes": _weighted_mean(cycle_mask, ride_s) / 60.0,
+        "ride_work_kj": _weighted_mean(cycle_mask, work_kj),
+        "unloaded_kj": _weighted_mean(cycle_mask, unloaded_kj),
+        "stops_kj": mean_stops_kj,
+        "stops_per_km": stops_per_km,
+        "mean_n_stops_per_day": mean_n_stops,
+        "kj_per_stop": (
+            mean_stops_kj / mean_n_stops if mean_n_stops > 0 else float("nan")
+        ),
+        "get_park_minutes": get_park_min_total,
+        "get_park_kh_kj": standing_kh * get_park_min_total,
+        "get_park_cp_kj": standing_cp * get_park_min_total,
+        "walk_minutes": _weighted_mean(walk_mask, rows["duration_min"][walk_mask]),
+        "walk_kh_kj": _weighted_mean(walk_mask, walk_kh_kj),
+        "walk_cp_kj": _weighted_mean(walk_mask, walk_cp_kj),
+    }
 
 
 def _weighted_query(
@@ -79,23 +180,24 @@ def _build_base(
     daily_energy.create_non_travelers(con)
 
 
-def run(
+def _run_variant(
+    con: duckdb.DuckDBPyConnection,
+    config: EnergyConfig,
     out_dir: Path,
-    zip_path: Path = emp2019.DEFAULT_ZIP_PATH,
-    config_path: Path = DEFAULT_CONFIG_PATH,
-    n_reps: int = 200,
-    seed: int = 0,
+    *,
+    where_sql_days: str,
+    suffix: str,
+    n_reps: int,
+    seed: int,
 ) -> dict:
-    """Run the full re-estimation; return every computed statistic and
-    figure path, used by ``write_markdown`` and the test suite."""
-    config = load_energy_config(config_path)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    con = duckdb.connect()
-    csv_paths = emp2019.extract_tables(zip_path)
-    emp2019.register_views(con, csv_paths)
+    """Compute every statistic and figure for one loop-trip variant
+    (section 9.9, step 11 round 5): ``where_sql_days`` filters
+    ``day_summary``'s candidate trip legs (``"TRUE"`` for every trip,
+    ``"NOT is_loop_trip"`` to exclude leisure loops -- point 1's "with
+    and without loop trips"), ``suffix`` names this variant's figures
+    (``"_all"``/``"_noloops"``, point 6: "every figure twice")."""
     _build_base(con, config)
-
+    daily_energy.create_day_summary(con, where_sql=where_sql_days)
     days = _day_rows(con)
 
     mode_stats = _group_stats(days, "day_mode_group", n_reps=n_reps, seed=seed)
@@ -125,10 +227,14 @@ def run(
     ratio_kh = max(kh_means) / min(kh_means) if kh_means else float("nan")
     ratio_cp = max(cp_means) / min(cp_means) if cp_means else float("nan")
 
-    v0_overall = daily_energy.calibrate_v0_kmh(con)[0]
-    v0_by_age_band = daily_energy.calibrate_v0_kmh(con, by_age_band=True)
-    p0_overall = daily_energy.calibrate_p0(con, config)[0]
-    p0_by_age_band = daily_energy.calibrate_p0(con, config, by_age_band=True)
+    v0_overall = daily_energy.calibrate_v0_kmh(con, where_sql=where_sql_days)[0]
+    v0_by_age_band = daily_energy.calibrate_v0_kmh(
+        con, by_age_band=True, where_sql=where_sql_days
+    )
+    p0_overall = daily_energy.calibrate_p0(con, config, where_sql=where_sql_days)[0]
+    p0_by_age_band = daily_energy.calibrate_p0(
+        con, config, by_age_band=True, where_sql=where_sql_days
+    )
 
     trips_mean, trips_ci = daily_energy.bootstrap_mean_ci(
         days["ident_men"], days["pond_jour"], days["trips_per_day"].astype(float),
@@ -149,9 +255,9 @@ def run(
             con,
             "SELECT pond_jour AS weight, energy_kh_kj AS energy_kh, "
             "energy_cp_kj AS energy_cp, duration_min AS time_min FROM trip_legs "
-            f"WHERE mode_group = '{group}'",
+            f"WHERE mode_group = '{group}' AND ({where_sql_days})",
         )
-    carpool_n, carpool_household_n, carpool_share = con.sql("""
+    carpool_n, carpool_household_n, carpool_share = con.sql(f"""
         SELECT
             sum(CASE WHEN mode_group = 'car_passenger_carpool'
                 THEN pond_jour ELSE 0 END),
@@ -163,9 +269,9 @@ def run(
                 / sum(CASE WHEN mode_group IN
                     ('car_passenger_household', 'car_passenger_carpool')
                     THEN pond_jour ELSE 0 END)
-        FROM trip_legs
+        FROM trip_legs WHERE ({where_sql_days})
     """).fetchone()
-    walk_trips_by_day_group = dict(con.sql("""
+    walk_trips_by_day_group = dict(con.sql(f"""
         SELECT d.day_mode_group,
             sum(CASE WHEN t.mode_group = 'walk' THEN 1 ELSE 0 END) * 1.0
                 / count(DISTINCT d.ident_ind)
@@ -173,102 +279,43 @@ def run(
         JOIN trip_legs t ON t.ident_ind = d.ident_ind
         WHERE d.day_mode_group IN
             ('car_driver', 'car_passenger_household', 'car_passenger_carpool')
+            AND ({where_sql_days})
         GROUP BY d.day_mode_group
     """).fetchall())
 
-    non_travelers = con.sql(
-        "SELECT pond_ind, mimmosem FROM non_travelers"
-    ).fetchnumpy()
-    travelers_pond_ind = con.sql(
-        "SELECT pond_ind FROM day_summary WHERE total_energy_kh_kj IS NOT NULL"
-    ).fetchnumpy()["pond_ind"]
-    non_traveler_weight = non_travelers["pond_ind"].sum()
-    non_traveler_share = non_traveler_weight / (
-        non_traveler_weight + travelers_pond_ind.sum()
-    )
-    non_traveler_mimmosem_match = float(np.mean(non_travelers["mimmosem"] == 1))
-    traveler_day_type_share = dict(con.sql("""
-        SELECT any_value(t.typejour), sum(d.pond_jour)
-        FROM day_summary d JOIN trip_legs t ON t.ident_ind = d.ident_ind
-        GROUP BY d.ident_ind
-    """).fetchall())
-
-    # F8 robustness (section 9.9): re-run the pipeline under each variant.
+    # F8 robustness (section 9.9): re-run the pipeline under each variant,
+    # scoped to this same loop-trip filter throughout.
     robustness_rows, robustness_ci = _run_robustness(
-        con, config, n_reps=n_reps, seed=seed
+        con, config, n_reps=n_reps, seed=seed, base_where_sql=where_sql_days,
     )
-    # Restore the base case for any further queries/figures.
-    _build_base(con, config)
-
-    # Data-quality filter: flag trips with implausible door-to-door speeds
-    # (walk/bike/car) and report the main-mode group table with and
-    # without them.
-    quality_counts = con.sql("""
-        SELECT mode_group, count(*) FILTER (WHERE NOT speed_plausible) AS n_flagged,
-            count(*) AS n_total
-        FROM trip_legs GROUP BY 1 ORDER BY 1
-    """).fetchall()
-    daily_energy.create_day_summary(con, where_sql="speed_plausible")
-    days_filtered = _day_rows(con)
-    mode_stats_filtered = _group_stats(
-        days_filtered, "day_mode_group", n_reps=n_reps, seed=seed
-    )
-
-    # Cycle group, point 3: weekdays only (same, now time-based-at-P0,
-    # energy formula as "all days").
-    daily_energy.create_day_summary(con, where_sql="typejour = 1")
-    days_weekday = _day_rows(con)
-    cycle_weekday_stats = next(
-        (
-            s for s in _group_stats(
-                days_weekday, "day_mode_group", n_reps=n_reps, seed=seed
-            )
-            if s.group == "cycle"
-        ),
-        None,
-    )
-    daily_energy.create_day_summary(con)  # restore the unfiltered base
-
-    # Children as car drivers (point 4): the raw mtp code behind every
-    # day_mode_group='car_driver' day of a children_6_17 respondent.
-    children_car_driver_mtp = con.sql("""
-        SELECT d.mtp, count(*), min(t.age), max(t.age)
-        FROM trip_legs t
-        JOIN k_deploc d ON d.IDENT_IND = t.ident_ind AND d.num_dep = t.num_dep
-        WHERE t.mode_group = 'car_driver' AND t.population_category = 'children_6_17'
-        GROUP BY 1 ORDER BY 1
-    """).fetchall()
-    children_car_driver_n = con.sql("""
-        SELECT count(*) FROM day_summary
-        WHERE day_mode_group = 'car_driver' AND population_category = 'children_6_17'
-    """).fetchone()[0]
+    # Restore this variant's own base for the figures below.
+    daily_energy.create_day_summary(con, where_sql=where_sql_days)
 
     f4_paths, f4_panels = _figure_f4_mean_by_mode(
-        con, out_dir, n_reps=n_reps, seed=seed
+        con, out_dir, n_reps=n_reps, seed=seed, suffix=suffix,
     )
     figures = [
         _figure_f1_trips_per_day(
-            days, trips_mean, trips_by_population, trips_by_density, out_dir
+            days, trips_mean, trips_by_population, trips_by_density, out_dir,
+            suffix=suffix,
         ),
-        *_figure_f3_energy_density(con, out_dir),
+        *_figure_f3_energy_density(con, out_dir, suffix=suffix),
         *f4_paths,
-        _figure_f5_heatmaps(con, out_dir),
-        _figure_f6_v0_p0(v0_by_age_band, p0_by_age_band, config, out_dir),
-        _figure_f7_passengers(passenger_trip_stats, walk_trips_by_day_group, out_dir),
-        _figure_f8_robustness(robustness_ci, out_dir),
+        _figure_f5_heatmaps(con, out_dir, suffix=suffix),
+        _figure_f6_v0_p0(
+            v0_by_age_band, p0_by_age_band, config, out_dir, suffix=suffix,
+        ),
+        _figure_f7_passengers(
+            passenger_trip_stats, walk_trips_by_day_group, out_dir, suffix=suffix,
+        ),
+        _figure_f8_robustness(robustness_ci, out_dir, suffix=suffix),
     ]
 
     return {
-        "config": config,
         "n_days": len(days["day_mode_group"]),
         "mode_stats": mode_stats,
         "population_stats": population_stats,
         "density_stats": density_stats,
-        "quality_counts": quality_counts,
-        "mode_stats_filtered": mode_stats_filtered,
-        "cycle_weekday_stats": cycle_weekday_stats,
-        "children_car_driver_mtp": children_car_driver_mtp,
-        "children_car_driver_n": children_car_driver_n,
         "mean_kh": mean_kh,
         "mean_cp": mean_cp,
         "gamma_kh": gamma_kh,
@@ -287,13 +334,156 @@ def run(
         "carpool_share": carpool_share,
         "walk_trips_by_day_group": walk_trips_by_day_group,
         "f4_panels": f4_panels,
+        "robustness_rows": robustness_rows,
+        "figures": figures,
+    }
+
+
+def run(
+    out_dir: Path,
+    zip_path: Path = emp2019.DEFAULT_ZIP_PATH,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> dict:
+    """Run the full re-estimation; return every computed statistic and
+    figure path, used by ``write_markdown`` and the test suite.
+
+    Every statistic and figure is computed twice (section 9.9, step 11
+    round 5, point 6): ``"_all"`` (every trip) and ``"_noloops"``
+    (leisure-loop trips -- EMP purpose 7.7, "se promener sans
+    destination precise" -- excluded). The ``"_all"`` variant is this
+    function's primary, top-level result (unchanged keys, for
+    ``write_markdown`` and backward compatibility); ``"_noloops"``
+    contributes its own figures and the point-1 group-table comparison.
+    """
+    config = load_energy_config(config_path)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    con = duckdb.connect()
+    csv_paths = emp2019.extract_tables(zip_path)
+    emp2019.register_views(con, csv_paths)
+
+    results_all = _run_variant(
+        con, config, out_dir, where_sql_days="TRUE", suffix="_all",
+        n_reps=n_reps, seed=seed,
+    )
+    results_noloops = _run_variant(
+        con, config, out_dir, where_sql_days="NOT is_loop_trip", suffix="_noloops",
+        n_reps=n_reps, seed=seed,
+    )
+
+    # Restore the unfiltered base for the diagnostics below (not part of
+    # the all-vs-noloops figure duplication).
+    _build_base(con, config)
+
+    # Point 1: leisure-loop trip shares (of trips, and of day energy, by
+    # main-mode group); grouped by the trip's own day's ``day_mode_group``
+    # (walking_only/cycle/.../multimodal/other), matching every other
+    # group table in this report, not the trip's own naive ``mode_group``
+    # (e.g. 'walk', which is a different label set and can't be joined
+    # against the energy-share query below).
+    loop_trip_shares = con.sql("""
+        SELECT d.day_mode_group,
+            sum(t.pond_jour * t.is_loop_trip::int) / sum(t.pond_jour) AS trip_share,
+            count(*) FILTER (WHERE t.is_loop_trip) AS n_loop, count(*) AS n_total
+        FROM trip_legs t JOIN day_summary d ON d.ident_ind = t.ident_ind
+        WHERE d.total_energy_kh_kj IS NOT NULL
+        GROUP BY 1 ORDER BY 1
+    """).fetchall()
+    loop_energy_shares = con.sql("""
+        WITH loop_leg_energy AS (
+            SELECT ident_ind,
+                sum(energy_kh_kj) FILTER (WHERE is_loop_trip) AS loop_kh,
+                sum(energy_cp_kj) FILTER (WHERE is_loop_trip) AS loop_cp
+            FROM trip_legs GROUP BY 1
+        )
+        SELECT d.day_mode_group,
+            sum(d.pond_jour * coalesce(l.loop_kh, 0))
+                / sum(d.pond_jour * d.total_energy_kh_kj) AS loop_energy_share_kh,
+            sum(d.pond_jour * coalesce(l.loop_cp, 0))
+                / sum(d.pond_jour * d.total_energy_cp_kj) AS loop_energy_share_cp
+        FROM day_summary d LEFT JOIN loop_leg_energy l ON l.ident_ind = d.ident_ind
+        WHERE d.total_energy_kh_kj IS NOT NULL
+        GROUP BY 1 ORDER BY 1
+    """).fetchall()
+
+    # Point 2: data-quality correction counts (upper-bound speed flags,
+    # corrected by mode's median speed, not dropped).
+    quality_counts = con.sql("""
+        SELECT mode_group,
+            count(*) FILTER (WHERE speed_flagged_upper) AS n_corrected,
+            count(*) AS n_total
+        FROM trip_legs GROUP BY 1 ORDER BY 1
+    """).fetchall()
+
+    # Point 3: post-fix cycle-day decomposition.
+    cycle_decomposition = _compute_cycle_decomposition(con, config)
+
+    # Cycle group, weekdays only (kept from round 4's point 3).
+    daily_energy.create_day_summary(con, where_sql="typejour = 1")
+    days_weekday = _day_rows(con)
+    cycle_weekday_stats = next(
+        (
+            s for s in _group_stats(
+                days_weekday, "day_mode_group", n_reps=n_reps, seed=seed
+            )
+            if s.group == "cycle"
+        ),
+        None,
+    )
+    daily_energy.create_day_summary(con)  # restore the unfiltered base
+
+    # Children as car drivers (round 4's point 4): the raw mtp code
+    # behind every day_mode_group='car_driver' day of a children_6_17
+    # respondent.
+    children_car_driver_mtp = con.sql("""
+        SELECT d.mtp, count(*), min(t.age), max(t.age)
+        FROM trip_legs t
+        JOIN k_deploc d ON d.IDENT_IND = t.ident_ind AND d.num_dep = t.num_dep
+        WHERE t.mode_group = 'car_driver' AND t.population_category = 'children_6_17'
+        GROUP BY 1 ORDER BY 1
+    """).fetchall()
+    children_car_driver_n = con.sql("""
+        SELECT count(*) FROM day_summary
+        WHERE day_mode_group = 'car_driver' AND population_category = 'children_6_17'
+    """).fetchone()[0]
+
+    non_travelers = con.sql(
+        "SELECT pond_ind, mimmosem FROM non_travelers"
+    ).fetchnumpy()
+    travelers_pond_ind = con.sql(
+        "SELECT pond_ind FROM day_summary WHERE total_energy_kh_kj IS NOT NULL"
+    ).fetchnumpy()["pond_ind"]
+    non_traveler_weight = non_travelers["pond_ind"].sum()
+    non_traveler_share = non_traveler_weight / (
+        non_traveler_weight + travelers_pond_ind.sum()
+    )
+    non_traveler_mimmosem_match = float(np.mean(non_travelers["mimmosem"] == 1))
+    traveler_day_type_share = dict(con.sql("""
+        SELECT any_value(t.typejour), sum(d.pond_jour)
+        FROM day_summary d JOIN trip_legs t ON t.ident_ind = d.ident_ind
+        GROUP BY d.ident_ind
+    """).fetchall())
+
+    results = dict(results_all)
+    results.update({
+        "config": config,
+        "mode_stats_noloops": results_noloops["mode_stats"],
+        "loop_trip_shares": loop_trip_shares,
+        "loop_energy_shares": loop_energy_shares,
+        "quality_counts": quality_counts,
+        "cycle_decomposition": cycle_decomposition,
+        "cycle_weekday_stats": cycle_weekday_stats,
+        "children_car_driver_mtp": children_car_driver_mtp,
+        "children_car_driver_n": children_car_driver_n,
         "non_traveler_n": len(non_travelers["pond_ind"]),
         "non_traveler_share": non_traveler_share,
         "non_traveler_mimmosem_match": non_traveler_mimmosem_match,
         "traveler_day_type_share": traveler_day_type_share,
-        "robustness_rows": robustness_rows,
-        "figures": figures,
-    }
+        "figures": results_all["figures"] + results_noloops["figures"],
+    })
+    return results
 
 
 def _run_robustness(
@@ -302,13 +492,16 @@ def _run_robustness(
     *,
     n_reps: int,
     seed: int,
+    base_where_sql: str = "TRUE",
 ) -> tuple[list[daily_energy.RobustnessRow], dict[str, list[daily_energy.GroupStats]]]:
     """F8: re-run the pipeline under each robustness variant (section 9.9).
 
-    Returns the compressed ratio/CV table (every variant) and, for the
-    base case and the two terminal-leg extremes, full bootstrap group
-    stats for the figure ("group means +/- CI for the base case and the
-    extremes").
+    ``base_where_sql`` is ANDed into every variant's own ``day_summary``
+    filter (e.g. excluding leisure-loop trips for the whole sweep).
+    Returns the compressed ratio/CV table (every variant, scope and
+    statistic) and, for the base case and the two terminal-leg extremes,
+    full bootstrap group stats for the figure ("group means +/- CI for
+    the base case and the extremes").
     """
     rows: list[daily_energy.RobustnessRow] = []
     ci_stats: dict[str, list[daily_energy.GroupStats]] = {}
@@ -326,14 +519,16 @@ def _run_robustness(
             ("full", daily_energy.F8_ROBUSTNESS_GROUPS),
             ("core", daily_energy.F8_CORE_ROBUSTNESS_GROUPS),
         ):
-            rows.append(
-                daily_energy.robustness_row(
-                    name, rows_data["day_mode_group"], rows_data["pond_jour"],
-                    rows_data["total_time_min"], rows_data["total_energy_kh_kj"],
-                    rows_data["total_energy_cp_kj"],
-                    scope=scope, groups_of_interest=groups_of_interest,
+            for statistic in ("mean", "median"):
+                rows.append(
+                    daily_energy.robustness_row(
+                        name, rows_data["day_mode_group"], rows_data["pond_jour"],
+                        rows_data["total_time_min"], rows_data["total_energy_kh_kj"],
+                        rows_data["total_energy_cp_kj"],
+                        scope=scope, groups_of_interest=groups_of_interest,
+                        statistic=statistic,
+                    )
                 )
-            )
         if want_ci:
             ci_stats[name] = daily_energy.bootstrap_group_stats(
                 rows_data["day_mode_group"], rows_data["ident_men"],
@@ -342,29 +537,34 @@ def _run_robustness(
                 n_reps=n_reps, seed=seed,
             )
 
+    def _summary(extra_where: str = "TRUE") -> None:
+        daily_energy.create_day_summary(
+            con, where_sql=f"({base_where_sql}) AND ({extra_where})"
+        )
+
     # Terminal-leg scale sweep (also provides the base case).
     emp2019.build_trip_legs(con, config, terminal_scale=0.5)
-    daily_energy.create_day_summary(con)
+    _summary()
     _row("terminal legs x0.5", want_ci=True)
 
     emp2019.build_trip_legs(con, config, terminal_scale=1.0)
-    daily_energy.create_day_summary(con)
+    _summary()
     _row("terminal legs x1 (base case)", want_ci=True)
 
     # Weekdays-only and local-trips-only reuse the base (x1.0) trip legs,
     # only `day_summary`'s own filter changes.
-    daily_energy.create_day_summary(con, where_sql="typejour = 1")
+    _summary("typejour = 1")
     _row("weekdays only", want_ci=False)
-    daily_energy.create_day_summary(con, where_sql="mobloc = 1")
+    _summary("mobloc = 1")
     _row("local trips only (MOBLOC=1)", want_ci=False)
-    daily_energy.create_day_summary(con)  # restore the unfiltered base
+    _summary()  # restore the (base_where_sql-filtered) unfiltered base
 
     emp2019.build_trip_legs(con, config, terminal_scale=1.5)
-    daily_energy.create_day_summary(con)
+    _summary()
     _row("terminal legs x1.5", want_ci=True)
 
     emp2019.build_trip_legs(con, config, bike_p0_override_w=P0_REFERENCE_W)
-    daily_energy.create_day_summary(con)
+    _summary()
     _row(f"P0 = {P0_REFERENCE_W:g} W (section 9.7 reference)", want_ci=False)
 
     return rows, ci_stats
@@ -398,6 +598,8 @@ def _figure_f1_trips_per_day(
     trips_by_population: list[tuple[str, int, float, tuple[float, float]]],
     trips_by_density: list[tuple[str, int, float, tuple[float, float]]],
     out_dir: Path,
+    *,
+    suffix: str = "",
 ) -> Path:
     fig, (ax_hist, ax_pop, ax_density) = plt.subplots(1, 3, figsize=(17, 5))
 
@@ -434,14 +636,14 @@ def _figure_f1_trips_per_day(
 
     fig.suptitle("F1. Trips per person and day (section 9.9, point 2)")
     fig.tight_layout()
-    path = out_dir / "f01_trips_per_day.png"
+    path = out_dir / f"f01_trips_per_day{suffix}.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
 
 
 def _figure_f3_energy_density(
-    con: duckdb.DuckDBPyConnection, out_dir: Path
+    con: duckdb.DuckDBPyConnection, out_dir: Path, *, suffix: str = ""
 ) -> list[Path]:
     """F3: weighted Gaussian kernel densities on log(energy), log x-axis,
     one shared (widened) bandwidth, group means marked; (A) stacked and
@@ -455,7 +657,7 @@ def _figure_f3_energy_density(
     #: over these modest per-group sample sizes (section 9.9's F3).
     bandwidth_scale = 1.5
 
-    for rate_key, rate_label, suffix in (
+    for rate_key, rate_label, rate_suffix in (
         ("cp", "Compendium", ""), ("kh", "KH", "_appendix_kh"),
     ):
         energy_column = f"total_energy_{rate_key}_kj"
@@ -507,7 +709,7 @@ def _figure_f3_energy_density(
             f"F3. Daily travel energy density, overall ({rate_label}, section 9.9)"
         )
         fig.tight_layout()
-        path = out_dir / f"f03a_energy_density_overall{suffix}.png"
+        path = out_dir / f"f03a_energy_density_overall{suffix}{rate_suffix}.png"
         fig.savefig(path, dpi=110)
         plt.close(fig)
         paths.append(path)
@@ -538,7 +740,7 @@ def _figure_f3_energy_density(
             f"({rate_label}, normalised, section 9.9)"
         )
         fig.tight_layout()
-        path = out_dir / f"f03b_energy_density_by_category{suffix}.png"
+        path = out_dir / f"f03b_energy_density_by_category{suffix}{rate_suffix}.png"
         fig.savefig(path, dpi=110)
         plt.close(fig)
         paths.append(path)
@@ -565,7 +767,8 @@ def _bootstrap_stats_where(
 
 
 def _figure_f4_mean_by_mode(
-    con: duckdb.DuckDBPyConnection, out_dir: Path, *, n_reps: int, seed: int
+    con: duckdb.DuckDBPyConnection, out_dir: Path, *, n_reps: int, seed: int,
+    suffix: str = "",
 ) -> tuple[list[Path], list[tuple[str, dict[str, daily_energy.GroupStats]]]]:
     """F4: mean daily energy and time, 95% CI and n on the bars, overall
     and one panel per population category; blank when n < 50."""
@@ -596,22 +799,28 @@ def _figure_f4_mean_by_mode(
         x = np.arange(len(present))
         width = 0.35
         for offset, rate_key in zip((-width / 2, width / 2), ("kh", "cp"), strict=True):
-            means, lowers, uppers = [], [], []
+            means, lowers, uppers, medians = [], [], [], []
             for group in present:
                 stat = stats[group]
                 if stat.n < MIN_CELL_N:
                     means.append(np.nan)
                     lowers.append(0.0)
                     uppers.append(0.0)
+                    medians.append(np.nan)
                     continue
                 mean = getattr(stat, f"mean_energy_{rate_key}_kj")
                 ci = getattr(stat, f"mean_energy_{rate_key}_ci")
                 means.append(mean)
                 lowers.append(max(mean - ci[0], 0.0))
                 uppers.append(max(ci[1] - mean, 0.0))
+                medians.append(getattr(stat, f"median_energy_{rate_key}_kj"))
             ax.bar(
                 x + offset, means, width, yerr=[lowers, uppers], label=rate_key,
                 capsize=2,
+            )
+            ax.scatter(
+                x + offset, medians, marker="D", color="black", s=14, zorder=3,
+                label=f"{rate_key} median" if ax is axes.flat[0] else None,
             )
         for i, group in enumerate(present):
             ax.text(
@@ -627,9 +836,12 @@ def _figure_f4_mean_by_mode(
         ax.legend(fontsize=6)
     for ax in axes.flat[len(panels):]:
         ax.axis("off")
-    fig.suptitle("F4a. Mean daily energy by main-mode group, 95% CI, n (section 9.9)")
+    fig.suptitle(
+        "F4a. Mean daily energy by main-mode group, 95% CI, n, median marker "
+        "(section 9.9)"
+    )
     fig.tight_layout()
-    path_energy = out_dir / "f04a_mean_energy_by_mode.png"
+    path_energy = out_dir / f"f04a_mean_energy_by_mode{suffix}.png"
     fig.savefig(path_energy, dpi=110)
     plt.close(fig)
 
@@ -654,13 +866,15 @@ def _figure_f4_mean_by_mode(
         ax.axis("off")
     fig.suptitle("F4b. Mean daily travel time by main-mode group, n (section 9.9)")
     fig.tight_layout()
-    path_time = out_dir / "f04b_mean_time_by_mode.png"
+    path_time = out_dir / f"f04b_mean_time_by_mode{suffix}.png"
     fig.savefig(path_time, dpi=110)
     plt.close(fig)
     return [path_energy, path_time], panels
 
 
-def _figure_f5_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
+def _figure_f5_heatmaps(
+    con: duckdb.DuckDBPyConnection, out_dir: Path, *, suffix: str = ""
+) -> Path:
     """F5: heatmaps of mean energy (Compendium) by main-mode group x
     population category and x density class, with n; blank when n < 50."""
     groups = list(daily_energy.DAY_MODE_GROUPS) + ["multimodal", "other"]
@@ -708,7 +922,7 @@ def _figure_f5_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
         "F5. Mean daily energy by main-mode group (n < 50 cells blank, section 9.9)"
     )
     fig.tight_layout()
-    path = out_dir / "f05_heatmaps.png"
+    path = out_dir / f"f05_heatmaps{suffix}.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
@@ -719,6 +933,8 @@ def _figure_f6_v0_p0(
     p0_by_age_band: list[daily_energy.P0Calibration],
     config: EnergyConfig,
     out_dir: Path,
+    *,
+    suffix: str = "",
 ) -> Path:
     fig, (ax_v0, ax_p0) = plt.subplots(1, 2, figsize=(10, 5))
     bands = [stat.group for stat in v0_by_age_band]
@@ -744,7 +960,7 @@ def _figure_f6_v0_p0(
     ax_p0.set_title("(B) Cycling")
     fig.suptitle("F6. Calibrated v0 and P0 by age band (section 9.9, step 1)")
     fig.tight_layout()
-    path = out_dir / "f06_v0_p0.png"
+    path = out_dir / f"f06_v0_p0{suffix}.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
@@ -754,6 +970,8 @@ def _figure_f7_passengers(
     passenger_trip_stats: dict[str, tuple[int, float, float, float]],
     walk_trips_by_day_group: dict[str, float],
     out_dir: Path,
+    *,
+    suffix: str = "",
 ) -> Path:
     groups = ["car_passenger_household", "car_passenger_carpool"]
     fig, (ax_energy, ax_walk) = plt.subplots(1, 2, figsize=(11, 5))
@@ -786,14 +1004,15 @@ def _figure_f7_passengers(
         "TODO(confirm)\ndefault of config.car.carpool_passenger (section 9.6)"
     )
     fig.tight_layout()
-    path = out_dir / "f07_passengers.png"
+    path = out_dir / f"f07_passengers{suffix}.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
 
 
 def _figure_f8_robustness(
-    robustness_ci: dict[str, list[daily_energy.GroupStats]], out_dir: Path
+    robustness_ci: dict[str, list[daily_energy.GroupStats]], out_dir: Path,
+    *, suffix: str = "",
 ) -> Path:
     """F8: group means +/- 95% CI for the base case and the terminal-leg
     extremes (section 9.9's F8)."""
@@ -841,7 +1060,7 @@ def _figure_f8_robustness(
         "terminal-leg extremes (section 9.9)"
     )
     fig.tight_layout()
-    path = out_dir / "f08_robustness.png"
+    path = out_dir / f"f08_robustness{suffix}.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
@@ -868,14 +1087,14 @@ def _format_group_table(stats: list[daily_energy.GroupStats]) -> list[str]:
 
 def _format_robustness_table(rows: list[daily_energy.RobustnessRow]) -> list[str]:
     lines = [
-        "| Variant | Scope | energy ratio (kh) | CV (kh) | min/max group (kh) | "
-        "energy ratio (cp) | CV (cp) | min/max group (cp) | "
+        "| Variant | Scope | Statistic | energy ratio (kh) | CV (kh) | "
+        "min/max group (kh) | energy ratio (cp) | CV (cp) | min/max group (cp) | "
         "time ratio | time CV | min/max group (time) |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         lines.append(
-            f"| {row.variant} | {row.scope} | "
+            f"| {row.variant} | {row.scope} | {row.statistic} | "
             f"{row.energy_kh_ratio:.2f} | {row.energy_kh_cv:.2f} | "
             f"{row.energy_kh_min_group} / {row.energy_kh_max_group} | "
             f"{row.energy_cp_ratio:.2f} | {row.energy_cp_cv:.2f} | "
@@ -978,25 +1197,50 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         *_format_group_table(results["mode_stats"]),
         "",
-        "## Data quality: implausible door-to-door speeds",
+        "## Leisure loops (point 1): trips without a destination",
         "",
-        "Trips are flagged (not dropped from the public tables, just "
-        "excluded from the filtered table below) when their implied "
-        "distance/duration speed is outside a plausible range: walk "
-        f"outside {emp2019.WALK_PLAUSIBLE_SPEED_KMH[0]:g}-"
-        f"{emp2019.WALK_PLAUSIBLE_SPEED_KMH[1]:g} "
-        f"km/h, bike outside {emp2019.CYCLE_PLAUSIBLE_SPEED_KMH[0]:g}-"
-        f"{emp2019.CYCLE_PLAUSIBLE_SPEED_KMH[1]:g} km/h, car (driver or passenger) "
-        f"above {emp2019.CAR_MAX_PLAUSIBLE_SPEED_KMH:g} km/h; declared durations "
-        "are self-reported and often rounded to 5/15/30/60 min, so some "
-        "flagged trips are rounding artefacts rather than data errors.",
+        "Identified by EMP's own purpose code `MMOTIFDES` = 7.7 (\"se "
+        "promener sans destination precise\", stroll/ride/drive without a "
+        "specific destination; code 7.8, \"go to a place for walking\", has "
+        "a destination and does not count). EMP's public release has no "
+        "commune-level origin field (destination only, disclosure "
+        "control), so an exact origin=destination geometry check is not "
+        "available; this purpose code is EMP's own operationalisation of "
+        "the same concept.",
         "",
-        *[f"- {mode}: {flagged:,} of {total:,} trips flagged"
-          for mode, flagged, total in results["quality_counts"]],
+        "| Group | loop trip share | n loop / n total | loop share of day "
+        "energy (kh) | loop share of day energy (cp) |",
+        "|---|---|---|---|---|",
+    ]
+    loop_energy_by_group = {
+        row[0]: (row[1], row[2]) for row in results["loop_energy_shares"]
+    }
+    for mode, trip_share, n_loop, n_total in results["loop_trip_shares"]:
+        energy_kh, energy_cp = loop_energy_by_group.get(mode, (float("nan"),) * 2)
+        lines.append(
+            f"| {mode} | {trip_share:.1%} | {n_loop:,} / {n_total:,} | "
+            f"{energy_kh:.1%} | {energy_cp:.1%} |"
+        )
+    lines += [
         "",
-        "### Main-mode group table, implausible-speed trips excluded",
+        "### Main-mode group table, loop trips excluded",
         "",
-        *_format_group_table(results["mode_stats_filtered"]),
+        *_format_group_table(results["mode_stats_noloops"]),
+        "",
+        "## Data-quality correction: implausible door-to-door speeds",
+        "",
+        "Trips are corrected, not dropped (section 9.9, step 11 round 5): "
+        "flagged above an upper speed bound only -- walk > "
+        f"{emp2019.WALK_SPEED_UPPER_KMH:g} km/h, bike > "
+        f"{emp2019.CYCLE_SPEED_UPPER_KMH:g} km/h, car (driver or passenger) > "
+        f"{emp2019.CAR_SPEED_UPPER_KMH:g} km/h -- their declared distance is "
+        "replaced by declared duration x the mode's own median speed "
+        "(from its not-flagged trips). Cycling energy is time-based "
+        "(round 4), so only walk's and car's corrected distances feed the "
+        "energy formulas; bike is flagged (reported) but not corrected.",
+        "",
+        *[f"- {mode}: {corrected:,} of {total:,} trips corrected"
+          for mode, corrected, total in results["quality_counts"]],
         "",
         "## Mean daily energy and time by main-mode group, overall and by "
         "population category (F4)",
@@ -1109,6 +1353,29 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             f"{cycle_weekday.mean_energy_cp_kj:.1f} | "
             f"{cycle_weekday.median_energy_cp_kj:.1f} |"
         )
+
+    dec = results["cycle_decomposition"]
+    lines += [
+        "",
+        "### Post-fix cycle-day decomposition (point 3)",
+        "",
+        "Ride work, unloaded pedalling and stops are the same formula in "
+        "both rate sets (section 9.7's mechanical/physiological terms); "
+        "only get/park (a standing activity rate) and the day's walking "
+        "legs (c0) differ by rate set.",
+        "",
+        f"- Mean ride time: {dec['ride_minutes']:.1f} min; ride work: "
+        f"{dec['ride_work_kj']:.1f} kJ; unloaded pedalling: "
+        f"{dec['unloaded_kj']:.1f} kJ.",
+        f"- Stops: {dec['stops_kj']:.1f} kJ/day, "
+        f"{dec['mean_n_stops_per_day']:.2f} stops/day at "
+        f"`config.bike.stops.stops_per_km` = {dec['stops_per_km']:g}/km; "
+        f"{dec['kj_per_stop']:.2f} kJ/stop.",
+        f"- Get/park: {dec['get_park_minutes']:g} min/day fixed, "
+        f"{dec['get_park_kh_kj']:.1f} kJ (kh), {dec['get_park_cp_kj']:.1f} kJ (cp).",
+        f"- Walking trips of the same day: {dec['walk_minutes']:.1f} min/day, "
+        f"{dec['walk_kh_kj']:.1f} kJ (kh), {dec['walk_cp_kj']:.1f} kJ (cp).",
+    ]
 
     lines += [
         "",

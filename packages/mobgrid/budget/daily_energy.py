@@ -293,17 +293,19 @@ class SpeedCalibration:
 
 
 def calibrate_v0_kmh(
-    con: duckdb.DuckDBPyConnection, *, by_age_band: bool = False
+    con: duckdb.DuckDBPyConnection, *, by_age_band: bool = False,
+    where_sql: str = "TRUE",
 ) -> list[SpeedCalibration]:
     """v0, the ratio of weighted sums of distance and duration (section
     9.9, step 1: "Walking and cycling trips calibrate v0 ... by age
-    band"), overall or by age band, from walking trips."""
+    band"), overall or by age band, from walking trips. ``where_sql`` is
+    an extra filter on ``trip_legs`` (e.g. excluding leisure-loop trips)."""
     group_sql = "age_band" if by_age_band else "'overall'"
     rows = con.sql(f"""
         SELECT {group_sql} AS grp, count(*),
             sum(pond_jour * distance_km) / sum(pond_jour * duration_min / 60.0)
         FROM trip_legs
-        WHERE mode_group = 'walk' AND duration_min > 0
+        WHERE mode_group = 'walk' AND duration_min > 0 AND ({where_sql})
         GROUP BY {group_sql}
         ORDER BY grp
     """).fetchall()
@@ -323,12 +325,15 @@ class P0Calibration:
 
 
 def calibrate_p0(
-    con: duckdb.DuckDBPyConnection, config: EnergyConfig, *, by_age_band: bool = False
+    con: duckdb.DuckDBPyConnection, config: EnergyConfig, *, by_age_band: bool = False,
+    where_sql: str = "TRUE",
 ) -> list[P0Calibration]:
     """P0, from the implied flat speed = ratio of weighted sums of
     distance and ride-only time (section 9.9, step 1), overall or by age
     band. Reuses ``bike.required_power_w`` (section 9.7) at that one
     speed, rather than averaging a nonlinear per-trip P0 over trips.
+    ``where_sql`` is an extra filter on ``trip_legs`` (e.g. excluding
+    leisure-loop trips).
 
     EMP 2019's own mode codes (`mtp` 2.1) do not separate e-bikes from
     bicycles ("y compris a assistance electrique"), so they cannot be
@@ -340,7 +345,7 @@ def calibrate_p0(
             sum(pond_jour * distance_km)
                 / (sum(pond_jour * bike_ride_time_for_energy_s) / 3600.0)
         FROM trip_legs
-        WHERE mode_group = 'cycle'
+        WHERE mode_group = 'cycle' AND ({where_sql})
         GROUP BY {group_sql}
         ORDER BY grp
     """).fetchall()
@@ -414,13 +419,15 @@ def weighted_gaussian_kde(
 @dataclass(frozen=True)
 class RobustnessRow:
     """One F8 robustness variant, for one ``scope`` (``"full"``,
-    ``F8_ROBUSTNESS_GROUPS``, or ``"core"``, ``F8_CORE_ROBUSTNESS_GROUPS``):
-    the max/min ratio and coefficient of variation of that scope's
-    groups' means, energy (both rate sets) and time (section 9.9's F8),
-    with the names of the min/max groups."""
+    ``F8_ROBUSTNESS_GROUPS``, or ``"core"``, ``F8_CORE_ROBUSTNESS_GROUPS``)
+    and one ``statistic`` (``"mean"`` or ``"median"``): the max/min ratio
+    and coefficient of variation of that scope's groups' chosen
+    statistic, energy (both rate sets) and time (section 9.9's F8), with
+    the names of the min/max groups."""
 
     variant: str
     scope: str
+    statistic: str
     energy_kh_ratio: float
     energy_kh_cv: float
     energy_kh_min_group: str
@@ -462,24 +469,32 @@ def robustness_row(
     *,
     scope: str = "full",
     groups_of_interest: tuple[str, ...] = F8_ROBUSTNESS_GROUPS,
+    statistic: str = "mean",
 ) -> RobustnessRow:
-    """One F8 table row: ratio and CV of ``groups_of_interest``' means
-    under one robustness variant (section 9.9's F8); ``scope`` names this
-    set of groups in the row (``"full"`` or ``"core"``)."""
+    """One F8 table row: ratio and CV of ``groups_of_interest``' means or
+    medians under one robustness variant (section 9.9's F8); ``scope``
+    names this set of groups in the row (``"full"`` or ``"core"``),
+    ``statistic`` the chosen per-group value (``"mean"`` or
+    ``"median"``)."""
+    if statistic not in ("mean", "median"):
+        raise ValueError(f"unknown statistic: {statistic!r}")
+    group_stat_fn = (
+        _weighted_group_means if statistic == "mean" else _weighted_group_medians
+    )
     groups, group_codes = np.unique(day_mode_group, return_inverse=True)
     n_groups = len(groups)
     mask = np.isin(groups, groups_of_interest)
     group_labels = groups[mask]
-    mean_kh = _weighted_group_means(group_codes, n_groups, weight, energy_kh)[mask]
-    mean_cp = _weighted_group_means(group_codes, n_groups, weight, energy_cp)[mask]
-    mean_time = _weighted_group_means(group_codes, n_groups, weight, time_min)[mask]
-    kh_ratio, kh_cv, kh_min, kh_max = _ratio_and_cv(mean_kh, group_labels)
-    cp_ratio, cp_cv, cp_min, cp_max = _ratio_and_cv(mean_cp, group_labels)
+    stat_kh = group_stat_fn(group_codes, n_groups, weight, energy_kh)[mask]
+    stat_cp = group_stat_fn(group_codes, n_groups, weight, energy_cp)[mask]
+    stat_time = group_stat_fn(group_codes, n_groups, weight, time_min)[mask]
+    kh_ratio, kh_cv, kh_min, kh_max = _ratio_and_cv(stat_kh, group_labels)
+    cp_ratio, cp_cv, cp_min, cp_max = _ratio_and_cv(stat_cp, group_labels)
     time_ratio, time_cv, time_min_g, time_max_g = _ratio_and_cv(
-        mean_time, group_labels
+        stat_time, group_labels
     )
     return RobustnessRow(
-        variant=variant, scope=scope,
+        variant=variant, scope=scope, statistic=statistic,
         energy_kh_ratio=kh_ratio, energy_kh_cv=kh_cv,
         energy_kh_min_group=kh_min, energy_kh_max_group=kh_max,
         energy_cp_ratio=cp_ratio, energy_cp_cv=cp_cv,

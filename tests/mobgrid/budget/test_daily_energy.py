@@ -172,6 +172,7 @@ def test_robustness_row_ratio_and_cv() -> None:
         "test", group, weight, time_min, energy_kh, energy_cp
     )
     assert row.scope == "full"
+    assert row.statistic == "mean"
     assert row.energy_kh_ratio == pytest.approx(2.0)
     assert row.energy_cp_ratio == pytest.approx(2.0)
     assert row.time_ratio == pytest.approx(2.0)
@@ -181,6 +182,22 @@ def test_robustness_row_ratio_and_cv() -> None:
     assert row.energy_cp_max_group == "cycle"
     assert row.time_min_group == "walking_only"
     assert row.time_max_group == "cycle"
+
+
+def test_robustness_row_median_statistic() -> None:
+    # Median of {100, 300} is 100 (lower value), of {200, 600} is 200.
+    group = np.array(["walking_only", "walking_only", "cycle", "cycle"])
+    weight = np.ones(4)
+    time_min = np.array([10.0, 10.0, 20.0, 20.0])
+    energy_kh = np.array([100.0, 300.0, 200.0, 600.0])
+    energy_cp = np.array([90.0, 270.0, 180.0, 540.0])
+    row = daily_energy.robustness_row(
+        "test", group, weight, time_min, energy_kh, energy_cp, statistic="median",
+    )
+    assert row.statistic == "median"
+    assert row.energy_kh_ratio == pytest.approx(2.0)
+    assert row.energy_kh_min_group == "walking_only"
+    assert row.energy_kh_max_group == "cycle"
 
 
 def test_robustness_row_core_scope_restricts_groups() -> None:
