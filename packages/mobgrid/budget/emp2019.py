@@ -25,6 +25,7 @@ import duckdb
 
 from mobgrid.energy import legs, walk
 from mobgrid.energy.rates import (
+    MET_MINUTE_KJ_PER_KG,
     EnergyConfig,
     activity_rate_kj_per_min,
     sedentary_energy_kj,
@@ -404,6 +405,9 @@ def build_trip_legs(
     stop_accel_term_sql = _dbl(1.0 / stops.acceleration_m_per_s2)
     stop_fixed_wait_s_sql = _dbl(stops.red_time_s**2 / (2.0 * stops.signal_cycle_s))
     bike_get_park_total_min_sql = _dbl(2.0 * bike.get_park_min)
+    bike_unloaded_rate_kj_per_min_sql = _dbl(
+        bike.pedalling_unloaded_net_met * MET_MINUTE_KJ_PER_KG * mass
+    )
     bike_p0_override_sql = (
         "NULL" if bike_p0_override_w is None else _dbl(bike_p0_override_w)
     )
@@ -602,6 +606,8 @@ def build_trip_legs(
             WHEN 'cycle' THEN
                 coalesce({bike_p0_override_sql}, p0_calibrated_w, bike_naive_power_w)
                     / {muscular_eff_sql} * bike_ride_time_for_energy_s / 1000.0
+                + {bike_unloaded_rate_kj_per_min_sql}
+                    * bike_ride_time_for_energy_s / 60.0
                 + {standing_kh_sql} * {bike_get_park_total_min_sql}
                     * {terminal_scale_sql}
                 + {stops_per_km_sql} * distance_km
@@ -662,6 +668,8 @@ def build_trip_legs(
             WHEN 'cycle' THEN
                 coalesce({bike_p0_override_sql}, p0_calibrated_w, bike_naive_power_w)
                     / {muscular_eff_sql} * bike_ride_time_for_energy_s / 1000.0
+                + {bike_unloaded_rate_kj_per_min_sql}
+                    * bike_ride_time_for_energy_s / 60.0
                 + {standing_cp_sql} * {bike_get_park_total_min_sql}
                     * {terminal_scale_sql}
                 + {stops_per_km_sql} * distance_km

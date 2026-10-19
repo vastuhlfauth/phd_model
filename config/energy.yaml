@@ -194,6 +194,13 @@ bike:
   # re-estimation (step 11) to recover ride-only time/speed from a
   # trip's declared duration.
   get_park_min: 1.0
+  # Unloaded pedalling cost, net MET-minutes per pedalled minute
+  # (section 9.7): the cost of moving the legs without load, charged on
+  # the rider's own mass whenever P_r > 0, for bike and e-bike riders
+  # alike (not split by s_r or phi_sep). 1 net MET is the ACSM
+  # leg-cycling equation's baseline (Swain, ACSM's Resource Manual,
+  # 2000), the value used by the spec's worked examples.
+  pedalling_unloaded_net_met: 1.0
   surface_crr:
     asphalt_concrete_paved_default: 0.006
     concrete_plates_lanes: 0.007
@@ -205,12 +212,14 @@ bike:
     grass_sand: 0.030
   # Force-balance power selection (section 9.7): "P_0, k and P_max are
   # calibrated on observed commuter speeds on gradients (Parkin & Rotheram
-  # 2010)"; the spec gives no numeric value, only the 16 km/h flat
-  # consistency check used to validate the physics, not to set P_0.
-  # TODO(confirm): [TO CONFIRM: calibration against Parkin & Rotheram 2010
-  # / pilot commuter speeds], section 9.7.
+  # 2010)". P_0 = 34.8 W is now confirmed by the section 9.9
+  # re-estimation (step 11, EMP 2019: implied flat speed of about 13.5
+  # km/h on 1,023 reliable cycle trips, e-bikes apart). k and P_max are
+  # still not calibrated.
+  # TODO(confirm): [TO CONFIRM: k and P_max against Parkin & Rotheram
+  # 2010 / pilot commuter speeds], section 9.7.
   power:
-    p0_w: null
+    p0_w: 34.8
     k: null
     p_max_w: null
     v_max_descent_kmh: null

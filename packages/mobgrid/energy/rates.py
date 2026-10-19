@@ -164,7 +164,10 @@ class BikeConfig(BaseModel):
     """Bike leg parameters (section 9.7).
 
     ``get_park_min`` is used by step 11's re-estimation to recover
-    ride-only time from a trip's declared duration."""
+    ride-only time from a trip's declared duration. ``pedalling_unloaded_net_met``
+    is the unloaded pedalling cost, in net MET-minutes per pedalled
+    minute, charged on the rider's own mass regardless of mechanical
+    power (ACSM leg-cycling equation; Swain 2000)."""
 
     model_config = ConfigDict(extra="forbid")
     bike_mass_kg: float = Field(gt=0)
@@ -175,6 +178,7 @@ class BikeConfig(BaseModel):
     cda_m2: float = Field(gt=0)
     separated_infra_factor: float = Field(gt=0, le=1)
     get_park_min: float = Field(ge=0)
+    pedalling_unloaded_net_met: float = Field(gt=0)
     surface_crr: dict[str, float]
     power: BikePowerConfig
     ebike: EbikeConfig

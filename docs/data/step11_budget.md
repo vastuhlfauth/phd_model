@@ -21,33 +21,134 @@ INSEE's own 4-level grid names and order: dense (1, densely populated communes),
 | car_driver | 6852 | 165,532,364 | 79.8 | 693.4 | [679.2, 709.8] | 655.8 | [641.3, 673.1] |
 | walking_only | 1937 | 52,790,026 | 49.0 | 690.2 | [655.6, 725.0] | 526.9 | [500.4, 553.4] |
 | car_passenger_household | 1305 | 39,572,007 | 68.8 | 488.4 | [461.7, 518.6] | 395.1 | [374.2, 421.4] |
-| multimodal | 1071 | 32,571,483 | 120.1 | 833.4 | [790.2, 880.5] | 727.0 | [687.5, 768.2] |
+| multimodal | 1071 | 32,571,483 | 120.1 | 857.4 | [812.6, 906.2] | 751.0 | [709.3, 795.8] |
 | urban_pt | 885 | 26,473,853 | 101.5 | 671.3 | [638.9, 703.0] | 553.0 | [527.5, 580.3] |
 | car_passenger_carpool | 589 | 10,771,228 | 71.0 | 586.0 | [525.6, 672.0] | 470.9 | [423.7, 539.1] |
-| cycle | 231 | 6,812,124 | 69.6 | 1031.8 | [793.0, 1340.8] | 993.8 | [752.7, 1300.4] |
+| cycle | 231 | 6,812,124 | 69.6 | 1295.5 | [1041.6, 1637.3] | 1257.5 | [1003.6, 1596.7] |
 | train_short | 183 | 6,163,587 | 146.7 | 676.1 | [635.3, 721.3] | 593.3 | [555.0, 637.1] |
 | other | 40 | 1,452,718 | 107.7 | 564.8 | [353.5, 779.5] | 431.1 | [269.9, 595.0] |
 | train_long | 43 | 1,184,927 | 295.4 | 762.3 | [648.3, 871.1] | 691.0 | [589.1, 793.9] |
+
+## Mean daily energy and time by main-mode group, overall and by population category (F4)
+
+### overall
+
+| Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
+|---|---|---|---|---|---|---|---|
+| car_driver | 6852 | 165,532,364 | 79.8 | 693.4 | [679.2, 709.8] | 655.8 | [641.3, 673.1] |
+| walking_only | 1937 | 52,790,026 | 49.0 | 690.2 | [655.6, 725.0] | 526.9 | [500.4, 553.4] |
+| car_passenger_household | 1305 | 39,572,007 | 68.8 | 488.4 | [461.7, 518.6] | 395.1 | [374.2, 421.4] |
+| multimodal | 1071 | 32,571,483 | 120.1 | 857.4 | [812.6, 906.2] | 751.0 | [709.3, 795.8] |
+| urban_pt | 885 | 26,473,853 | 101.5 | 671.3 | [638.9, 703.0] | 553.0 | [527.5, 580.3] |
+| car_passenger_carpool | 589 | 10,771,228 | 71.0 | 586.0 | [525.6, 672.0] | 470.9 | [423.7, 539.1] |
+| cycle | 231 | 6,812,124 | 69.6 | 1295.5 | [1041.6, 1637.3] | 1257.5 | [1003.6, 1596.7] |
+| train_short | 183 | 6,163,587 | 146.7 | 676.1 | [635.3, 721.3] | 593.3 | [555.0, 637.1] |
+| other | 40 | 1,452,718 | 107.7 | 564.8 | [353.5, 779.5] | 431.1 | [269.9, 595.0] |
+| train_long | 43 | 1,184,927 | 295.4 | 762.3 | [648.3, 871.1] | 691.0 | [589.1, 793.9] |
+
+### children_6_17
+
+| Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
+|---|---|---|---|---|---|---|---|
+| car_passenger_household | 467 | 21,029,856 | 56.6 | 460.2 | [422.0, 504.1] | 368.3 | [336.9, 402.4] |
+| walking_only | 256 | 13,856,034 | 34.4 | 472.1 | [416.4, 525.3] | 360.4 | [317.9, 401.0] |
+| multimodal | 186 | 7,735,888 | 79.3 | 593.1 | [512.5, 696.4] | 487.8 | [420.5, 578.7] |
+| urban_pt | 134 | 6,284,304 | 90.0 | 596.6 | [533.4, 673.8] | 490.9 | [439.2, 553.7] |
+| car_driver | 56 | 2,619,751 | 76.9 | 601.5 | [492.5, 760.0] | 584.7 | [472.5, 766.0] |
+| car_passenger_carpool | 34 | 2,346,634 | 51.5 | 532.3 | [342.8, 991.0] | 422.3 | [276.3, 773.3] |
+| cycle | 31 | 1,534,957 | 69.7 | 789.4 | [509.7, 1141.2] | 765.9 | [489.2, 1094.3] |
+| train_short | 14 | 814,310 | 98.9 | 526.9 | [485.2, 585.3] | 451.2 | [410.8, 507.0] |
+| other | 7 | 232,754 | 74.7 | 322.3 | [159.9, 444.0] | 246.0 | [122.1, 338.9] |
+| train_long | 1 | 77,755 | 330.0 | 703.5 | [703.5, 703.5] | 656.6 | [656.6, 656.6] |
+
+### employed
+
+| Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
+|---|---|---|---|---|---|---|---|
+| car_driver | 3742 | 104,900,456 | 84.1 | 716.4 | [697.2, 736.8] | 684.0 | [663.8, 705.9] |
+| multimodal | 519 | 15,390,074 | 133.9 | 949.4 | [882.2, 1005.3] | 846.3 | [784.1, 899.6] |
+| walking_only | 420 | 12,121,218 | 52.1 | 801.2 | [717.3, 884.4] | 611.6 | [547.5, 675.1] |
+| urban_pt | 332 | 9,936,510 | 103.8 | 735.2 | [678.2, 786.3] | 602.9 | [556.4, 646.2] |
+| car_passenger_household | 215 | 6,283,240 | 92.4 | 556.0 | [469.5, 653.2] | 457.0 | [386.6, 530.1] |
+| train_short | 119 | 3,439,925 | 151.3 | 688.5 | [637.3, 735.3] | 605.9 | [561.6, 643.0] |
+| cycle | 100 | 2,997,590 | 62.5 | 1361.0 | [948.9, 1853.6] | 1332.7 | [936.8, 1828.3] |
+| car_passenger_carpool | 113 | 2,449,453 | 95.1 | 605.7 | [526.3, 674.5] | 497.8 | [432.0, 548.5] |
+| other | 20 | 884,897 | 111.8 | 436.3 | [252.7, 677.9] | 333.0 | [192.9, 517.5] |
+| train_long | 30 | 836,736 | 294.5 | 768.4 | [669.0, 856.8] | 698.1 | [601.0, 782.9] |
+
+### other_inactive
+
+| Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
+|---|---|---|---|---|---|---|---|
+| car_driver | 356 | 8,942,153 | 75.9 | 728.1 | [656.5, 808.2] | 662.0 | [596.0, 733.3] |
+| walking_only | 246 | 6,297,155 | 51.9 | 767.9 | [678.7, 887.0] | 586.2 | [518.0, 677.1] |
+| urban_pt | 150 | 4,963,685 | 107.9 | 612.8 | [551.2, 682.9] | 515.7 | [460.5, 582.4] |
+| multimodal | 89 | 3,769,676 | 153.1 | 894.5 | [793.1, 999.3] | 779.6 | [683.1, 880.5] |
+| car_passenger_household | 126 | 3,165,392 | 79.1 | 580.0 | [495.4, 683.3] | 466.7 | [401.9, 549.8] |
+| car_passenger_carpool | 76 | 1,597,722 | 68.6 | 621.9 | [520.4, 758.3] | 497.4 | [418.4, 604.3] |
+| train_short | 26 | 1,390,167 | 143.2 | 622.4 | [516.7, 694.9] | 550.6 | [448.2, 622.5] |
+| cycle | 19 | 503,598 | 50.9 | 993.4 | [480.1, 1835.8] | 938.7 | [463.2, 1728.6] |
+| train_long | 5 | 147,925 | 207.2 | 470.2 | [304.1, 840.1] | 436.0 | [267.7, 803.8] |
+| other | 5 | 146,207 | 93.6 | 1225.2 | [198.9, 2397.4] | 935.3 | [151.8, 1830.0] |
+
+### retired
+
+| Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
+|---|---|---|---|---|---|---|---|
+| car_driver | 2383 | 41,213,179 | 68.6 | 629.4 | [601.6, 652.5] | 582.0 | [557.0, 603.3] |
+| walking_only | 867 | 17,352,662 | 56.2 | 726.2 | [664.2, 793.9] | 554.4 | [507.0, 606.0] |
+| car_passenger_household | 448 | 7,878,156 | 75.7 | 466.8 | [429.9, 516.3] | 382.3 | [353.3, 419.0] |
+| multimodal | 221 | 3,939,495 | 117.8 | 937.5 | [841.5, 1042.9] | 830.0 | [739.7, 931.8] |
+| urban_pt | 186 | 3,215,929 | 110.1 | 704.1 | [632.5, 766.0] | 575.7 | [519.3, 623.4] |
+| car_passenger_carpool | 313 | 3,182,405 | 67.7 | 549.7 | [498.4, 599.7] | 441.0 | [401.6, 479.7] |
+| cycle | 64 | 1,345,476 | 82.5 | 1706.5 | [1052.1, 2438.8] | 1649.9 | [1006.8, 2370.6] |
+| train_short | 17 | 312,298 | 159.3 | 897.1 | [617.9, 1241.0] | 764.0 | [536.5, 1041.0] |
+| train_long | 7 | 122,512 | 386.2 | 1110.8 | [690.6, 1553.2] | 972.3 | [654.3, 1281.6] |
+| other | 6 | 94,579 | 202.3 | 810.1 | [258.6, 1500.1] | 618.4 | [197.4, 1145.1] |
+
+### unemployed
+
+| Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
+|---|---|---|---|---|---|---|---|
+| car_driver | 311 | 7,809,003 | 85.8 | 711.7 | [629.6, 794.1] | 683.7 | [592.4, 786.0] |
+| walking_only | 147 | 3,153,836 | 56.4 | 870.2 | [705.6, 1043.3] | 664.2 | [538.6, 796.4] |
+| urban_pt | 81 | 2,034,355 | 96.3 | 680.9 | [575.9, 820.8] | 556.1 | [476.5, 665.6] |
+| multimodal | 56 | 1,736,349 | 113.6 | 957.4 | [819.3, 1121.2] | 838.2 | [704.3, 999.7] |
+| car_passenger_household | 49 | 1,215,363 | 86.9 | 529.5 | [400.7, 663.2] | 433.7 | [326.8, 544.0] |
+| car_passenger_carpool | 49 | 1,023,923 | 74.8 | 700.2 | [548.5, 858.8] | 556.5 | [441.2, 678.9] |
+| cycle | 17 | 430,502 | 100.7 | 1712.3 | [923.1, 2665.6] | 1633.8 | [881.8, 2606.3] |
+| train_short | 6 | 185,878 | 279.4 | 1148.9 | [521.3, 1774.3] | 1033.5 | [480.6, 1584.7] |
+| other | 2 | 94,281 | 78.3 | 1099.8 | [1054.5, 1110.0] | 839.5 | [804.9, 847.3] |
+
+### unknown
+
+| Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
+|---|---|---|---|---|---|---|---|
+| car_passenger_carpool | 4 | 171,092 | 54.4 | 695.1 | [364.2, 755.1] | 548.2 | [299.9, 590.1] |
+| car_driver | 4 | 47,822 | 66.6 | 686.6 | [463.3, 1305.2] | 622.0 | [417.3, 1304.7] |
+| urban_pt | 2 | 39,071 | 88.4 | 668.1 | [613.7, 699.1] | 544.8 | [492.1, 574.9] |
+| train_short | 1 | 21,009 | 110.0 | 519.0 | [519.0, 519.0] | 457.5 | [457.5, 457.5] |
+| walking_only | 1 | 9,122 | 39.0 | 355.2 | [355.2, 355.2] | 271.1 | [271.1, 271.1] |
 
 ## By population category (section 6.1)
 
 | Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|
-| employed | 5610 | 159,240,099 | 90.5 | 741.8 | [725.8, 762.5] | 679.0 | [663.5, 700.3] |
-| retired | 4512 | 78,656,691 | 71.9 | 663.4 | [637.4, 687.3] | 575.2 | [553.4, 595.6] |
-| children_6_17 | 1186 | 56,532,242 | 60.1 | 504.7 | [481.0, 533.9] | 409.5 | [390.1, 435.1] |
-| other_inactive | 1098 | 30,923,679 | 88.8 | 714.1 | [673.9, 749.4] | 604.7 | [570.8, 636.0] |
-| unemployed | 718 | 17,683,490 | 86.3 | 767.6 | [714.5, 829.1] | 673.0 | [616.9, 728.4] |
+| employed | 5610 | 159,240,099 | 90.5 | 748.8 | [732.0, 771.2] | 686.0 | [670.6, 708.1] |
+| retired | 4512 | 78,656,691 | 71.9 | 670.2 | [644.4, 695.0] | 582.0 | [559.7, 604.0] |
+| children_6_17 | 1186 | 56,532,242 | 60.1 | 515.7 | [491.5, 544.5] | 420.5 | [401.3, 446.7] |
+| other_inactive | 1098 | 30,923,679 | 88.8 | 718.0 | [676.5, 753.0] | 608.6 | [574.6, 639.4] |
+| unemployed | 718 | 17,683,490 | 86.3 | 778.4 | [723.6, 839.8] | 683.8 | [625.7, 740.3] |
 | unknown | 12 | 288,116 | 64.6 | 666.4 | [512.3, 744.1] | 544.6 | [441.7, 609.2] |
 
 ## By home density class
 
 | Group | n | weighted n | mean time (min) | mean energy kh (kJ) | 95% CI | mean energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|
-| dense | 4782 | 134,163,114 | 84.9 | 757.8 | [737.0, 777.4] | 646.8 | [631.0, 663.6] |
-| sparse | 4100 | 101,063,694 | 78.3 | 595.6 | [571.4, 618.5] | 552.3 | [531.1, 576.5] |
-| intermediate | 3762 | 96,924,974 | 78.0 | 685.2 | [660.8, 707.8] | 603.2 | [579.5, 624.6] |
-| very_sparse | 492 | 11,172,535 | 80.6 | 574.1 | [490.7, 694.7] | 556.0 | [473.8, 674.9] |
+| dense | 4782 | 134,163,114 | 84.9 | 765.7 | [746.4, 786.1] | 654.8 | [638.3, 672.3] |
+| sparse | 4100 | 101,063,694 | 78.3 | 602.2 | [577.3, 625.8] | 558.9 | [536.7, 582.3] |
+| intermediate | 3762 | 96,924,974 | 78.0 | 691.9 | [667.4, 714.7] | 609.9 | [586.1, 630.9] |
+| very_sparse | 492 | 11,172,535 | 80.6 | 592.1 | [503.1, 718.8] | 574.0 | [483.8, 689.6] |
 
 ## Car passengers (F7)
 
@@ -58,20 +159,20 @@ INSEE's own 4-level grid names and order: dense (1, densely populated communes),
 
 ## F8 robustness (max/min ratio and CV of the group means, walk/bike/driver/both passenger groups/urban PT/train short)
 
-| Variant | energy ratio (kh) | CV (kh) | energy ratio (cp) | CV (cp) | time ratio | time CV |
-|---|---|---|---|---|---|---|
-| terminal legs x0.5 | 2.46 | 0.28 | 2.82 | 0.32 | 2.99 | 0.35 |
-| terminal legs x1 (base case) | 2.11 | 0.22 | 2.52 | 0.30 | 2.99 | 0.35 |
-| weekdays only | 1.65 | 0.14 | 1.95 | 0.21 | 3.02 | 0.34 |
-| local trips only (MOBLOC=1) | 2.06 | 0.21 | 2.47 | 0.28 | 3.02 | 0.39 |
-| terminal legs x1.5 | 1.79 | 0.18 | 2.17 | 0.27 | 2.99 | 0.35 |
-| P0 = 52.5 W (section 9.7 reference) | 1.95 | 0.19 | 2.32 | 0.26 | 2.99 | 0.35 |
+| Variant | energy ratio (kh) | CV (kh) | min/max group (kh) | energy ratio (cp) | CV (cp) | min/max group (cp) | time ratio | time CV | min/max group (time) |
+|---|---|---|---|---|---|---|---|---|---|
+| terminal legs x0.5 | 3.28 | 0.40 | car_passenger_household / cycle | 3.80 | 0.46 | car_passenger_household / cycle | 2.99 | 0.35 | walking_only / train_short |
+| terminal legs x1 (base case) | 2.65 | 0.33 | car_passenger_household / cycle | 3.18 | 0.42 | car_passenger_household / cycle | 2.99 | 0.35 | walking_only / train_short |
+| weekdays only | 2.19 | 0.25 | car_passenger_household / cycle | 2.62 | 0.33 | car_passenger_household / cycle | 3.02 | 0.34 | walking_only / train_short |
+| local trips only (MOBLOC=1) | 2.60 | 0.32 | car_passenger_household / cycle | 3.15 | 0.41 | car_passenger_household / cycle | 3.02 | 0.39 | walking_only / train_short |
+| terminal legs x1.5 | 2.18 | 0.27 | car_passenger_household / cycle | 2.67 | 0.36 | car_passenger_household / cycle | 2.99 | 0.35 | walking_only / train_short |
+| P0 = 52.5 W (section 9.7 reference) | 2.49 | 0.30 | car_passenger_household / cycle | 2.98 | 0.38 | car_passenger_household / cycle | 2.99 | 0.35 | walking_only / train_short |
 
 ## Constancy test (point 3, 5)
 
-- Overall weighted mean daily energy: 683.6 kJ (kh), 603.7 kJ (compendium); Koelbl & Helbing's (2003) hypothesis is 615 kJ.
-- Max/min ratio of the day-mode-group means (walking_only, cycle, car_driver, car_passenger_household, car_passenger_carpool, urban_pt, train_short, train_long): 2.11 (kh), 2.52 (compendium).
-- Method-of-moments gamma fit (point 5): shape=1.27, scale=537.6 kJ (kh); shape=1.16, scale=521.4 kJ (compendium).
+- Overall weighted mean daily energy: 691.1 kJ (kh), 611.2 kJ (compendium); Koelbl & Helbing's (2003) hypothesis is 615 kJ.
+- Max/min ratio of the day-mode-group means (walking_only, cycle, car_driver, car_passenger_household, car_passenger_carpool, urban_pt, train_short, train_long): 2.65 (kh), 3.18 (compendium).
+- Method-of-moments gamma fit (point 5): shape=1.24, scale=559.3 kJ (kh); shape=1.12, scale=546.8 kJ (compendium).
 - Mean trips per person and day: 3.50 (95% CI [3.46, 3.55]).
 
 ## Calibrated v0 and P0 (step 1)
@@ -92,7 +193,7 @@ INSEE's own 4-level grid names and order: dense (1, densely populated communes),
 
 ## Non-traveller immobility (point 2)
 
-Identified as: a Kish respondent with zero rows in K_DEPLOC for their described day. Cross-check: every one of these respondents has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 (100% match); `MDATE_jour` is blank only for these same respondents, so EMP 2019's public release records no day-of-week for a fully immobile respondent -- a Saturday/Sunday non-traveller cannot be told apart from a weekday one in these tables. The surveyed-day mix among travellers is TYPEJOUR=1: 10207927.8%, TYPEJOUR=2: 5036014.4%, TYPEJOUR=3: 7565147.3% (weekday-dominated: 2.7% overall immobility is a weekday-weighted figure, not comparable to all-week averages that include weekends, when immobility is known to be much higher).
+Identified as: a Kish respondent with zero rows in K_DEPLOC for their described day. Cross-check: every one of these respondents has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 (100% match); `MDATE_jour` is blank only for these same respondents, so EMP 2019's public release records no day-of-week for a fully immobile respondent -- a Saturday/Sunday non-traveller cannot be told apart from a weekday one in these tables. The surveyed-day mix among travellers is TYPEJOUR=1: 4229673.0%, TYPEJOUR=2: 15680227.4%, TYPEJOUR=3: 1634781.2% (weekday-dominated: 2.7% overall immobility is a weekday-weighted figure, not comparable to all-week averages that include weekends, when immobility is known to be much higher).
 
 ## Figures
 

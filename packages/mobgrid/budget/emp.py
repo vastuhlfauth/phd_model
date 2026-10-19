@@ -195,12 +195,15 @@ def run(
     # Restore the base case for any further queries/figures.
     _build_base(con, config)
 
+    f4_paths, f4_panels = _figure_f4_mean_by_mode(
+        con, out_dir, n_reps=n_reps, seed=seed
+    )
     figures = [
         _figure_f1_trips_per_day(
             days, trips_mean, trips_by_population, trips_by_density, out_dir
         ),
         *_figure_f3_energy_density(con, out_dir),
-        *_figure_f4_mean_by_mode(con, out_dir, n_reps=n_reps, seed=seed),
+        *f4_paths,
         _figure_f5_heatmaps(con, out_dir),
         _figure_f6_v0_p0(v0_by_age_band, p0_by_age_band, config, out_dir),
         _figure_f7_passengers(passenger_trip_stats, walk_trips_by_day_group, out_dir),
@@ -230,6 +233,7 @@ def run(
         "carpool_household_n": carpool_household_n,
         "carpool_share": carpool_share,
         "walk_trips_by_day_group": walk_trips_by_day_group,
+        "f4_panels": f4_panels,
         "non_traveler_n": len(non_travelers["pond_ind"]),
         "non_traveler_share": non_traveler_share,
         "non_traveler_mimmosem_match": non_traveler_mimmosem_match,
@@ -495,7 +499,7 @@ def _bootstrap_stats_where(
 
 def _figure_f4_mean_by_mode(
     con: duckdb.DuckDBPyConnection, out_dir: Path, *, n_reps: int, seed: int
-) -> list[Path]:
+) -> tuple[list[Path], list[tuple[str, dict[str, daily_energy.GroupStats]]]]:
     """F4: mean daily energy and time, 95% CI and n on the bars, overall
     and one panel per population category; blank when n < 50."""
     categories = [
@@ -585,7 +589,7 @@ def _figure_f4_mean_by_mode(
     path_time = out_dir / "f04b_mean_time_by_mode.png"
     fig.savefig(path_time, dpi=110)
     plt.close(fig)
-    return [path_energy, path_time]
+    return [path_energy, path_time], panels
 
 
 def _figure_f5_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
@@ -794,16 +798,35 @@ def _format_group_table(stats: list[daily_energy.GroupStats]) -> list[str]:
 
 def _format_robustness_table(rows: list[daily_energy.RobustnessRow]) -> list[str]:
     lines = [
-        "| Variant | energy ratio (kh) | CV (kh) | energy ratio (cp) | CV (cp) | "
-        "time ratio | time CV |",
-        "|---|---|---|---|---|---|---|",
+        "| Variant | energy ratio (kh) | CV (kh) | min/max group (kh) | "
+        "energy ratio (cp) | CV (cp) | min/max group (cp) | "
+        "time ratio | time CV | min/max group (time) |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         lines.append(
             f"| {row.variant} | {row.energy_kh_ratio:.2f} | {row.energy_kh_cv:.2f} | "
+            f"{row.energy_kh_min_group} / {row.energy_kh_max_group} | "
             f"{row.energy_cp_ratio:.2f} | {row.energy_cp_cv:.2f} | "
-            f"{row.time_ratio:.2f} | {row.time_cv:.2f} |"
+            f"{row.energy_cp_min_group} / {row.energy_cp_max_group} | "
+            f"{row.time_ratio:.2f} | {row.time_cv:.2f} | "
+            f"{row.time_min_group} / {row.time_max_group} |"
         )
+    return lines
+
+
+def _format_group_table_by_panel(
+    panels: list[tuple[str, dict[str, daily_energy.GroupStats]]],
+) -> list[str]:
+    """Mean daily energy (both rate sets) and time, with 95% CI and n, for
+    every main-mode group, overall and one sub-table per population
+    category (F4's own data as a table)."""
+    lines: list[str] = []
+    for label, stats in panels:
+        lines.append(f"### {label}")
+        lines.append("")
+        lines.extend(_format_group_table(list(stats.values())))
+        lines.append("")
     return lines
 
 
@@ -869,6 +892,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         *_format_group_table(results["mode_stats"]),
         "",
+        "## Mean daily energy and time by main-mode group, overall and by "
+        "population category (F4)",
+        "",
+        *_format_group_table_by_panel(results["f4_panels"]),
         "## By population category (section 6.1)",
         "",
         *_format_group_table(results["population_stats"]),

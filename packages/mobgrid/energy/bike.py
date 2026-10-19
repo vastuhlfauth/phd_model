@@ -6,7 +6,7 @@ from math import atan, cos, sin
 
 import numpy as np
 
-from mobgrid.energy.rates import GRAVITY_M_S2, clamp
+from mobgrid.energy.rates import GRAVITY_M_S2, MET_MINUTE_KJ_PER_KG, clamp
 
 
 def solve_bike_speed_m_per_s(
@@ -172,20 +172,50 @@ def bike_ride_energy_kj(
     efficiency: float,
     separated_infra_factor: float = 1.0,
     rider_share: float = 1.0,
+    *,
+    rider_mass_kg: float = 0.0,
+    pedalled_time_s: float = 0.0,
+    unloaded_net_met_per_min: float = 0.0,
 ) -> float:
     """Rider's riding energy above rest, kJ (section 9.7).
 
-    e = s_r . [M.(W_roll + W_climb + W_stops) + W_drag] / efficiency,
-    multiplied by phi_sep (``separated_infra_factor``) on separated
-    infrastructure. ``rider_share`` is s_r = P_r/(P_r+P_m) (1.0 for an
-    unassisted bike, where the rider supplies all propulsive power).
+    e = m.u_ped.t_ped + s_r.[M.(W_roll + W_climb + W_stops) + W_drag] /
+    efficiency, the second term multiplied by phi_sep
+    (``separated_infra_factor``) on separated infrastructure.
+    ``rider_share`` is s_r = P_r/(P_r+P_m) (1.0 for an unassisted bike,
+    where the rider supplies all propulsive power). The unloaded
+    pedalling term (see ``unloaded_pedalling_energy_kj``) is on the
+    rider's own mass and is not split by ``rider_share`` or
+    ``separated_infra_factor``: an e-bike rider still moves their legs
+    at full cost on every pedalled edge, whatever the motor supplies.
     """
     total_j = (
         mass_total_kg
         * (roll_work_j_per_kg + climb_work_j_per_kg + stops_work_j_per_kg)
         + drag_work_j_total
     ) / efficiency
-    return total_j * separated_infra_factor * rider_share / 1000.0
+    work_kj = total_j * separated_infra_factor * rider_share / 1000.0
+    unloaded_kj = unloaded_pedalling_energy_kj(
+        pedalled_time_s, rider_mass_kg, unloaded_net_met_per_min
+    )
+    return work_kj + unloaded_kj
+
+
+def unloaded_pedalling_energy_kj(
+    pedalled_time_s: float, rider_mass_kg: float, unloaded_net_met_per_min: float
+) -> float:
+    """Unloaded pedalling cost, kJ (section 9.7): the cost of moving the
+    legs without load, on pedalled time only (P_r > 0).
+
+    e = m . u_ped . t_ped, with u_ped = ``unloaded_net_met_per_min`` net
+    MET-minutes (about 1, the leg-cycling equation of the American
+    College of Sports Medicine; Swain 2000); independent of the rider's
+    mechanical power, rider share or separated-infrastructure factor.
+    """
+    return (
+        unloaded_net_met_per_min * MET_MINUTE_KJ_PER_KG * rider_mass_kg
+        * pedalled_time_s / 60.0
+    )
 
 
 def ride_speed_and_power(

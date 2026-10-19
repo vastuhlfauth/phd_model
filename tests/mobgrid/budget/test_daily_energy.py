@@ -169,3 +169,9 @@ def test_robustness_row_ratio_and_cv() -> None:
     assert row.energy_kh_ratio == pytest.approx(2.0)
     assert row.energy_cp_ratio == pytest.approx(2.0)
     assert row.time_ratio == pytest.approx(2.0)
+    assert row.energy_kh_min_group == "walking_only"
+    assert row.energy_kh_max_group == "cycle"
+    assert row.energy_cp_min_group == "walking_only"
+    assert row.energy_cp_max_group == "cycle"
+    assert row.time_min_group == "walking_only"
+    assert row.time_max_group == "cycle"

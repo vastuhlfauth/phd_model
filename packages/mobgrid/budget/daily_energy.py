@@ -368,24 +368,38 @@ def weighted_gaussian_kde(
 class RobustnessRow:
     """One F8 robustness variant: the max/min ratio and coefficient of
     variation of ``F8_ROBUSTNESS_GROUPS``' means, energy (both rate sets)
-    and time (section 9.9's F8)."""
+    and time (section 9.9's F8), with the names of the min/max groups."""
 
     variant: str
     energy_kh_ratio: float
     energy_kh_cv: float
+    energy_kh_min_group: str
+    energy_kh_max_group: str
     energy_cp_ratio: float
     energy_cp_cv: float
+    energy_cp_min_group: str
+    energy_cp_max_group: str
     time_ratio: float
     time_cv: float
+    time_min_group: str
+    time_max_group: str
 
 
-def _ratio_and_cv(values: np.ndarray) -> tuple[float, float]:
-    """max/min ratio and coefficient of variation (std/mean) of an
-    array of group means."""
-    finite = values[np.isfinite(values)]
-    ratio = float(finite.max() / finite.min()) if len(finite) else float("nan")
-    cv = float(finite.std() / finite.mean()) if len(finite) else float("nan")
-    return ratio, cv
+def _ratio_and_cv(
+    values: np.ndarray, labels: np.ndarray
+) -> tuple[float, float, str, str]:
+    """max/min ratio and coefficient of variation (std/mean) of an array
+    of group means, with the names of the min/max groups."""
+    finite_mask = np.isfinite(values)
+    finite = values[finite_mask]
+    finite_labels = labels[finite_mask]
+    if len(finite) == 0:
+        return float("nan"), float("nan"), "", ""
+    ratio = float(finite.max() / finite.min())
+    cv = float(finite.std() / finite.mean())
+    min_group = str(finite_labels[finite.argmin()])
+    max_group = str(finite_labels[finite.argmax()])
+    return ratio, cv, min_group, max_group
 
 
 def robustness_row(
@@ -401,16 +415,22 @@ def robustness_row(
     groups, group_codes = np.unique(day_mode_group, return_inverse=True)
     n_groups = len(groups)
     mask = np.isin(groups, F8_ROBUSTNESS_GROUPS)
+    group_labels = groups[mask]
     mean_kh = _weighted_group_means(group_codes, n_groups, weight, energy_kh)[mask]
     mean_cp = _weighted_group_means(group_codes, n_groups, weight, energy_cp)[mask]
     mean_time = _weighted_group_means(group_codes, n_groups, weight, time_min)[mask]
-    kh_ratio, kh_cv = _ratio_and_cv(mean_kh)
-    cp_ratio, cp_cv = _ratio_and_cv(mean_cp)
-    time_ratio, time_cv = _ratio_and_cv(mean_time)
+    kh_ratio, kh_cv, kh_min, kh_max = _ratio_and_cv(mean_kh, group_labels)
+    cp_ratio, cp_cv, cp_min, cp_max = _ratio_and_cv(mean_cp, group_labels)
+    time_ratio, time_cv, time_min_g, time_max_g = _ratio_and_cv(
+        mean_time, group_labels
+    )
     return RobustnessRow(
         variant=variant, energy_kh_ratio=kh_ratio, energy_kh_cv=kh_cv,
-        energy_cp_ratio=cp_ratio, energy_cp_cv=cp_cv, time_ratio=time_ratio,
-        time_cv=time_cv,
+        energy_kh_min_group=kh_min, energy_kh_max_group=kh_max,
+        energy_cp_ratio=cp_ratio, energy_cp_cv=cp_cv,
+        energy_cp_min_group=cp_min, energy_cp_max_group=cp_max,
+        time_ratio=time_ratio, time_cv=time_cv,
+        time_min_group=time_min_g, time_max_group=time_max_g,
     )
 
 

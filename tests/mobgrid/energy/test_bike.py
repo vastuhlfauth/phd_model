@@ -17,6 +17,7 @@ from mobgrid.energy.bike import (
     solve_bike_speed_m_per_s,
     stop_energy_kj,
     stop_time_s,
+    unloaded_pedalling_energy_kj,
 )
 from mobgrid.energy.rates import load_energy_config
 
@@ -26,6 +27,9 @@ CONFIG_PATH = ROOT / "config" / "energy.yaml"
 # Consistency check of section 9.7: 16 km/h on the flat, M = 85 kg.
 RIDER_SPEED_M_S = 16.0 / 3.6
 RIDER_MASS_KG = 85.0
+# Rider's own body mass (excludes the bike), for the unloaded pedalling
+# cost, which is charged on the rider alone (section 9.7).
+RIDER_BODY_MASS_KG = 70.0
 
 
 @pytest.fixture
@@ -54,10 +58,16 @@ def test_metabolic_rate_at_reference_power_matches_kh_and_compendium(
         RIDER_SPEED_M_S, RIDER_MASS_KG, 0.0, crr, config.bike.cda_m2,
         config.bike.rho_air_kg_per_m3, config.bike.drivetrain_efficiency,
     )
-    rate_kj_per_min = power_w / config.bike.gross_muscular_efficiency * 60 / 1000
+    work_rate_kj_per_min = power_w / config.bike.gross_muscular_efficiency * 60 / 1000
+    time_s = 1000.0 / RIDER_SPEED_M_S
+    unloaded_kj = unloaded_pedalling_energy_kj(
+        time_s, RIDER_BODY_MASS_KG, config.bike.pedalling_unloaded_net_met
+    )
+    rate_kj_per_min = work_rate_kj_per_min + unloaded_kj / (time_s / 60.0)
     # Consistent with KH (14.7 kJ/min at 12 km/h) and the Compendium
-    # leisure value (4.0 MET): about 13.1 kJ/min (section 9.7).
-    assert rate_kj_per_min == pytest.approx(13.1, rel=0.02)
+    # leisure value (4.0 MET), plus the unloaded pedalling cost: about
+    # 18.2 kJ/min (section 9.7).
+    assert rate_kj_per_min == pytest.approx(18.2, rel=0.02)
 
 
 def test_required_power_round_trips_through_the_solver(config, crr) -> None:
@@ -227,6 +237,36 @@ def test_ride_energy_components_direction_asymmetry() -> None:
     backward_climb = climbing_work_j_per_kg(length_m, -gradient)
     assert forward_climb > 0.0
     assert backward_climb == pytest.approx(-forward_climb)
+
+
+def test_unloaded_pedalling_energy_scales_with_mass_and_time() -> None:
+    # e = m . u_ped . t_ped (section 9.7); 1 net MET = 0.0732 kJ/kg/min.
+    kj = unloaded_pedalling_energy_kj(60.0, 70.0, 1.0)
+    assert kj == pytest.approx(0.0732 * 70.0)
+    assert unloaded_pedalling_energy_kj(120.0, 70.0, 1.0) == pytest.approx(kj * 2.0)
+    assert unloaded_pedalling_energy_kj(60.0, 0.0, 1.0) == 0.0
+
+
+def test_bike_ride_energy_adds_unloaded_pedalling_cost(config, crr) -> None:
+    length_m, gradient, speed = 1000.0, 0.02, 16.0 / 3.6
+    roll = rolling_work_j_per_kg(length_m, gradient, crr)
+    climb = climbing_work_j_per_kg(length_m, gradient)
+    drag = drag_work_j(
+        length_m, speed, config.bike.rho_air_kg_per_m3, config.bike.cda_m2
+    )
+    mass_total = RIDER_BODY_MASS_KG + config.bike.bike_mass_kg
+    efficiency = config.bike.gross_muscular_efficiency
+    pedalled_time_s = length_m / speed
+    work_only = bike_ride_energy_kj(roll, climb, 0.0, drag, mass_total, efficiency)
+    with_unloaded = bike_ride_energy_kj(
+        roll, climb, 0.0, drag, mass_total, efficiency,
+        rider_mass_kg=RIDER_BODY_MASS_KG, pedalled_time_s=pedalled_time_s,
+        unloaded_net_met_per_min=config.bike.pedalling_unloaded_net_met,
+    )
+    expected_unloaded = unloaded_pedalling_energy_kj(
+        pedalled_time_s, RIDER_BODY_MASS_KG, config.bike.pedalling_unloaded_net_met
+    )
+    assert with_unloaded == pytest.approx(work_only + expected_unloaded)
 
 
 def test_bike_ride_energy_matches_manual_sum(config, crr) -> None:
