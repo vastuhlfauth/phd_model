@@ -1,0 +1,134 @@
+"""Unit tests for the day-level aggregation and hypothesis test
+(section 9.9, step 11).
+
+Uses the synthetic archive (``synthetic_emp_zip``, ``conftest.py``) for the
+DuckDB aggregation, and plain numpy arrays for the statistics helpers.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import duckdb
+import numpy as np
+import pytest
+from mobgrid.budget import daily_energy, emp2019
+from mobgrid.energy.rates import load_energy_config
+
+ROOT = Path(__file__).resolve().parents[3]
+CONFIG_PATH = ROOT / "config" / "energy.yaml"
+
+
+@pytest.fixture
+def day_summary(tmp_path: Path, synthetic_emp_zip: Path) -> duckdb.DuckDBPyConnection:
+    config = load_energy_config(CONFIG_PATH)
+    con = duckdb.connect()
+    csv_paths = emp2019.extract_tables(synthetic_emp_zip, tmp_path / "csv")
+    emp2019.register_views(con, csv_paths)
+    emp2019.build_trip_legs(con, config)
+    daily_energy.create_day_summary(con)
+    daily_energy.create_non_travelers(con)
+    return con
+
+
+def test_single_trip_days_are_classified_by_their_only_mode(
+    day_summary: duckdb.DuckDBPyConnection,
+) -> None:
+    rows = dict(
+        day_summary.sql(
+            "SELECT ident_ind, day_mode_group FROM day_summary "
+            "WHERE ident_ind IN (1, 2, 3, 6, 7)"
+        ).fetchall()
+    )
+    assert rows == {
+        1: "walking_only",
+        2: "cycle",
+        3: "car_driver",
+        6: "urban_pt",
+        7: "train",
+    }
+
+
+def test_two_non_walk_modes_in_one_day_are_multimodal(
+    day_summary: duckdb.DuckDBPyConnection,
+) -> None:
+    group = day_summary.sql(
+        "SELECT day_mode_group FROM day_summary WHERE ident_ind = 9"
+    ).fetchone()[0]
+    assert group == "multimodal"
+
+
+def test_car_passenger_household_and_carpool_collapse_to_one_day_group(
+    day_summary: duckdb.DuckDBPyConnection,
+) -> None:
+    rows = dict(
+        day_summary.sql(
+            "SELECT ident_ind, day_mode_group FROM day_summary "
+            "WHERE ident_ind IN (4, 5)"
+        ).fetchall()
+    )
+    assert rows == {4: "car_passenger", 5: "car_passenger"}
+
+
+def test_other_only_day_is_its_own_group_not_multimodal(
+    day_summary: duckdb.DuckDBPyConnection,
+) -> None:
+    group = day_summary.sql(
+        "SELECT day_mode_group FROM day_summary WHERE ident_ind = 8"
+    ).fetchone()[0]
+    assert group == "other"
+
+
+def test_respondent_with_no_trip_is_a_non_traveler(
+    day_summary: duckdb.DuckDBPyConnection,
+) -> None:
+    assert day_summary.sql(
+        "SELECT count(*) FROM day_summary WHERE ident_ind = 10"
+    ).fetchone()[0] == 0
+    assert day_summary.sql(
+        "SELECT count(*) FROM non_travelers WHERE ident_ind = 10"
+    ).fetchone()[0] == 1
+
+
+def test_gamma_moments_fit_recovers_mean_and_variance() -> None:
+    mean, variance = 600.0, 200.0**2
+    shape, scale = daily_energy.gamma_moments_fit(mean, variance)
+    assert shape * scale == pytest.approx(mean)
+    assert shape * scale**2 == pytest.approx(variance)
+
+
+def test_gamma_moments_fit_rejects_non_positive_inputs() -> None:
+    with pytest.raises(ValueError):
+        daily_energy.gamma_moments_fit(0.0, 1.0)
+    with pytest.raises(ValueError):
+        daily_energy.gamma_moments_fit(1.0, 0.0)
+
+
+def test_weighted_mean_variance_matches_equal_weight_numpy() -> None:
+    values = np.array([100.0, 200.0, 300.0, 400.0])
+    weights = np.ones_like(values)
+    mean, variance = daily_energy.weighted_mean_variance(weights, values)
+    assert mean == pytest.approx(values.mean())
+    assert variance == pytest.approx(values.var())
+
+
+def test_bootstrap_group_stats_point_estimate_matches_direct_computation() -> None:
+    group = np.array(["a", "a", "b", "b"])
+    household = np.array([1, 2, 3, 4])
+    weight = np.array([1.0, 1.0, 1.0, 1.0])
+    time_min = np.array([10.0, 20.0, 30.0, 40.0])
+    energy_kh = np.array([100.0, 200.0, 300.0, 400.0])
+    energy_cp = np.array([90.0, 180.0, 270.0, 360.0])
+
+    stats = daily_energy.bootstrap_group_stats(
+        group, household, weight, time_min, energy_kh, energy_cp, n_reps=50, seed=1,
+    )
+    by_group = {s.group: s for s in stats}
+
+    assert by_group["a"].mean_energy_kh_kj == pytest.approx(150.0)
+    assert by_group["b"].mean_energy_kh_kj == pytest.approx(350.0)
+    assert by_group["a"].n == 2
+    assert by_group["a"].weighted_n == pytest.approx(2.0)
+    # The CI must bracket the point estimate it is centred on.
+    assert by_group["a"].mean_energy_kh_ci[0] <= by_group["a"].mean_energy_kh_kj
+    assert by_group["a"].mean_energy_kh_ci[1] >= by_group["a"].mean_energy_kh_kj

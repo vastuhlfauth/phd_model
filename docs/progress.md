@@ -2,7 +2,7 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-19 by Copilot (step 7 fixes: bike descent clamp, e-bike rider/motor power split, bike stop time, rate-set-aware walking, carpool passenger, PT first-phase standing shares, `ebike_effort_factor`; `checks` command rerun with new/updated figures; branch `step/mobgrid-energy`, awaiting review)_
+_Last updated: 2026-10-19 by Copilot (step 11, brought forward before steps 8-10: EMP 2019 re-estimation of section 9.9's constancy hypothesis, steps 1-3 and 5; `mobgrid.budget.emp2019`/`daily_energy`/`emp`; new provisional PT headway/station-height/access-walk defaults in `config/energy.yaml`; fixed a `standing_share_am_peak` key mismatch; `emp` command rerun; branch `step/mobgrid-energy`, awaiting review)_
 
 ## Steps (table of section 14.5)
 
@@ -25,27 +25,22 @@ _Last updated: 2026-10-19 by Copilot (step 7 fixes: bike descent clamp, e-bike r
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
 | 10 | `mobgrid/od` | not started | | |
-| 11 | `mobgrid/budget` | not started | | |
+| 11 | `mobgrid/budget` | review | `step/mobgrid-energy` | **Brought forward before steps 8-10** (needs only step 7 and the EMP 2019 public tables, not the graph/OD steps). Section 9.9's re-estimation steps 1-3 and 5 on EMP 2019's public tables (`K_DEPLOC`, `TCM_IND_KISH`, `K_INDIVIDU`; `TCM_IND`/`Q_MENAGE` acquired and checked but not needed by this step's formulas); EMC² (step 4) and Ē_c (step 6) are out of scope. `emp2019.py` rebuilds each of the 45,169 EMP 2019 trips (13,370 respondents, 455 reporting no trip) as legs, reusing `mobgrid.energy`'s public walk/bike/legs/rates formulas: terminal legs by density class (car: `config.car.*`, already calibrated for step 7; PT: new provisional `config.pt_ride.headway_min_am_peak`/`station_height_m`/`access_walk_m_by_density`, TODO(confirm), since EMP has no headway/station-depth/access-distance data) and the main leg at the rest of the declared duration (`DUREE`); companions (`MACCOMPM`/`MACCOMPHM`) separate household from carpool car passengers. `daily_energy.py` sums to one row per respondent, classifies each day by its one non-walk mode (walking-only/cycle/car driver/car passenger/urban PT/train/multimodal/other), and computes weighted group means with a household bootstrap 95% CI (`bootstrap_group_stats`), a method-of-moments gamma fit (no new `scipy` dependency), and the v0/P0 calibration by age band. Verification command `python -m mobgrid.budget.emp --out docs/data/step11_budget` (`emp.py`) writes 7 PNGs plus `docs/data/step11_budget.md`; run once, committed. Checked the user-reported ~119 kJ train-chain discrepancy from step 7's `checks.py`: escalators (standing rate), not stairs, are already correctly used above the 10 m threshold (commit `cc9eb81`'s fix) — the figure's gap against 615 kJ is the already-documented "train reuses the metro chain" approximation, not a stairs bug. Found and fixed a pre-existing `config.pt_ride.standing_share_am_peak` key mismatch (4 of `load_factor_max`'s 8 vehicle keys were missing). On real EMP 2019 data: overall weighted mean daily energy 673 kJ (KH) / 593 kJ (Compendium) against Koelbl & Helbing's 615 kJ hypothesis; max/min ratio of the six KH-comparable group means 1.34 (KH)/1.57 (Compendium); calibrated v0 4.45 km/h (configured 4.8), P0 39.5 W. Ruff clean; 15 new budget tests pass (356 total, 3 pilot deselected). |
 
 Status values: not started, in progress, review, merged.
 
 ## Data pages written (`/schema`)
 
-- (none yet)
+- [EMP 2019 public tables](data/emp2019.md) (step 11)
 
 ## Decisions taken while coding
 
-- 2026-10-19, step 7 (second round), the user said they had replaced
-  `docs/spec/09_trip_legs_energy.md` (9.2, 9.6, 9.7, 9.9 changed) and
-  asked to commit it with this work. `git diff`/`git status` showed the
-  file byte-identical to `HEAD`: no such replacement was present in this
-  working tree. Rather than block the whole task on this, implemented
-  the detailed fixes (A1-A7) and figure changes (B) exactly as specified
-  in the task's own text (self-sufficient formulas), left
-  `docs/spec/09_trip_legs_energy.md` untouched (never author spec prose
-  on the user's behalf), and flag this here: if the replaced file still
-  needs committing, please supply it (e.g. re-paste or re-attach) so it
-  can be added in a follow-up commit.
+- 2026-10-19, step 11, the spec 09 replacement flagged below (2026-10-19,
+  step 7 second round) is resolved: the user confirmed `docs/spec/09_trip_legs_energy.md`
+  (commit `76e5260`, "Spec 9: bike descents, e-bike rider share,
+  passengers, EMP test design") is now committed on `main` and contains
+  the file this project treats as section 9's authority, including its
+  9.9 re-estimation steps and the EMP test design referenced by step 11.
 - 2026-10-19, step 7, `docs/spec_v10_changes.md` (referenced by the task)
   was not committed to the repo; the user pointed to the untracked
   `docs/spec/spec_v10.zip`, which contains it plus every changed spec
@@ -1598,7 +1593,10 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [ ] Public-sector jobs: default surface by amenity type when there is no building footprint (section 7.2)
 - [ ] PT engine: departure sampling if plain RAPTOR is kept, after the benchmark (section 8.6)
 - [ ] Crush loads per seat (LF_max): check against operators' vehicle data (section 9.5)
-- [ ] EMP 2019: leg detail and durations in the public tables (section 9.9)
+- [x] EMP 2019: leg detail and durations in the public tables (section 9.9) — resolved by step 11 (`mobgrid.budget.emp`): K_DEPLOC has no leg detail, so terminal legs use the model's own section 9.4-9.7 defaults by density class/vehicle, not a real decomposition; companions (`MACCOMPM`/`MACCOMPHM`) separate household from carpool passengers.
+- [ ] PT headway/CV by vehicle for the section 9.9 re-estimation: `config.pt_ride.headway_min_am_peak`, new in step 11, is provisional (no survey or operator data)
+- [ ] PT station height by vehicle for the section 9.9 re-estimation: `config.pt_ride.station_height_m`, new in step 11, is provisional (no station-sample data, unlike section 9.3's own table)
+- [ ] PT access/egress walk distance by density for the section 9.9 re-estimation: `config.pt_ride.access_walk_m_by_density`, new in step 11, is provisional
 - [ ] PT fares and passes by network (section 9.10)
 - [ ] Bike and e-bike prices and lifetimes (section 9.10)
 - [ ] Fiscal power of the car fleet by cell, 5 CV by default (section 9.10)

@@ -94,13 +94,59 @@ pt_ride:
     intercites: 1.3
     interurban_coach: 1.2
     tgv_long_distance_coach: 1.1
-  # First phase standing shares for 08:00-09:00, without load data.
+  # First phase standing shares for 08:00-09:00, without load data. Keys
+  # match "load_factor_max" above; "rer_suburban", "intercites" and
+  # "interurban_coach" (added for the section 9.9 re-estimation, step 11)
+  # reuse the closest of the spec's four named values (metro/tram/bus/TGV).
+  # TODO(confirm): [TO CONFIRM: against operators' vehicle data], section 9.5.
   standing_share_am_peak:
     metro: 0.5
     tram: 0.4
     urban_bus: 0.3
+    rer_suburban: 0.4 # closest to tram/metro-like suburban crowding
     ter: 0.15
-    tgv: 0.0
+    intercites: 0.0 # reserved seating, like TGV
+    interurban_coach: 0.0 # reserved seating, like TGV
+    tgv_long_distance_coach: 0.0
+  # Representative headways, minutes, used only by the section 9.9
+  # re-estimation (step 11: `mobgrid.budget.emp`) to apply the
+  # frequency-based wait formula of section 9.4 to EMP 2019 trips, which
+  # give a main mode and a declared duration but no headway.
+  # TODO(confirm): [TO CONFIRM: no survey or operator headway data used].
+  headway_min_am_peak:
+    metro: 4.0
+    tram: 8.0
+    urban_bus: 10.0
+    rer_suburban: 10.0
+    ter: 30.0
+    intercites: 60.0
+    interurban_coach: 30.0
+    tgv_long_distance_coach: 60.0
+  # Height difference, metres, by vehicle type (section 9.3's table),
+  # used only by the section 9.9 re-estimation's stairs/escalator
+  # level-change legs: EMP 2019 does not record station depth.
+  # TODO(confirm): [TO CONFIRM: no station-sample data used, unlike the
+  # heights checked in section 9.3's own table].
+  station_height_m:
+    metro: 15.0
+    tram: 0.0
+    urban_bus: 0.0
+    rer_suburban: 15.0
+    ter: 4.0
+    intercites: 7.0
+    interurban_coach: 0.0
+    tgv_long_distance_coach: 7.0
+  # PT stop access/egress walking distance, metres, each way, by density
+  # class of the trip end (section 9.5: "closer stops shorten egress");
+  # used only by the section 9.9 re-estimation: EMP 2019 gives a trip's
+  # declared duration and distance, not a leg-by-leg breakdown.
+  # TODO(confirm): [TO CONFIRM: not calibrated against observed access
+  # distances].
+  access_walk_m_by_density:
+    dense: 300.0
+    urban: 400.0
+    suburban: 600.0
+    rural: 900.0
 
 # 9.6 Car legs.
 car:

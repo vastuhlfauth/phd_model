@@ -74,7 +74,14 @@ class WaitingConfig(BaseModel):
 
 
 class PtRideConfig(BaseModel):
-    """Public transport ride energy parameters (section 9.5)."""
+    """Public transport ride energy parameters (section 9.5).
+
+    ``headway_min_am_peak``, ``station_height_m`` and
+    ``access_walk_m_by_density`` are provisional, used only by the
+    section 9.9 re-estimation (step 11: ``mobgrid.budget.emp``), which
+    has no headway, station-depth or access-distance data of its own
+    (TODO(confirm), section 9.9).
+    """
 
     model_config = ConfigDict(extra="forbid")
     r_sit_kj_per_min: float = Field(gt=0)
@@ -82,6 +89,9 @@ class PtRideConfig(BaseModel):
     r_restless_kj_per_min: float = Field(gt=0)
     load_factor_max: dict[str, float]
     standing_share_am_peak: dict[str, float]
+    headway_min_am_peak: dict[str, float]
+    station_height_m: dict[str, float]
+    access_walk_m_by_density: dict[str, float]
 
 
 class WalkToCarConfig(BaseModel):
