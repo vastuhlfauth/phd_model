@@ -1,1 +1,194 @@
 # Configuration values and rates are specified in section 9.
+
+# Reference adult mass for stored energy outputs (section 9.1, 14.3); the
+# examples of section 9.2 use 70 kg, the convention of the literature, but
+# every function below takes the subject's mass as an explicit parameter.
+reference_mass_kg: 74.0
+
+# Which rate set feeds the mass-dependent sedentary and driving rates of
+# "activity_rates" below (section 9.1); the daily budget of section 9.9 is
+# re-estimated with the same set.
+rate_set: compendium
+
+# Section 9.2 reference activity rates, in kJ per minute above rest for 70 kg.
+# "kh_kj_per_min" is Kolbl & Helbing's absolute rate for a reference adult
+# (section 9.1: "for a reference adult in KH"); "compendium_net_met" is the
+# gross MET value of the matching Compendium 2024 code minus 1 (net MET),
+# converted via 0.0732 * mass_kg kJ per net-MET-minute (section 9.1). A null
+# field means section 9.2's table gives no value for that rate set.
+activity_rates:
+  sitting_vehicle:
+    kh_kj_per_min: 1.5
+    compendium_net_met: 0.3 # code 16016, 1.3 MET
+  standing_relaxed:
+    kh_kj_per_min: 2.6
+    compendium_net_met: 0.5 # code 07041, 1.5 MET
+  standing_restless:
+    kh_kj_per_min: 6.7
+    compendium_net_met: null # upper bound only, no Compendium equivalent
+  driving_free_flow:
+    kh_kj_per_min: 4.2
+    compendium_net_met: 1.0 # code 16010, 2.0 MET
+  driving_congested_cap:
+    kh_kj_per_min: 8.0 # test-drive value; the rush-hour 13.4 is an upper bound only
+    compendium_net_met: null
+
+# 9.3 Walking legs: Tobler speed and Minetti net cost of walking.
+walking:
+  v0_kmh: 4.8
+  c0_j_per_kg_m:
+    compendium: 2.29 # 3.5 MET at 4.8 km/h
+    kh: 3.0 # 14.1 kJ/min at 4 km/h for 70 kg
+  # Minetti et al. (2002) Cw(i) = sum(coefficients[k] * i^(5-k)), J/kg/m.
+  gradient_polynomial_j_per_kg_m: [280.5, -58.7, -76.8, 51.9, 19.6, 2.5]
+  gradient_valid_range: [-0.45, 0.45]
+
+# Stairs and level changes (section 9.3).
+stairs:
+  up_speed_m_per_s: 0.20
+  down_speed_m_per_s: 0.30
+  up_efficiency: 0.30
+  down_to_up_energy_ratio: 0.3333333333 # "e_down ~ e_up / 3"
+  # Height difference by place, metres, as (down_m, up_m) along the path.
+  level_change_height_m:
+    street_level: [0, 0] # bus stop; tram or metro stop at street level
+    underpass: [4, 4]
+    footbridge: [7, 7]
+    shallow_underground: [0, 6]
+    deep_underground: [0, 15] # escalators
+    very_deep_underground: [0, 25] # escalators and lifts
+  escalator_depth_threshold_m: 10
+
+# 9.4 Waiting and transfers.
+waiting:
+  w_planned_min: 4.0
+  # The spec gives the regime boundary as "about 10-12 min"; the upper end
+  # of that range is used as the single cutoff between the two regimes.
+  headway_regime_threshold_min: 12.0
+  # CV defaults by mode and right of way (TCQSM bands A-E), without
+  # real-time data.
+  cv_defaults:
+    metro_rail: 0.15 # band A
+    tram_reserved_track: 0.25 # band B
+    bus_bus_lane: 0.35 # band C
+    bus_mixed_traffic: 0.45 # band D
+    bus_congested_centre: 0.60 # band E
+
+# 9.5 Riding public transport. r_sit, r_relaxed and r_restless are pinned to
+# the KH figures exactly as written in section 9.5 ("kJ/min (KH)"), not
+# switched by "rate_set" above: the Compendium has no restless-standing
+# equivalent, so the formula always mixes the three KH numbers together.
+pt_ride:
+  r_sit_kj_per_min: 1.5
+  r_relaxed_kj_per_min: 2.6
+  r_restless_kj_per_min: 6.7
+  # Crush load per seat (seats plus standing room at about 4 passengers per
+  # m^2, divided by seats).
+  # TODO(confirm): [TO CONFIRM: against operators' vehicle data], section 9.5.
+  load_factor_max:
+    metro: 4.0
+    tram: 4.0
+    urban_bus: 3.0
+    rer_suburban: 2.5
+    ter: 1.8
+    intercites: 1.3
+    interurban_coach: 1.2
+    tgv_long_distance_coach: 1.1
+  # First phase standing shares for 08:00-09:00, without load data.
+  standing_share_am_peak:
+    metro: 0.5
+    tram: 0.4
+    urban_bus: 0.3
+    ter: 0.15
+    tgv: 0.0
+
+# 9.6 Car legs.
+car:
+  r_congested_cap_kj_per_min: 8.0 # same test-drive cap as activity_rates.driving_congested_cap
+  congestion_rho_max: 2.0
+  walk_to_car:
+    house_min: 0.5
+    # "1-4 min by density class"; the spec gives only the overall range,
+    # not a value per class.
+    # TODO(confirm): [TO CONFIRM: per-density-class split], section 9.6.
+    apartment_min_by_density:
+      rural: 1.0
+      suburban: 2.0
+      urban: 3.0
+      dense: 4.0
+  parking_search_min_by_density:
+    rural: 0.0
+    suburban: 0.5
+    urban: 2.0
+    dense: 5.0
+  walk_from_car_min_by_density:
+    rural: 0.5
+    suburban: 2.0
+    urban: 3.5
+    dense: 5.0
+  # Carpool passenger: walk to a meeting point instead of a house/apartment
+  # start, then wait standing for the car (section 9.6).
+  # TODO(confirm): [TO CONFIRM: provisional, no survey or observed pattern].
+  carpool_passenger:
+    walk_to_meeting_point_min: 5.0
+    wait_standing_min: 3.0
+
+# 9.7 Bike legs.
+bike:
+  bike_mass_kg: 15.0
+  ebike_mass_kg: 23.0
+  drivetrain_efficiency: 0.976 # eta_d
+  gross_muscular_efficiency: 0.24 # epsilon
+  rho_air_kg_per_m3: 1.2
+  cda_m2: 0.55
+  # phi_sep: calmer riding on separated infrastructure (sensitivity 0.90-1.00).
+  separated_infra_factor: 0.97
+  surface_crr:
+    asphalt_concrete_paved_default: 0.006
+    concrete_plates_lanes: 0.007
+    paving_stones: 0.008
+    compacted: 0.010
+    fine_gravel: 0.012
+    sett_cobblestone: 0.015
+    gravel_unpaved_ground_dirt_earth: 0.020
+    grass_sand: 0.030
+  # Force-balance power selection (section 9.7): "P_0, k and P_max are
+  # calibrated on observed commuter speeds on gradients (Parkin & Rotheram
+  # 2010)"; the spec gives no numeric value, only the 16 km/h flat
+  # consistency check used to validate the physics, not to set P_0.
+  # TODO(confirm): [TO CONFIRM: calibration against Parkin & Rotheram 2010
+  # / pilot commuter speeds], section 9.7.
+  power:
+    p0_w: null
+    k: null
+    p_max_w: null
+    v_max_descent_kmh: null
+  ebike:
+    motor_power_cap_w: 250.0
+    speed_cap_kmh: 25.0
+    assist_factor_by_level: # Bosch Performance Line, model year 2021
+      eco: 0.55
+      tour: 1.2
+      sport: 2.0
+      turbo: 3.0
+    default_level: tour
+    # Rider effort reduction with more assistance (section 9.7): the model
+    # keeps P_r fixed across levels by default (factor 1.0 everywhere);
+    # this key is a hook for a future calibration against the Compendium's
+    # light/high-support MET values.
+    # TODO(confirm): [TO CONFIRM: not yet calibrated].
+    effort_factor_by_level:
+      eco: 1.0
+      tour: 1.0
+      sport: 1.0
+      turbo: 1.0
+  # Stop time: deceleration + expected wait + acceleration (section 9.7,
+  # Webster 1958 for the signal wait). No numeric value is given by the
+  # spec for the braking/accelerating rates or a representative signal.
+  # TODO(confirm): [TO CONFIRM: not yet calibrated against observed
+  # junction/signal behaviour].
+  stops:
+    deceleration_m_per_s2: 1.5
+    acceleration_m_per_s2: 1.0
+    signal_cycle_s: 90.0
+    red_time_s: 40.0
