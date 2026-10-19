@@ -9,7 +9,7 @@
 
 ## 9.2 A trip is a chain of legs
 
-Every trip is built from legs (Figure 4). Its time and energy are sums over legs: T = Σ t, E = Σ e. Sedentary and standing legs have e = r × t with a rate r; walking and cycling legs use physical models along the path. The same formulas serve the O-D computation, the scenario engine and the re-estimation of the daily budget on EMP 2019 (section 9.9).
+Every trip is built from legs (Figure 4). Its time and energy are sums over legs: T = Σ t, E = Σ e. Sedentary and standing legs have e = r × t with a rate r; walking and cycling legs use physical models along the path. The same formulas serve the O-D computation, the scenario engine and the re-estimation of the daily budget on EMP 2019 (section 9.9). Modes are compared at equal distance and at equal door-to-door time: for a given time, the distance reached (faster modes contract space) and the energy spent, which crowding and congestion raise per minute.
 
 ![Figure 4. Trips as chains of legs, with the time and energy model of each leg; red dots mark the legs where congestion or crowding act (section 9.8).](figures/fig4_trip_legs.png)
 
@@ -129,8 +129,9 @@ r_drive = r_free + (r_cong − r_free) · clamp((ρ − 1)/(ρ_max − 1), 0, 1)
 
 with r_free = 4.2 (KH) or 5.1 kJ/min (Compendium), r_cong = 8.0 kJ/min (the test-drive value of KH; the rush-hour value of 13.4 is only an upper bound) and ρ_max = 2. Passengers sit (1.5 kJ/min).
 
-- **Parking search** at the destination: t_ps by density class of the destination cell: about 0 in rural areas, 0.5 min suburban, 2 min urban, 5 min in dense centres (Shoup 2006), later a function of parking supply and occupancy; energy at the driving rate.
+- **Parking search** at the destination: t_ps by density class of the destination cell: about 0 in rural areas, 0.5 min suburban, 2 min urban, 5 min in dense centres (Shoup 2006), later a function of parking supply and occupancy; energy at the driving rate for the driver and at the sitting rate for passengers.
 - **Walk from the car:** t_e by density class of the destination cell, 0.5 to 5 min; walking formula. Kölbl & Helbing explain the higher daily energy of car passengers by such walks, which is why they must be counted.
+- **Passengers,** two cases. A household passenger has the driver's walks and sits during the parking search. A carpool passenger, travelling with a driver from another household, also walks to a meeting point and waits there standing [TO CONFIRM: about 5 min walking and 3 min waiting per trip; EMP 2019 separates the two cases by the trip's companions, variable to be identified in `K_DEPLOC`].
 
 ## 9.7 Bike legs
 
@@ -140,25 +141,26 @@ with r_free = 4.2 (KH) or 5.1 kJ/min (Compendium), r_cong = 8.0 kJ/min (the test
 ```text
 P_r · η_d = v · [ M·g·(C_rr·cos θ + sin θ) + ½·ρ_air·C_dA·(v + v_w)² ]
 M = m + m_bike,   η_d ≈ 0.976 (drivetrain)
-P_r = P_0 on the flat
-P_r = min(P_0·(1 + k·i), P_max) on climbs
-P_r = 0 on descents, where v = v_max,desc
+P_r = clamp( P_0·(1 + k·i), 0, P_max )     on every grade
+v  ≤ v_max,desc on descents and ≤ the cap of the infrastructure class;
+     at a cap, P_r is the power that holds it
 ```
 
-P_0, k and P_max are calibrated on observed commuter speeds on gradients (Parkin & Rotheram 2010); speeds are capped by infrastructure class and on descents.
+The rider pushes harder on climbs, eases off on descents and freewheels below i = −1/k. A rule of no pedalling on every descent would stop riders on gentle slopes, where gravity does not overcome rolling resistance (below about 0.6% with C_rr = 0.006); the checks of step 7 showed it. P_0, k and P_max are calibrated on observed speeds. Provisional values used in the checks: P_0 giving 16 km/h on the flat (about 52.5 W at 70 kg), k = 37 (about 150 W at +5%), P_max = 200 W, v_max,desc = 30 km/h [TO CONFIRM: P_0 from the bike trips of EMP 2019 (declared distances and durations), like v0 for walking; Parkin & Rotheram (2010) measured about 150 W on the flat and 250 W on climbs for UK commuters with an 85th-percentile speed of 22 km/h, a fitter population than the KH and Compendium references, so their ratio of climbing to flat power is the more transferable result].
 
 - **Stops** at signals and junctions, with a probability by infrastructure class: time = deceleration + expected wait + acceleration (for a random arrival at a signal of cycle C and red time R, the expected wait is R²/(2C); Webster 1958); energy ½·M·v²/ε to regain speed, about 3.5 kJ at 16 km/h for M = 85 kg.
 - **Energy:**
 
 ```text
 e = [ M · (W_roll + W_climb + W_stops) + W_drag ] / ε
-W_roll  = Σ g·C_rr·cos θ·L        (per kg, pedalled edges)
-W_climb = Σ g·Δh+                 (per kg: the m·g·h term)
-W_stops = Σ ½·v²                  (per kg, per stop)
-W_drag  = Σ ½·ρ_air·C_dA·v²·L     (pedalled edges)
+W_roll  = Σ s_r·g·C_rr·cos θ·L        (per kg, pedalled edges: P_r > 0)
+W_climb = Σ s_r·g·Δh                  (per kg, pedalled edges, signed: the m·g·h term)
+W_stops = Σ s_r·½·v²                  (per kg, per stop)
+W_drag  = Σ s_r·½·ρ_air·C_dA·v²·L     (pedalled edges)
+s_r     = P_r / (P_r + P_m)           rider's share of the work; 1 without assistance
 ```
 
-with ε ≈ 0.24, the gross muscular efficiency (Ettema & Lorås 2009). Storing the per-kilogram part and the drag part separately lets energy be recomputed for any body or bike mass without new searches; speeds are computed at the reference mass.
+with ε ≈ 0.24, the gross muscular efficiency (Ettema & Lorås 2009). Δh is signed on pedalled edges, so on a gentle descent where the rider still pedals, gravity reduces the rider's work; freewheeling edges cost nothing. Storing the per-kilogram part and the drag part separately lets energy be recomputed for any body or bike mass without new searches; speeds are computed at the reference mass.
 
 - **Calmer riding on separated infrastructure.** On separated tracks and paths the riding energy is multiplied by φ_sep = 0.97, with 0.90–1.00 as the sensitivity range. The evidence points to a small effect: Fitch, Sharpnack & Handy (2020) measure heart-rate variability of cyclists on five urban roads and find clear differences for only one of them; in a cycling simulator, Guo et al. (2022) find no difference in mean heart rate between mixed traffic, a bike lane and a protected lane, but about half as many abrupt heart-rate increases on the two lanes. The main physical gain of separated infrastructure, fewer stops, is modelled directly.
 - **Defaults:** C_rr by surface (table below); C_dA = 0.55 m² (upright position); ρ_air = 1.2 kg/m³; no wind; m = reference mass, m_bike = 15 kg.
@@ -178,7 +180,7 @@ Rolling resistance for city-bike tyres, by OSM `surface`:
 
 - **Effect of mass on speed.** On the flat, mass only enters rolling resistance: 10 kg more slows a rider by about 2% at 16 km/h. On a 5% climb it slows them by about 10%.
 - **Consistency.** With these defaults, riding at 15–16 km/h on the flat needs about 50 W of mechanical power, about 13 kJ/min above rest at 24% efficiency: consistent with KH (14.7 kJ/min at 12 km/h) and with the Compendium leisure value (4.0 MET). The Compendium commuting value (6.8 MET, about 30 kJ/min) is kept only as an upper bound for sensitivity tests.
-- **E-bike:** the motor adds P_m = min(250 W, a·P_r) below 25 km/h and nothing above (EU pedelec rules); m_bike about 23 kg; rider energy from P_r only. The assistance factor a follows manufacturers' support levels, for example Bosch Performance Line (model year 2021): eco 0.55, tour 1.2, sport 2.0, turbo 3.0, with tour as default. The Compendium's light support (6.0 MET) corresponds to eco or tour, its high support (4.0 MET) to sport or turbo. Results are checked against the Compendium (6.8, 6.0 and 4.0 MET without, with light and with high support) and Gojanovic et al. (2011), Langford et al. (2017).
+- **E-bike:** the motor adds P_m = min(250 W, a·P_r) below 25 km/h and nothing above (EU pedelec rules); m_bike about 23 kg; rider energy from P_r only, through s_r on every edge and stop. The rider keeps the power function of a non-assisted cyclist, so assistance turns into speed: on the flat the rider's rate per minute equals the cyclist's (a ratio of 1.0 in the checks of step 7), whereas the Compendium gives net ratios of about 0.86 with light and 0.52 with high support [TO CONFIRM: an effort factor f_e per support level multiplying P_r, 1.0 by default, tested at the Compendium ratios]. The assistance factor a follows manufacturers' support levels, for example Bosch Performance Line (model year 2021): eco 0.55, tour 1.2, sport 2.0, turbo 3.0, with tour as default. The Compendium's light support (6.0 MET) corresponds to eco or tour, its high support (4.0 MET) to sport or turbo. Results are checked against the Compendium (6.8, 6.0 and 4.0 MET without, with light and with high support) and Gojanovic et al. (2011), Langford et al. (2017).
 
 ## 9.8 Where congestion and crowding act
 
@@ -218,14 +220,25 @@ E_day(c) = Σ_p n_p(c) · Σ_mode s_p,mode(c) · 2 · ē_p,mode(c)
 
 where n_p is the number of trips per person and day for purpose p (work, education, shopping and services, nature, social, other; rates from EMP 2019 and the EMC² surveys), s the mode shares, ē the expected one-way energy for that purpose (work: flow-weighted over job destinations; services and nature: nearest of each type; social: population-weighted), and 2 counts the return; a tour with several stops is counted once, under its main purpose.
 
+**What is tested.** The hypothesis is about equality, not about a level: the mean, and ideally the whole distribution, of daily travel energy should be the same for every main-mode group, whatever the number and the purposes of the day's trips. Individual days vary widely (Kölbl & Helbing fit a gamma-like distribution), so the test compares means and distributions across groups, not the spread between individuals. The level of Ē depends on the rate set: walking costs about a quarter less with the Compendium than with KH, and the checks of step 7, at Kölbl & Helbing's mean daily times with three trips a day, give about 500 kJ with Compendium rates for walking, cycling, bus, car-driver and train days.
+
 **Re-estimation on EMP 2019 and the EMC² surveys:**
 
-1. Rebuild each respondent's survey day as legs with the formulas of this section: walks to and from stops and cars, waits, rides, drives, cycling [TO CONFIRM: leg detail and durations in the public tables]. This step also validates the leg formulas against declared durations.
-2. Sum to a daily travel energy per person, with both rate sets (KH and Compendium).
-3. Test the hypothesis: is daily travel energy constant across main-mode groups, then across density classes (urban and rural), age, sex and activity status?
+1. Rebuild each respondent's survey day as legs. `K_DEPLOC` gives, for each trip, the main mode, the declared duration (`DUREE`), the distance (`MDISTTOT_fin`), the purpose and the companions, with the weight `POND_jour`; it has no leg detail, so terminal legs (walks to and from stops and cars, waits, parking search) take the defaults of sections 9.4 to 9.7 by density class of the trip ends, and the vehicle leg takes the rest of the declared duration. Sensitivity: terminal legs ±50%. Walking and cycling trips calibrate v0 and P_0 (declared distance over duration, by age band).
+2. Sum to a daily travel energy per person over all trips of the described day, with both rate sets (KH and Compendium); persons without trips are reported apart.
+3. Test the hypothesis. Days are grouped as in Kölbl & Helbing, by the one mode used besides walking: walking only, bike, car driver, car passenger (household or carpool), urban PT, train; multimodal days and other modes apart. Is mean daily travel energy equal across groups, while daily travel time differs? Then within groups of age and activity (children 6–17, employed, students, unemployed, retired, other inactive) and of density of the commune of residence (the four levels of the INSEE density grid, in the public tables). Comparisons across ages use net MET-minutes, so that body mass does not drive them [TO CONFIRM: Youth Compendium (Butte et al. 2018) for children].
 4. Use the EMC² surveys of 14 EPCIs, which locate residents at a finer zoning, to test the variation within urban areas (centre, suburbs, periphery).
 5. Fit the distribution of daily travel energy (gamma-like, as in Kölbl & Helbing) and compare its mean with 615 kJ.
 6. Define Ē_c for each 1 km cell from exogenous characteristics only (age structure, activity, household size from section 6; density class if it remains significant once modes are controlled for), so that the budget does not depend on the modes it is meant to explain [decision after estimation].
+
+**Outputs of the re-estimation** (weighted, with 95% confidence intervals by bootstrap over households, both rate sets):
+
+- trips per person and day: distribution, and means by age-activity group and by density class;
+- daily travel time by main-mode group: distributions;
+- daily travel energy: histogram of persons stacked by main-mode group, and the normalised distributions of the groups overlaid;
+- mean daily energy and mean daily time by main-mode group, overall, by age-activity group and by density class;
+- car passengers: household and carpool, and the walking trips of passenger days;
+- calibrated v0 and P_0.
 
 ## 9.10 Monetary cost
 
