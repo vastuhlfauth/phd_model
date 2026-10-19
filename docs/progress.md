@@ -2,7 +2,7 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-16 by Copilot (step 0 marked merged; verified steps 1-2e already merged into main and updated their status)_
+_Last updated: 2026-10-19 by Copilot (step 7 `mobgrid/energy` implemented, branch `step/mobgrid-energy`, awaiting review)_
 
 ## Steps (table of section 14.5)
 
@@ -21,7 +21,7 @@ _Last updated: 2026-10-16 by Copilot (step 0 marked merged; verified steps 1-2e 
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | not started | | |
-| 7 | `mobgrid/energy` | not started | | |
+| 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Leg formulas of section 9.1 to 9.8: `rates.py` (`config/energy.yaml` loader, KH/Compendium activity rates, `sedentary_energy_kj`), `walk.py` (Tobler speed, Minetti gradient factor, stairs), `bike.py` (force-balance speed solver, ride/stop energy, separated-infra factor, e-bike pedelec assist), `legs.py` (`Leg` chain T=sum(t)/E=sum(e), waiting, PT ride crowding, car congestion). Reproduces every section 9.2 reference rate and the 9.3/9.7 checks (gradient factors, 1 km flat walk 160/211 kJ, 10 m stairs 22.9 kJ, 16 km/h mechanical power ~52.5 W, +-mass speed changes, one-stop energy). Ruff clean; 59 new tests pass (331 total, 2 pilot deselected). |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
 | 10 | `mobgrid/od` | not started | | |
@@ -35,6 +35,26 @@ Status values: not started, in progress, review, merged.
 
 ## Decisions taken while coding
 
+- 2026-10-19, step 7, `docs/spec_v10_changes.md` (referenced by the task)
+  was not committed to the repo; the user pointed to the untracked
+  `docs/spec/spec_v10.zip`, which contains it plus every changed spec
+  file since version 8. Diffed `09_trip_legs_energy.md` between the
+  current tracked copy and the zip's version: the only change is one
+  sentence in 9.8 (congestion now comes from BPR functions on the
+  reduced network, section 12, rather than an out-of-equilibrium loop),
+  which does not affect any formula of 9.1-9.8 implemented here. The
+  spec files were not committed (out of scope: v10 also touches 8, 11,
+  12, 13, 14, 15, unrelated to this step), and `docs/spec/09_trip_legs_energy.md`
+  (version 9, already tracked) was left unmodified since its section 9
+  content is identical in substance to v10's.
+- 2026-10-19, step 7, the section 9.5 PT-ride formula's three rates
+  (`r_sit`, `r_relaxed`, `r_restless` = 1.5, 2.6, 6.7 kJ/min) are pinned
+  to the literal KH figures in `config/energy.yaml`'s `pt_ride` block,
+  not switched by the configured `rate_set`: the spec tags all three
+  "(KH)" and the Compendium has no restless-standing equivalent. The
+  general `activity_rates` table (sitting, standing, driving) does
+  switch between KH and Compendium, since section 9.2 gives both for
+  those.
 - 2026-10-13, long-running job policy (task A), appended the user's exact
   instructions to [.github/copilot-instructions.md](../.github/copilot-instructions.md),
   ignored `logs/`, and configured pytest to exclude `pilot` tests by default.
@@ -1431,6 +1451,11 @@ Status values: not started, in progress, review, merged.
 
 ## Assumptions to check
 
+- 2026-10-19, step 7, the headway random-arrivals/planned-arrival regime
+  boundary (section 9.4: "headways up to about 10-12 min") is set to its
+  upper end, 12 min, in `config/energy.yaml`
+  `waiting.headway_regime_threshold_min`, since the spec gives a range
+  rather than a single value.
 - 2026-10-09, bootstrap, the initial base configuration contains the EPSG:3035 coordinate system and 200 m/1 km resolutions; `config/base.yaml`.
 - 2026-10-12, step 0, a pattern's expected outcome defaults to "kept" at
   both state dates unless it is one of section 5.6's listed known
@@ -1453,6 +1478,21 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
+- [ ] Step 7 (`mobgrid/energy`): PT crush load per seat (LF_max) by
+  vehicle type, `config/energy.yaml` `pt_ride.load_factor_max`
+  [TO CONFIRM: against operators' vehicle data], section 9.5
+- [ ] Step 7: bike force-balance power selection `P_0`, `k`, `P_max` and
+  `v_max,desc`, `config/energy.yaml` `bike.power` (all `null`); the spec
+  gives no numeric value, only "calibrated on observed commuter speeds
+  on gradients (Parkin & Rotheram 2010)", section 9.7. Needed before the
+  graph/layers steps can assign real bike edge speeds from slope alone;
+  the leg-level speed solver itself (`mobgrid.energy.bike.solve_bike_speed_m_per_s`)
+  does not need them, since it takes power as an explicit argument.
+- [ ] Step 7: walk-to-car time by apartment density class,
+  `config/energy.yaml` `car.walk_to_car.apartment_min_by_density`
+  [TO CONFIRM: per-density-class split]; section 9.6 gives only the
+  overall range (1-4 min), not a value per class; placeholder values are
+  spread evenly across that range.
 - [ ] Inhabited 200 m cells: about 2.3 million (section 4.5)
 - [ ] EMC² surveys: access conditions (section 5.3)
 - [ ] EMC² surveys: zoning and leg detail (section 5.4)
