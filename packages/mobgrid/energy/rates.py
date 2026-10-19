@@ -92,6 +92,15 @@ class WalkToCarConfig(BaseModel):
     apartment_min_by_density: dict[str, float]
 
 
+class CarpoolPassengerConfig(BaseModel):
+    """Carpool passenger origin legs (section 9.6); provisional, not yet
+    confirmed against any survey or observed pickup pattern."""
+
+    model_config = ConfigDict(extra="forbid")
+    walk_to_meeting_point_min: float = Field(ge=0)
+    wait_standing_min: float = Field(ge=0)
+
+
 class CarConfig(BaseModel):
     """Car leg parameters (section 9.6)."""
 
@@ -101,6 +110,7 @@ class CarConfig(BaseModel):
     walk_to_car: WalkToCarConfig
     parking_search_min_by_density: dict[str, float]
     walk_from_car_min_by_density: dict[str, float]
+    carpool_passenger: CarpoolPassengerConfig
 
 
 class BikePowerConfig(BaseModel):
@@ -122,6 +132,18 @@ class EbikeConfig(BaseModel):
     speed_cap_kmh: float = Field(gt=0)
     assist_factor_by_level: dict[str, float]
     default_level: str
+    effort_factor_by_level: dict[str, float]
+
+
+class StopsConfig(BaseModel):
+    """Bike stop time parameters (section 9.7); not yet calibrated against
+    observed signal timings or braking/acceleration rates."""
+
+    model_config = ConfigDict(extra="forbid")
+    deceleration_m_per_s2: float = Field(gt=0)
+    acceleration_m_per_s2: float = Field(gt=0)
+    signal_cycle_s: float = Field(gt=0)
+    red_time_s: float = Field(ge=0)
 
 
 class BikeConfig(BaseModel):
@@ -138,6 +160,7 @@ class BikeConfig(BaseModel):
     surface_crr: dict[str, float]
     power: BikePowerConfig
     ebike: EbikeConfig
+    stops: StopsConfig
 
 
 class EnergyConfig(BaseModel):

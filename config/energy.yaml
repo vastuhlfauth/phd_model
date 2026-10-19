@@ -126,6 +126,12 @@ car:
     suburban: 2.0
     urban: 3.5
     dense: 5.0
+  # Carpool passenger: walk to a meeting point instead of a house/apartment
+  # start, then wait standing for the car (section 9.6).
+  # TODO(confirm): [TO CONFIRM: provisional, no survey or observed pattern].
+  carpool_passenger:
+    walk_to_meeting_point_min: 5.0
+    wait_standing_min: 3.0
 
 # 9.7 Bike legs.
 bike:
@@ -166,3 +172,23 @@ bike:
       sport: 2.0
       turbo: 3.0
     default_level: tour
+    # Rider effort reduction with more assistance (section 9.7): the model
+    # keeps P_r fixed across levels by default (factor 1.0 everywhere);
+    # this key is a hook for a future calibration against the Compendium's
+    # light/high-support MET values.
+    # TODO(confirm): [TO CONFIRM: not yet calibrated].
+    effort_factor_by_level:
+      eco: 1.0
+      tour: 1.0
+      sport: 1.0
+      turbo: 1.0
+  # Stop time: deceleration + expected wait + acceleration (section 9.7,
+  # Webster 1958 for the signal wait). No numeric value is given by the
+  # spec for the braking/accelerating rates or a representative signal.
+  # TODO(confirm): [TO CONFIRM: not yet calibrated against observed
+  # junction/signal behaviour].
+  stops:
+    deceleration_m_per_s2: 1.5
+    acceleration_m_per_s2: 1.0
+    signal_cycle_s: 90.0
+    red_time_s: 40.0

@@ -2,7 +2,7 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-19 by Copilot (step 7 `mobgrid/energy` implemented plus its `checks` verification command, branch `step/mobgrid-energy`, awaiting review)_
+_Last updated: 2026-10-19 by Copilot (step 7 fixes: bike descent clamp, e-bike rider/motor power split, bike stop time, rate-set-aware walking, carpool passenger, PT first-phase standing shares, `ebike_effort_factor`; `checks` command rerun with new/updated figures; branch `step/mobgrid-energy`, awaiting review)_
 
 ## Steps (table of section 14.5)
 
@@ -21,7 +21,7 @@ _Last updated: 2026-10-19 by Copilot (step 7 `mobgrid/energy` implemented plus i
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | not started | | |
-| 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Leg formulas of section 9.1 to 9.8: `rates.py` (`config/energy.yaml` loader, KH/Compendium activity rates, `sedentary_energy_kj`), `walk.py` (Tobler speed, Minetti gradient factor, stairs), `bike.py` (force-balance speed solver, ride/stop energy, separated-infra factor, e-bike pedelec assist), `legs.py` (`Leg` chain T=sum(t)/E=sum(e), waiting, PT ride crowding, car congestion). Reproduces every section 9.2 reference rate and the 9.3/9.7 checks (gradient factors, 1 km flat walk 160/211 kJ, 10 m stairs 22.9 kJ, 16 km/h mechanical power ~52.5 W, +-mass speed changes, one-stop energy). Verification command `python -m mobgrid.energy.checks --out docs/data/step7_energy` (`checks.py`, matplotlib dev dependency) writes 10 PNGs plus `docs/data/step7_energy_checks.md` (27 PASS/0 FAIL/9 COMPARE check table, F1-F10 figures, provisional-value and modelling-note sections); run once, committed. Ruff clean; 60 new tests pass (332 total, 2 pilot deselected). |
+| 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Leg formulas of section 9.1 to 9.8: `rates.py` (`config/energy.yaml` loader, KH/Compendium activity rates, `sedentary_energy_kj`), `walk.py` (Tobler speed, Minetti gradient factor, stairs), `bike.py` (force-balance speed solver, ride/stop energy, separated-infra factor, e-bike pedelec assist), `legs.py` (`Leg` chain T=sum(t)/E=sum(e), waiting, PT ride crowding, car congestion). Reproduces every section 9.2 reference rate and the 9.3/9.7 checks (gradient factors, 1 km flat walk 160/211 kJ, 10 m stairs 22.9 kJ, 16 km/h mechanical power ~52.5 W, +-mass speed changes, one-stop energy). Second round of fixes (user-reported, 2026-10-19): unified clamp formula `P_r = clamp(P0.(1+k.i), 0, Pmax)` on every grade fixes a zero-speed plateau just past a flat descent (`bike.select_ride_power_w`/`ride_speed_and_power`/`required_power_w`); e-bike rider/motor energy now split by `s_r = P_r/(P_r+P_m)` on every edge and stop (`ebike_ride_speed_and_power`, `ebike_rider_share`, `bike_ride_energy_kj`/`stop_energy_kj`'s new `rider_share`); `climbing_work_j_per_kg` is now signed; bike stops add time (`bike.stop_time_s`, new `config.bike.stops`, TODO(confirm)); terminal walking legs use the active rate set's c0, not a hardcoded Compendium; added the carpool passenger (`config.car.carpool_passenger`, TODO(confirm)) alongside the household passenger; bus/train rides use the first-phase standing shares of 9.5 everywhere, not seated-only; new `config.bike.ebike.effort_factor_by_level` (TODO(confirm), default 1.0) hooks a future rider-effort-vs-assist calibration. Verification command `python -m mobgrid.energy.checks --out docs/data/step7_energy` (`checks.py`, matplotlib dev dependency) writes 10 PNGs (F1-F10, F7 now also covers F7b's fixed-time panels, F9 now has three panels A/B/C) plus `docs/data/step7_energy_checks.md` (27 PASS/0 FAIL/10 COMPARE); run once, committed. Ruff clean; 69 energy tests pass (341 total, 2 pilot deselected). |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
 | 10 | `mobgrid/od` | not started | | |
@@ -35,6 +35,17 @@ Status values: not started, in progress, review, merged.
 
 ## Decisions taken while coding
 
+- 2026-10-19, step 7 (second round), the user said they had replaced
+  `docs/spec/09_trip_legs_energy.md` (9.2, 9.6, 9.7, 9.9 changed) and
+  asked to commit it with this work. `git diff`/`git status` showed the
+  file byte-identical to `HEAD`: no such replacement was present in this
+  working tree. Rather than block the whole task on this, implemented
+  the detailed fixes (A1-A7) and figure changes (B) exactly as specified
+  in the task's own text (self-sufficient formulas), left
+  `docs/spec/09_trip_legs_energy.md` untouched (never author spec prose
+  on the user's behalf), and flag this here: if the replaced file still
+  needs committing, please supply it (e.g. re-paste or re-attach) so it
+  can be added in a follow-up commit.
 - 2026-10-19, step 7, `docs/spec_v10_changes.md` (referenced by the task)
   was not committed to the repo; the user pointed to the untracked
   `docs/spec/spec_v10.zip`, which contains it plus every changed spec
@@ -1523,6 +1534,20 @@ Each item stays open until a value is decided; the value goes into `config/`.
   [TO CONFIRM: per-density-class split]; section 9.6 gives only the
   overall range (1-4 min), not a value per class; placeholder values are
   spread evenly across that range.
+- [ ] Step 7: bike stop time parameters (deceleration, acceleration,
+  signal cycle, red time), `config/energy.yaml` `bike.stops`
+  [TO CONFIRM: not yet calibrated against observed junction/signal
+  behaviour], section 9.7.
+- [ ] Step 7: carpool passenger origin legs (walk to a meeting point,
+  wait standing), `config/energy.yaml` `car.carpool_passenger`
+  [TO CONFIRM: provisional, no survey or observed pickup pattern],
+  section 9.6.
+- [ ] Step 7: e-bike rider-effort reduction by assist level,
+  `config/energy.yaml` `bike.ebike.effort_factor_by_level` (all `1.0`)
+  [TO CONFIRM: not yet calibrated]; a hook for a future calibration
+  against the Compendium's light/high-support MET values (section 9.7),
+  which the model currently does not reproduce (see the `checks.py`
+  COMPARE rows).
 - [ ] Inhabited 200 m cells: about 2.3 million (section 4.5)
 - [ ] EMC² surveys: access conditions (section 5.3)
 - [ ] EMC² surveys: zoning and leg detail (section 5.4)
