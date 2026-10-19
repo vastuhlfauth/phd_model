@@ -226,17 +226,18 @@ where n_p is the number of trips per person and day for purpose p (work, educati
 
 1. Rebuild each respondent's survey day as legs. `K_DEPLOC` gives, for each trip, the main mode, the declared duration (`DUREE`), the distance (`MDISTTOT_fin`), the purpose and the companions, with the weight `POND_jour`; it has no leg detail, so terminal legs (walks to and from stops and cars, waits, parking search) take the defaults of sections 9.4 to 9.7 by density class of the trip ends, and the vehicle leg takes the rest of the declared duration. Sensitivity: terminal legs ±50%. Walking and cycling trips calibrate v0 and P_0 (declared distance over duration, by age band).
 2. Sum to a daily travel energy per person over all trips of the described day, with both rate sets (KH and Compendium); persons without trips are reported apart.
-3. Test the hypothesis. Days are grouped as in Kölbl & Helbing, by the one mode used besides walking: walking only, bike, car driver, car passenger (household or carpool), urban PT, train; multimodal days and other modes apart. Is mean daily travel energy equal across groups, while daily travel time differs? Then within groups of age and activity (children 6–17, employed, students, unemployed, retired, other inactive) and of density of the commune of residence (the four levels of the INSEE density grid, in the public tables). Comparisons across ages use net MET-minutes, so that body mass does not drive them [TO CONFIRM: Youth Compendium (Butte et al. 2018) for children].
+3. Test the hypothesis. Days are grouped as in Kölbl & Helbing, by the one mode used besides walking: walking only, bike, car driver, car passenger with a household driver, car passenger with a driver from another household (carpool, formal or informal), urban PT, short train trips (under 80 km) and long train trips (80 km or more); multimodal days (two or more modes besides walking, driving and riding as a passenger counting as two) and other modes apart. Is mean daily travel energy equal across groups, while daily travel time differs? Then within each population category of the study (section 6.1: children 6–17, employed, unemployed, retired, other inactive) and each density class of the commune of residence (the four levels of the INSEE density grid, in the public tables). Comparisons across ages use net MET-minutes, so that body mass does not drive them [TO CONFIRM: Youth Compendium (Butte et al. 2018) for children].
 4. Use the EMC² surveys of 14 EPCIs, which locate residents at a finer zoning, to test the variation within urban areas (centre, suburbs, periphery).
 5. Fit the distribution of daily travel energy (gamma-like, as in Kölbl & Helbing) and compare its mean with 615 kJ.
 6. Define Ē_c for each 1 km cell from exogenous characteristics only (age structure, activity, household size from section 6; density class if it remains significant once modes are controlled for), so that the budget does not depend on the modes it is meant to explain [decision after estimation].
 
 **Outputs of the re-estimation** (weighted, with 95% confidence intervals by bootstrap over households, both rate sets):
 
-- trips per person and day: distribution, and means by age-activity group and by density class;
+- trips per person and day: distribution, and means by population category and by density class;
 - daily travel time by main-mode group: distributions;
-- daily travel energy: histogram of persons stacked by main-mode group, and the normalised distributions of the groups overlaid;
-- mean daily energy and mean daily time by main-mode group, overall, by age-activity group and by density class;
+- daily travel energy: weighted smooth densities (kernel estimates on log energy) by main-mode group, stacked and normalised, overall and for each population category;
+- mean daily energy and mean daily time by main-mode group, overall, for each population category and each density class, with cells of fewer than 50 persons left blank;
+- robustness of the group means to the rate set, the terminal legs (×0.5 to ×1.5), P_0, weekdays only and local trips only;
 - car passengers: household and carpool, and the walking trips of passenger days;
 - calibrated v0 and P_0.
 
