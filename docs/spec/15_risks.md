@@ -6,6 +6,8 @@
 - **Origins imputation.** Large natural-level cells in rural areas leave most of the location to the keys; the validation by cell size measures this, and the 2023 Filosofi-like data rest on a model.
 - **Energy.** Two rate sets differ by about a third for walking; MET-to-kJ conversions carry about ±20%; the constancy of the daily budget is a hypothesis to test on EMP 2019, a pre-COVID survey, and on the 14 EMC² surveys.
 - **Congestion and crowding coefficients.** Physiological evidence for stress-related energy is thin; these coefficients are parameters with sensitivity ranges.
+- **Congestion on a reduced network.** A grid edge stands for several roads, so its capacity is not physical; the BPR calibration absorbs the difference, but capacity and the α parameter are hard to separate without traffic counts.
+- **Coarser grid.** With 8 neighbours the directional bias reaches 8.2% for straight trips; the pilot measures whether a correction factor is enough.
 - **Storage.** Opportunity curves at 200 m and full car tables are large; the pilot sets bins, bands and what is kept.
 - **PT computing time** from 2.3 million origins; the fast variant must be validated before national runs.
 - **Overture schema changes and retention.** POI queries need versioned mappings and tests; releases disappear after 60 days.

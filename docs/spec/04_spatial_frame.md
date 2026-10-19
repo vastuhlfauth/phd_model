@@ -6,8 +6,11 @@ All grids follow the INSPIRE-compatible LAEA grid (EPSG:3035) used by INSEE and 
 
 ## 4.2 Representative points
 
-- Each 200 m cell has one point: the dwelling-weighted centre of its Fichiers fonciers premises when inhabited, the opportunity-weighted centre otherwise, snapped to the foot network.
-- Each 1 km cell gets a population-weighted point computed from its 200 m sub-cells and snapped to the relevant network. Cells with opportunities but no residents use an opportunity-weighted point.
+A cell's point is where its trips start and end, so it must stand for where people live and lie on the network itself, not be a centroid snapped afterwards.
+
+- **Weights: occupied dwellings.** The weights are the Fichiers fonciers dwellings occupied as main residences (`logh` = 't', `ccthp` not 'V', `rppo_rs` not 'RS'), at their building points. A cell with no occupied dwelling uses its opportunities instead (professional premises by surface, then services).
+- **On the network: a weighted 1-median.** The point is the network node, inside the cell, that minimises the weighted sum of straight-line distances to the cell's occupied dwellings. Candidate nodes are those of the mode's network in its main connected component: local roads open to cars (no motorway, trunk link, track, private or service road) for the 1 km cells used by bike and car; the foot network for the 200 m cells. A cell with no candidate node takes the network point nearest to its weighted centre. Unlike a centroid snapped to the nearest road, the 1-median cannot fall in a field between two hamlets or onto a farm track.
+- **One point per cell for all states.** Points are computed on the baseline (Fichiers fonciers 2022) and kept for 2023 and for scenarios, so that changes in costs come from the networks and not from moving points; a cell that becomes inhabited or developed gets its point when it appears (section 11.3).
 - Option to test in the pilot: a second "through" node on the main road crossing the cell, linked to the population point. This reduces the detour error that builds up when long paths must pass through every centroid.
 
 ## 4.3 Study area

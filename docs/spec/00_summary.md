@@ -1,10 +1,12 @@
 # Fast, scenario-ready multimodal O-D costs for metropolitan France
 
-_This folder is the Markdown version of proposal v9. File index: [README.md](README.md)._
+_This folder is the Markdown version of proposal v10. File index: [README.md](README.md)._
 
 _Literature review and methodological proposal_
 
-_Working document · version 9 · 16 October 2026_
+_Working document · version 10 · 16 October 2026_
+
+> **Changes in version 10 (after the research meeting of 16 October 2026).** The grid graph is compared with 8, 16 and 24 neighbours in the pilot, the 8-neighbour graph being about three times faster (section 8.3). Representative points are the occupied-dwelling 1-median among the network nodes of each cell, fixed across states (section 4.2). AequilibraE is benchmarked for skims and is the candidate engine for assignment (sections 13, 14.6). Road scenarios edit the reduced network only, speed limits and capacities, and new development zones copy comparable cells; no local road network is built (section 11.4). Congestion uses BPR functions calibrated on the reduced network (section 12).
 
 > **Changes in version 9.** Past public transport supply is rebuilt by a national rule that needs no manual review: the stop-matching test of version 8 failed, and section 5.6 is rewritten around OSM route relations (an automatic rule for trams) and a curated national list of openings 2022–2026 applied automatically for every mode, with its results. Acquisition is national; Geofabrik dated extracts have no checksum files and are checked by size; the GTFS inventory and the coverage of transport authorities are described (sections 5.1, 5.3, 5.4). The PT build keeps one copy of each agency repeated in regional aggregates and rebuilds past states from the edits of section 5.6 (section 8.6). The earliest Géovélo file stands for 2021 (section 8.1). Planned lines of the openings list feed the scenario timeline (section 11.2). Validation, implementation status, conventions, algorithms and risks are updated (sections 13 to 15).
 
@@ -26,5 +28,5 @@ The proposal rests on ten decisions:
 - **Trips as chains of legs.** Every trip is built from legs (walking, waiting, riding, transfers, driving, parking, cycling) with standard formulas for time and energy; body mass is explicit; congestion and crowding act on identified legs.
 - **One search, three products.** Each search fills the O-D table (time, distance, energy, and from them the monetary cost), cumulative opportunity curves and the nearest destinations of each type, at full resolution. Accessibility never depends on how the O-D table is aggregated for storage.
 - **A daily energy budget per cell.** The Kölbl & Helbing (2003) value of about 615 kJ per person and day is the starting point; it is re-estimated with this project's energy model on the French travel survey EMP 2019.
-- **Scenarios at any scale.** Land-use changes need no routing; network changes are grouped into dated epochs; each edit is triaged automatically between table updates, local searches and full runs, with error bounds for gradual changes.
+- **Scenarios at any scale.** Land-use changes need no routing; network changes are grouped into dated epochs; each edit is triaged automatically between table updates, local searches and full runs, with error bounds for gradual changes. Road scenarios act on speed limits and capacities of the reduced network; local roads are not built, and new development zones copy comparable cells.
 - **Data fetched by script from versioned sources and APIs,** recorded in a manifest; DuckDB for all table work, numba for graph searches.

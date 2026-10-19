@@ -16,10 +16,10 @@ The table separates the network elements a layer is made of, the cells between w
 
 | Layer | Network elements | Origins and destinations | Stored O-D table | Changed by |
 |---|---|---|---|---|
-| Walk | OSM foot edges | 200 m cells | 200 m pairs within 30 min, in full | New paths, footbridges, new stops |
-| Bike | 1 km grid graph (24 neighbours); edges from exact bike paths with OSM bike infrastructure | 1 km cells | 1 km pairs | Bike infrastructure, car-to-bike conversions |
-| Car local | 1 km grid graph (24 neighbours), all non-limited-access roads | 1 km cells | 1 km pairs; far destinations optionally in 5 and 10 km bands | Speed limits, new or removed roads, urban extensions |
-| Car trunk | Interchanges and directed links (`motorway`, `trunk` + `motorroad=yes`) | 1 km cells, through connectors | As car local | New sections or interchanges, speed limits |
+| Walk | OSM foot edges | 200 m cells | 200 m pairs within 30 min, in full | New stops; new development zones |
+| Bike | 1 km grid graph (8 to 24 neighbours, section 8.3); edges from exact bike paths with OSM bike infrastructure | 1 km cells | 1 km pairs | Bike infrastructure shares and speeds of grid edges; new development zones |
+| Car local | 1 km grid graph (8 to 24 neighbours), all non-limited-access roads | 1 km cells | 1 km pairs; far destinations optionally in 5 and 10 km bands | Speed limits and capacities of grid edges; new development zones (no new local roads, section 11.4) |
+| Car trunk | Interchanges and directed links (`motorway`, `trunk` + `motorroad=yes`) | 1 km cells, through connectors | As car local | New sections or interchanges, speed limits, capacities |
 | PT | Stop areas and timetables (GTFS, France + border feeds) | 200 m cells, on foot to and from stops | Aggregated to 1 km pairs | New lines, extensions, stations, frequency, speed, comfort |
 
 Accessibility products (opportunity curves, nearest destination of each type) are always computed at the resolution of the first two columns, whatever the storage of the O-D table (section 10.2).
