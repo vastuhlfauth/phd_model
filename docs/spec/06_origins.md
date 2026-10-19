@@ -4,6 +4,8 @@
 
 One table per state with, for each 200 m cell of metropolitan France: individuals, households, household size, dwellings by type and occupation, age groups, active individuals and income indicators, with a flag for imputed values; aggregated to 1 km. The representative points used by the networks (section 4.2) come from these tables. Origins are in France only; residential change between 2020 and 2021 comes from the Eurostat 1 km grid.
 
+**Population categories of the whole study.** Every result by person (daily energy budget, mode shares, accessibility) is given for five categories: children (under 18; 6–17 in travel surveys, which start at 6), employed, unemployed, retired, and other inactive (students aged 18 or more, homemakers, others). In each cell they come from the cell's age groups and the census commune tables of activity by age [TO CONFIRM: method of allocation to cells; whether students aged 18 or more stay in "other inactive"].
+
 ## 6.2 Inputs
 
 - **Filosofi 2021 at the natural level** ("premier niveau diffusable"): cells of variable size, from 200 m to 64 km, each with at least 11 households for confidentiality. It contains individuals, households, household size, equivalised disposable income (standard of living) and about 30 other variables (age groups, household types, owners, dwellings by type and period, social housing, poor households).
