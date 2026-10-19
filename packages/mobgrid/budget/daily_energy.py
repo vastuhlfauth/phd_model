@@ -41,6 +41,10 @@ F8_ROBUSTNESS_GROUPS = (
     "car_passenger_carpool", "urban_pt", "train_short",
 )
 
+#: The four "core" groups of F8's core/full comparison: walk, car driver,
+#: urban PT, train short (no bike or either passenger group).
+F8_CORE_ROBUSTNESS_GROUPS = ("walking_only", "car_driver", "urban_pt", "train_short")
+
 
 def create_day_summary(
     con: duckdb.DuckDBPyConnection, *, where_sql: str = "TRUE"
@@ -130,17 +134,21 @@ def create_non_travelers(con: duckdb.DuckDBPyConnection) -> None:
 
 @dataclass(frozen=True)
 class GroupStats:
-    """Weighted sample size and mean energy/time for one group, both rate
-    sets, with a bootstrap 95% confidence interval on the energy means."""
+    """Weighted sample size, mean and median energy/time for one group,
+    both rate sets, with a bootstrap 95% confidence interval on the
+    energy means."""
 
     group: str
     n: int
     weighted_n: float
     mean_time_min: float
+    median_time_min: float
     mean_energy_kh_kj: float
     mean_energy_kh_ci: tuple[float, float]
+    median_energy_kh_kj: float
     mean_energy_cp_kj: float
     mean_energy_cp_ci: tuple[float, float]
+    median_energy_cp_kj: float
 
 
 def _weighted_group_means(
@@ -154,6 +162,34 @@ def _weighted_group_means(
     weight_sum = np.bincount(group_codes, weights=weights, minlength=n_groups)
     with np.errstate(invalid="ignore", divide="ignore"):
         return np.where(weight_sum > 0, weighted_sum / weight_sum, np.nan)
+
+
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+    """Weighted median: the value at which the cumulative weight first
+    reaches half the total weight."""
+    if len(values) == 0 or weights.sum() <= 0:
+        return float("nan")
+    order = np.argsort(values)
+    sorted_values = values[order]
+    cum_weight = np.cumsum(weights[order])
+    half = cum_weight[-1] / 2.0
+    idx = int(np.searchsorted(cum_weight, half))
+    idx = min(idx, len(sorted_values) - 1)
+    return float(sorted_values[idx])
+
+
+def _weighted_group_medians(
+    group_codes: np.ndarray, n_groups: int, weights: np.ndarray, values: np.ndarray
+) -> np.ndarray:
+    """Per group (0..n_groups-1), the weighted median of ``values``; a
+    per-group loop, not a per-row one (``n_groups`` is small, a dozen at
+    most)."""
+    medians = np.full(n_groups, np.nan)
+    for i in range(n_groups):
+        mask = group_codes == i
+        if mask.any():
+            medians[i] = _weighted_median(values[mask], weights[mask])
+    return medians
 
 
 def bootstrap_group_stats(
@@ -170,7 +206,8 @@ def bootstrap_group_stats(
     """Weighted group means, with a 95% bootstrap confidence interval on
     the two energy means, resampled over households (section 9.9's
     "Outputs of the re-estimation": "weighted, with 95% confidence
-    intervals by bootstrap over households, both rate sets").
+    intervals by bootstrap over households, both rate sets"), plus the
+    (non-bootstrapped) weighted median of each.
     """
     groups, group_codes = np.unique(group, return_inverse=True)
     n_groups = len(groups)
@@ -180,6 +217,9 @@ def bootstrap_group_stats(
     point_time = _weighted_group_means(group_codes, n_groups, weight, time_min)
     point_kh = _weighted_group_means(group_codes, n_groups, weight, energy_kh)
     point_cp = _weighted_group_means(group_codes, n_groups, weight, energy_cp)
+    median_time = _weighted_group_medians(group_codes, n_groups, weight, time_min)
+    median_kh = _weighted_group_medians(group_codes, n_groups, weight, energy_kh)
+    median_cp = _weighted_group_medians(group_codes, n_groups, weight, energy_cp)
 
     rng = np.random.default_rng(seed)
     rep_kh = np.empty((n_reps, n_groups))
@@ -206,10 +246,13 @@ def bootstrap_group_stats(
             n=int(n_by_group[i]),
             weighted_n=float(weighted_n_by_group[i]),
             mean_time_min=float(point_time[i]),
+            median_time_min=float(median_time[i]),
             mean_energy_kh_kj=float(point_kh[i]),
             mean_energy_kh_ci=(float(ci_kh[0, i]), float(ci_kh[1, i])),
+            median_energy_kh_kj=float(median_kh[i]),
             mean_energy_cp_kj=float(point_cp[i]),
             mean_energy_cp_ci=(float(ci_cp[0, i]), float(ci_cp[1, i])),
+            median_energy_cp_kj=float(median_cp[i]),
         )
         for i in range(n_groups)
     ]
@@ -339,14 +382,18 @@ def bootstrap_mean_ci(
     return point_mean, (float(ci[0]), float(ci[1]))
 
 
-def weighted_gaussian_bandwidth(weight: np.ndarray, value: np.ndarray) -> float:
+def weighted_gaussian_bandwidth(
+    weight: np.ndarray, value: np.ndarray, *, scale: float = 1.0
+) -> float:
     """Silverman's (1986) rule-of-thumb bandwidth on a weighted sample,
     used as one shared bandwidth across every group's density (section
-    9.9's F3, "same bandwidth for all groups")."""
+    9.9's F3, "same bandwidth for all groups"). ``scale`` widens
+    (``> 1.0``) or narrows (``< 1.0``) the Silverman bandwidth, e.g. for
+    a smoother density over modest per-group sample sizes."""
     mean, variance = weighted_mean_variance(weight, value)
     std = math.sqrt(variance)
     effective_n = weight.sum() ** 2 / np.sum(weight**2)
-    return 0.9 * std * effective_n ** (-1.0 / 5.0)
+    return scale * 0.9 * std * effective_n ** (-1.0 / 5.0)
 
 
 def weighted_gaussian_kde(
@@ -366,11 +413,14 @@ def weighted_gaussian_kde(
 
 @dataclass(frozen=True)
 class RobustnessRow:
-    """One F8 robustness variant: the max/min ratio and coefficient of
-    variation of ``F8_ROBUSTNESS_GROUPS``' means, energy (both rate sets)
-    and time (section 9.9's F8), with the names of the min/max groups."""
+    """One F8 robustness variant, for one ``scope`` (``"full"``,
+    ``F8_ROBUSTNESS_GROUPS``, or ``"core"``, ``F8_CORE_ROBUSTNESS_GROUPS``):
+    the max/min ratio and coefficient of variation of that scope's
+    groups' means, energy (both rate sets) and time (section 9.9's F8),
+    with the names of the min/max groups."""
 
     variant: str
+    scope: str
     energy_kh_ratio: float
     energy_kh_cv: float
     energy_kh_min_group: str
@@ -409,12 +459,16 @@ def robustness_row(
     time_min: np.ndarray,
     energy_kh: np.ndarray,
     energy_cp: np.ndarray,
+    *,
+    scope: str = "full",
+    groups_of_interest: tuple[str, ...] = F8_ROBUSTNESS_GROUPS,
 ) -> RobustnessRow:
-    """One F8 table row: ratio and CV of ``F8_ROBUSTNESS_GROUPS``' means
-    under one robustness variant (section 9.9's F8)."""
+    """One F8 table row: ratio and CV of ``groups_of_interest``' means
+    under one robustness variant (section 9.9's F8); ``scope`` names this
+    set of groups in the row (``"full"`` or ``"core"``)."""
     groups, group_codes = np.unique(day_mode_group, return_inverse=True)
     n_groups = len(groups)
-    mask = np.isin(groups, F8_ROBUSTNESS_GROUPS)
+    mask = np.isin(groups, groups_of_interest)
     group_labels = groups[mask]
     mean_kh = _weighted_group_means(group_codes, n_groups, weight, energy_kh)[mask]
     mean_cp = _weighted_group_means(group_codes, n_groups, weight, energy_cp)[mask]
@@ -425,7 +479,8 @@ def robustness_row(
         mean_time, group_labels
     )
     return RobustnessRow(
-        variant=variant, energy_kh_ratio=kh_ratio, energy_kh_cv=kh_cv,
+        variant=variant, scope=scope,
+        energy_kh_ratio=kh_ratio, energy_kh_cv=kh_cv,
         energy_kh_min_group=kh_min, energy_kh_max_group=kh_max,
         energy_cp_ratio=cp_ratio, energy_cp_cv=cp_cv,
         energy_cp_min_group=cp_min, energy_cp_max_group=cp_max,

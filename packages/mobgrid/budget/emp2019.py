@@ -113,6 +113,19 @@ _BIKE_MIN_RIDE_FRACTION = 0.5
 #: checks above.
 _BIKE_MAX_PLAUSIBLE_SPEED_KMH = 45.0
 
+#: Door-to-door implied speed plausibility ranges, km/h, by mode (a
+#: separate data-quality check: unlike the bike P0 calibration guards
+#: above, this flags whole trips for exclusion from the group tables, not
+#: a quantity derived from them). Declared durations are self-reported
+#: and often rounded to 5/15/30/60 min, so a trip can look implausibly
+#: fast or slow purely from rounding. Public: used by `emp.py`'s report.
+WALK_PLAUSIBLE_SPEED_KMH = (1.5, 7.0)
+CYCLE_PLAUSIBLE_SPEED_KMH = (5.0, 35.0)
+CAR_MAX_PLAUSIBLE_SPEED_KMH = 130.0
+_CAR_MODE_GROUPS = (
+    "car_driver", "car_passenger_household", "car_passenger_carpool",
+)
+
 #: `mode_group = 'other'` day-mode-group contents, stated for the report
 #: (section 9.9 point 3, "State in the report what 'other' contains").
 OTHER_MODE_DESCRIPTION = (
@@ -339,12 +352,32 @@ def build_trip_legs(
     access walk/wait/level-change, bike get-and-park and stops), with the
     main/ride/drive leg taking the rest of the declared duration (section
     9.9's F8 robustness check, "terminal legs x0.5, x1, x1.5").
-    ``bike_p0_override_w``, if given, replaces the per-trip recalibrated
-    P0 for every cycling trip's energy (the "P0 recalibrated vs 52.5 W"
-    robustness variant); ``p0_calibrated_w`` is still reported either way.
+
+    Cycling energy's work term is time-based at a single, population-level
+    power, ``bike_p0_override_w`` if given, else ``config.bike.power.p0_w``
+    (section 9.7's own force-balance power selection, flat ground, since
+    EMP gives no gradient): every pedalled second is charged at this one
+    rate, not at each trip's own noisy implied speed. Deriving power
+    per-trip instead (speed, hence drag, hence power, is convex; EMP's
+    durations are also rounded to 5/15/30/60 min) was found to inflate
+    mean cycling energy several-fold above the population rate (section
+    9.9, step 11 third round) -- the same Jensen's-inequality bias the
+    ratio-of-weighted-sums v0/P0 estimator avoids for calibration, but
+    that the energy formula used to reintroduce. ``p0_calibrated_w`` (the
+    per-trip implied power) is still exposed, as a diagnostic only, no
+    longer used by the energy formula.
     """
     mass = config.reference_mass_kg
     walking = config.walking
+    bike_p0_w = (
+        bike_p0_override_w if bike_p0_override_w is not None
+        else config.bike.power.p0_w
+    )
+    if bike_p0_w is None:
+        raise ValueError(
+            "config.bike.power.p0_w is not set and no bike_p0_override_w "
+            "was given: cycling energy has no power to use"
+        )
 
     walk_rate_kh = walk.walking_time_and_energy(
         [(walking.v0_kmh * 1000.0 / 60.0, 0.0)], mass, walking.v0_kmh,
@@ -408,9 +441,7 @@ def build_trip_legs(
     bike_unloaded_rate_kj_per_min_sql = _dbl(
         bike.pedalling_unloaded_net_met * MET_MINUTE_KJ_PER_KG * mass
     )
-    bike_p0_override_sql = (
-        "NULL" if bike_p0_override_w is None else _dbl(bike_p0_override_w)
-    )
+    bike_p0_w_sql = _dbl(bike_p0_w)
     c0_kh_sql = _dbl(config.walking.c0_j_per_kg_m["kh"])
     c0_cp_sql = _dbl(config.walking.c0_j_per_kg_m["compendium"])
     walk_rate_kh_sql, walk_rate_cp_sql = _dbl(walk_rate_kh), _dbl(walk_rate_cp)
@@ -421,6 +452,23 @@ def build_trip_legs(
     carpool_wait_sql = _dbl(car.carpool_passenger.wait_standing_min)
     terminal_scale_sql = _dbl(terminal_scale)
     train_threshold_sql = _dbl(TRAIN_LONG_THRESHOLD_KM)
+    car_modes_sql = ", ".join(f"'{m}'" for m in _CAR_MODE_GROUPS)
+    speed_plausible_sql = f"""
+        coalesce(
+            CASE
+                WHEN mode_group = 'walk' THEN implied_speed_kmh
+                    BETWEEN {_dbl(WALK_PLAUSIBLE_SPEED_KMH[0])}
+                    AND {_dbl(WALK_PLAUSIBLE_SPEED_KMH[1])}
+                WHEN mode_group = 'cycle' THEN implied_speed_kmh
+                    BETWEEN {_dbl(CYCLE_PLAUSIBLE_SPEED_KMH[0])}
+                    AND {_dbl(CYCLE_PLAUSIBLE_SPEED_KMH[1])}
+                WHEN mode_group IN ({car_modes_sql}) THEN
+                    implied_speed_kmh <= {_dbl(CAR_MAX_PLAUSIBLE_SPEED_KMH)}
+                ELSE TRUE
+            END,
+            TRUE
+        )
+    """
 
     vehicle_mapping_sql = "CASE mtp\n    " + "\n    ".join(
         f"WHEN {code} THEN '{vehicle}'" for code, vehicle in _VEHICLE_BY_MTP.items()
@@ -547,11 +595,11 @@ def build_trip_legs(
     ),
     bike_power AS (
         SELECT *,
-            -- NULL (excluded from the v0/P0 calibration estimator) for
-            -- the unreliable short trips above; the energy formula below
-            -- uses `bike_ride_speed_m_per_s`, which always falls back to
-            -- the naive whole-duration speed, so every cycling trip
-            -- still gets an energy value.
+            -- Per-trip implied power at this trip's own (reliability-
+            -- adjusted) ride speed; a diagnostic only, not used by the
+            -- energy formula below (which charges every pedalled second
+            -- at the single, population-level `bike_p0_w` instead -- see
+            -- `build_trip_legs`'s docstring for why).
             CASE WHEN bike_ride_time_s IS NOT NULL THEN
                 bike_ride_speed_m_per_s
                 * ({mass_sql} * 9.81 * {crr_sql}
@@ -559,16 +607,7 @@ def build_trip_legs(
                 / {drivetrain_eff_sql}
             END AS p0_calibrated_w,
             coalesce(bike_ride_time_s, duration_min * 60.0)
-                AS bike_ride_time_for_energy_s,
-            -- Power at the fallback (naive, whole-duration) speed, used
-            -- by the energy formula when `p0_calibrated_w` is NULL.
-            CASE WHEN bike_naive_speed_m_per_s IS NOT NULL THEN
-                bike_naive_speed_m_per_s
-                * ({mass_sql} * 9.81 * {crr_sql}
-                    + 0.5 * {rho_air_sql} * {cda_sql}
-                        * pow(bike_naive_speed_m_per_s, 2))
-                / {drivetrain_eff_sql}
-            END AS bike_naive_power_w
+                AS bike_ride_time_for_energy_s
         FROM bike_speed
     ),
     car_terminal AS (
@@ -599,12 +638,13 @@ def build_trip_legs(
         num_dep, moridom, mode_group, vehicle, density_ori, density_des,
         age, age_band, population_category,
         duration_min, distance_km, implied_speed_kmh, p0_calibrated_w,
+        ({speed_plausible_sql}) AS speed_plausible,
         bike_ride_time_s, bike_ride_time_for_energy_s,
 
         CASE mode_group
             WHEN 'walk' THEN {mass_sql} * {c0_kh_sql} * distance_km
             WHEN 'cycle' THEN
-                coalesce({bike_p0_override_sql}, p0_calibrated_w, bike_naive_power_w)
+                {bike_p0_w_sql}
                     / {muscular_eff_sql} * bike_ride_time_for_energy_s / 1000.0
                 + {bike_unloaded_rate_kj_per_min_sql}
                     * bike_ride_time_for_energy_s / 60.0
@@ -666,7 +706,7 @@ def build_trip_legs(
         CASE mode_group
             WHEN 'walk' THEN {mass_sql} * {c0_cp_sql} * distance_km
             WHEN 'cycle' THEN
-                coalesce({bike_p0_override_sql}, p0_calibrated_w, bike_naive_power_w)
+                {bike_p0_w_sql}
                     / {muscular_eff_sql} * bike_ride_time_for_energy_s / 1000.0
                 + {bike_unloaded_rate_kj_per_min_sql}
                     * bike_ride_time_for_energy_s / 60.0

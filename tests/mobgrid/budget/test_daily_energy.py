@@ -130,6 +130,11 @@ def test_bootstrap_group_stats_point_estimate_matches_direct_computation() -> No
     assert by_group["b"].mean_energy_kh_kj == pytest.approx(350.0)
     assert by_group["a"].n == 2
     assert by_group["a"].weighted_n == pytest.approx(2.0)
+    # Equal weights, 2 rows per group: the weighted median is the lower
+    # of the two values (cumulative weight reaches half there first).
+    assert by_group["a"].median_energy_kh_kj == pytest.approx(100.0)
+    assert by_group["b"].median_energy_kh_kj == pytest.approx(300.0)
+    assert by_group["a"].median_time_min == pytest.approx(10.0)
     # The CI must bracket the point estimate it is centred on.
     assert by_group["a"].mean_energy_kh_ci[0] <= by_group["a"].mean_energy_kh_kj
     assert by_group["a"].mean_energy_kh_ci[1] >= by_group["a"].mean_energy_kh_kj
@@ -166,6 +171,7 @@ def test_robustness_row_ratio_and_cv() -> None:
     row = daily_energy.robustness_row(
         "test", group, weight, time_min, energy_kh, energy_cp
     )
+    assert row.scope == "full"
     assert row.energy_kh_ratio == pytest.approx(2.0)
     assert row.energy_cp_ratio == pytest.approx(2.0)
     assert row.time_ratio == pytest.approx(2.0)
@@ -175,3 +181,21 @@ def test_robustness_row_ratio_and_cv() -> None:
     assert row.energy_cp_max_group == "cycle"
     assert row.time_min_group == "walking_only"
     assert row.time_max_group == "cycle"
+
+
+def test_robustness_row_core_scope_restricts_groups() -> None:
+    group = np.array(["walking_only", "walking_only", "cycle", "cycle"])
+    weight = np.ones(4)
+    time_min = np.array([10.0, 10.0, 20.0, 20.0])
+    energy_kh = np.array([100.0, 100.0, 200.0, 200.0])
+    energy_cp = np.array([90.0, 90.0, 180.0, 180.0])
+    row = daily_energy.robustness_row(
+        "test", group, weight, time_min, energy_kh, energy_cp,
+        scope="core", groups_of_interest=("walking_only",),
+    )
+    assert row.scope == "core"
+    # Only one group left: ratio/CV of a single value are 1.0/0.0.
+    assert row.energy_kh_ratio == pytest.approx(1.0)
+    assert row.energy_kh_cv == pytest.approx(0.0)
+    assert row.energy_kh_min_group == row.energy_kh_max_group == "walking_only"
+
