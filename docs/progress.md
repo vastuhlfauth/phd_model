@@ -1485,6 +1485,55 @@ Status values: not started, in progress, review, merged.
     aliases sharing one resource id; asserts the extraction call is made
     exactly once per distinct resource id, and both aliases' rows still
     map correctly).
+- 2026-10-20, step 11 (section 9.9, step 11 round 9 then round 12):
+  **reversed** the round-5 decision that an implausibly fast bike trip,
+  while flagged by the door-to-door speed check, is reported but *not*
+  distance-corrected (unlike walk and car), because cycling's main
+  energy term is time-based. That reasoning missed that the formula's
+  "stops" sub-term still multiplies by `distance_km` and by the
+  (distance-derived) ride speed squared (section 9.7); an uncorrected
+  implausible distance still reaches total energy through it. Found when
+  the user asked why the 2008-2019 compare figure's per-group bars were
+  all close (2019 mostly slightly higher) while the 2008 *overall* mean
+  was far higher: traced to 3 ENTD 2008 cycling trips declared at
+  c. 360-376 km in 65-90 min (245-347 km/h); the worst one alone produced
+  ~1.3M kJ for its one day, and its section 9.9 population weight
+  (c. 20,400 person-days, about 9.6% of the whole multimodal group's
+  weight) dominated every "overall" figure/table for 2008. **New
+  decision:** bike's flagged distance is corrected exactly like walk's
+  and car's (same median-speed-of-not-flagged-trips rule,
+  `trip_legs.build_trip_legs`'s "corrected" CTE, new
+  `cycle_median_speed_kmh`); EMP 2019 is unaffected, since 0 of its 1,023
+  cycle trips were ever flagged. Before -> after (ENTD 2008, density
+  proxy): multimodal group mean 1,642.6 -> 687.7 kJ (kh), CI
+  [664.7, 3724.7] -> [660.6, 714.9]; cycle group mean 601.9 -> 588.0 kJ
+  (cp); overall (all groups) mean 625.0/572.8 -> 533.3/481.1 kJ (kh/cp);
+  calibrated P0 47.5 -> 34.0 W (2019: 34.8 W, now close). Regression test
+  `test_implausibly_fast_cycle_trip_has_its_distance_corrected`
+  (`tests/mobgrid/budget/test_emp2019.py`) pins the corrected distance
+  and that a flagged trip's energy stays the same order of magnitude as
+  a plausible one. See also `CHANGELOG.md`.
+- 2026-10-20, step 11 wrap-up, unrelated pre-existing test failure found
+  while re-running the full suite (not caused by, or fixed in, this
+  branch; left for the step-0 GTFS rebuild work): `tests/mobgrid/pt
+  /test_calibration_pilot.py::test_chosen_parameters_resolve_the_clear_cut_known_cases`
+  fails with `AttributeError: 'dict' object has no attribute 'r_m'`.
+  Root cause (confirmed via `git log -S "chosen: dict"` and a scratch
+  `main` worktree with the same local `data/results/step0_gtfs_rebuild
+  /calibration_run.pkl` and `data/interim/osm_pt_stops` cache: fails
+  identically on `main`, so this is pre-existing, not introduced here):
+  commit `b7be54e` ("Step 0: route relation extraction, memory
+  settings", 2026-10-13) changed `GtfsRebuildConfig.chosen` from a single
+  `ChosenFamilyParameters` to `dict[ModeFamily, ChosenFamilyParameters]`
+  (per-mode-family calibration, `packages/mobgrid/pt/config.py`) without
+  updating this test, which still does `chosen = _CONFIG.chosen;
+  chosen.r_m`. Not a stale pickle (the pickle, dated 2026-10-12, is read
+  later in the same test via `run.final_evaluations`, never reached);
+  the likely fix is updating the test to index the per-family dict (e.g.
+  `chosen["bus"].r_m`, or iterate every family), not regenerating the
+  pickle or changing the loader. No GitHub issue filed: no issue/PR
+  write tool or `gh` CLI was available in this environment; recorded
+  here and in the `step/mobgrid-budget-entd2008` PR description instead.
 
 ## Assumptions to check
 
