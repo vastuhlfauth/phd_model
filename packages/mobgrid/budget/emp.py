@@ -319,6 +319,13 @@ def run(
     )
     gamma_kh = daily_energy.gamma_moments_fit(mean_kh, var_kh)
     gamma_cp = daily_energy.gamma_moments_fit(mean_cp, var_cp)
+    # Overall (all groups combined) weighted mean daily time, alongside
+    # `mean_kh`/`mean_cp` (used by `--compare`'s figure, section 9.9's
+    # "Outputs of the re-estimation": global means next to the group
+    # breakdown).
+    mean_time_min = float(
+        np.sum(days["pond_jour"] * days["total_time_min"]) / days["pond_jour"].sum()
+    )
 
     by_group = {s.group: s for s in mode_stats}
     kh_means = [
@@ -554,6 +561,7 @@ def run(
         "density_stats": density_stats,
         "mean_kh": mean_kh,
         "mean_cp": mean_cp,
+        "mean_time_min": mean_time_min,
         "gamma_kh": gamma_kh,
         "gamma_cp": gamma_cp,
         "ratio_kh": ratio_kh,
@@ -2147,10 +2155,22 @@ def run_compare(
         f"(2019: {results_2019_proxy['p0_overall'].p0_w:.1f} W, "
         f"n={results_2019_proxy['p0_overall'].n})",
         "",
+        "## Overall (all groups combined), both years",
+        "",
+        f"- Mean daily energy: 2008 {results_2008['mean_kh']:.1f} kJ (kh), "
+        f"{results_2008['mean_cp']:.1f} kJ (cp); 2019 "
+        f"{results_2019_proxy['mean_kh']:.1f} kJ (kh), "
+        f"{results_2019_proxy['mean_cp']:.1f} kJ (cp).",
+        f"- Mean daily time: 2008 {results_2008['mean_time_min']:.1f} min; "
+        f"2019 {results_2019_proxy['mean_time_min']:.1f} min.",
+        "",
     ]
 
     figure_path = _figure_compare_energy_time(
-        results_2008["mode_stats"], results_2019_proxy["mode_stats"], out_path,
+        results_2008["mode_stats"], results_2019_proxy["mode_stats"],
+        (results_2008["mean_cp"], results_2019_proxy["mean_cp"]),
+        (results_2008["mean_time_min"], results_2019_proxy["mean_time_min"]),
+        out_path,
     )
     lines += [
         "## Figure",
@@ -2167,11 +2187,16 @@ def run_compare(
 def _figure_compare_energy_time(
     stats_2008: list[daily_energy.GroupStats],
     stats_2019: list[daily_energy.GroupStats],
+    overall_mean_energy_cp: tuple[float, float],
+    overall_mean_time_min: tuple[float, float],
     out_dir: Path,
 ) -> Path:
     """One figure: mean daily energy and time by group, 2008 vs 2019,
     with CI (section 9.9's "Outputs of the re-estimation" comparison
-    list)."""
+    list), plus each year's own global mean (all groups combined,
+    ``overall_mean_energy_cp``/``overall_mean_time_min``, 2008 then
+    2019) as a labelled horizontal reference line on both panels, as
+    F4a does for the single-survey report."""
     by_2008 = {s.group: s for s in stats_2008}
     by_2019 = {s.group: s for s in stats_2019}
     groups = [g for g in daily_energy.DAY_MODE_GROUPS if g in by_2008 or g in by_2019]
@@ -2199,6 +2224,27 @@ def _figure_compare_energy_time(
         times = [by_year[g].mean_time_min if g in by_year else np.nan for g in groups]
         ax_time.bar(x + offset, times, width, label=label)
 
+    for ax, overall_values, unit in (
+        (ax_energy, overall_mean_energy_cp, "kJ"),
+        (ax_time, overall_mean_time_min, "min"),
+    ):
+        label_transform = ax.get_yaxis_transform()
+        for value, year, color, va in (
+            (overall_values[0], "2008", "tab:blue", "bottom"),
+            (overall_values[1], "2019", "tab:orange", "top"),
+        ):
+            ax.axhline(value, color=color, linestyle="--", linewidth=1.0)
+            # Left-anchored (not right): a right-anchored label can
+            # render into the neighbouring subplot's own white
+            # background and look clipped there, since the two panels
+            # share a narrow gap (``fig.tight_layout()`` does not widen
+            # it for text added after the axes are built).
+            ax.text(
+                0.02, value, f"{year}: {value:.0f} {unit}",
+                transform=label_transform, color=color, fontsize=8, ha="left",
+                va=va,
+            )
+
     ax_energy.set_xticks(x)
     ax_energy.set_xticklabels(groups, rotation=30, ha="right")
     ax_energy.set_ylabel("Mean daily energy, kJ (compendium)")
@@ -2209,7 +2255,8 @@ def _figure_compare_energy_time(
     ax_time.legend()
     fig.suptitle(
         "Mean daily energy and time by main-mode group, 2008 vs 2019 "
-        "(density proxy in both, section 9.9)"
+        "(density proxy in both, section 9.9); dashed lines are each "
+        "year's own global mean, all groups combined"
     )
     fig.tight_layout()
     path = out_dir / "compare_energy_time.png"
