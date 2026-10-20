@@ -311,6 +311,8 @@ def run(
     trips_by_density = _trips_per_day_by_group(
         days, "home_density", n_reps=n_reps, seed=seed
     )
+    motive_by_population = _trips_by_group_and_motive(con, "population_category")
+    motive_by_density = _trips_by_group_and_motive(con, "home_density")
 
     # Car passengers: household vs carpool, and the walking trips of
     # passenger days (section 9.9, "Outputs of the re-estimation").
@@ -381,7 +383,8 @@ def run(
     )
     figures = [
         _figure_f1_trips_per_day(
-            days, trips_mean, trips_by_population, trips_by_density, out_dir,
+            days, trips_mean, trips_by_population, trips_by_density,
+            motive_by_population, motive_by_density, out_dir,
         ),
         *_figure_f3_energy_density(con, out_dir),
         *f4_paths,
@@ -667,11 +670,49 @@ def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
     return rows, cols, matrix
 
 
+def _trips_by_group_and_motive(
+    con: duckdb.DuckDBPyConnection, group_col: str
+) -> tuple[list[str], list[float], np.ndarray]:
+    """(groups, top_motives, matrix): weighted mean trips per day of
+    each top-level motive, by ``group_col`` (``population_category`` or
+    ``home_density``) -- the per-motive decomposition of F1 panels
+    (B)/(C): for a fixed group, summing the segments over
+    ``top_motives`` reproduces that group's existing mean-trips/day bar
+    height exactly. A missing/refused motive (kept, not excluded, by
+    ``NEEDS_ONLY_WHERE_SQL``, since it cannot be classified) gets its
+    own ``-1.0`` sentinel code, labelled "not recorded". Excludes the
+    'unknown' population category, as elsewhere in this report."""
+    denom = dict(con.sql(
+        f"SELECT {group_col}, sum(pond_jour) FROM day_summary "
+        f"WHERE {group_col} != 'unknown' GROUP BY 1"
+    ).fetchall())
+    rows = con.sql(f"""
+        SELECT d.{group_col} AS group_value, COALESCE(floor(t.motive), -1.0)
+                AS top_motive,
+            sum(t.pond_jour) AS weighted_n
+        FROM trip_legs t
+        JOIN day_summary d ON d.ident_ind = t.ident_ind
+        WHERE d.{group_col} != 'unknown' AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
+        GROUP BY 1, 2
+    """).fetchall()
+    groups = sorted(denom)
+    top_motives = sorted({row[1] for row in rows})
+    matrix = np.zeros((len(groups), len(top_motives)))
+    for group_value, top_motive, weighted_n in rows:
+        if denom.get(group_value, 0.0) > 0:
+            matrix[groups.index(group_value), top_motives.index(top_motive)] = (
+                weighted_n / denom[group_value]
+            )
+    return groups, top_motives, matrix
+
+
 def _figure_f1_trips_per_day(
     days: dict,
     trips_mean: float,
     trips_by_population: list[tuple[str, int, float, tuple[float, float]]],
     trips_by_density: list[tuple[str, int, float, tuple[float, float]]],
+    motive_by_population: tuple[list[str], list[float], np.ndarray],
+    motive_by_density: tuple[list[str], list[float], np.ndarray],
     out_dir: Path,
 ) -> Path:
     fig, ((ax_hist, ax_pop), (ax_density, ax_freq)) = plt.subplots(
@@ -694,20 +735,49 @@ def _figure_f1_trips_per_day(
     ax_hist.set_ylabel("% of person-days")
     ax_hist.set_title("(A) Distribution")
 
-    for ax, rows, title in (
-        (ax_pop, trips_by_population, "(B) By population category"),
-        (ax_density, trips_by_density, "(C) By density class"),
+    # One shared top-motive -> colour mapping across (B) and (C), as F9
+    # does across its two panels.
+    all_top_motives = sorted(
+        set(motive_by_population[1]) | set(motive_by_density[1])
+    )
+    cmap = plt.get_cmap("tab20")
+    colour_by_motive = {
+        motive: ("lightgrey" if motive < 0 else cmap(i % 20))
+        for i, motive in enumerate(all_top_motives)
+    }
+
+    for ax, cis, (groups, top_motives, matrix), title in (
+        (ax_pop, trips_by_population, motive_by_population,
+         "(B) By population category, stacked by motive"),
+        (ax_density, trips_by_density, motive_by_density,
+         "(C) By density class, stacked by motive"),
     ):
-        labels = [row[0] for row in rows]
-        means = [row[2] for row in rows]
-        lower = [row[2] - row[3][0] for row in rows]
-        upper = [row[3][1] - row[2] for row in rows]
-        x = np.arange(len(labels))
-        ax.bar(x, means, yerr=[lower, upper], capsize=3, color="tab:orange")
+        ci_by_group = {row[0]: row for row in cis}
+        x = np.arange(len(groups))
+        bottom = np.zeros(len(groups))
+        for j, top_motive in enumerate(top_motives):
+            label = (
+                "not recorded" if top_motive < 0
+                else f"{top_motive:g} "
+                f"{emp2019.TOP_LEVEL_MOTIVE_LABEL_BY_CODE.get(top_motive, '')}"
+            )
+            ax.bar(
+                x, matrix[:, j], bottom=bottom, label=label,
+                color=colour_by_motive[top_motive],
+            )
+            bottom += matrix[:, j]
+        totals = [ci_by_group[g][2] for g in groups]
+        lower = [ci_by_group[g][2] - ci_by_group[g][3][0] for g in groups]
+        upper = [ci_by_group[g][3][1] - ci_by_group[g][2] for g in groups]
+        ax.errorbar(
+            x, totals, yerr=[lower, upper], fmt="none", ecolor="black",
+            capsize=3,
+        )
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=30, ha="right")
+        ax.set_xticklabels(groups, rotation=30, ha="right")
         ax.set_ylabel("Mean trips per day")
         ax.set_title(title)
+        ax.legend(fontsize=5, bbox_to_anchor=(1.02, 1), loc="upper left")
 
     freq_rows, freq_cols, freq_matrix = _frequency_matrix(days)
     image = ax_freq.imshow(freq_matrix, aspect="auto", cmap="viridis")
@@ -724,7 +794,10 @@ def _figure_f1_trips_per_day(
                 )
     ax_freq.set_title(
         "(D) Mean trips per day by population category x main-mode group\n"
-        "(row/col 'overall' = marginal means, as in (B)/(C))", fontsize=9,
+        "(row/col 'overall' = marginal, weighted means, as in (B)/(C); a\n"
+        "subgroup can exceed its row/column total if other subgroups pull\n"
+        "the weighted average down -- not an error, see the report)",
+        fontsize=8,
     )
     fig.colorbar(image, ax=ax_freq, label="Mean trips per day")
 
@@ -942,49 +1015,42 @@ def _figure_f4_mean_by_mode(
                 x + offset, medians, marker="D", color="black", s=14, zorder=3,
                 label=f"{rate_key} median" if ax is axes.flat[0] else None,
             )
-            for xi, mean, upper in zip(x + offset, means, uppers, strict=True):
+            for xi, mean in zip(x + offset, means, strict=True):
                 if not np.isnan(mean):
                     ax.text(
-                        xi, mean + upper, f"{mean:.0f}", ha="center", va="bottom",
-                        fontsize=6, rotation=90,
+                        xi, mean, f"{mean:.0f}", ha="center", va="bottom",
+                        fontsize=6,
                     )
         for i, group in enumerate(present):
             ax.text(
                 i, 0, f"n={stats[group].n}", ha="center", va="bottom", fontsize=6,
                 rotation=90,
             )
-        ax.axhline(
-            daily_energy.KH_DAILY_ENERGY_KJ, color="grey", linestyle="--",
-            linewidth=0.8,
-            label="Koelbl & Helbing 615 kJ" if ax is axes.flat[0] else None,
-        )
+        # Reference lines use the y-axis transform (x in axes fraction,
+        # y in data units) so their value labels stay inside the plot
+        # regardless of how many mode groups a panel has.
+        label_transform = ax.get_yaxis_transform()
         panel_mean_kh, panel_mean_cp, panel_median_kh, panel_median_cp = (
             panel_stats_overall[label]
         )
-        ax.axhline(
-            panel_mean_kh, color="tab:blue", linestyle="-.", linewidth=0.8,
-            label="computed mean (kh)" if ax is axes.flat[0] else None,
-        )
-        ax.axhline(
-            panel_mean_cp, color="tab:orange", linestyle="-.", linewidth=0.8,
-            label="computed mean (cp)" if ax is axes.flat[0] else None,
-        )
-        ax.axhline(
-            panel_median_kh, color="tab:blue", linestyle=":", linewidth=0.8,
-            label="overall median (kh)" if ax is axes.flat[0] else None,
-        )
-        ax.text(
-            len(present) - 0.5, panel_median_kh, f"{panel_median_kh:.0f}",
-            color="tab:blue", fontsize=6, ha="right", va="bottom",
-        )
-        ax.axhline(
-            panel_median_cp, color="tab:orange", linestyle=":", linewidth=0.8,
-            label="overall median (cp)" if ax is axes.flat[0] else None,
-        )
-        ax.text(
-            len(present) - 0.5, panel_median_cp, f"{panel_median_cp:.0f}",
-            color="tab:orange", fontsize=6, ha="right", va="top",
-        )
+        for value, color, linestyle, text_va, show_legend in (
+            (
+                daily_energy.KH_DAILY_ENERGY_KJ, "grey", "--", "bottom",
+                "Koelbl & Helbing 615 kJ",
+            ),
+            (panel_mean_kh, "tab:blue", "-.", "bottom", "computed mean (kh)"),
+            (panel_mean_cp, "tab:orange", "-.", "top", "computed mean (cp)"),
+            (panel_median_kh, "tab:blue", ":", "bottom", "overall median (kh)"),
+            (panel_median_cp, "tab:orange", ":", "top", "overall median (cp)"),
+        ):
+            ax.axhline(
+                value, color=color, linestyle=linestyle, linewidth=0.8,
+                label=show_legend if ax is axes.flat[0] else None,
+            )
+            ax.text(
+                0.98, value, f"{value:.0f}", transform=label_transform,
+                color=color, fontsize=6, ha="right", va=text_va,
+            )
         ax.set_xticks(x)
         ax.set_xticklabels(present, rotation=45, ha="right", fontsize=7)
         ax.set_title(label, fontsize=9)
@@ -992,9 +1058,10 @@ def _figure_f4_mean_by_mode(
     for ax in axes.flat[len(panels):]:
         ax.axis("off")
     fig.suptitle(
-        "F4a. Mean daily energy by main-mode group, 95% CI, n, median marker, "
-        "mean/median values, this panel's own computed mean and overall "
-        "median (section 9.9)"
+        "F4a. Mean daily energy by main-mode group, 95% CI, n, median "
+        "marker, mean bar values, and labelled reference lines (Koelbl & "
+        "Helbing 615 kJ, this panel's own computed mean, overall median; "
+        "section 9.9)"
     )
     fig.tight_layout()
     path_energy = out_dir / "f04a_mean_energy_by_mode.png"

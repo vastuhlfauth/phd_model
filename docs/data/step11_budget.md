@@ -280,7 +280,7 @@ Ride work, unloaded pedalling and stops are the same formula in both rate sets (
 
 ## Non-traveller immobility (point 2)
 
-Identified as: a Kish respondent with zero rows in K_DEPLOC for their described day. Cross-check: every one of these respondents has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 (100% match); `MDATE_jour` is blank only for these same respondents, so EMP 2019's public release records no day-of-week for a fully immobile respondent -- a Saturday/Sunday non-traveller cannot be told apart from a weekday one in these tables. The surveyed-day mix among travellers is TYPEJOUR=1: 8463789.2%, TYPEJOUR=2: 1707116.1%, TYPEJOUR=3: 8753314.0% (weekday-dominated: 2.7% overall immobility is a weekday-weighted figure, not comparable to all-week averages that include weekends, when immobility is known to be much higher).
+Identified as: a Kish respondent with zero rows in K_DEPLOC for their described day. Cross-check: every one of these respondents has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 (100% match); `MDATE_jour` is blank only for these same respondents, so EMP 2019's public release records no day-of-week for a fully immobile respondent -- a Saturday/Sunday non-traveller cannot be told apart from a weekday one in these tables. The surveyed-day mix among travellers is TYPEJOUR=1: 3770359.6%, TYPEJOUR=2: 5069519.3%, TYPEJOUR=3: 4530417.8% (weekday-dominated: 2.7% overall immobility is a weekday-weighted figure, not comparable to all-week averages that include weekends, when immobility is known to be much higher).
 
 ## Figures
 
