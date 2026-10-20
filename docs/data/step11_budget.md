@@ -32,7 +32,7 @@ INSEE's own 4-level grid names and order: dense (1, densely populated communes),
 
 ## Section 9.9's scope: commuting and travel for needs fulfilment
 
-Every table and figure above and below is restricted to this scope (2026-10-20 project decision, not an optional variant): trips whose corrected motive (`motive`, `MOT_SEQ_COMPL`) is sport (7.6), a destination-less stroll (7.7, "se promener sans destination precise") or going to a place to walk/ride (7.8, a destination exists, but the movement itself is the point) are excluded from every day's energy/time sums and from day classification; a day whose only trips were these becomes a non-traveller for this analysis. A missing/refused motive is kept, not excluded. See F9 and the table below for the evidence behind this decision, computed on the full, pre-exclusion dataset.
+Every table and figure above and below is restricted to this scope (2026-10-20 project decision, not an optional variant): trips whose corrected motive (`motive`, `MOT_SEQ_COMPL`) is sport (7.6), a destination-less stroll (7.7, "se promener sans destination precise"), going to a place to walk/ride (7.8, a destination exists, but the movement itself is the point), or any top-level motive group 8 purpose (8.1-8.4: holidays, second/occasional residence, other private reasons -- none of them a needs-fulfilment destination) are excluded from every day's energy/time sums and from day classification; a day whose only trips were these becomes a non-traveller for this analysis. A missing/refused motive is kept, not excluded. See F9 and the table below for the evidence behind this decision, computed on the full, pre-exclusion dataset.
 
 | Group | excluded trip share | n excluded / n total | excluded share of day energy (kh) | excluded share of day energy (cp) |
 |---|---|---|---|---|
@@ -280,7 +280,7 @@ Ride work, unloaded pedalling and stops are the same formula in both rate sets (
 
 ## Non-traveller immobility (point 2)
 
-Identified as: a Kish respondent with zero rows in K_DEPLOC for their described day. Cross-check: every one of these respondents has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 (100% match); `MDATE_jour` is blank only for these same respondents, so EMP 2019's public release records no day-of-week for a fully immobile respondent -- a Saturday/Sunday non-traveller cannot be told apart from a weekday one in these tables. The surveyed-day mix among travellers is TYPEJOUR=1: 1579350.6%, TYPEJOUR=2: 14886533.7%, TYPEJOUR=3: 62559060.5% (weekday-dominated: 2.7% overall immobility is a weekday-weighted figure, not comparable to all-week averages that include weekends, when immobility is known to be much higher).
+Identified as: a Kish respondent with zero rows in K_DEPLOC for their described day. Cross-check: every one of these respondents has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 (100% match); `MDATE_jour` is blank only for these same respondents, so EMP 2019's public release records no day-of-week for a fully immobile respondent -- a Saturday/Sunday non-traveller cannot be told apart from a weekday one in these tables. The surveyed-day mix among travellers is TYPEJOUR=1: 8463789.2%, TYPEJOUR=2: 1707116.1%, TYPEJOUR=3: 8753314.0% (weekday-dominated: 2.7% overall immobility is a weekday-weighted figure, not comparable to all-week averages that include weekends, when immobility is known to be much higher).
 
 ## Figures
 

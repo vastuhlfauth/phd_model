@@ -632,17 +632,18 @@ def _trips_per_day_by_group(
 
 
 def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
-    """(rows, cols, matrix): % of all weighted person-days in each
-    (population category, main-mode group) cell, with "overall" margins
-    in both directions (row 0/col 0), for F1's frequency heatmap. Excludes
-    the 'unknown' population category, as elsewhere in this report."""
+    """(rows, cols, matrix): weighted mean trips per day in each
+    (population category, main-mode group) cell -- the same quantity as
+    F1 panels (B)/(C), cross-tabulated instead of two separate bar
+    charts -- with "overall" margins in both directions (row 0/col 0,
+    mean trips/day ignoring the other axis). Excludes the 'unknown'
+    population category, as elsewhere in this report."""
     categories = sorted(
         {c for c in days["population_category"] if c != "unknown"}
     )
     modes = sorted(set(days["day_mode_group"]))
     rows = ["overall", *categories]
     cols = ["overall", *modes]
-    total_weight = days["pond_jour"].sum()
     matrix = np.zeros((len(rows), len(cols)))
     for i, category in enumerate(rows):
         category_mask = (
@@ -654,9 +655,14 @@ def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
                 np.ones(len(days["pond_jour"]), dtype=bool) if mode == "overall"
                 else days["day_mode_group"] == mode
             )
+            cell_mask = category_mask & mode_mask
+            cell_weight = days["pond_jour"][cell_mask]
             matrix[i, j] = (
-                days["pond_jour"][category_mask & mode_mask].sum()
-                / total_weight * 100.0
+                float(
+                    np.sum(cell_weight * days["trips_per_day"][cell_mask])
+                    / cell_weight.sum()
+                )
+                if cell_weight.sum() > 0 else np.nan
             )
     return rows, cols, matrix
 
@@ -711,15 +717,16 @@ def _figure_f1_trips_per_day(
     ax_freq.set_yticklabels(freq_rows, fontsize=8)
     for i in range(freq_matrix.shape[0]):
         for j in range(freq_matrix.shape[1]):
-            ax_freq.text(
-                j, i, f"{freq_matrix[i, j]:.1f}", ha="center", va="center",
-                fontsize=6, color="white",
-            )
+            if not np.isnan(freq_matrix[i, j]):
+                ax_freq.text(
+                    j, i, f"{freq_matrix[i, j]:.1f}", ha="center", va="center",
+                    fontsize=6, color="white",
+                )
     ax_freq.set_title(
-        "(D) Frequency heatmap: % of all person-days\n"
-        "(row/col 'overall' = marginal totals)", fontsize=9,
+        "(D) Mean trips per day by population category x main-mode group\n"
+        "(row/col 'overall' = marginal means, as in (B)/(C))", fontsize=9,
     )
-    fig.colorbar(image, ax=ax_freq, label="% of all weighted person-days")
+    fig.colorbar(image, ax=ax_freq, label="Mean trips per day")
 
     fig.suptitle("F1. Trips per person and day (section 9.9, point 2)")
     fig.tight_layout()
@@ -853,25 +860,32 @@ def _bootstrap_stats_where(
     return {s.group: s for s in stats}
 
 
-def _panel_overall_mean(
+def _panel_overall_stats(
     con: duckdb.DuckDBPyConnection, where_sql: str
-) -> tuple[float, float]:
-    """This panel's own weighted mean daily energy (both rate sets),
-    across every main-mode group combined (F4a's "computed mean" line,
-    distinct from Koelbl & Helbing's fixed 615 kJ reference)."""
+) -> tuple[float, float, float, float]:
+    """This panel's own weighted mean and median daily energy (both rate
+    sets), across every main-mode group combined (F4a's "computed mean"
+    and "overall median" lines, distinct from Koelbl & Helbing's fixed
+    615 kJ reference)."""
     rows = con.sql(
         "SELECT pond_jour, total_energy_kh_kj, total_energy_cp_kj FROM day_summary "
         f"WHERE total_energy_kh_kj IS NOT NULL AND ({where_sql})"
     ).fetchnumpy()
     if len(rows["pond_jour"]) == 0:
-        return float("nan"), float("nan")
+        return (float("nan"),) * 4
     mean_kh, _ = daily_energy.weighted_mean_variance(
         rows["pond_jour"], rows["total_energy_kh_kj"]
     )
     mean_cp, _ = daily_energy.weighted_mean_variance(
         rows["pond_jour"], rows["total_energy_cp_kj"]
     )
-    return mean_kh, mean_cp
+    median_kh = daily_energy._weighted_median(
+        rows["total_energy_kh_kj"], rows["pond_jour"]
+    )
+    median_cp = daily_energy._weighted_median(
+        rows["total_energy_cp_kj"], rows["pond_jour"]
+    )
+    return mean_kh, mean_cp, median_kh, median_cp
 
 
 def _figure_f4_mean_by_mode(
@@ -894,8 +908,8 @@ def _figure_f4_mean_by_mode(
         (label, _bootstrap_stats_where(con, where_sql, n_reps=n_reps, seed=seed))
         for label, where_sql in panel_where_sql
     ]
-    panel_means = {
-        label: _panel_overall_mean(con, where_sql)
+    panel_stats_overall = {
+        label: _panel_overall_stats(con, where_sql)
         for label, where_sql in panel_where_sql
     }
 
@@ -928,6 +942,12 @@ def _figure_f4_mean_by_mode(
                 x + offset, medians, marker="D", color="black", s=14, zorder=3,
                 label=f"{rate_key} median" if ax is axes.flat[0] else None,
             )
+            for xi, mean, upper in zip(x + offset, means, uppers, strict=True):
+                if not np.isnan(mean):
+                    ax.text(
+                        xi, mean + upper, f"{mean:.0f}", ha="center", va="bottom",
+                        fontsize=6, rotation=90,
+                    )
         for i, group in enumerate(present):
             ax.text(
                 i, 0, f"n={stats[group].n}", ha="center", va="bottom", fontsize=6,
@@ -938,7 +958,9 @@ def _figure_f4_mean_by_mode(
             linewidth=0.8,
             label="Koelbl & Helbing 615 kJ" if ax is axes.flat[0] else None,
         )
-        panel_mean_kh, panel_mean_cp = panel_means[label]
+        panel_mean_kh, panel_mean_cp, panel_median_kh, panel_median_cp = (
+            panel_stats_overall[label]
+        )
         ax.axhline(
             panel_mean_kh, color="tab:blue", linestyle="-.", linewidth=0.8,
             label="computed mean (kh)" if ax is axes.flat[0] else None,
@@ -946,6 +968,22 @@ def _figure_f4_mean_by_mode(
         ax.axhline(
             panel_mean_cp, color="tab:orange", linestyle="-.", linewidth=0.8,
             label="computed mean (cp)" if ax is axes.flat[0] else None,
+        )
+        ax.axhline(
+            panel_median_kh, color="tab:blue", linestyle=":", linewidth=0.8,
+            label="overall median (kh)" if ax is axes.flat[0] else None,
+        )
+        ax.text(
+            len(present) - 0.5, panel_median_kh, f"{panel_median_kh:.0f}",
+            color="tab:blue", fontsize=6, ha="right", va="bottom",
+        )
+        ax.axhline(
+            panel_median_cp, color="tab:orange", linestyle=":", linewidth=0.8,
+            label="overall median (cp)" if ax is axes.flat[0] else None,
+        )
+        ax.text(
+            len(present) - 0.5, panel_median_cp, f"{panel_median_cp:.0f}",
+            color="tab:orange", fontsize=6, ha="right", va="top",
         )
         ax.set_xticks(x)
         ax.set_xticklabels(present, rotation=45, ha="right", fontsize=7)
@@ -955,7 +993,8 @@ def _figure_f4_mean_by_mode(
         ax.axis("off")
     fig.suptitle(
         "F4a. Mean daily energy by main-mode group, 95% CI, n, median marker, "
-        "this panel's own computed mean (section 9.9)"
+        "mean/median values, this panel's own computed mean and overall "
+        "median (section 9.9)"
     )
     fig.tight_layout()
     path_energy = out_dir / "f04a_mean_energy_by_mode.png"
