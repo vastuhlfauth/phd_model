@@ -30,11 +30,11 @@ INSEE's own 4-level grid names and order: dense (1, densely populated communes),
 | car_driver | 17239 | 151,948,944 | 66.8 | 54.0 | 541.6 | 453.4 | [531.7, 550.6] | 523.8 | 430.8 | [512.7, 533.8] |
 | walking_only | 4577 | 41,615,021 | 35.3 | 29.0 | 471.2 | 355.2 | [444.9, 494.7] | 359.7 | 271.1 | [339.6, 377.6] |
 | car_passenger_household | 3524 | 31,557,412 | 57.1 | 40.0 | 345.8 | 282.0 | [332.8, 359.3] | 283.8 | 235.6 | [274.3, 294.8] |
-| multimodal | 2863 | 27,964,346 | 107.1 | 85.0 | 1642.6 | 647.0 | [664.7, 3724.7] | 1560.8 | 556.3 | [584.8, 3649.0] |
+| multimodal | 2863 | 27,964,346 | 107.1 | 85.0 | 687.7 | 647.0 | [660.6, 714.9] | 605.9 | 556.3 | [578.5, 630.0] |
 | urban_pt | 2007 | 17,307,089 | 91.2 | 80.0 | 654.5 | 564.1 | [624.8, 688.7] | 535.1 | 471.8 | [512.7, 560.5] |
 | car_passenger_carpool | 1372 | 8,576,737 | 59.9 | 44.0 | 485.3 | 388.0 | [453.6, 513.7] | 390.9 | 313.0 | [366.0, 413.0] |
 | train | 784 | 6,131,176 | 153.2 | 131.0 | 712.5 | 661.1 | [680.7, 748.7] | 614.0 | 578.1 | [587.0, 646.3] |
-| cycle | 565 | 6,086,548 | 44.6 | 31.0 | 601.9 | 421.1 | [527.9, 701.1] | 583.8 | 390.2 | [512.9, 682.0] |
+| cycle | 565 | 6,086,548 | 44.6 | 31.0 | 588.0 | 421.1 | [510.6, 687.4] | 570.0 | 390.2 | [495.8, 660.4] |
 | other | 81 | 879,181 | 72.8 | 64.0 | 291.8 | 222.0 | [243.0, 352.0] | 222.7 | 169.5 | [185.5, 268.7] |
 
 ## Section 9.9's scope: commuting and travel for needs fulfilment
@@ -46,8 +46,8 @@ Every table and figure above and below is restricted to this scope (2026-10-20 p
 | car_driver | 8.1% | 6,944 / 65,699 | 11.6% | 11.2% |
 | car_passenger_carpool | 14.4% | 682 / 4,145 | 19.2% | 19.5% |
 | car_passenger_household | 14.9% | 2,117 / 11,670 | 20.3% | 20.2% |
-| cycle | 25.1% | 780 / 2,421 | 83.5% | 84.1% |
-| multimodal | 12.1% | 2,598 / 17,392 | 9.7% | 9.4% |
+| cycle | 25.1% | 780 / 2,421 | 43.2% | 43.3% |
+| multimodal | 12.1% | 2,598 / 17,392 | 19.6% | 20.2% |
 | other | 17.2% | 100 / 518 | 32.0% | 32.0% |
 | train | 7.3% | 175 / 1,866 | 8.6% | 8.5% |
 | urban_pt | 8.4% | 712 / 6,482 | 12.4% | 12.2% |
@@ -55,7 +55,7 @@ Every table and figure above and below is restricted to this scope (2026-10-20 p
 
 ## Data-quality correction: implausible door-to-door speeds
 
-Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above an upper speed bound only -- walk > 7 km/h, bike > 35 km/h, car (driver or passenger) > 130 km/h -- their declared distance is replaced by declared duration x the mode's own median speed (from its not-flagged trips). Cycling energy is time-based (round 4), so only walk's and car's corrected distances feed the energy formulas; bike is flagged (reported) but not corrected.
+Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above an upper speed bound only -- walk > 7 km/h, bike > 35 km/h, car (driver or passenger) > 130 km/h -- their declared distance is replaced by declared duration x the mode's own median speed (from its not-flagged trips). Cycling energy's main work term is time-based (round 4), but its "stops" sub-term still multiplies by distance and by the distance-derived ride speed squared (section 9.7), so a flagged bike trip's distance is corrected too, like walk and car (round 9).
 
 - car_driver: 319 of 66,480 trips corrected
 - car_passenger_carpool: 29 of 5,432 trips corrected
@@ -75,11 +75,11 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 | car_driver | 17239 | 151,948,944 | 66.8 | 54.0 | 541.6 | 453.4 | [531.7, 550.6] | 523.8 | 430.8 | [512.7, 533.8] |
 | walking_only | 4577 | 41,615,021 | 35.3 | 29.0 | 471.2 | 355.2 | [444.9, 494.7] | 359.7 | 271.1 | [339.6, 377.6] |
 | car_passenger_household | 3524 | 31,557,412 | 57.1 | 40.0 | 345.8 | 282.0 | [332.8, 359.3] | 283.8 | 235.6 | [274.3, 294.8] |
-| multimodal | 2863 | 27,964,346 | 107.1 | 85.0 | 1642.6 | 647.0 | [664.7, 3724.7] | 1560.8 | 556.3 | [584.8, 3649.0] |
+| multimodal | 2863 | 27,964,346 | 107.1 | 85.0 | 687.7 | 647.0 | [660.6, 714.9] | 605.9 | 556.3 | [578.5, 630.0] |
 | urban_pt | 2007 | 17,307,089 | 91.2 | 80.0 | 654.5 | 564.1 | [624.8, 688.7] | 535.1 | 471.8 | [512.7, 560.5] |
 | car_passenger_carpool | 1372 | 8,576,737 | 59.9 | 44.0 | 485.3 | 388.0 | [453.6, 513.7] | 390.9 | 313.0 | [366.0, 413.0] |
 | train | 784 | 6,131,176 | 153.2 | 131.0 | 712.5 | 661.1 | [680.7, 748.7] | 614.0 | 578.1 | [587.0, 646.3] |
-| cycle | 565 | 6,086,548 | 44.6 | 31.0 | 601.9 | 421.1 | [527.9, 701.1] | 583.8 | 390.2 | [512.9, 682.0] |
+| cycle | 565 | 6,086,548 | 44.6 | 31.0 | 588.0 | 421.1 | [510.6, 687.4] | 570.0 | 390.2 | [495.8, 660.4] |
 | other | 81 | 879,181 | 72.8 | 64.0 | 291.8 | 222.0 | [243.0, 352.0] | 222.7 | 169.5 | [185.5, 268.7] |
 
 ### children_6_17
@@ -101,13 +101,13 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 | Group | n | weighted n | mean time (min) | median time (min) | mean energy kh (kJ) | median energy kh (kJ) | 95% CI | mean energy compendium (kJ) | median energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|---|---|---|
 | car_driver | 10779 | 100,755,648 | 72.1 | 60.0 | 573.5 | 495.4 | [561.4, 588.7] | 558.7 | 466.2 | [546.3, 574.3] |
-| multimodal | 1606 | 14,456,313 | 123.8 | 101.0 | 2618.4 | 729.9 | [755.0, 6567.1] | 2540.5 | 658.5 | [676.5, 6488.5] |
+| multimodal | 1606 | 14,456,313 | 123.8 | 101.0 | 772.4 | 729.9 | [744.1, 809.8] | 694.6 | 658.5 | [667.5, 729.0] |
 | walking_only | 1463 | 10,618,359 | 37.0 | 30.0 | 528.8 | 399.6 | [473.5, 607.5] | 403.6 | 305.0 | [361.4, 463.7] |
 | urban_pt | 949 | 7,441,285 | 92.3 | 85.0 | 650.9 | 570.6 | [620.8, 679.0] | 535.1 | 487.3 | [510.1, 558.2] |
 | car_passenger_household | 1071 | 5,880,923 | 71.8 | 55.0 | 397.3 | 308.3 | [359.1, 443.3] | 329.4 | 260.6 | [298.4, 364.2] |
 | train | 542 | 4,169,189 | 159.2 | 140.0 | 700.9 | 672.3 | [669.7, 733.0] | 609.0 | 590.3 | [578.4, 639.6] |
 | car_passenger_carpool | 444 | 3,115,892 | 70.1 | 50.0 | 554.2 | 504.0 | [502.7, 596.4] | 447.7 | 412.5 | [410.5, 480.8] |
-| cycle | 241 | 2,204,699 | 61.0 | 60.0 | 836.1 | 742.4 | [666.6, 994.3] | 807.5 | 731.3 | [655.3, 963.0] |
+| cycle | 241 | 2,204,699 | 61.0 | 60.0 | 822.4 | 742.4 | [662.3, 984.2] | 793.8 | 731.3 | [643.2, 947.5] |
 | other | 47 | 297,646 | 80.8 | 66.0 | 310.5 | 266.4 | [251.2, 386.4] | 237.0 | 203.4 | [191.7, 295.0] |
 
 ### other_inactive
@@ -132,9 +132,9 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 | walking_only | 1792 | 11,559,622 | 34.7 | 25.0 | 407.6 | 310.8 | [380.5, 433.6] | 311.1 | 237.2 | [290.4, 330.9] |
 | car_passenger_household | 729 | 4,975,407 | 60.4 | 45.0 | 300.7 | 256.4 | [277.3, 319.4] | 252.4 | 211.9 | [233.0, 269.0] |
 | car_passenger_carpool | 545 | 2,474,663 | 51.4 | 35.0 | 440.4 | 335.5 | [401.8, 483.4] | 353.1 | 271.0 | [322.9, 387.1] |
-| multimodal | 421 | 2,432,222 | 118.8 | 90.0 | 774.8 | 658.6 | [691.4, 838.9] | 693.3 | 587.6 | [622.0, 754.8] |
+| multimodal | 421 | 2,432,222 | 118.8 | 90.0 | 768.4 | 658.6 | [684.4, 832.3] | 686.9 | 574.1 | [614.1, 745.5] |
 | urban_pt | 429 | 2,233,795 | 88.5 | 75.0 | 610.7 | 522.0 | [570.9, 657.6] | 497.9 | 428.4 | [466.5, 535.6] |
-| cycle | 145 | 1,161,258 | 34.3 | 28.0 | 480.3 | 323.2 | [322.8, 665.0] | 474.9 | 324.0 | [315.5, 659.8] |
+| cycle | 145 | 1,161,258 | 34.3 | 28.0 | 433.8 | 323.2 | [310.5, 592.5] | 428.4 | 324.0 | [302.2, 589.2] |
 | train | 84 | 298,531 | 160.0 | 120.0 | 681.7 | 623.4 | [612.2, 761.5] | 591.2 | 551.8 | [522.4, 666.5] |
 | other | 11 | 108,715 | 95.3 | 65.0 | 367.0 | 222.0 | [153.7, 578.1] | 280.2 | 169.5 | [117.3, 441.3] |
 
@@ -156,8 +156,8 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 
 | Group | n | weighted n | mean time (min) | median time (min) | mean energy kh (kJ) | median energy kh (kJ) | 95% CI | mean energy compendium (kJ) | median energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|---|---|---|
-| employed | 17142 | 148,939,953 | 77.9 | 60.0 | 772.2 | 514.3 | [585.9, 1138.9] | 731.9 | 471.3 | [545.4, 1101.6] |
-| retired | 8646 | 57,610,905 | 55.4 | 40.0 | 457.6 | 360.5 | [444.3, 471.0] | 408.9 | 314.4 | [397.4, 421.8] |
+| employed | 17142 | 148,939,953 | 77.9 | 60.0 | 592.8 | 514.3 | [580.7, 604.5] | 552.5 | 471.3 | [540.3, 565.2] |
+| retired | 8646 | 57,610,905 | 55.4 | 40.0 | 456.4 | 360.5 | [443.1, 468.8] | 407.7 | 314.4 | [395.9, 419.5] |
 | children_6_17 | 2523 | 43,515,808 | 50.9 | 40.0 | 413.1 | 337.6 | [394.8, 433.8] | 336.9 | 274.1 | [322.7, 353.2] |
 | other_inactive | 3151 | 27,513,672 | 67.2 | 55.0 | 564.0 | 487.4 | [541.4, 587.7] | 487.7 | 407.4 | [467.0, 506.8] |
 | unemployed | 1397 | 11,338,057 | 68.6 | 55.0 | 576.8 | 466.2 | [544.5, 617.0] | 502.4 | 402.5 | [474.3, 537.1] |
@@ -167,8 +167,8 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 
 | Group | n | weighted n | mean time (min) | median time (min) | mean energy kh (kJ) | median energy kh (kJ) | 95% CI | mean energy compendium (kJ) | median energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|---|---|---|
-| intermediate | 13529 | 129,088,281 | 68.3 | 52.0 | 798.9 | 520.6 | [585.2, 1222.1] | 723.4 | 437.1 | [510.1, 1145.6] |
-| very_sparse | 8672 | 61,753,076 | 65.7 | 50.0 | 386.6 | 305.6 | [372.7, 401.4] | 392.9 | 301.9 | [378.8, 409.3] |
+| intermediate | 13529 | 129,088,281 | 68.3 | 52.0 | 593.4 | 520.6 | [580.6, 606.8] | 517.9 | 437.1 | [506.6, 529.5] |
+| very_sparse | 8672 | 61,753,076 | 65.7 | 50.0 | 382.4 | 305.6 | [371.3, 394.3] | 388.8 | 301.9 | [375.0, 402.3] |
 | sparse | 5797 | 60,095,174 | 66.5 | 50.0 | 472.5 | 385.0 | [457.4, 491.6] | 443.3 | 369.8 | [426.5, 466.7] |
 | dense | 5014 | 41,129,923 | 70.9 | 60.0 | 659.9 | 565.0 | [635.8, 684.7] | 559.2 | 475.6 | [537.5, 581.1] |
 
@@ -183,11 +183,11 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 
 | Variant | Scope | Statistic | energy ratio (kh) | CV (kh) | min/max group (kh) | energy ratio (cp) | CV (cp) | min/max group (cp) | time ratio | time CV | min/max group (time) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| terminal legs x0.5 | full | mean | 2.50 | 0.26 | car_passenger_household / cycle | 2.84 | 0.30 | car_passenger_household / cycle | 4.34 | 0.51 | walking_only / train |
+| terminal legs x0.5 | full | mean | 2.48 | 0.26 | car_passenger_household / cycle | 2.81 | 0.30 | car_passenger_household / cycle | 4.34 | 0.51 | walking_only / train |
 | terminal legs x0.5 | full | median | 2.73 | 0.28 | car_passenger_household / train | 2.84 | 0.31 | car_passenger_household / train | 4.52 | 0.58 | walking_only / train |
 | terminal legs x0.5 | core | mean | 1.33 | 0.10 | car_driver / train | 1.38 | 0.12 | walking_only / train | 4.34 | 0.50 | walking_only / train |
 | terminal legs x0.5 | core | median | 1.46 | 0.16 | car_driver / train | 1.68 | 0.18 | walking_only / train | 4.52 | 0.51 | walking_only / train |
-| terminal legs x1 (base case) | full | mean | 2.06 | 0.21 | car_passenger_household / train | 2.16 | 0.25 | car_passenger_household / train | 4.34 | 0.51 | walking_only / train |
+| terminal legs x1 (base case) | full | mean | 2.06 | 0.21 | car_passenger_household / train | 2.16 | 0.24 | car_passenger_household / train | 4.34 | 0.51 | walking_only / train |
 | terminal legs x1 (base case) | full | median | 2.34 | 0.27 | car_passenger_household / train | 2.45 | 0.29 | car_passenger_household / train | 4.52 | 0.58 | walking_only / train |
 | terminal legs x1 (base case) | core | mean | 1.51 | 0.16 | walking_only / train | 1.71 | 0.18 | walking_only / train | 4.34 | 0.50 | walking_only / train |
 | terminal legs x1 (base case) | core | median | 1.86 | 0.23 | walking_only / train | 2.13 | 0.25 | walking_only / train | 4.52 | 0.51 | walking_only / train |
@@ -195,7 +195,7 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 | weekdays only | full | median | 2.27 | 0.25 | car_passenger_household / train | 2.41 | 0.28 | car_passenger_household / train | 4.33 | 0.56 | walking_only / train |
 | weekdays only | core | mean | 1.48 | 0.15 | walking_only / train | 1.67 | 0.18 | walking_only / train | 4.12 | 0.48 | walking_only / train |
 | weekdays only | core | median | 1.76 | 0.20 | walking_only / train | 2.01 | 0.23 | walking_only / train | 4.33 | 0.50 | walking_only / train |
-| local trips only (MOBLOC=1) | full | mean | 2.02 | 0.21 | car_passenger_household / train | 2.13 | 0.25 | car_passenger_household / train | 3.62 | 0.44 | walking_only / train |
+| local trips only (MOBLOC=1) | full | mean | 2.02 | 0.21 | car_passenger_household / train | 2.13 | 0.24 | car_passenger_household / train | 3.62 | 0.44 | walking_only / train |
 | local trips only (MOBLOC=1) | full | median | 2.35 | 0.26 | car_passenger_household / train | 2.42 | 0.28 | car_passenger_household / train | 4.14 | 0.55 | walking_only / train |
 | local trips only (MOBLOC=1) | core | mean | 1.48 | 0.16 | walking_only / train | 1.66 | 0.17 | walking_only / train | 3.62 | 0.43 | walking_only / train |
 | local trips only (MOBLOC=1) | core | median | 1.79 | 0.22 | walking_only / train | 2.03 | 0.24 | walking_only / train | 4.14 | 0.49 | walking_only / train |
@@ -203,16 +203,16 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 | terminal legs x1.5 | full | median | 2.28 | 0.30 | walking_only / train | 2.50 | 0.30 | walking_only / train | 4.52 | 0.58 | walking_only / train |
 | terminal legs x1.5 | core | mean | 1.85 | 0.22 | walking_only / train | 2.04 | 0.24 | walking_only / train | 4.34 | 0.50 | walking_only / train |
 | terminal legs x1.5 | core | median | 2.28 | 0.28 | walking_only / train | 2.50 | 0.29 | walking_only / train | 4.52 | 0.51 | walking_only / train |
-| P0 = 52.5 W (section 9.7 reference) | full | mean | 2.14 | 0.24 | car_passenger_household / cycle | 2.54 | 0.29 | car_passenger_household / cycle | 4.34 | 0.51 | walking_only / train |
+| P0 = 52.5 W (section 9.7 reference) | full | mean | 2.09 | 0.23 | car_passenger_household / cycle | 2.49 | 0.28 | car_passenger_household / cycle | 4.34 | 0.51 | walking_only / train |
 | P0 = 52.5 W (section 9.7 reference) | full | median | 2.34 | 0.26 | car_passenger_household / train | 2.45 | 0.29 | car_passenger_household / train | 4.52 | 0.58 | walking_only / train |
 | P0 = 52.5 W (section 9.7 reference) | core | mean | 1.51 | 0.16 | walking_only / train | 1.71 | 0.18 | walking_only / train | 4.34 | 0.50 | walking_only / train |
 | P0 = 52.5 W (section 9.7 reference) | core | median | 1.86 | 0.23 | walking_only / train | 2.13 | 0.25 | walking_only / train | 4.52 | 0.51 | walking_only / train |
 
 ## Constancy test (point 3, 5)
 
-- Overall weighted mean daily energy: 625.0 kJ (kh), 572.8 kJ (compendium); Koelbl & Helbing's (2003) hypothesis is 615 kJ.
+- Overall weighted mean daily energy: 533.3 kJ (kh), 481.1 kJ (compendium); Koelbl & Helbing's (2003) hypothesis is 615 kJ.
 - Max/min ratio of the day-mode-group means (walking_only, cycle, car_driver, car_passenger_household, car_passenger_carpool, urban_pt, train): 2.06 (kh), 2.16 (compendium).
-- Method-of-moments gamma fit (point 5): shape=0.00, scale=188193.5 kJ (kh); shape=0.00, scale=205414.3 kJ (compendium).
+- Method-of-moments gamma fit (point 5): shape=2.02, scale=263.7 kJ (kh); shape=1.82, scale=264.2 kJ (compendium).
 - Mean trips per person and day: 3.52 (95% CI [3.47, 3.56]).
 
 ## Calibrated v0 and P0 (step 1)
@@ -220,16 +220,16 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 - **v0 estimator:** the ratio of weighted sums of distance and duration, sum(POND_JOUR*distance)/sum(POND_JOUR*duration), not an average of per-trip speeds (avoids the bias of averaging a ratio).
 - Overall v0: 3.63 km/h, n=20348 (configured: 4.8 km/h).
 - **P0 estimator:** get/park bike (2 min total) and the expected stop delays (section 9.7, Webster 1958) are subtracted from the declared duration at the naive speed before computing the ride speed; P0 is `bike.required_power_w` at the single ratio-estimated implied flat speed (not an average of per-trip, nonlinear P0 values). EMP 2019's own mode codes do not separate e-bikes from bicycles (`mtp` 2.1 includes "assistance electrique"), so they cannot be excluded or reported apart.
-- Overall P0: 47.5 W at an implied flat speed of 15.70 km/h, n=2146 (section 9.7's reference: 52.5 W at 16 km/h).
+- Overall P0: 34.0 W at an implied flat speed of 13.39 km/h, n=2146 (section 9.7's reference: 52.5 W at 16 km/h).
 
 | Age band (AGE6) | n walk | v0 (km/h) | n cycle | implied flat speed (km/h) | P0 (W) |
 |---|---|---|---|---|---|
 | 00 | 1650 | 3.53 | 272 | 12.43 | 29.3 |
 | 15 | 3102 | 3.96 | 330 | 14.65 | 41.0 |
-| 30 | 2945 | 3.79 | 295 | 16.48 | 52.9 |
-| 40 | 2879 | 3.69 | 333 | 21.98 | 104.2 |
-| 50 | 3232 | 3.75 | 391 | 14.35 | 39.2 |
-| 60 | 6540 | 3.18 | 525 | 13.19 | 33.0 |
+| 30 | 2945 | 3.79 | 295 | 14.22 | 38.5 |
+| 40 | 2879 | 3.69 | 333 | 11.42 | 24.9 |
+| 50 | 3232 | 3.75 | 391 | 14.32 | 39.1 |
+| 60 | 6540 | 3.18 | 525 | 12.48 | 29.6 |
 
 ## Declared vs modelled walk/wait minutes, by mode group (step 1)
 
@@ -249,15 +249,15 @@ Cycling energy's work term is now time-based at the single calibrated P0 (34.8 W
 
 | Variant | n | mean energy kh (kJ) | median energy kh (kJ) | mean energy cp (kJ) | median energy cp (kJ) |
 |---|---|---|---|---|---|
-| all days | 565 | 601.9 | 421.1 | 583.8 | 390.2 |
+| all days | 565 | 588.0 | 421.1 | 570.0 | 390.2 |
 | weekdays only | 272 | 611.0 | 458.0 | 591.3 | 404.6 |
 
 ### Post-fix cycle-day decomposition (point 3)
 
 Ride work, unloaded pedalling and stops are the same formula in both rate sets (section 9.7's mechanical/physiological terms); only get/park (a standing activity rate) and the day's walking legs (c0) differ by rate set.
 
-- Mean ride time: 30.8 min; ride work: 268.1 kJ; unloaded pedalling: 166.9 kJ.
-- Stops: 73.5 kJ/day, 13.93 stops/day at `config.bike.stops.stops_per_km` = 2/km; 5.27 kJ/stop.
+- Mean ride time: 30.8 min; ride work: 268.0 kJ; unloaded pedalling: 166.8 kJ.
+- Stops: 59.8 kJ/day, 13.76 stops/day at `config.bike.stops.stops_per_km` = 2/km; 4.35 kJ/stop.
 - Get/park: 2 min/day fixed, 5.2 kJ (kh), 5.4 kJ (cp).
 - Walking trips of the same day: 5.4 min/day, 78.8 kJ (kh), 60.2 kJ (cp).
 
@@ -267,37 +267,37 @@ Ride work, unloaded pedalling and stops are the same formula in both rate sets (
 
 | Motive | n | weighted n | trip share | energy share (kh) | energy share (cp) | mean distance (km) | mean duration (min) |
 |---|---|---|---|---|---|---|---|
-| 9.5 other professional reason | 10 | 86,894 | 0.3% | 51.6% | 51.6% | 45.47 | 22.0 |
-| 7.6 sport | 361 | 3,197,832 | 9.8% | 35.4% | 35.4% | 11.24 | 54.0 |
-| 7.7 stroll, no specific destination | 510 | 3,575,720 | 10.9% | 3.7% | 3.7% | 6.71 | 50.4 |
-| 9.1 work, fixed usual workplace | 347 | 3,616,834 | 11.1% | 1.6% | 1.6% | 3.07 | 15.5 |
-| 2.2 shopping, local store | 617 | 4,850,054 | 14.9% | 1.3% | 1.3% | 1.88 | 10.8 |
-| 7.8 go to a place for walking | 199 | 2,141,343 | 6.6% | 1.1% | 1.1% | 5.25 | 31.1 |
-| 5.2 visit friends | 252 | 2,714,123 | 8.3% | 1.0% | 1.0% | 2.64 | 13.8 |
-| 1.4 study (school/university) | 139 | 3,329,092 | 10.2% | 0.9% | 0.9% | 2.46 | 13.8 |
-| 5.1 visit family | 155 | 1,661,495 | 5.1% | 0.5% | 0.5% | 2.04 | 11.3 |
-| 4.1 administrative errand | 105 | 1,220,376 | 3.7% | 0.5% | 0.5% | 2.25 | 13.0 |
-| 9.2 work, outside fixed workplace | 38 | 1,214,137 | 3.7% | 0.4% | 0.4% | 2.31 | 14.2 |
-| 7.2 leisure centre/amusement park/fair | 31 | 378,230 | 1.2% | 0.3% | 0.3% | 4.31 | 23.9 |
-| 2.1 shopping, mall/large store | 109 | 762,839 | 2.3% | 0.3% | 0.3% | 2.73 | 13.5 |
-| 7.1 association/religious/meeting | 75 | 636,444 | 1.9% | 0.2% | 0.2% | 2.30 | 13.7 |
-| 3.1 medical/personal care | 27 | 481,216 | 1.5% | 0.2% | 0.2% | 2.30 | 14.1 |
-| 6.2 accompany elsewhere | 42 | 570,071 | 1.7% | 0.2% | 0.2% | 2.47 | 14.8 |
-| 9.3 training/conference/exhibition | 9 | 290,221 | 0.9% | 0.2% | 0.2% | 3.90 | 23.3 |
-| 6.4 pick up elsewhere | 40 | 588,555 | 1.8% | 0.1% | 0.1% | 1.65 | 9.2 |
-| 8.4 other personal reason | 48 | 454,279 | 1.4% | 0.1% | 0.1% | 1.96 | 11.5 |
-| 7.3 eat/drink out | 61 | 354,848 | 1.1% | 0.1% | 0.1% | 2.50 | 14.9 |
-| 7.5 cultural/sports show, conference | 59 | 317,414 | 1.0% | 0.1% | 0.1% | 3.04 | 17.9 |
-| 6.3 pick up from station/airport | 6 | 83,854 | 0.3% | 0.1% | 0.1% | 2.00 | 13.3 |
-| 9.4 professional rounds/patient visits | 8 | 25,119 | 0.1% | 0.0% | 0.0% | 5.00 | 38.1 |
-| 1.1 return home | 2 | 32,206 | 0.1% | 0.0% | 0.0% | 3.50 | 17.5 |
-| 7.4 visit monument/historic site | 5 | 21,474 | 0.1% | 0.0% | 0.0% | 3.00 | 19.6 |
-| 1.3 return to parents'/friends' home | 4 | 24,231 | 0.1% | 0.0% | 0.0% | 3.30 | 16.2 |
+| 7.6 sport | 361 | 3,197,832 | 9.8% | 22.9% | 22.9% | 9.30 | 54.0 |
+| 7.7 stroll, no specific destination | 510 | 3,575,720 | 10.9% | 22.4% | 22.4% | 6.66 | 50.4 |
+| 9.1 work, fixed usual workplace | 347 | 3,616,834 | 11.1% | 9.5% | 9.5% | 3.07 | 15.5 |
+| 2.2 shopping, local store | 617 | 4,850,054 | 14.9% | 7.7% | 7.7% | 1.80 | 10.8 |
+| 7.8 go to a place for walking | 199 | 2,141,343 | 6.6% | 6.2% | 6.2% | 4.75 | 31.1 |
+| 1.4 study (school/university) | 139 | 3,329,092 | 10.2% | 5.7% | 5.7% | 2.46 | 13.8 |
+| 5.2 visit friends | 252 | 2,714,123 | 8.3% | 5.5% | 5.5% | 2.41 | 13.8 |
+| 5.1 visit family | 155 | 1,661,495 | 5.1% | 2.9% | 2.9% | 2.00 | 11.3 |
+| 4.1 administrative errand | 105 | 1,220,376 | 3.7% | 2.8% | 2.8% | 2.25 | 13.0 |
+| 9.2 work, outside fixed workplace | 38 | 1,214,137 | 3.7% | 2.5% | 2.5% | 2.31 | 14.2 |
+| 7.2 leisure centre/amusement park/fair | 31 | 378,230 | 1.2% | 1.7% | 1.7% | 4.31 | 23.9 |
+| 7.1 association/religious/meeting | 75 | 636,444 | 1.9% | 1.4% | 1.4% | 2.30 | 13.7 |
+| 2.1 shopping, mall/large store | 109 | 762,839 | 2.3% | 1.3% | 1.3% | 2.33 | 13.5 |
+| 3.1 medical/personal care | 27 | 481,216 | 1.5% | 1.2% | 1.2% | 2.30 | 14.1 |
+| 6.2 accompany elsewhere | 42 | 570,071 | 1.7% | 1.1% | 1.2% | 2.47 | 14.8 |
+| 9.3 training/conference/exhibition | 9 | 290,221 | 0.9% | 0.9% | 0.9% | 3.90 | 23.3 |
+| 6.4 pick up elsewhere | 40 | 588,555 | 1.8% | 0.9% | 0.9% | 1.65 | 9.2 |
+| 8.4 other personal reason | 48 | 454,279 | 1.4% | 0.8% | 0.8% | 1.96 | 11.5 |
+| 7.3 eat/drink out | 61 | 354,848 | 1.1% | 0.7% | 0.7% | 2.50 | 14.9 |
+| 7.5 cultural/sports show, conference | 59 | 317,414 | 1.0% | 0.7% | 0.7% | 3.04 | 17.9 |
+| 9.5 other professional reason | 10 | 86,894 | 0.3% | 0.5% | 0.5% | 4.24 | 22.0 |
+| 6.3 pick up from station/airport | 6 | 83,854 | 0.3% | 0.3% | 0.3% | 2.00 | 13.3 |
+| 9.4 professional rounds/patient visits | 8 | 25,119 | 0.1% | 0.1% | 0.1% | 5.00 | 38.1 |
+| 1.1 return home | 2 | 32,206 | 0.1% | 0.1% | 0.1% | 3.50 | 17.5 |
+| 7.4 visit monument/historic site | 5 | 21,474 | 0.1% | 0.1% | 0.1% | 3.00 | 19.6 |
+| 1.3 return to parents'/friends' home | 4 | 24,231 | 0.1% | 0.1% | 0.1% | 3.30 | 16.2 |
 | 1.5 young-child childcare drop-off | 4 | 23,826 | 0.1% | 0.0% | 0.0% | 1.02 | 7.0 |
 | 8.2 go to second home | 2 | 3,087 | 0.0% | 0.0% | 0.0% | 4.45 | 37.0 |
 | 1.2 return to occasional residence | 1 | 1,995 | 0.0% | 0.0% | 0.0% | 4.70 | 20.0 |
 
-**Excluded from the main report's scope** (motives 7.6, 7.7, 7.8, 8.1, 8.2, 8.3, 8.4: sport, stroll, no specific destination, go to a place for walking, holiday, away from second home, go to second home, go to occasional residence, other personal reason), among cycling trips: 28.7% of weighted trips, 40.3% of weighted energy (kh), 40.3% (cp).
+**Excluded from the main report's scope** (motives 7.6, 7.7, 7.8, 8.1, 8.2, 8.3, 8.4: sport, stroll, no specific destination, go to a place for walking, holiday, away from second home, go to second home, go to occasional residence, other personal reason), among cycling trips: 28.7% of weighted trips, 52.3% of weighted energy (kh), 52.3% (cp).
 
 ## Non-traveller immobility (point 2)
 

@@ -92,9 +92,13 @@ _BIKE_MAX_PLAUSIBLE_SPEED_KMH = 45.0
 #: (round 4's two-sided filter dropped whole days -- round 5 corrects
 #: the implausible trips instead, so stricter lower-bound flagging would
 #: just replace more declared values with the sample median). Public:
-#: used by `emp.py`'s report. Cycling energy is time-based (not
-#: distance-based) since round 4's fix, so only walk's and car's
-#: corrected distances feed the energy formula.
+#: used by `emp.py`'s report. Cycling energy's main work term is
+#: time-based (not distance-based) since round 4's fix, but its "stops"
+#: sub-term still multiplies by distance and by the distance-derived
+#: ride speed squared (section 9.7), so a flagged bike trip's distance
+#: is corrected too, like walk and car (round 9, after an ENTD 2008
+#: outlier -- a declared 376 km/65 min cycling leg -- inflated one day
+#: to ~1.3M kJ through this term).
 WALK_SPEED_UPPER_KMH = 7.0
 CYCLE_SPEED_UPPER_KMH = 35.0
 CAR_SPEED_UPPER_KMH = 130.0
@@ -582,14 +586,17 @@ def build_trip_legs(
         SELECT *,
             -- One shared median per mode, from the *not*-flagged trips
             -- (section 9.9's data-quality correction): the window has no
-            -- PARTITION BY, so every row of the walk (resp. car) rows
-            -- sees the same one value.
+            -- PARTITION BY, so every row of the walk (resp. car, cycle)
+            -- rows sees the same one value.
             median(implied_speed_kmh_declared) FILTER (
                 WHERE mode_group = 'walk' AND NOT speed_flagged_upper
             ) OVER () AS walk_median_speed_kmh,
             median(implied_speed_kmh_declared) FILTER (
                 WHERE mode_group IN ({car_modes_sql}) AND NOT speed_flagged_upper
-            ) OVER () AS car_median_speed_kmh
+            ) OVER () AS car_median_speed_kmh,
+            median(implied_speed_kmh_declared) FILTER (
+                WHERE mode_group = 'cycle' AND NOT speed_flagged_upper
+            ) OVER () AS cycle_median_speed_kmh
         FROM speed_flagged
     ),
     corrected AS (
@@ -597,14 +604,24 @@ def build_trip_legs(
             -- Correct, don't drop (section 9.9, step 11 round 5):
             -- distance = declared duration x the mode's median speed,
             -- for the trips flagged above the upper speed bound only.
-            -- Cycling energy is time-based (round 4), so only walk's and
-            -- car's corrected distances matter to the energy formulas
-            -- below; bike is flagged (reported) but not corrected.
+            -- Cycling energy's main work term is time-based (round 4),
+            -- but its "stops" sub-term still multiplies by distance_km
+            -- and by the (distance-derived) ride speed squared, so an
+            -- uncorrected implausible declared distance still reaches
+            -- the energy formula through it (round 9: a single ENTD
+            -- 2008 day with a declared 376 km/65 min cycling leg, c.
+            -- 347 km/h, inflated that one day's energy to ~1.3M kJ and,
+            -- through its section 9.9 population weight, the whole
+            -- group's and the 2008-2019 comparison's headline means);
+            -- cycle is corrected here like walk and car, not left
+            -- "flagged but uncorrected".
             CASE
                 WHEN mode_group = 'walk' AND speed_flagged_upper
                     THEN duration_min / 60.0 * walk_median_speed_kmh
                 WHEN mode_group IN ({car_modes_sql}) AND speed_flagged_upper
                     THEN duration_min / 60.0 * car_median_speed_kmh
+                WHEN mode_group = 'cycle' AND speed_flagged_upper
+                    THEN duration_min / 60.0 * cycle_median_speed_kmh
                 ELSE distance_km_declared
             END AS distance_km
         FROM speed_medians

@@ -1718,9 +1718,11 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         f"{emp2019.CYCLE_SPEED_UPPER_KMH:g} km/h, car (driver or passenger) > "
         f"{emp2019.CAR_SPEED_UPPER_KMH:g} km/h -- their declared distance is "
         "replaced by declared duration x the mode's own median speed "
-        "(from its not-flagged trips). Cycling energy is time-based "
-        "(round 4), so only walk's and car's corrected distances feed the "
-        "energy formulas; bike is flagged (reported) but not corrected.",
+        "(from its not-flagged trips). Cycling energy's main work term "
+        "is time-based (round 4), but its \"stops\" sub-term still "
+        "multiplies by distance and by the distance-derived ride speed "
+        "squared (section 9.7), so a flagged bike trip's distance is "
+        "corrected too, like walk and car (round 9).",
         "",
         *[f"- {mode}: {corrected:,} of {total:,} trips corrected"
           for mode, corrected, total in results["quality_counts"]],
@@ -2168,6 +2170,7 @@ def run_compare(
 
     figure_path = _figure_compare_energy_time(
         results_2008["mode_stats"], results_2019_proxy["mode_stats"],
+        (results_2008["mean_kh"], results_2019_proxy["mean_kh"]),
         (results_2008["mean_cp"], results_2019_proxy["mean_cp"]),
         (results_2008["mean_time_min"], results_2019_proxy["mean_time_min"]),
         out_path,
@@ -2187,45 +2190,55 @@ def run_compare(
 def _figure_compare_energy_time(
     stats_2008: list[daily_energy.GroupStats],
     stats_2019: list[daily_energy.GroupStats],
+    overall_mean_energy_kh: tuple[float, float],
     overall_mean_energy_cp: tuple[float, float],
     overall_mean_time_min: tuple[float, float],
     out_dir: Path,
 ) -> Path:
-    """One figure: mean daily energy and time by group, 2008 vs 2019,
-    with CI (section 9.9's "Outputs of the re-estimation" comparison
-    list), plus each year's own global mean (all groups combined,
-    ``overall_mean_energy_cp``/``overall_mean_time_min``, 2008 then
-    2019) as a labelled horizontal reference line on both panels, as
-    F4a does for the single-survey report."""
+    """One figure: mean daily energy (both rate sets) and time by group,
+    2008 vs 2019, with CI (section 9.9's "Outputs of the re-estimation"
+    comparison list), plus each year's own global mean (all groups
+    combined, the ``overall_mean_*`` tuples, 2008 then 2019) as a
+    labelled horizontal reference line on every panel, as F4a does for
+    the single-survey report."""
     by_2008 = {s.group: s for s in stats_2008}
     by_2019 = {s.group: s for s in stats_2019}
     groups = [g for g in daily_energy.DAY_MODE_GROUPS if g in by_2008 or g in by_2019]
     x = np.arange(len(groups))
     width = 0.35
 
-    fig, (ax_energy, ax_time) = plt.subplots(1, 2, figsize=(13, 6))
+    fig, (ax_energy_kh, ax_energy_cp, ax_time) = plt.subplots(1, 3, figsize=(19, 6))
+    for ax, rate_key in ((ax_energy_kh, "kh"), (ax_energy_cp, "cp")):
+        for offset, by_year, label in (
+            (-width / 2, by_2008, "2008"), (width / 2, by_2019, "2019"),
+        ):
+            means = [
+                getattr(by_year[g], f"mean_energy_{rate_key}_kj")
+                if g in by_year else np.nan for g in groups
+            ]
+            lowers = [
+                getattr(by_year[g], f"mean_energy_{rate_key}_kj")
+                - getattr(by_year[g], f"mean_energy_{rate_key}_ci")[0]
+                if g in by_year else 0.0 for g in groups
+            ]
+            uppers = [
+                getattr(by_year[g], f"mean_energy_{rate_key}_ci")[1]
+                - getattr(by_year[g], f"mean_energy_{rate_key}_kj")
+                if g in by_year else 0.0 for g in groups
+            ]
+            ax.bar(
+                x + offset, means, width, yerr=[lowers, uppers], label=label,
+                capsize=2,
+            )
     for offset, by_year, label in (
         (-width / 2, by_2008, "2008"), (width / 2, by_2019, "2019"),
     ):
-        means = [
-            by_year[g].mean_energy_cp_kj if g in by_year else np.nan for g in groups
-        ]
-        lowers = [
-            by_year[g].mean_energy_cp_kj - by_year[g].mean_energy_cp_ci[0]
-            if g in by_year else 0.0 for g in groups
-        ]
-        uppers = [
-            by_year[g].mean_energy_cp_ci[1] - by_year[g].mean_energy_cp_kj
-            if g in by_year else 0.0 for g in groups
-        ]
-        ax_energy.bar(
-            x + offset, means, width, yerr=[lowers, uppers], label=label, capsize=2,
-        )
         times = [by_year[g].mean_time_min if g in by_year else np.nan for g in groups]
         ax_time.bar(x + offset, times, width, label=label)
 
     for ax, overall_values, unit in (
-        (ax_energy, overall_mean_energy_cp, "kJ"),
+        (ax_energy_kh, overall_mean_energy_kh, "kJ"),
+        (ax_energy_cp, overall_mean_energy_cp, "kJ"),
         (ax_time, overall_mean_time_min, "min"),
     ):
         label_transform = ax.get_yaxis_transform()
@@ -2236,7 +2249,7 @@ def _figure_compare_energy_time(
             ax.axhline(value, color=color, linestyle="--", linewidth=1.0)
             # Left-anchored (not right): a right-anchored label can
             # render into the neighbouring subplot's own white
-            # background and look clipped there, since the two panels
+            # background and look clipped there, since adjacent panels
             # share a narrow gap (``fig.tight_layout()`` does not widen
             # it for text added after the axes are built).
             ax.text(
@@ -2245,18 +2258,22 @@ def _figure_compare_energy_time(
                 va=va,
             )
 
-    ax_energy.set_xticks(x)
-    ax_energy.set_xticklabels(groups, rotation=30, ha="right")
-    ax_energy.set_ylabel("Mean daily energy, kJ (compendium)")
-    ax_energy.legend()
+    ax_energy_kh.set_xticks(x)
+    ax_energy_kh.set_xticklabels(groups, rotation=30, ha="right")
+    ax_energy_kh.set_ylabel("Mean daily energy, kJ (KH)")
+    ax_energy_kh.legend()
+    ax_energy_cp.set_xticks(x)
+    ax_energy_cp.set_xticklabels(groups, rotation=30, ha="right")
+    ax_energy_cp.set_ylabel("Mean daily energy, kJ (compendium)")
+    ax_energy_cp.legend()
     ax_time.set_xticks(x)
     ax_time.set_xticklabels(groups, rotation=30, ha="right")
     ax_time.set_ylabel("Mean daily time, minutes")
     ax_time.legend()
     fig.suptitle(
-        "Mean daily energy and time by main-mode group, 2008 vs 2019 "
-        "(density proxy in both, section 9.9); dashed lines are each "
-        "year's own global mean, all groups combined"
+        "Mean daily energy (both rate sets) and time by main-mode group, "
+        "2008 vs 2019 (density proxy in both, section 9.9); dashed lines "
+        "are each year's own global mean, all groups combined"
     )
     fig.tight_layout()
     path = out_dir / "compare_energy_time.png"

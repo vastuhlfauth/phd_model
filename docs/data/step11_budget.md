@@ -48,7 +48,7 @@ Every table and figure above and below is restricted to this scope (2026-10-20 p
 
 ## Data-quality correction: implausible door-to-door speeds
 
-Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above an upper speed bound only -- walk > 7 km/h, bike > 35 km/h, car (driver or passenger) > 130 km/h -- their declared distance is replaced by declared duration x the mode's own median speed (from its not-flagged trips). Cycling energy is time-based (round 4), so only walk's and car's corrected distances feed the energy formulas; bike is flagged (reported) but not corrected.
+Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above an upper speed bound only -- walk > 7 km/h, bike > 35 km/h, car (driver or passenger) > 130 km/h -- their declared distance is replaced by declared duration x the mode's own median speed (from its not-flagged trips). Cycling energy's main work term is time-based (round 4), but its "stops" sub-term still multiplies by distance and by the distance-derived ride speed squared (section 9.7), so a flagged bike trip's distance is corrected too, like walk and car (round 9).
 
 - car_driver: 0 of 23,859 trips corrected
 - car_passenger_carpool: 0 of 1,993 trips corrected
