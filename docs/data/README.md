@@ -7,6 +7,7 @@ One page per dataset, written with `/schema` before any step uses the dataset. A
 | Dataset | Page | Vintages | Used by step |
 |---|---|---|---|
 | GTFS acquisition inventory | [gtfs.md](gtfs.md) | Configured snapshot; service dates checked independently | 2, 0 |
+| EMP 2019 public tables | [emp2019.md](emp2019.md) | Fieldwork 2018-2019; public release December 2021, updated November 2024 | 11 |
 
 ## Template for a dataset page
 

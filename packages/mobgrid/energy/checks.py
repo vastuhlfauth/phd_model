@@ -224,17 +224,29 @@ def _ebike_ride(
     )
 
 
-def _rider_metabolic_kj(power_w: float, efficiency: float, duration_s: float) -> float:
-    """Rider-only metabolic energy, kJ: P_r/efficiency . t (section 9.7).
+def _rider_metabolic_kj(
+    power_w: float,
+    efficiency: float,
+    duration_s: float,
+    rider_mass_kg: float,
+    unloaded_net_met_per_min: float,
+) -> float:
+    """Rider-only metabolic energy, kJ: P_r/efficiency . t, plus the
+    unloaded pedalling cost on the rider's own mass (section 9.7).
 
-    Correct for both a plain bike (where the rider supplies all propulsive
-    power) and an e-bike (where ``power_w`` is the rider's own share only,
-    "rider energy from P_r only"): going faster on the same rider power
-    (because the motor adds the rest) simply means less *time* is spent,
-    not more effort.
+    The work term is correct for both a plain bike (where the rider
+    supplies all propulsive power) and an e-bike (where ``power_w`` is the
+    rider's own share only, "rider energy from P_r only"): going faster on
+    the same rider power (because the motor adds the rest) simply means
+    less *time* is spent, not more effort. ``duration_s`` is treated as
+    pedalled time throughout (this figure never coasts).
     """
     rate_kj_per_min = power_w / efficiency * 60.0 / 1000.0
-    return sedentary_energy_kj(rate_kj_per_min, duration_s)
+    work_kj = sedentary_energy_kj(rate_kj_per_min, duration_s)
+    unloaded_kj = bike.unloaded_pedalling_energy_kj(
+        duration_s, rider_mass_kg, unloaded_net_met_per_min
+    )
+    return work_kj + unloaded_kj
 
 
 # --------------------------------------------------------------------- F1 --
@@ -464,7 +476,11 @@ def figure_3_bike(
             )
             speeds.append(speed * 3.6)
             time_s = length_m / speed if speed > 0 else float("inf")
-            energies.append(_rider_metabolic_kj(power, eff, time_s))
+            energies.append(
+                _rider_metabolic_kj(
+                    power, eff, time_s, MASS_KG, config.bike.pedalling_unloaded_net_met
+                )
+            )
         ax_speed.plot(grades * 100, speeds, linestyle=style, label=name)
         ax_energy.plot(grades * 100, energies, linestyle=style, label=name)
 
@@ -479,9 +495,15 @@ def figure_3_bike(
             )
             speeds.append(speed * 3.6)
             time_s = length_m / speed if speed > 0 else float("inf")
-            # Rider-only metabolic energy: P_r . time / efficiency, correct
-            # whether or not a motor also contributed (section 9.7).
-            energies.append(_rider_metabolic_kj(rider_power, eff, time_s))
+            # Rider-only metabolic energy: P_r . time / efficiency, plus
+            # the unloaded pedalling cost, correct whether or not a motor
+            # also contributed (section 9.7).
+            energies.append(
+                _rider_metabolic_kj(
+                    rider_power, eff, time_s, MASS_KG,
+                    config.bike.pedalling_unloaded_net_met,
+                )
+            )
         ax_speed.plot(
             grades * 100, speeds, linestyle=style, alpha=0.8,
             label=f"E-bike A, {level}",
@@ -547,10 +569,16 @@ def figure_3_bike(
         rows, "mechanical power, 16 km/h flat, M=85 kg", "~52.5 W (9.7)", 52.5,
         power_16, rel_tol=0.02, unit=" W",
     )
-    rate_16 = power_16 / eff * 60.0 / 1000.0
+    time_16_s = 1000.0 / (16.0 * 1000.0 / 3600.0)
+    rate_16 = (
+        power_16 / eff * 60.0 / 1000.0
+        + bike.unloaded_pedalling_energy_kj(
+            time_16_s, MASS_KG, config.bike.pedalling_unloaded_net_met
+        ) / (time_16_s / 60.0)
+    )
     _add_check(
-        rows, "metabolic rate, 16 km/h flat, M=85 kg", "~13.1 kJ/min (9.7)", 13.1,
-        rate_16, rel_tol=0.02, unit=" kJ/min",
+        rows, "metabolic rate, 16 km/h flat, M=85 kg (work + unloaded)",
+        "~18.2 kJ/min (9.7)", 18.2, rate_16, rel_tol=0.02, unit=" kJ/min",
     )
     speed_check = bike.solve_bike_speed_m_per_s(
         power_16, bike_mass, 0.0, crr, config.bike.cda_m2,
@@ -622,6 +650,11 @@ def figure_4_bike_energy_split(
     efficiency only, as if the rider alone supplied it. For an e-bike,
     that total is then split by s_r = P_r/(P_r+P_m) (section 9.7, A2):
     the rider's share is solid, the motor's share hatched on top.
+
+    This is a mechanical-work split only: the unloaded pedalling cost
+    (section 9.7) is not one of roll/climb/stops/drag and is left out of
+    this figure, which would otherwise need a fifth, speed-only bar; see
+    F3 and F9/F10 for the rider's full metabolic energy.
     """
     rows: list[CheckRow] = []
     crr = config.bike.surface_crr[_SURFACE_KEY]
@@ -1038,7 +1071,9 @@ def _bike_ride_leg(
         length_m, speed, config.bike.rho_air_kg_per_m3, config.bike.cda_m2
     )
     ride_kj = bike.bike_ride_energy_kj(
-        roll, climb, 0.0, drag, mass_total, eff, rider_share=rider_share
+        roll, climb, 0.0, drag, mass_total, eff, rider_share=rider_share,
+        rider_mass_kg=MASS_KG, pedalled_time_s=length_m / speed,
+        unloaded_net_met_per_min=config.bike.pedalling_unloaded_net_met,
     )
     stop_kj = n_stops * bike.stop_energy_kj(speed, mass_total, eff, rider_share)
     stop_s = n_stops * bike.stop_time_s(
@@ -1549,7 +1584,11 @@ def _f9_main_rate_kj_per_min(
     if mode_key == "cycle":
         power_set_a = provisional["bike_power"]["A"]
         eff = config.bike.gross_muscular_efficiency
-        return power_set_a["p0_w"] / eff * 60.0 / 1000.0
+        work_rate = power_set_a["p0_w"] / eff * 60.0 / 1000.0
+        unloaded_rate = (
+            config.bike.pedalling_unloaded_net_met * MET_MINUTE_KJ_PER_KG * MASS_KG
+        )
+        return work_rate + unloaded_rate
     if mode_key == "bus":
         return _f9_pt_rate_kj_per_min("urban_bus", config)
     if mode_key == "train":
@@ -1811,7 +1850,12 @@ def figure_10_mass_sensitivity(
             speed, power = _bike_ride(
                 0.0, power_a, mass_total, config, v_max_desc_m_per_s
             )
-            bike_energies.append(_rider_metabolic_kj(power, eff, length_m / speed))
+            bike_energies.append(
+                _rider_metabolic_kj(
+                    power, eff, length_m / speed, float(m),
+                    config.bike.pedalling_unloaded_net_met,
+                )
+            )
         ax.plot(
             masses, bike_energies, linestyle=style, color="tab:blue",
             label=f"Bike A ({rate_set})",
@@ -1824,7 +1868,10 @@ def figure_10_mass_sensitivity(
                 0.0, power_a, mass_total, config, "tour", v_max_desc_m_per_s
             )
             ebike_energies.append(
-                _rider_metabolic_kj(rider_power, eff, length_m / speed)
+                _rider_metabolic_kj(
+                    rider_power, eff, length_m / speed, float(m),
+                    config.bike.pedalling_unloaded_net_met,
+                )
             )
         ax.plot(
             masses, ebike_energies, linestyle=style, color="tab:orange",

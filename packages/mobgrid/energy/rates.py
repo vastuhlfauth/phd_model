@@ -74,7 +74,14 @@ class WaitingConfig(BaseModel):
 
 
 class PtRideConfig(BaseModel):
-    """Public transport ride energy parameters (section 9.5)."""
+    """Public transport ride energy parameters (section 9.5).
+
+    ``headway_min_am_peak``, ``station_height_m`` and
+    ``access_walk_m_by_density`` are provisional, used only by the
+    section 9.9 re-estimation (step 11: ``mobgrid.budget.emp``), which
+    has no headway, station-depth or access-distance data of its own
+    (TODO(confirm), section 9.9).
+    """
 
     model_config = ConfigDict(extra="forbid")
     r_sit_kj_per_min: float = Field(gt=0)
@@ -82,6 +89,9 @@ class PtRideConfig(BaseModel):
     r_restless_kj_per_min: float = Field(gt=0)
     load_factor_max: dict[str, float]
     standing_share_am_peak: dict[str, float]
+    headway_min_am_peak: dict[str, float]
+    station_height_m: dict[str, float]
+    access_walk_m_by_density: dict[str, float]
 
 
 class WalkToCarConfig(BaseModel):
@@ -137,17 +147,27 @@ class EbikeConfig(BaseModel):
 
 class StopsConfig(BaseModel):
     """Bike stop time parameters (section 9.7); not yet calibrated against
-    observed signal timings or braking/acceleration rates."""
+    observed signal timings or braking/acceleration rates.
+
+    ``stops_per_km`` is provisional, used only by the section 9.9
+    re-estimation (step 11)."""
 
     model_config = ConfigDict(extra="forbid")
     deceleration_m_per_s2: float = Field(gt=0)
     acceleration_m_per_s2: float = Field(gt=0)
     signal_cycle_s: float = Field(gt=0)
     red_time_s: float = Field(ge=0)
+    stops_per_km: float = Field(ge=0)
 
 
 class BikeConfig(BaseModel):
-    """Bike leg parameters (section 9.7)."""
+    """Bike leg parameters (section 9.7).
+
+    ``get_park_min`` is used by step 11's re-estimation to recover
+    ride-only time from a trip's declared duration. ``pedalling_unloaded_net_met``
+    is the unloaded pedalling cost, in net MET-minutes per pedalled
+    minute, charged on the rider's own mass regardless of mechanical
+    power (ACSM leg-cycling equation; Swain 2000)."""
 
     model_config = ConfigDict(extra="forbid")
     bike_mass_kg: float = Field(gt=0)
@@ -157,6 +177,8 @@ class BikeConfig(BaseModel):
     rho_air_kg_per_m3: float = Field(gt=0)
     cda_m2: float = Field(gt=0)
     separated_infra_factor: float = Field(gt=0, le=1)
+    get_park_min: float = Field(ge=0)
+    pedalling_unloaded_net_met: float = Field(gt=0)
     surface_crr: dict[str, float]
     power: BikePowerConfig
     ebike: EbikeConfig

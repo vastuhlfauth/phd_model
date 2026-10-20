@@ -26,8 +26,10 @@ def test_config_loads_and_validates() -> None:
     config = _config()
     assert config.reference_mass_kg > 0
     assert config.rate_set in ("kh", "compendium")
-    # Bike power parameters are unconfirmed placeholders (section 9.7).
-    assert config.bike.power.p0_w is None
+    # P0 is confirmed by the section 9.9 re-estimation (EMP 2019, step
+    # 11); k and P_max remain unconfirmed placeholders (section 9.7).
+    assert config.bike.power.p0_w == pytest.approx(34.8)
+    assert config.bike.power.k is None
 
 
 @pytest.mark.parametrize(
