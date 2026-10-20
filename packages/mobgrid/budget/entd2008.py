@@ -54,19 +54,30 @@ RAW_FILES = {
 #: (studying)).
 _CODE_COLUMN_TYPES = {
     "k_deploc.csv": {
-        "IDENT_DEP": "VARCHAR", "IDENT_IND": "VARCHAR", "IDENT_MEN": "VARCHAR",
-        "IDENT_JOUR": "VARCHAR", "V2_MTP": "VARCHAR", "V2_MMOTIFDES": "VARCHAR",
-        "V2_MMOTIFORI": "VARCHAR", "V2_TYPJOUR": "VARCHAR", "V2_MORIDOM": "VARCHAR",
-        "v2_moricom_UU2010": "VARCHAR", "v2_mdescom_UU2010": "VARCHAR",
+        "IDENT_DEP": "VARCHAR",
+        "IDENT_IND": "VARCHAR",
+        "IDENT_MEN": "VARCHAR",
+        "IDENT_JOUR": "VARCHAR",
+        "V2_MTP": "VARCHAR",
+        "V2_MMOTIFDES": "VARCHAR",
+        "V2_MMOTIFORI": "VARCHAR",
+        "V2_TYPJOUR": "VARCHAR",
+        "V2_MORIDOM": "VARCHAR",
+        "v2_moricom_UU2010": "VARCHAR",
+        "v2_mdescom_UU2010": "VARCHAR",
     },
     "k_individu.csv": {
-        "IDENT_IND": "VARCHAR", "IDENT_MEN": "VARCHAR",
+        "IDENT_IND": "VARCHAR",
+        "IDENT_MEN": "VARCHAR",
     },
     "q_tcm_individu.csv": {
-        "IDENT_IND": "VARCHAR", "SITUA": "VARCHAR", "AGE6": "VARCHAR",
+        "IDENT_IND": "VARCHAR",
+        "SITUA": "VARCHAR",
+        "AGE6": "VARCHAR",
     },
     "q_tcm_menage.csv": {
-        "IDENT_MEN": "VARCHAR", "TU99": "VARCHAR",
+        "IDENT_MEN": "VARCHAR",
+        "TU99": "VARCHAR",
     },
 }
 
@@ -77,14 +88,25 @@ _CODE_COLUMN_TYPES = {
 #: `mode_group = 'other'`, matching EMP 2019's own missing/refused mtp
 #: handling.
 _MODE_CONVERSION = {
-    "1.10": 1.1, "1.11": 1.1, "1.12": 1.1, "1.13": 1.1,
+    "1.10": 1.1,
+    "1.11": 1.1,
+    "1.12": 1.1,
+    "1.13": 1.1,
     "2.20": 2.1,
-    "2.22": 2.3, "2.23": 2.3, "2.24": 2.3, "2.25": 2.3, "2.29": 2.3,
-    "3.30": 3.1, "3.31": 3.1,
+    "2.22": 2.3,
+    "2.23": 2.3,
+    "2.24": 2.3,
+    "2.25": 2.3,
+    "2.29": 2.3,
+    "3.30": 3.1,
+    "3.31": 3.1,
     "3.32": 3.2,
     "3.33": 3.3,
     "3.39": 3.4,
-    "4.40": 4.1, "4.41": 4.1, "4.42": 4.1, "4.43": 4.1,
+    "4.40": 4.1,
+    "4.41": 4.1,
+    "4.42": 4.1,
+    "4.43": 4.1,
     "5.50": 5.1,
     "5.51": 5.2,
     "5.52": 5.3,
@@ -95,8 +117,11 @@ _MODE_CONVERSION = {
     "5.57": 5.8,
     "5.58": 5.9,
     "5.59": 5.1,
-    "6.60": 6.1, "6.61": 6.1,
-    "6.62": 6.3, "6.63": 6.3, "6.69": 6.3,
+    "6.60": 6.1,
+    "6.61": 6.1,
+    "6.62": 6.3,
+    "6.63": 6.3,
+    "6.69": 6.3,
     "7.70": 7.1,
     "8.80": 8.1,
     "9.90": 9.1,
@@ -109,17 +134,38 @@ _MODE_CONVERSION = {
 #: unmapped (NULL for an unlisted code; 1.1/1.2/1.3 are both the input
 #: and the output, so they are listed too, for clarity).
 _PURPOSE_CONVERSION = {
-    "1.1": 1.1, "1.2": 1.2, "1.3": 1.3,
-    "1.11": 1.4, "1.12": 1.5,
-    "2.20": 2.1, "2.21": 2.2,
+    "1.1": 1.1,
+    "1.2": 1.2,
+    "1.3": 1.3,
+    "1.11": 1.4,
+    "1.12": 1.5,
+    "2.20": 2.1,
+    "2.21": 2.2,
     "3.31": 3.1,
     "4.41": 4.1,
-    "5.51": 5.1, "5.52": 5.2,
-    "6.61": 6.1, "6.62": 6.2, "6.63": 6.3, "6.64": 6.4,
-    "7.71": 7.1, "7.72": 7.2, "7.73": 7.3, "7.74": 7.4, "7.75": 7.5,
-    "7.76": 7.6, "7.77": 7.7, "7.78": 7.8,
-    "8.80": 8.1, "8.81": 8.2, "8.82": 8.3, "8.89": 8.4,
-    "9.91": 9.1, "9.92": 9.2, "9.94": 9.3, "9.95": 9.4, "9.96": 9.5,
+    "5.51": 5.1,
+    "5.52": 5.2,
+    "6.61": 6.1,
+    "6.62": 6.2,
+    "6.63": 6.3,
+    "6.64": 6.4,
+    "7.71": 7.1,
+    "7.72": 7.2,
+    "7.73": 7.3,
+    "7.74": 7.4,
+    "7.75": 7.5,
+    "7.76": 7.6,
+    "7.77": 7.7,
+    "7.78": 7.8,
+    "8.80": 8.1,
+    "8.81": 8.2,
+    "8.82": 8.3,
+    "8.89": 8.4,
+    "9.91": 9.1,
+    "9.92": 9.2,
+    "9.94": 9.3,
+    "9.95": 9.4,
+    "9.96": 9.5,
 }
 
 #: `SITUA` (2008) -> section 6.1's five population categories (same
@@ -188,7 +234,9 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
     motifdes_sql = trip_legs._case_sql("d.V2_MMOTIFDES", _PURPOSE_CONVERSION)
     motifori_sql = trip_legs._case_sql("d.V2_MMOTIFORI", _PURPOSE_CONVERSION)
     population_category_sql = trip_legs._case_sql(
-        "q.SITUA", _POPULATION_CATEGORY_BY_SITUA, default="'unknown'",
+        "q.SITUA",
+        _POPULATION_CATEGORY_BY_SITUA,
+        default="'unknown'",
         quote_values=True,
     )
 
@@ -265,7 +313,9 @@ def build_trip_legs(
     """
     build_trips_norm(con)
     trip_legs.build_trip_legs(
-        con, config, terminal_scale=terminal_scale,
+        con,
+        config,
+        terminal_scale=terminal_scale,
         bike_p0_override_w=bike_p0_override_w,
         density_source=density_source or DEFAULT_DENSITY_SOURCE,
     )
@@ -311,16 +361,22 @@ def non_traveler_summary(con: duckdb.DuckDBPyConnection) -> dict:
     trips": "Weekend immobility... is not needed for the comparison,
     since EMP 2019 identifies weekday non-travellers only").
     """
-    non_traveler_weight = con.sql(
-        "SELECT sum(PONDKI) FROM k_individu WHERE V2_MOBILREF = 0"
-    ).fetchone()[0] or 0.0
+    non_traveler_weight = (
+        con.sql("SELECT sum(PONDKI) FROM k_individu WHERE V2_MOBILREF = 0").fetchone()[
+            0
+        ]
+        or 0.0
+    )
     non_traveler_n = con.sql(
         "SELECT count(*) FROM k_individu WHERE V2_MOBILREF = 0"
     ).fetchone()[0]
-    traveler_weekday_weight = con.sql("""
+    traveler_weekday_weight = (
+        con.sql("""
         SELECT sum(pond_ind) FROM day_summary
         WHERE typejour = 1 AND total_energy_kh_kj IS NOT NULL
-    """).fetchone()[0] or 0.0
+    """).fetchone()[0]
+        or 0.0
+    )
     share = float(non_traveler_weight) / (
         float(non_traveler_weight) + float(traveler_weekday_weight)
     )

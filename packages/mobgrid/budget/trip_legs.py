@@ -103,7 +103,9 @@ WALK_SPEED_UPPER_KMH = 7.0
 CYCLE_SPEED_UPPER_KMH = 35.0
 CAR_SPEED_UPPER_KMH = 130.0
 _CAR_MODE_GROUPS = (
-    "car_driver", "car_passenger_household", "car_passenger_carpool",
+    "car_driver",
+    "car_passenger_household",
+    "car_passenger_carpool",
 )
 
 #: `mode_group = 'other'` day-mode-group contents, stated for the report
@@ -319,14 +321,22 @@ def _vehicle_stair_legs(
     result: dict[str, tuple[float, float, float]] = {}
     for vehicle, height_m in config.pt_ride.station_height_m.items():
         down_s, down_e_kj = walk.stair_time_and_energy(
-            height_m, "down", config.reference_mass_kg,
-            stairs.up_speed_m_per_s, stairs.down_speed_m_per_s,
-            stairs.up_efficiency, stairs.down_to_up_energy_ratio,
+            height_m,
+            "down",
+            config.reference_mass_kg,
+            stairs.up_speed_m_per_s,
+            stairs.down_speed_m_per_s,
+            stairs.up_efficiency,
+            stairs.down_to_up_energy_ratio,
         )
         up_s, up_e_kj = walk.stair_time_and_energy(
-            height_m, "up", config.reference_mass_kg,
-            stairs.up_speed_m_per_s, stairs.down_speed_m_per_s,
-            stairs.up_efficiency, stairs.down_to_up_energy_ratio,
+            height_m,
+            "up",
+            config.reference_mass_kg,
+            stairs.up_speed_m_per_s,
+            stairs.down_speed_m_per_s,
+            stairs.up_efficiency,
+            stairs.down_to_up_energy_ratio,
         )
         time_min = (down_s + up_s) / 60.0
         if height_m > stairs.escalator_depth_threshold_m:
@@ -347,7 +357,9 @@ def _vehicle_wait_minutes(config: EnergyConfig) -> dict[str, float]:
         cv_key = _CV_KEY_BY_VEHICLE[vehicle]
         cv = config.waiting.cv_defaults[cv_key]
         wait_s = legs.expected_wait_s(
-            headway_min * 60.0, cv, waiting.headway_regime_threshold_min * 60.0,
+            headway_min * 60.0,
+            cv,
+            waiting.headway_regime_threshold_min * 60.0,
             waiting.w_planned_min * 60.0,
         )
         result[vehicle] = wait_s / 60.0
@@ -363,8 +375,11 @@ def _vehicle_ride_rate_kj_per_min(config: EnergyConfig) -> dict[str, float]:
     for vehicle, standing_share in pt_ride.standing_share_am_peak.items():
         load_factor = _implied_load_factor(standing_share)
         result[vehicle] = legs.pt_ride_rate_kj_per_min(
-            load_factor, pt_ride.load_factor_max[vehicle], pt_ride.r_sit_kj_per_min,
-            pt_ride.r_relaxed_kj_per_min, pt_ride.r_restless_kj_per_min,
+            load_factor,
+            pt_ride.load_factor_max[vehicle],
+            pt_ride.r_sit_kj_per_min,
+            pt_ride.r_relaxed_kj_per_min,
+            pt_ride.r_restless_kj_per_min,
         )
     return result
 
@@ -433,8 +448,7 @@ def build_trip_legs(
     mass = config.reference_mass_kg
     walking = config.walking
     bike_p0_w = (
-        bike_p0_override_w if bike_p0_override_w is not None
-        else config.bike.power.p0_w
+        bike_p0_override_w if bike_p0_override_w is not None else config.bike.power.p0_w
     )
     if bike_p0_w is None:
         raise ValueError(
@@ -443,12 +457,18 @@ def build_trip_legs(
         )
 
     walk_rate_kh = walk.walking_time_and_energy(
-        [(walking.v0_kmh * 1000.0 / 60.0, 0.0)], mass, walking.v0_kmh,
-        walking.c0_j_per_kg_m["kh"], walking.gradient_polynomial_j_per_kg_m,
+        [(walking.v0_kmh * 1000.0 / 60.0, 0.0)],
+        mass,
+        walking.v0_kmh,
+        walking.c0_j_per_kg_m["kh"],
+        walking.gradient_polynomial_j_per_kg_m,
     )[1]
     walk_rate_cp = walk.walking_time_and_energy(
-        [(walking.v0_kmh * 1000.0 / 60.0, 0.0)], mass, walking.v0_kmh,
-        walking.c0_j_per_kg_m["compendium"], walking.gradient_polynomial_j_per_kg_m,
+        [(walking.v0_kmh * 1000.0 / 60.0, 0.0)],
+        mass,
+        walking.v0_kmh,
+        walking.c0_j_per_kg_m["compendium"],
+        walking.gradient_polynomial_j_per_kg_m,
     )[1]
     standing_kh = activity_rate_kj_per_min(
         config.activity_rates["standing_relaxed"], "kh", mass
@@ -470,10 +490,12 @@ def build_trip_legs(
     )
 
     v0_m_per_s = walking.v0_kmh * 1000.0 / 3600.0
-    access_walk_min_by_density = relabel_density({
-        density: metres / v0_m_per_s / 60.0
-        for density, metres in config.pt_ride.access_walk_m_by_density.items()
-    })
+    access_walk_min_by_density = relabel_density(
+        {
+            density: metres / v0_m_per_s / 60.0
+            for density, metres in config.pt_ride.access_walk_m_by_density.items()
+        }
+    )
     stair_legs = _vehicle_stair_legs(config, (standing_kh, standing_cp))
     wait_minutes = _vehicle_wait_minutes(config)
     ride_rate = _vehicle_ride_rate_kj_per_min(config)
@@ -533,9 +555,13 @@ def build_trip_legs(
         )
     """
 
-    vehicle_mapping_sql = "CASE mtp\n    " + "\n    ".join(
-        f"WHEN {code} THEN '{vehicle}'" for code, vehicle in _VEHICLE_BY_MTP.items()
-    ) + "\n    ELSE NULL\nEND"
+    vehicle_mapping_sql = (
+        "CASE mtp\n    "
+        + "\n    ".join(
+            f"WHEN {code} THEN '{vehicle}'" for code, vehicle in _VEHICLE_BY_MTP.items()
+        )
+        + "\n    ELSE NULL\nEND"
+    )
 
     if density_source == "grid":
         density_ori_sql = "coalesce(density_ori_grid, 'intermediate')"

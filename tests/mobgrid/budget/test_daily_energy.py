@@ -83,12 +83,18 @@ def test_other_only_day_is_its_own_group_not_multimodal(
 def test_respondent_with_no_trip_is_a_non_traveler(
     day_summary: duckdb.DuckDBPyConnection,
 ) -> None:
-    assert day_summary.sql(
-        "SELECT count(*) FROM day_summary WHERE ident_ind = 10"
-    ).fetchone()[0] == 0
-    assert day_summary.sql(
-        "SELECT count(*) FROM non_travelers WHERE ident_ind = 10"
-    ).fetchone()[0] == 1
+    assert (
+        day_summary.sql(
+            "SELECT count(*) FROM day_summary WHERE ident_ind = 10"
+        ).fetchone()[0]
+        == 0
+    )
+    assert (
+        day_summary.sql(
+            "SELECT count(*) FROM non_travelers WHERE ident_ind = 10"
+        ).fetchone()[0]
+        == 1
+    )
 
 
 def test_gamma_moments_fit_recovers_mean_and_variance() -> None:
@@ -122,7 +128,14 @@ def test_bootstrap_group_stats_point_estimate_matches_direct_computation() -> No
     energy_cp = np.array([90.0, 180.0, 270.0, 360.0])
 
     stats = daily_energy.bootstrap_group_stats(
-        group, household, weight, time_min, energy_kh, energy_cp, n_reps=50, seed=1,
+        group,
+        household,
+        weight,
+        time_min,
+        energy_kh,
+        energy_cp,
+        n_reps=50,
+        seed=1,
     )
     by_group = {s.group: s for s in stats}
 
@@ -192,7 +205,13 @@ def test_robustness_row_median_statistic() -> None:
     energy_kh = np.array([100.0, 300.0, 200.0, 600.0])
     energy_cp = np.array([90.0, 270.0, 180.0, 540.0])
     row = daily_energy.robustness_row(
-        "test", group, weight, time_min, energy_kh, energy_cp, statistic="median",
+        "test",
+        group,
+        weight,
+        time_min,
+        energy_kh,
+        energy_cp,
+        statistic="median",
     )
     assert row.statistic == "median"
     assert row.energy_kh_ratio == pytest.approx(2.0)
@@ -207,12 +226,17 @@ def test_robustness_row_core_scope_restricts_groups() -> None:
     energy_kh = np.array([100.0, 100.0, 200.0, 200.0])
     energy_cp = np.array([90.0, 90.0, 180.0, 180.0])
     row = daily_energy.robustness_row(
-        "test", group, weight, time_min, energy_kh, energy_cp,
-        scope="core", groups_of_interest=("walking_only",),
+        "test",
+        group,
+        weight,
+        time_min,
+        energy_kh,
+        energy_cp,
+        scope="core",
+        groups_of_interest=("walking_only",),
     )
     assert row.scope == "core"
     # Only one group left: ratio/CV of a single value are 1.0/0.0.
     assert row.energy_kh_ratio == pytest.approx(1.0)
     assert row.energy_kh_cv == pytest.approx(0.0)
     assert row.energy_kh_min_group == row.energy_kh_max_group == "walking_only"
-

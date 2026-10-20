@@ -25,10 +25,14 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     out_dir = tmp_path / "step11_budget"
     exit_code = emp.main(
         [
-            "--out", str(out_dir),
-            "--data-path", str(synthetic_emp_zip),
-            "--config", str(CONFIG_PATH),
-            "--bootstrap-reps", "10",
+            "--out",
+            str(out_dir),
+            "--data-path",
+            str(synthetic_emp_zip),
+            "--config",
+            str(CONFIG_PATH),
+            "--bootstrap-reps",
+            "10",
         ]
     )
 
@@ -76,14 +80,22 @@ def test_refactor_preserves_emp2019_base_case_group_table(
     SQL blob) or as ``emp2019.build_trips_norm`` +
     ``trip_legs.build_trip_legs`` (shared with ENTD 2008)."""
     results = emp.run(
-        tmp_path / "step11_budget", emp2019, synthetic_emp_zip, CONFIG_PATH,
-        n_reps=10, seed=0,
+        tmp_path / "step11_budget",
+        emp2019,
+        synthetic_emp_zip,
+        CONFIG_PATH,
+        n_reps=10,
+        seed=0,
     )
     actual = {
         s.group: (
-            s.n, round(s.weighted_n, 3), round(s.mean_time_min, 4),
-            round(s.mean_energy_kh_kj, 4), round(s.mean_energy_cp_kj, 4),
-            round(s.median_energy_kh_kj, 4), round(s.median_energy_cp_kj, 4),
+            s.n,
+            round(s.weighted_n, 3),
+            round(s.mean_time_min, 4),
+            round(s.mean_energy_kh_kj, 4),
+            round(s.mean_energy_cp_kj, 4),
+            round(s.median_energy_kh_kj, 4),
+            round(s.median_energy_cp_kj, 4),
         )
         for s in results["mode_stats"]
     }
@@ -101,11 +113,16 @@ def test_cli_entd2008_survey_writes_report(
     out_dir = tmp_path / "step11_budget_entd2008"
     exit_code = emp.main(
         [
-            "--out", str(out_dir),
-            "--survey", "entd2008",
-            "--data-path", str(synthetic_entd2008_raw_dir),
-            "--config", str(CONFIG_PATH),
-            "--bootstrap-reps", "10",
+            "--out",
+            str(out_dir),
+            "--survey",
+            "entd2008",
+            "--data-path",
+            str(synthetic_entd2008_raw_dir),
+            "--config",
+            str(CONFIG_PATH),
+            "--bootstrap-reps",
+            "10",
         ]
     )
     assert exit_code == 0
@@ -117,19 +134,26 @@ def test_cli_entd2008_survey_writes_report(
 
 
 def test_cli_compare_writes_report_and_figure(
-    tmp_path: Path, synthetic_emp_zip: Path, synthetic_entd2008_raw_dir: Path,
+    tmp_path: Path,
+    synthetic_emp_zip: Path,
+    synthetic_entd2008_raw_dir: Path,
 ) -> None:
     """``--compare`` runs both surveys and writes the 2008-2019
     comparison report, without requiring the real data archives."""
     out_path = tmp_path / "step11_compare"
     exit_code = emp.main(
         [
-            "--out", str(out_path),
+            "--out",
+            str(out_path),
             "--compare",
-            "--emp2019-data-path", str(synthetic_emp_zip),
-            "--entd2008-data-path", str(synthetic_entd2008_raw_dir),
-            "--config", str(CONFIG_PATH),
-            "--bootstrap-reps", "10",
+            "--emp2019-data-path",
+            str(synthetic_emp_zip),
+            "--entd2008-data-path",
+            str(synthetic_entd2008_raw_dir),
+            "--config",
+            str(CONFIG_PATH),
+            "--bootstrap-reps",
+            "10",
         ]
     )
     assert exit_code == 0
@@ -141,6 +165,7 @@ def test_cli_compare_writes_report_and_figure(
     assert "Robustness" in report
     assert "Weekday share of persons without trips" in report
     assert (out_path / "compare_energy_time.png").is_file()
+
 
 @pytest.mark.skipif(
     not _REAL_DATA_AVAILABLE,

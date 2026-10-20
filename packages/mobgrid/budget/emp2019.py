@@ -179,20 +179,36 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
     view onward, shared with ENTD 2008.
     """
     population_category_sql = trip_legs._case_sql(
-        "k.SITUA", _POPULATION_CATEGORY_BY_SITUA, default="'unknown'",
+        "k.SITUA",
+        _POPULATION_CATEGORY_BY_SITUA,
+        default="'unknown'",
         quote_values=True,
     )
-    density_ori_sql = "CASE d.DENSITECOM_ORI\n    " + "\n    ".join(
-        f"WHEN {code} THEN '{label}'" for code, label in _DENSITY_LABEL_BY_CODE.items()
-    ) + "\n    ELSE 'intermediate'\nEND"
-    density_des_sql = "CASE d.DENSITECOM_DES\n    " + "\n    ".join(
-        f"WHEN {code} THEN '{label}'" for code, label in _DENSITY_LABEL_BY_CODE.items()
-    ) + "\n    ELSE 'intermediate'\nEND"
+    density_ori_sql = (
+        "CASE d.DENSITECOM_ORI\n    "
+        + "\n    ".join(
+            f"WHEN {code} THEN '{label}'"
+            for code, label in _DENSITY_LABEL_BY_CODE.items()
+        )
+        + "\n    ELSE 'intermediate'\nEND"
+    )
+    density_des_sql = (
+        "CASE d.DENSITECOM_DES\n    "
+        + "\n    ".join(
+            f"WHEN {code} THEN '{label}'"
+            for code, label in _DENSITY_LABEL_BY_CODE.items()
+        )
+        + "\n    ELSE 'intermediate'\nEND"
+    )
     uu_status_ori_sql = trip_legs._case_sql(
-        "d.STATUTCOM_UU_ORI", _UU_STATUS_BY_CODE, quote_values=True,
+        "d.STATUTCOM_UU_ORI",
+        _UU_STATUS_BY_CODE,
+        quote_values=True,
     )
     uu_status_des_sql = trip_legs._case_sql(
-        "d.STATUTCOM_UU_DES", _UU_STATUS_BY_CODE, quote_values=True,
+        "d.STATUTCOM_UU_DES",
+        _UU_STATUS_BY_CODE,
+        quote_values=True,
     )
 
     con.sql(f"""
@@ -266,7 +282,9 @@ def build_trip_legs(
     """
     build_trips_norm(con)
     _shared_build_trip_legs(
-        con, config, terminal_scale=terminal_scale,
+        con,
+        config,
+        terminal_scale=terminal_scale,
         bike_p0_override_w=bike_p0_override_w,
         density_source=density_source or DEFAULT_DENSITY_SOURCE,
     )
@@ -277,7 +295,9 @@ def create_non_travelers(con: duckdb.DuckDBPyConnection) -> None:
     recorded on their surveyed day (section 9.9 point 2, "persons without
     trips are reported apart")."""
     population_case = trip_legs._case_sql(
-        "k.SITUA", _POPULATION_CATEGORY_BY_SITUA, default="'unknown'",
+        "k.SITUA",
+        _POPULATION_CATEGORY_BY_SITUA,
+        default="'unknown'",
         quote_values=True,
     )
     con.sql(f"""
@@ -309,9 +329,7 @@ def non_traveler_summary(con: duckdb.DuckDBPyConnection) -> dict:
     non-traveller share plus the EMP-specific `MIMMOSEM` cross-check
     (``emp.py``'s "Non-traveller immobility" section)."""
     create_non_travelers(con)
-    non_travelers = con.sql(
-        "SELECT pond_ind, mimmosem FROM non_travelers"
-    ).fetchnumpy()
+    non_travelers = con.sql("SELECT pond_ind, mimmosem FROM non_travelers").fetchnumpy()
     travelers_pond_ind = con.sql(
         "SELECT pond_ind FROM day_summary WHERE total_energy_kh_kj IS NOT NULL"
     ).fetchnumpy()["pond_ind"]

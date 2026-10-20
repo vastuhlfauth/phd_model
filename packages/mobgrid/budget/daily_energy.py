@@ -36,15 +36,25 @@ KH_DAILY_ENERGY_KJ = 615.0
 #: round 8) is merged back into a single 'train' group: train_long had
 #: too few observations to be a meaningful separate group.
 DAY_MODE_GROUPS = (
-    "walking_only", "cycle", "car_driver", "car_passenger_household",
-    "car_passenger_carpool", "urban_pt", "train",
+    "walking_only",
+    "cycle",
+    "car_driver",
+    "car_passenger_household",
+    "car_passenger_carpool",
+    "urban_pt",
+    "train",
 )
 
 #: The six groups of section 9.9's F8 robustness check ("For walk, bike,
 #: driver, both passenger groups, urban PT and train short").
 F8_ROBUSTNESS_GROUPS = (
-    "walking_only", "cycle", "car_driver", "car_passenger_household",
-    "car_passenger_carpool", "urban_pt", "train",
+    "walking_only",
+    "cycle",
+    "car_driver",
+    "car_passenger_household",
+    "car_passenger_carpool",
+    "urban_pt",
+    "train",
 )
 
 #: The four "core" groups of F8's core/full comparison: walk, car driver,
@@ -107,7 +117,6 @@ def create_day_summary(
             END AS day_mode_group
         FROM per_day
     """)
-
 
 
 @dataclass(frozen=True)
@@ -271,7 +280,9 @@ class SpeedCalibration:
 
 
 def calibrate_v0_kmh(
-    con: duckdb.DuckDBPyConnection, *, by_age_band: bool = False,
+    con: duckdb.DuckDBPyConnection,
+    *,
+    by_age_band: bool = False,
     where_sql: str = "TRUE",
 ) -> list[SpeedCalibration]:
     """v0, the ratio of weighted sums of distance and duration (section
@@ -303,7 +314,10 @@ class P0Calibration:
 
 
 def calibrate_p0(
-    con: duckdb.DuckDBPyConnection, config: EnergyConfig, *, by_age_band: bool = False,
+    con: duckdb.DuckDBPyConnection,
+    config: EnergyConfig,
+    *,
+    by_age_band: bool = False,
     where_sql: str = "TRUE",
 ) -> list[P0Calibration]:
     """P0, from the implied flat speed = ratio of weighted sums of
@@ -332,20 +346,27 @@ def calibrate_p0(
     for group, n, speed_kmh in rows:
         speed_m_per_s = speed_kmh * 1000.0 / 3600.0
         p0_w = bike.required_power_w(
-            speed_m_per_s, config.reference_mass_kg, 0.0, crr, config.bike.cda_m2,
-            config.bike.rho_air_kg_per_m3, config.bike.drivetrain_efficiency,
+            speed_m_per_s,
+            config.reference_mass_kg,
+            0.0,
+            crr,
+            config.bike.cda_m2,
+            config.bike.rho_air_kg_per_m3,
+            config.bike.drivetrain_efficiency,
         )
         results.append(
-            P0Calibration(
-                group=group, n=n, implied_flat_speed_kmh=speed_kmh, p0_w=p0_w
-            )
+            P0Calibration(group=group, n=n, implied_flat_speed_kmh=speed_kmh, p0_w=p0_w)
         )
     return results
 
 
 def bootstrap_mean_ci(
-    household: np.ndarray, weight: np.ndarray, value: np.ndarray,
-    *, n_reps: int = 200, seed: int = 0,
+    household: np.ndarray,
+    weight: np.ndarray,
+    value: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
 ) -> tuple[float, tuple[float, float]]:
     """Weighted mean of ``value`` and its 95% bootstrap CI, resampled
     over households (section 9.9, "95% confidence intervals by bootstrap
@@ -468,17 +489,21 @@ def robustness_row(
     stat_time = group_stat_fn(group_codes, n_groups, weight, time_min)[mask]
     kh_ratio, kh_cv, kh_min, kh_max = _ratio_and_cv(stat_kh, group_labels)
     cp_ratio, cp_cv, cp_min, cp_max = _ratio_and_cv(stat_cp, group_labels)
-    time_ratio, time_cv, time_min_g, time_max_g = _ratio_and_cv(
-        stat_time, group_labels
-    )
+    time_ratio, time_cv, time_min_g, time_max_g = _ratio_and_cv(stat_time, group_labels)
     return RobustnessRow(
-        variant=variant, scope=scope, statistic=statistic,
-        energy_kh_ratio=kh_ratio, energy_kh_cv=kh_cv,
-        energy_kh_min_group=kh_min, energy_kh_max_group=kh_max,
-        energy_cp_ratio=cp_ratio, energy_cp_cv=cp_cv,
-        energy_cp_min_group=cp_min, energy_cp_max_group=cp_max,
-        time_ratio=time_ratio, time_cv=time_cv,
-        time_min_group=time_min_g, time_max_group=time_max_g,
+        variant=variant,
+        scope=scope,
+        statistic=statistic,
+        energy_kh_ratio=kh_ratio,
+        energy_kh_cv=kh_cv,
+        energy_kh_min_group=kh_min,
+        energy_kh_max_group=kh_max,
+        energy_cp_ratio=cp_ratio,
+        energy_cp_cv=cp_cv,
+        energy_cp_min_group=cp_min,
+        energy_cp_max_group=cp_max,
+        time_ratio=time_ratio,
+        time_cv=time_cv,
+        time_min_group=time_min_g,
+        time_max_group=time_max_g,
     )
-
-

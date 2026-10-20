@@ -120,14 +120,16 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
     with zipfile.ZipFile(zip_path, "w") as archive:
         archive.writestr(
             "5. k_deploc_public_V4.csv",
-            "\n".join([
-                "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
-                "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
-                "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
-                "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
-                "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9999,C,C,5,2",
-                "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9.1,C,C,5,2",
-            ]),
+            "\n".join(
+                [
+                    "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
+                    "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
+                    "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
+                    "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                    "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9999,C,C,5,2",
+                    "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9.1,C,C,5,2",
+                ]
+            ),
         )
         archive.writestr(
             "tcm_ind_kish_public_V3.csv",
@@ -135,13 +137,15 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
         )
         archive.writestr(
             "k_individu_public_V3.csv",
-            "\n".join([
-                "IDENT_IND;pond_indC;MIMMOSEM", "1;100.0;2", "2;100.0;2",
-            ]),
+            "\n".join(
+                [
+                    "IDENT_IND;pond_indC;MIMMOSEM",
+                    "1;100.0;2",
+                    "2;100.0;2",
+                ]
+            ),
         )
-        archive.writestr(
-            "tcm_ind_public_V3.csv", "ident_ind;ident_men\n1;M1\n2;M2"
-        )
+        archive.writestr("tcm_ind_public_V3.csv", "ident_ind;ident_men\n1;M1\n2;M2")
         archive.writestr(
             "q_menage_public_V3.csv",
             "\n".join(["IDENT_MEN;pond_menC", "M1;100.0", "M2;100.0"]),
@@ -181,46 +185,67 @@ def test_implausibly_fast_cycle_trip_has_its_distance_corrected(
     with zipfile.ZipFile(zip_path, "w") as archive:
         archive.writestr(
             "5. k_deploc_public_V4.csv",
-            "\n".join([
-                "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
-                "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
-                "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
-                "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
-                # 4 km in 20 min = 12 km/h, not flagged (two respondents,
-                # for a clean median).
-                "D1,M1,1,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
-                "D2,M2,2,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
-                # 50 km in 10 min = 300 km/h, flagged (> 35 km/h).
-                "D3,M3,3,1,100.0,1,1,1,10,50.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
-            ]),
+            "\n".join(
+                [
+                    "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
+                    "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
+                    "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
+                    "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                    # 4 km in 20 min = 12 km/h, not flagged (two respondents,
+                    # for a clean median).
+                    "D1,M1,1,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    "D2,M2,2,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    # 50 km in 10 min = 300 km/h, flagged (> 35 km/h).
+                    "D3,M3,3,1,100.0,1,1,1,10,50.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                ]
+            ),
         )
         archive.writestr(
             "tcm_ind_kish_public_V3.csv",
-            "\n".join([
-                "IDENT_IND;AGE;AGE6;SITUA", "1;30;30;1", "2;30;30;1", "3;30;30;1",
-            ]),
+            "\n".join(
+                [
+                    "IDENT_IND;AGE;AGE6;SITUA",
+                    "1;30;30;1",
+                    "2;30;30;1",
+                    "3;30;30;1",
+                ]
+            ),
         )
         archive.writestr(
             "k_individu_public_V3.csv",
-            "\n".join([
-                "IDENT_IND;pond_indC;MIMMOSEM",
-                "1;100.0;2", "2;100.0;2", "3;100.0;2",
-            ]),
+            "\n".join(
+                [
+                    "IDENT_IND;pond_indC;MIMMOSEM",
+                    "1;100.0;2",
+                    "2;100.0;2",
+                    "3;100.0;2",
+                ]
+            ),
         )
         archive.writestr(
             "tcm_ind_public_V3.csv", "ident_ind;ident_men\n1;M1\n2;M2\n3;M3"
         )
         archive.writestr(
             "q_menage_public_V3.csv",
-            "\n".join([
-                "IDENT_MEN;pond_menC", "M1;100.0", "M2;100.0", "M3;100.0",
-            ]),
+            "\n".join(
+                [
+                    "IDENT_MEN;pond_menC",
+                    "M1;100.0",
+                    "M2;100.0",
+                    "M3;100.0",
+                ]
+            ),
         )
         archive.writestr(
             "tcm_men_public_V3.csv",
-            "\n".join([
-                '"ident_men","TUU2017_RES"', '"M1","7"', '"M2","7"', '"M3","7"',
-            ]),
+            "\n".join(
+                [
+                    '"ident_men","TUU2017_RES"',
+                    '"M1","7"',
+                    '"M2","7"',
+                    '"M3","7"',
+                ]
+            ),
         )
     con = duckdb.connect()
     csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv3")
@@ -238,4 +263,3 @@ def test_implausibly_fast_cycle_trip_has_its_distance_corrected(
         "SELECT energy_cp_kj FROM trip_legs WHERE ident_ind = 1"
     ).fetchone()[0]
     assert energy_cp < plausible_energy * 10
-

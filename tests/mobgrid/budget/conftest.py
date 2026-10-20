@@ -80,9 +80,7 @@ _TCM_IND_KISH_ROWS = [
 ]
 
 _K_INDIVIDU_HEADER = "IDENT_IND;pond_indC;MIMMOSEM"
-_K_INDIVIDU_ROWS = [
-    f"{i};100.0;{'1' if i == 10 else '2'}" for i in range(1, 14)
-]
+_K_INDIVIDU_ROWS = [f"{i};100.0;{'1' if i == 10 else '2'}" for i in range(1, 14)]
 
 _Q_MENAGE_HEADER = "IDENT_MEN;pond_menC"
 _Q_MENAGE_ROWS = [f"M{i};100.0" for i in range(1, 14)]
@@ -115,8 +113,7 @@ def write_synthetic_emp_zip(path: Path) -> None:
         )
         archive.writestr(
             "tcm_ind_public_V3.csv",
-            "ident_ind;ident_men\n"
-            + "\n".join(f"{i};M{i}" for i in range(1, 14)),
+            "ident_ind;ident_men\n" + "\n".join(f"{i};M{i}" for i in range(1, 14)),
         )
         archive.writestr(
             "q_menage_public_V3.csv", "\n".join([_Q_MENAGE_HEADER, *_Q_MENAGE_ROWS])
@@ -204,7 +201,14 @@ _ENTD_Q_TCM_INDIVIDU_ROWS = [
 
 _ENTD_Q_TCM_MENAGE_HEADER = "IDENT_MEN;TU99"
 _ENTD_Q_TCM_MENAGE_ROWS = [
-    "M1;7", "M2;7", "M3;7", "M4;7", "M5;0", "M6;5", "M7;7", "M8;7",
+    "M1;7",
+    "M2;7",
+    "M3;7",
+    "M4;7",
+    "M5;0",
+    "M6;5",
+    "M7;7",
+    "M8;7",
 ]
 
 
@@ -216,7 +220,8 @@ def write_synthetic_entd2008_csvs(raw_dir: Path) -> None:
         "k_deploc.csv": [_ENTD_K_DEPLOC_HEADER, *_ENTD_K_DEPLOC_ROWS],
         "k_individu.csv": [_ENTD_K_INDIVIDU_HEADER, *_ENTD_K_INDIVIDU_ROWS],
         "q_tcm_individu.csv": [
-            _ENTD_Q_TCM_INDIVIDU_HEADER, *_ENTD_Q_TCM_INDIVIDU_ROWS,
+            _ENTD_Q_TCM_INDIVIDU_HEADER,
+            *_ENTD_Q_TCM_INDIVIDU_ROWS,
         ],
         "q_tcm_menage.csv": [_ENTD_Q_TCM_MENAGE_HEADER, *_ENTD_Q_TCM_MENAGE_ROWS],
     }
