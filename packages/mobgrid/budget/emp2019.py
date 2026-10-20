@@ -185,12 +185,43 @@ MOTIVE_LABEL_BY_CODE = {
     9.5: "other professional reason",
 }
 
-#: Leisure-adjacent cycling purposes flagged by the user as likely large
-#: contributors to mean cycling energy: 7.6 (sport), 7.7 (the same
-#: "leisure loop" purpose as `is_loop_trip`, but via `MOT_SEQ_COMPL`
-#: rather than `MMOTIFDES`), 7.8 (going to a place to walk/ride, i.e. the
-#: ride itself is the point, not the destination).
-LEISURE_CYCLING_MOTIVE_CODES = (7.6, 7.7, 7.8)
+#: Section 9.9's scope (2026-10-20 project decision): the re-estimation
+#: is about commuting and travel for needs fulfilment, not recreational
+#: movement for its own sake. Trips whose corrected motive (`motive`,
+#: `MOT_SEQ_COMPL`) is sport (7.6), a destination-less stroll (7.7, the
+#: same purpose as `is_loop_trip`, via the raw `MMOTIFDES` instead) or
+#: "going to a place to walk/ride" (7.8, destination exists, but the
+#: movement itself is the point) are excluded from every day/energy
+#: computation in step 11's report -- the whole report's base scope, not
+#: an optional variant.
+NEEDS_EXCLUDED_MOTIVE_CODES = (7.6, 7.7, 7.8)
+
+#: SQL fragment for ``day_summary``'s candidate-trip filter (and any
+#: other per-leg query that must match its scope): keeps a trip unless
+#: its corrected motive is one of `NEEDS_EXCLUDED_MOTIVE_CODES`; a
+#: missing/refused motive (``motive IS NULL``) is kept, not excluded (we
+#: cannot tell whether it was needs-based).
+NEEDS_ONLY_WHERE_SQL = (
+    "(motive IS NULL OR motive NOT IN ("
+    + ", ".join(f"{code:g}" for code in NEEDS_EXCLUDED_MOTIVE_CODES)
+    + "))"
+)
+
+#: Top-level (integer) motive group labels, `emp2019-categories.pdf`'s
+#: "Motif" table section headers, used by the all-modes "energy by
+#: motive" figure (one stacked bar per mode, 9 segments instead of
+#: `MOTIVE_LABEL_BY_CODE`'s ~30 sub-codes).
+TOP_LEVEL_MOTIVE_LABEL_BY_CODE = {
+    1.0: "return home/study/childcare",
+    2.0: "shopping",
+    3.0: "medical/personal care",
+    4.0: "administrative errand",
+    5.0: "visits",
+    6.0: "accompany/pick up",
+    7.0: "leisure",
+    8.0: "holidays/second home",
+    9.0: "professional",
+}
 
 #: `tcm_ind_kish_public`'s `SITUA` ("Situation principale vis-a-vis du
 #: travail") codes, mapped to section 6.1's five population categories
