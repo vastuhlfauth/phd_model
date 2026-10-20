@@ -58,7 +58,7 @@ def test_classified_trips_have_positive_energy_in_both_rate_sets(
         "SELECT ident_ind, energy_kh_kj, energy_cp_kj FROM trip_legs "
         "WHERE mode_group != 'other'"
     ).fetchall()
-    assert len(rows) == 10  # 9 single-trip persons (except 'other') + 1 multimodal leg
+    assert len(rows) == 12  # 11 single-trip persons (except 'other') + 1 multimodal leg
     for _, energy_kh, energy_cp in rows:
         assert energy_kh > 0
         assert energy_cp > 0
@@ -123,9 +123,10 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
             "\n".join([
                 "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
                 "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
-                "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL",
-                "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9999",
-                "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9.1",
+                "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
+                "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9999,C,C,5,2",
+                "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9.1,C,C,5,2",
             ]),
         )
         archive.writestr(
@@ -144,6 +145,10 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
         archive.writestr(
             "q_menage_public_V3.csv",
             "\n".join(["IDENT_MEN;pond_menC", "M1;100.0", "M2;100.0"]),
+        )
+        archive.writestr(
+            "tcm_men_public_V3.csv",
+            "\n".join(['"ident_men","TUU2017_RES"', '"M1","7"', '"M2","7"']),
         )
     con = duckdb.connect()
     csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv2")

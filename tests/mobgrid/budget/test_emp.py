@@ -26,7 +26,7 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     exit_code = emp.main(
         [
             "--out", str(out_dir),
-            "--data-zip", str(synthetic_emp_zip),
+            "--data-path", str(synthetic_emp_zip),
             "--config", str(CONFIG_PATH),
             "--bootstrap-reps", "10",
         ]
@@ -48,7 +48,100 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "Density classes" in report
 
 
-@pytest.mark.pilot
+#: The EMP 2019 base-case group table on the synthetic fixture (section
+#: 9.9 point 1's refactor: ``emp2019.build_trip_legs`` split into
+#: ``trips_norm`` + ``mobgrid.budget.trip_legs.build_trip_legs``), pinned
+#: before the split (``bootstrap-reps=10``, ``seed=0``) so this test
+#: fails if the refactor silently changes a single number. ``n``,
+#: `weighted_n`` and every mean/median (kJ, minutes) are unaffected by
+#: the split: it only moves *where* the SQL lives, not what it computes.
+_EXPECTED_BASE_CASE_GROUP_TABLE = {
+    "car_driver": (1, 100.0, 25.0, 227.04, 208.68, 227.04, 208.68),
+    "car_passenger_carpool": (1, 100.0, 25.0, 203.4, 163.1937, 203.4, 163.1937),
+    "car_passenger_household": (1, 100.0, 25.0, 183.84, 148.0118, 183.84, 148.0118),
+    "cycle": (1, 100.0, 15.0, 189.156, 189.3728, 189.156, 189.3728),
+    "multimodal": (1, 100.0, 50.0, 437.7562, 371.7277, 437.7562, 371.7277),
+    "train": (2, 200.0, 60.0, 316.5711, 264.4647, 228.7158, 187.1174),
+    "urban_pt": (1, 100.0, 30.0, 231.7162, 190.1317, 231.7162, 190.1317),
+    "walking_only": (1, 100.0, 20.0, 333.0, 254.19, 333.0, 254.19),
+}
+
+
+def test_refactor_preserves_emp2019_base_case_group_table(
+    tmp_path: Path, synthetic_emp_zip: Path
+) -> None:
+    """Regression test (section 9.9 point 1): the main-mode-group table
+    (point 3, section 9.9's base case, after fix 0) is bit-for-bit the
+    same whether ``trip_legs`` is built as before (one EMP-2019-specific
+    SQL blob) or as ``emp2019.build_trips_norm`` +
+    ``trip_legs.build_trip_legs`` (shared with ENTD 2008)."""
+    results = emp.run(
+        tmp_path / "step11_budget", emp2019, synthetic_emp_zip, CONFIG_PATH,
+        n_reps=10, seed=0,
+    )
+    actual = {
+        s.group: (
+            s.n, round(s.weighted_n, 3), round(s.mean_time_min, 4),
+            round(s.mean_energy_kh_kj, 4), round(s.mean_energy_cp_kj, 4),
+            round(s.median_energy_kh_kj, 4), round(s.median_energy_cp_kj, 4),
+        )
+        for s in results["mode_stats"]
+    }
+    assert actual == _EXPECTED_BASE_CASE_GROUP_TABLE
+    assert results["n_days"] == 9
+    assert round(results["mean_kh"], 4) == 271.0056
+    assert round(results["mean_cp"], 4) == 228.2486
+
+
+def test_cli_entd2008_survey_writes_report(
+    tmp_path: Path, synthetic_entd2008_raw_dir: Path
+) -> None:
+    """``--survey entd2008`` runs the same pipeline and report/figure set
+    as EMP 2019 (section 9.9, "Change between 2008 and 2019")."""
+    out_dir = tmp_path / "step11_budget_entd2008"
+    exit_code = emp.main(
+        [
+            "--out", str(out_dir),
+            "--survey", "entd2008",
+            "--data-path", str(synthetic_entd2008_raw_dir),
+            "--config", str(CONFIG_PATH),
+            "--bootstrap-reps", "10",
+        ]
+    )
+    assert exit_code == 0
+    md_path = out_dir.with_suffix(".md")
+    report = md_path.read_text(encoding="utf-8")
+    assert "ENTD 2008 re-estimation" in report
+    assert "proxy" in report
+    assert "`distcor`/`v2_mduree` fill rate" in report
+
+
+def test_cli_compare_writes_report_and_figure(
+    tmp_path: Path, synthetic_emp_zip: Path, synthetic_entd2008_raw_dir: Path,
+) -> None:
+    """``--compare`` runs both surveys and writes the 2008-2019
+    comparison report, without requiring the real data archives."""
+    out_path = tmp_path / "step11_compare"
+    exit_code = emp.main(
+        [
+            "--out", str(out_path),
+            "--compare",
+            "--emp2019-data-path", str(synthetic_emp_zip),
+            "--entd2008-data-path", str(synthetic_entd2008_raw_dir),
+            "--config", str(CONFIG_PATH),
+            "--bootstrap-reps", "10",
+        ]
+    )
+    assert exit_code == 0
+    md_path = out_path.with_suffix(".md")
+    report = md_path.read_text(encoding="utf-8")
+    assert "2008-2019 comparison" in report
+    assert "Group table, 2008 vs 2019" in report
+    assert "density grid vs proxy" in report.lower()
+    assert "Robustness" in report
+    assert "Weekday share of persons without trips" in report
+    assert (out_path / "compare_energy_time.png").is_file()
+
 @pytest.mark.skipif(
     not _REAL_DATA_AVAILABLE,
     reason="EMP 2019 public data (data/raw/emp2019/emp2019-data.zip) is absent",

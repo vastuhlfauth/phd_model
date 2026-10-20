@@ -27,7 +27,7 @@ def day_summary(tmp_path: Path, synthetic_emp_zip: Path) -> duckdb.DuckDBPyConne
     emp2019.register_views(con, csv_paths)
     emp2019.build_trip_legs(con, config)
     daily_energy.create_day_summary(con)
-    daily_energy.create_non_travelers(con)
+    emp2019.create_non_travelers(con)
     return con
 
 

@@ -1,12 +1,17 @@
 """Day-level aggregation and the section 9.9 hypothesis test (step 11).
 
-Sums ``emp2019.trip_legs`` to one row per respondent (point 2), groups
-days by main mode, population category (section 6.1) and home density
-(point 3), fits a gamma-like distribution of daily travel energy and
-compares its mean with Koelbl & Helbing's (2003) ~615 kJ (point 5), and
-calibrates v0 and P0 from the walking and cycling trips (step 1's closing
-sentence). Section 9.9's EMC² cross-check (point 4) and the definition of
-Ē_c for 1 km cells (point 6) are out of scope for this step.
+Sums ``trip_legs`` to one row per described day (point 2), groups days by
+main mode, population category (section 6.1) and home density (point 3),
+fits a gamma-like distribution of daily travel energy and compares its
+mean with Koelbl & Helbing's (2003) ~615 kJ (point 5), and calibrates v0
+and P0 from the walking and cycling trips (step 1's closing sentence).
+Section 9.9's EMC² cross-check (point 4) and the definition of Ē_c for
+1 km cells (point 6) are out of scope for this step. Survey-agnostic
+(``trip_legs.day_id`` is EMP 2019's `IDENT_IND` or ENTD 2008's
+`IDENT_JOUR`, `docs/data/entd2008.md`): each survey builds its own
+``non_travelers``-equivalent summary (``emp2019.non_traveler_summary``,
+``entd2008.non_traveler_summary``), since the two surveys identify
+non-travellers differently.
 """
 
 from __future__ import annotations
@@ -17,7 +22,6 @@ from dataclasses import dataclass
 import duckdb
 import numpy as np
 
-from mobgrid.budget.emp2019 import _POPULATION_CATEGORY_BY_SITUA, _case_sql
 from mobgrid.energy import bike
 from mobgrid.energy.rates import EnergyConfig
 
@@ -51,10 +55,12 @@ F8_CORE_ROBUSTNESS_GROUPS = ("walking_only", "car_driver", "urban_pt", "train")
 def create_day_summary(
     con: duckdb.DuckDBPyConnection, *, where_sql: str = "TRUE"
 ) -> None:
-    """Create the ``day_summary`` view: one row per EMP 2019 respondent
-    with at least one trip matching ``where_sql`` (applied to
-    ``trip_legs``; used by the F8 robustness check's "weekdays only" and
-    "local trips only" variants, section 9.9).
+    """Create the ``day_summary`` view: one row per described day
+    (``trip_legs.day_id``: EMP 2019's `IDENT_IND`, one day per person;
+    ENTD 2008's `IDENT_JOUR`, up to three days per person) with at least
+    one trip matching ``where_sql`` (applied to ``trip_legs``; used by
+    the F8 robustness check's "weekdays only" and "local trips only"
+    variants, section 9.9).
 
     ``day_mode_group`` is 'walking_only' (every matching trip of the day
     is a walk), the single non-walk mode used (``trip_legs.mode_group``,
@@ -68,12 +74,14 @@ def create_day_summary(
         WITH candidate AS (
             SELECT * FROM trip_legs WHERE {where_sql}
         ),
-        per_person AS (
+        per_day AS (
             SELECT
-                ident_ind,
+                day_id,
+                any_value(ident_ind) AS ident_ind,
                 any_value(ident_men) AS ident_men,
                 any_value(pond_jour) AS pond_jour,
                 any_value(pond_ind) AS pond_ind,
+                any_value(typejour) AS typejour,
                 any_value(age_band) AS age_band,
                 any_value(population_category) AS population_category,
                 count(*) AS trips_per_day,
@@ -88,7 +96,7 @@ def create_day_summary(
                 (array_agg(density_ori ORDER BY (moridom <> 1), num_dep))[1]
                     AS home_density
             FROM candidate
-            GROUP BY ident_ind
+            GROUP BY day_id
         )
         SELECT *,
             CASE
@@ -97,39 +105,7 @@ def create_day_summary(
                 WHEN len(non_walk_modes) = 1 THEN non_walk_modes[1]
                 ELSE 'multimodal'
             END AS day_mode_group
-        FROM per_person
-    """)
-
-
-def create_non_travelers(con: duckdb.DuckDBPyConnection) -> None:
-    """Create the ``non_travelers`` view: Kish respondents with no trip
-    recorded on their surveyed day (section 9.9 point 2, "persons without
-    trips are reported apart")."""
-    population_case = _case_sql(
-        "k.SITUA", _POPULATION_CATEGORY_BY_SITUA, default="'unknown'",
-        quote_values=True,
-    )
-    con.sql(f"""
-        CREATE OR REPLACE VIEW non_travelers AS
-        SELECT
-            k.IDENT_IND AS ident_ind,
-            i.pond_indC AS pond_ind,
-            k.AGE6 AS age_band,
-            CASE WHEN k.AGE BETWEEN 6 AND 17 THEN 'children_6_17'
-                 ELSE {population_case} END AS population_category,
-            -- Immobility is "no trip on the described day"; `MIMMOSEM`
-            -- (K_INDIVIDU) is an independent weekday-immobility flag that
-            -- matches this exactly for every respondent in this release
-            -- (see the step 11 report): EMP 2019's public tables record
-            -- no day-of-week for a fully immobile respondent (`MDATE_jour`
-            -- is blank), so a Saturday/Sunday non-traveller cannot be
-            -- told apart from a weekday one here.
-            i.MIMMOSEM AS mimmosem
-        FROM tcm_ind_kish k
-        JOIN k_individu i ON i.IDENT_IND = k.IDENT_IND
-        WHERE NOT EXISTS (
-            SELECT 1 FROM trip_legs t WHERE t.ident_ind = k.IDENT_IND
-        )
+        FROM per_day
     """)
 
 
