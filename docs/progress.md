@@ -4,6 +4,56 @@ Read this file at the start of every task and update it at the end.
 
 _Last updated: 2026-10-20 by Copilot (step 11, twelfth round: fixed 3 implausible ENTD 2008 cycling-distance outliers that were inflating the 2008-2019 comparison's overall means and the multimodal group through cycling's "stops" energy sub-term; bike's flagged distance is now corrected like walk's and car's; branch `step/mobgrid-budget-entd2008`, awaiting review)_
 
+### Session handoff (2026-10-20, end of session)
+
+- **Branch:** `step/mobgrid-budget-entd2008`, pushed to `origin` with
+  upstream tracking. Not merged.
+- **PR:** not opened -- no issue/PR-creation tool or `gh` CLI was
+  available in this environment (the GitHub MCP tools here are
+  read-only for issues/PRs). GitHub's own compare link:
+  https://github.com/vastuhlfauth/phd_model/pull/new/step/mobgrid-budget-entd2008
+  -- the PR description (root cause, fix, before/after numbers, the new
+  regression test, the regenerated reports, and the pre-existing
+  `test_calibration_pilot.py` issue below) is ready, see the session's
+  final chat summary or `CHANGELOG.md`.
+- **Tests/lint:** 398 tests pass (`-m "not pilot"`), plus both pilot
+  tests in `tests/mobgrid/budget/` pass on real data; `ruff check .` is
+  clean. `ruff format --check .` flags this branch's files, but also 46
+  files repo-wide never touched this session -- the project's own
+  validation command is `ruff check` (not `ruff format`), so this was
+  not treated as a failure; not changed, to avoid an unrelated reformat
+  of the whole repo.
+- **Known pre-existing issue (not this branch, not fixed):**
+  `tests/mobgrid/pt/test_calibration_pilot.py
+  ::test_chosen_parameters_resolve_the_clear_cut_known_cases` fails with
+  `AttributeError: 'dict' object has no attribute 'r_m'`; confirmed
+  failing identically on `main` (scratch worktree, same local
+  `calibration_run.pkl`/`osm_pt_stops` cache). Root cause: commit
+  `b7be54e` changed `GtfsRebuildConfig.chosen` to a per-mode-family dict
+  without updating this test. Full details in "Decisions taken while
+  coding" below.
+- **Open follow-ups for this step (not done this session):**
+  1. The speed-plausibility check (`trip_legs.py`'s
+     `speed_flagged_upper_sql`) has branches for `walk`, `cycle` and the
+     three car groups only; `urban_pt`, `train` and `other` are **never
+     flagged at all** (not just "flagged but uncorrected" like bike used
+     to be -- there is no branch for them, so the check defaults to
+     `FALSE`). PT/train's own energy formula has no distance term (it is
+     duration x `ride_rate_kj_per_min`), so an implausible PT/train
+     *distance* would not inflate energy the way bike's "stops" term
+     did; but no mode has a *duration* plausibility check either, and an
+     implausible duration would inflate `ride_rate_kj_per_min *
+     duration_min` unchecked for PT/train. Worth checking both ENTD 2008
+     and EMP 2019 for PT/train distance and duration outliers before
+     deciding whether to extend the check.
+  2. Find and update any downstream output that cites the pre-fix 2008
+     numbers (1,642.6 kJ multimodal; 625.0/572.8 kJ overall; 47.5 W P0).
+     None are known inside this repo as of this session (the three step
+     11 reports and this progress file are already regenerated/updated);
+     check anything external (drafts, slides, a thesis chapter) that may
+     have copied the pre-fix `docs/data/step11_compare.md`/
+     `step11_budget_entd2008.md` numbers before this session's fix.
+
 ## Steps (table of section 14.5)
 
 | Step | Content | Status | Branch | Notes |
