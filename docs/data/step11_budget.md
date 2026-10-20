@@ -265,9 +265,45 @@ Ride work, unloaded pedalling and stops are the same formula in both rate sets (
 - Get/park: 2 min/day fixed, 5.2 kJ (kh), 5.4 kJ (cp).
 - Walking trips of the same day: 11.0 min/day, 138.2 kJ (kh), 105.5 kJ (cp).
 
+### Cycling energy by motive (point 1 follow-up)
+
+`MOT_SEQ_COMPL`, EMP's own chain-level, corrected trip purpose (unlike the raw, trip-level `MMOTIFDES` used by the leisure-loop flag above); excludes "return home"/"return to residence" codes 1.1-1.3 (a return leg is recoded to the purpose of the outward leg it closes).
+
+| Motive | n | weighted n | trip share | energy share (kh) | energy share (cp) | mean distance (km) | mean duration (min) |
+|---|---|---|---|---|---|---|---|
+| 7.7 stroll, no specific destination | 121 | 3,396,125 | 11.1% | 26.5% | 26.5% | 9.22 | 46.2 |
+| 9.1 work, fixed usual workplace | 211 | 6,106,768 | 20.0% | 16.4% | 16.4% | 3.03 | 15.7 |
+| 7.6 sport | 139 | 4,384,429 | 14.3% | 12.6% | 12.6% | 4.75 | 17.0 |
+| 2.2 shopping, local store | 141 | 3,662,771 | 12.0% | 8.6% | 8.6% | 2.13 | 12.7 |
+| 7.8 go to a place for walking | 30 | 1,121,614 | 3.7% | 7.9% | 7.9% | 6.40 | 33.0 |
+| 5.2 visit friends | 63 | 2,502,591 | 8.2% | 5.9% | 5.9% | 3.12 | 15.2 |
+| 1.4 study (school/university) | 57 | 1,936,470 | 6.3% | 3.6% | 3.6% | 1.67 | 13.5 |
+| 5.1 visit family | 50 | 994,458 | 3.2% | 2.4% | 2.4% | 3.14 | 17.9 |
+| 6.2 accompany elsewhere | 23 | 985,546 | 3.2% | 2.4% | 2.4% | 3.02 | 14.7 |
+| 2.1 shopping, mall/large store | 32 | 1,041,468 | 3.4% | 1.9% | 1.9% | 2.32 | 12.5 |
+| 9.4 professional rounds/patient visits | 15 | 385,636 | 1.3% | 1.8% | 1.8% | 5.91 | 30.9 |
+| 6.4 pick up elsewhere | 14 | 646,002 | 2.1% | 1.5% | 1.5% | 1.75 | 11.4 |
+| 7.3 eat/drink out | 19 | 485,911 | 1.6% | 1.3% | 1.3% | 4.00 | 15.5 |
+| 3.1 medical/personal care | 17 | 785,526 | 2.6% | 1.2% | 1.2% | 1.84 | 10.3 |
+| 4.1 administrative errand | 19 | 449,830 | 1.5% | 1.1% | 1.1% | 2.54 | 17.4 |
+| 9.5 other professional reason | 4 | 111,958 | 0.4% | 0.9% | 0.9% | 8.75 | 47.5 |
+| 9.2 work, outside fixed workplace | 13 | 345,727 | 1.1% | 0.8% | 0.8% | 3.25 | 12.0 |
+| 8.1 holiday, away from second home | 1 | 12,024 | 0.0% | 0.8% | 0.8% | 50.00 | 390.0 |
+| 7.1 association/religious/meeting | 21 | 491,127 | 1.6% | 0.7% | 0.7% | 1.33 | 9.3 |
+| 9.3 training/conference/exhibition | 8 | 170,420 | 0.6% | 0.4% | 0.4% | 3.05 | 16.6 |
+| 7.5 cultural/sports show, conference | 8 | 204,308 | 0.7% | 0.4% | 0.4% | 2.65 | 13.1 |
+| 7.4 visit monument/historic site | 2 | 59,899 | 0.2% | 0.3% | 0.3% | 7.00 | 30.0 |
+| 8.4 other personal reason | 3 | 67,461 | 0.2% | 0.1% | 0.1% | 2.67 | 13.3 |
+| 6.3 pick up from station/airport | 2 | 92,209 | 0.3% | 0.1% | 0.1% | 2.00 | 7.5 |
+| 8.2 go to second home | 2 | 16,808 | 0.1% | 0.1% | 0.1% | 5.00 | 43.3 |
+| 7.2 leisure centre/amusement park/fair | 6 | 99,845 | 0.3% | 0.1% | 0.1% | 1.86 | 6.3 |
+| 4.12 waste disposal site | 2 | 45,291 | 0.1% | 0.1% | 0.1% | 0.70 | 10.0 |
+
+**Leisure cycling** (motives 7.6, 7.7, 7.8: sport, stroll, no specific destination, go to a place for walking): 29.1% of weighted trips, 46.9% of weighted energy (kh), 46.9% (cp).
+
 ## Non-traveller immobility (point 2)
 
-Identified as: a Kish respondent with zero rows in K_DEPLOC for their described day. Cross-check: every one of these respondents has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 (100% match); `MDATE_jour` is blank only for these same respondents, so EMP 2019's public release records no day-of-week for a fully immobile respondent -- a Saturday/Sunday non-traveller cannot be told apart from a weekday one in these tables. The surveyed-day mix among travellers is TYPEJOUR=1: 24677102.8%, TYPEJOUR=2: 2156548.4%, TYPEJOUR=3: 5728943.5% (weekday-dominated: 2.7% overall immobility is a weekday-weighted figure, not comparable to all-week averages that include weekends, when immobility is known to be much higher).
+Identified as: a Kish respondent with zero rows in K_DEPLOC for their described day. Cross-check: every one of these respondents has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 (100% match); `MDATE_jour` is blank only for these same respondents, so EMP 2019's public release records no day-of-week for a fully immobile respondent -- a Saturday/Sunday non-traveller cannot be told apart from a weekday one in these tables. The surveyed-day mix among travellers is TYPEJOUR=1: 779173.5%, TYPEJOUR=2: 9822033.1%, TYPEJOUR=3: 18706783.0% (weekday-dominated: 2.7% overall immobility is a weekday-weighted figure, not comparable to all-week averages that include weekends, when immobility is known to be much higher).
 
 ## Figures
 

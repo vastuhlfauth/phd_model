@@ -140,6 +140,25 @@ def _compute_cycle_decomposition(
     }
 
 
+def _compute_motive_decomposition(
+    con: duckdb.DuckDBPyConnection, mode_group: str
+) -> list[tuple]:
+    """Section 9.9 point 1 follow-up ("decompose energy per motive"): one
+    row per ``MOT_SEQ_COMPL`` motive among ``mode_group``'s trips -- n,
+    weighted n (`pond_jour`, trip-weighted, as elsewhere in this report),
+    weighted energy (both rate sets) and mean distance/duration -- sorted
+    by weighted energy, largest first."""
+    return con.sql(f"""
+        SELECT motive, count(*) AS n, sum(pond_jour) AS weighted_n,
+            sum(pond_jour * energy_kh_kj) AS energy_kh_sum,
+            sum(pond_jour * energy_cp_kj) AS energy_cp_sum,
+            avg(distance_km) AS mean_distance_km, avg(duration_min) AS mean_duration_min
+        FROM trip_legs
+        WHERE mode_group = '{mode_group}' AND energy_kh_kj IS NOT NULL
+        GROUP BY 1 ORDER BY energy_kh_sum DESC
+    """).fetchall()
+
+
 def _weighted_query(
     con: duckdb.DuckDBPyConnection, sql: str
 ) -> tuple[int, float, float, float]:
@@ -420,6 +439,10 @@ def run(
     # Point 3: post-fix cycle-day decomposition.
     cycle_decomposition = _compute_cycle_decomposition(con, config)
 
+    # Cycling energy by motive (section 9.9 point 1 follow-up, user note:
+    # "7.6,7.7,7.8 might have large impact on bike").
+    cycle_motive_decomposition = _compute_motive_decomposition(con, "cycle")
+
     # Cycle group, weekdays only (kept from round 4's point 3).
     daily_energy.create_day_summary(con, where_sql="typejour = 1")
     days_weekday = _day_rows(con)
@@ -474,6 +497,7 @@ def run(
         "loop_energy_shares": loop_energy_shares,
         "quality_counts": quality_counts,
         "cycle_decomposition": cycle_decomposition,
+        "cycle_motive_decomposition": cycle_motive_decomposition,
         "cycle_weekday_stats": cycle_weekday_stats,
         "children_car_driver_mtp": children_car_driver_mtp,
         "children_car_driver_n": children_car_driver_n,
@@ -1120,6 +1144,51 @@ def _format_group_table_by_panel(
     return lines
 
 
+def _format_motive_table(rows: list[tuple]) -> list[str]:
+    """Trip/energy share by `MOT_SEQ_COMPL` motive (section 9.9 point 1
+    follow-up, "decompose energy per motive"), largest energy share
+    first, plus a leisure-cycling (7.6/7.7/7.8) rollup row."""
+    total_weighted_n = sum(row[2] for row in rows)
+    total_energy_kh = sum(row[3] for row in rows)
+    total_energy_cp = sum(row[4] for row in rows)
+    lines = [
+        "| Motive | n | weighted n | trip share | energy share (kh) | "
+        "energy share (cp) | mean distance (km) | mean duration (min) |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    leisure_weighted_n = 0.0
+    leisure_energy_kh = 0.0
+    leisure_energy_cp = 0.0
+    for motive, n, weighted_n, energy_kh, energy_cp, mean_dist, mean_dur in rows:
+        label = (
+            "missing/refused" if motive is None
+            else emp2019.MOTIVE_LABEL_BY_CODE.get(motive, f"code {motive:g}")
+        )
+        lines.append(
+            f"| {motive if motive is not None else '-'} {label} | {n} | "
+            f"{weighted_n:,.0f} | {weighted_n / total_weighted_n:.1%} | "
+            f"{energy_kh / total_energy_kh:.1%} | "
+            f"{energy_cp / total_energy_cp:.1%} | {mean_dist:.2f} | {mean_dur:.1f} |"
+        )
+        if motive in emp2019.LEISURE_CYCLING_MOTIVE_CODES:
+            leisure_weighted_n += weighted_n
+            leisure_energy_kh += energy_kh
+            leisure_energy_cp += energy_cp
+    leisure_codes = ", ".join(f"{c:g}" for c in emp2019.LEISURE_CYCLING_MOTIVE_CODES)
+    lines += [
+        "",
+        f"**Leisure cycling** (motives {leisure_codes}: "
+        + ", ".join(
+            emp2019.MOTIVE_LABEL_BY_CODE[c]
+            for c in emp2019.LEISURE_CYCLING_MOTIVE_CODES
+        )
+        + f"): {leisure_weighted_n / total_weighted_n:.1%} of weighted trips, "
+        f"{leisure_energy_kh / total_energy_kh:.1%} of weighted energy (kh), "
+        f"{leisure_energy_cp / total_energy_cp:.1%} (cp).",
+    ]
+    return lines
+
+
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the section 9.9 re-estimation report (steps 1-3, 5, F8)."""
     config = results["config"]
@@ -1375,6 +1444,19 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         f"{dec['get_park_kh_kj']:.1f} kJ (kh), {dec['get_park_cp_kj']:.1f} kJ (cp).",
         f"- Walking trips of the same day: {dec['walk_minutes']:.1f} min/day, "
         f"{dec['walk_kh_kj']:.1f} kJ (kh), {dec['walk_cp_kj']:.1f} kJ (cp).",
+    ]
+
+    lines += [
+        "",
+        "### Cycling energy by motive (point 1 follow-up)",
+        "",
+        "`MOT_SEQ_COMPL`, EMP's own chain-level, corrected trip purpose "
+        "(unlike the raw, trip-level `MMOTIFDES` used by the leisure-loop "
+        "flag above); excludes \"return home\"/\"return to residence\" "
+        "codes 1.1-1.3 (a return leg is recoded to the purpose of the "
+        "outward leg it closes).",
+        "",
+        *_format_motive_table(results["cycle_motive_decomposition"]),
     ]
 
     lines += [

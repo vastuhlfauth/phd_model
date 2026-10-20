@@ -16,7 +16,7 @@ import pytest
 _K_DEPLOC_HEADER = (
     "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,mobloc,MORIDOM,"
     "DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,DENSITECOM_ORI,DENSITECOM_DES,"
-    "MMOTIFDES"
+    "MMOTIFDES,MOT_SEQ_COMPL"
 )
 
 # One trip per mode_group branch (ident_ind 1-8, single trip each, density
@@ -25,19 +25,23 @@ _K_DEPLOC_HEADER = (
 # 120 km trip is "train_long" (>= 80 km); a second, short train trip
 # (ident_ind 11) covers "train_short". ident_ind 1's walk is a leisure loop
 # (MMOTIFDES 7.7, "se promener sans destination precise"); every other
-# trip is a generic purpose (1.1, "retour au domicile").
+# trip is a generic purpose (1.1, "retour au domicile"). ident_ind 2's
+# cycle trip has MOT_SEQ_COMPL 7.6 ("sport"), covering the motive
+# decomposition's leisure-cycling rollup.
 _K_DEPLOC_ROWS = [
-    "D1,M1,1,1,100.0,1,1,1,20,1.5,NA,NA,1.1,1,1,7.7",  # walk (loop trip)
-    "D2,M2,2,1,100.0,1,1,1,15,3.0,NA,NA,2.1,1,1,1.1",  # cycle
-    "D3,M3,3,1,100.0,1,1,1,25,5.0,NA,NA,3.1,1,1,1.1",  # car_driver
-    "D4,M4,4,1,100.0,1,1,1,25,5.0,2,0,3.2,1,1,1.1",  # car_passenger_household
-    "D5,M5,5,1,100.0,1,1,1,25,5.0,0,3,3.2,1,1,1.1",  # car_passenger_carpool
-    "D6,M6,6,1,100.0,1,1,1,30,4.0,NA,NA,5.7,2,2,1.1",  # urban_pt (metro)
-    "D7,M7,7,1,100.0,1,0,1,90,120.0,NA,NA,6.1,3,3,1.1",  # train_long (TGV, 120 km)
-    "D8,M8,8,1,100.0,1,1,1,20,2.0,NA,NA,8.1,1,1,1.1",  # other (boat)
-    "D9,M9,9,1,100.0,1,1,1,20,3.0,NA,NA,3.1,1,1,1.1",  # multimodal day, leg 1 (car)
-    "D10,M9,9,2,100.0,1,1,0,30,4.0,NA,NA,5.7,2,2,1.1",  # multimodal day, leg 2 (metro)
-    "D11,M11,11,1,100.0,1,1,1,30,20.0,NA,NA,5.9,2,2,1.1",  # train_short (TER, 20 km)
+    "D1,M1,1,1,100.0,1,1,1,20,1.5,NA,NA,1.1,1,1,7.7,7.7",  # walk (loop trip)
+    "D2,M2,2,1,100.0,1,1,1,15,3.0,NA,NA,2.1,1,1,1.1,7.6",  # cycle (sport)
+    "D3,M3,3,1,100.0,1,1,1,25,5.0,NA,NA,3.1,1,1,1.1,9.1",  # car_driver
+    "D4,M4,4,1,100.0,1,1,1,25,5.0,2,0,3.2,1,1,1.1,9.1",  # car_passenger_household
+    "D5,M5,5,1,100.0,1,1,1,25,5.0,0,3,3.2,1,1,1.1,9.1",  # car_passenger_carpool
+    "D6,M6,6,1,100.0,1,1,1,30,4.0,NA,NA,5.7,2,2,1.1,9.1",  # urban_pt (metro)
+    "D7,M7,7,1,100.0,1,0,1,90,120.0,NA,NA,6.1,3,3,1.1,9.1",  # train_long (TGV, 120 km)
+    "D8,M8,8,1,100.0,1,1,1,20,2.0,NA,NA,8.1,1,1,1.1,9.1",  # other (boat)
+    "D9,M9,9,1,100.0,1,1,1,20,3.0,NA,NA,3.1,1,1,1.1,9.1",  # multimodal day, leg 1 (car)
+    # multimodal day, leg 2 (metro)
+    "D10,M9,9,2,100.0,1,1,0,30,4.0,NA,NA,5.7,2,2,1.1,9.1",
+    # train_short (TER, 20 km)
+    "D11,M11,11,1,100.0,1,1,1,30,20.0,NA,NA,5.9,2,2,1.1,9.1",
 ]
 
 _TCM_IND_KISH_HEADER = "IDENT_IND;AGE;AGE6;SITUA"

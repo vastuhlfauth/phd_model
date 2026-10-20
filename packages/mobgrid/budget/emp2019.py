@@ -141,6 +141,57 @@ OTHER_MODE_DESCRIPTION = (
     "(mtp 9.1, missing, or the 9999 refusal code)"
 )
 
+#: `k_deploc.MOT_SEQ_COMPL`'s own labels ("Motif corrige detaille de la
+#: sequence", the chain-level, corrected trip purpose; unlike the raw,
+#: trip-level `MMOTIFDES` used by `is_loop_trip` above, it has no
+#: "return home"/"return to residence" codes 1.1-1.3, since a return leg
+#: is recoded to the purpose of the outward leg it closes). Used by
+#: `emp._compute_motive_decomposition` (section 9.9 point 1 follow-up,
+#: "decompose energy per motive"), labels from
+#: `data/raw/emp2019/emp2019-categories.pdf`'s "Motif" table.
+MOTIVE_LABEL_BY_CODE = {
+    1.1: "return home",
+    1.2: "return to occasional residence",
+    1.3: "return to parents'/friends' home",
+    1.4: "study (school/university)",
+    1.5: "young-child childcare drop-off",
+    2.1: "shopping, mall/large store",
+    2.2: "shopping, local store",
+    3.1: "medical/personal care",
+    4.1: "administrative errand",
+    4.12: "waste disposal site",
+    5.1: "visit family",
+    5.2: "visit friends",
+    6.1: "accompany to station/airport",
+    6.2: "accompany elsewhere",
+    6.3: "pick up from station/airport",
+    6.4: "pick up elsewhere",
+    7.1: "association/religious/meeting",
+    7.2: "leisure centre/amusement park/fair",
+    7.3: "eat/drink out",
+    7.4: "visit monument/historic site",
+    7.5: "cultural/sports show, conference",
+    7.6: "sport",
+    7.7: "stroll, no specific destination",
+    7.8: "go to a place for walking",
+    8.1: "holiday, away from second home",
+    8.2: "go to second home",
+    8.3: "go to occasional residence",
+    8.4: "other personal reason",
+    9.1: "work, fixed usual workplace",
+    9.2: "work, outside fixed workplace",
+    9.3: "training/conference/exhibition",
+    9.4: "professional rounds/patient visits",
+    9.5: "other professional reason",
+}
+
+#: Leisure-adjacent cycling purposes flagged by the user as likely large
+#: contributors to mean cycling energy: 7.6 (sport), 7.7 (the same
+#: "leisure loop" purpose as `is_loop_trip`, but via `MOT_SEQ_COMPL`
+#: rather than `MMOTIFDES`), 7.8 (going to a place to walk/ride, i.e. the
+#: ride itself is the point, not the destination).
+LEISURE_CYCLING_MOTIVE_CODES = (7.6, 7.7, 7.8)
+
 #: `tcm_ind_kish_public`'s `SITUA` ("Situation principale vis-a-vis du
 #: travail") codes, mapped to section 6.1's five population categories
 #: (children 6-17, employed, unemployed, retired, other inactive).
@@ -509,6 +560,16 @@ def build_trip_legs(
             d.MDISTTOT_fin AS distance_km_declared,
             d.MACCOMPM AS maccompm,
             d.MACCOMPHM AS maccomphm,
+            -- EMP's own "corrected, detailed motive of the sequence"
+            -- (MOT_SEQ_COMPL): unlike the raw, trip-level MMOTIFDES
+            -- used by `is_loop_trip` below, this is chain-level and
+            -- excludes "return home"/"return to residence" codes
+            -- (1.1-1.3), used by `emp._compute_motive_decomposition`
+            -- (section 9.9 point 1 follow-up) to find which purposes
+            -- dominate a mode's energy, in particular cycling's.
+            CASE WHEN d.MOT_SEQ_COMPL = {_dbl(9999.0)} THEN NULL
+                ELSE d.MOT_SEQ_COMPL
+            END AS motive,
             -- Trips without a real destination (section 9.9's "leisure
             -- loops"): EMP's own purpose code 7.7 "se promener sans
             -- destination precise" (stroll, no specific destination);
@@ -696,7 +757,7 @@ def build_trip_legs(
     SELECT
         ident_dep, ident_ind, ident_men, pond_jour, pond_ind, typejour, mobloc,
         num_dep, moridom, mode_group, vehicle, density_ori, density_des,
-        age, age_band, population_category, is_loop_trip,
+        age, age_band, population_category, is_loop_trip, motive,
         duration_min, distance_km, distance_km_declared, implied_speed_kmh,
         implied_speed_kmh_declared, speed_flagged_upper, p0_calibrated_w,
         bike_ride_time_s, bike_ride_time_for_energy_s,

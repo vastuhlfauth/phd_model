@@ -6,6 +6,7 @@ the real EMP 2019 data (isolated, no ``data/raw`` access).
 
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 
 import duckdb
@@ -96,3 +97,57 @@ def test_carpool_is_distinguished_from_household_passenger_by_companions(
         "(SELECT energy_kh_kj FROM trip_legs WHERE ident_ind = 5)"
     ).fetchone()
     assert household_kh != pytest.approx(carpool_kh)
+
+
+def test_motive_column_reads_mot_seq_compl(
+    trip_legs: duckdb.DuckDBPyConnection,
+) -> None:
+    # ident_ind 2's cycle trip has MOT_SEQ_COMPL 7.6 ("sport").
+    motive = trip_legs.sql(
+        "SELECT motive FROM trip_legs WHERE ident_ind = 2"
+    ).fetchone()[0]
+    assert motive == pytest.approx(7.6)
+
+
+def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
+    """A tiny, two-row k_deploc (so DuckDB's CSV type inference sees more
+    than one value per column, avoiding single-row inference quirks
+    unrelated to this test): one trip with MOT_SEQ_COMPL 9999 (the
+    refusal code), the other with a normal motive, confirming only the
+    former reads back as NULL."""
+    config = load_energy_config(CONFIG_PATH)
+    zip_path = tmp_path / "emp2019-data.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr(
+            "5. k_deploc_public_V4.csv",
+            "\n".join([
+                "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
+                "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
+                "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL",
+                "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9999",
+                "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9.1",
+            ]),
+        )
+        archive.writestr(
+            "tcm_ind_kish_public_V3.csv",
+            "\n".join(["IDENT_IND;AGE;AGE6;SITUA", "1;30;30;1", "2;30;30;1"]),
+        )
+        archive.writestr(
+            "k_individu_public_V3.csv",
+            "\n".join([
+                "IDENT_IND;pond_indC;MIMMOSEM", "1;100.0;2", "2;100.0;2",
+            ]),
+        )
+        archive.writestr(
+            "tcm_ind_public_V3.csv", "ident_ind;ident_men\n1;M1\n2;M2"
+        )
+        archive.writestr(
+            "q_menage_public_V3.csv",
+            "\n".join(["IDENT_MEN;pond_menC", "M1;100.0", "M2;100.0"]),
+        )
+    con = duckdb.connect()
+    csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv2")
+    emp2019.register_views(con, csv_paths)
+    emp2019.build_trip_legs(con, config)
+    motive = con.sql("SELECT motive FROM trip_legs WHERE ident_ind = 1").fetchone()[0]
+    assert motive is None
