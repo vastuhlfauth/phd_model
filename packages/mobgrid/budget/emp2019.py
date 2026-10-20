@@ -90,10 +90,6 @@ _CV_KEY_BY_VEHICLE = {
     "interurban_coach": "bus_mixed_traffic",
 }
 
-#: Distance threshold splitting `train` into `train_short`/`train_long`
-#: day-mode groups (section 9.9 point 3).
-TRAIN_LONG_THRESHOLD_KM = 80.0
-
 #: Minimum ride-only time, seconds, below which the bike get-park/stops
 #: adjustment is considered unreliable (section 9.9's P0 calibration):
 #: fixed overheads cannot credibly exceed almost all of a very short
@@ -189,12 +185,14 @@ MOTIVE_LABEL_BY_CODE = {
 #: is about commuting and travel for needs fulfilment, not recreational
 #: movement for its own sake. Trips whose corrected motive (`motive`,
 #: `MOT_SEQ_COMPL`) is sport (7.6), a destination-less stroll (7.7, the
-#: same purpose as `is_loop_trip`, via the raw `MMOTIFDES` instead) or
+#: same purpose as `is_loop_trip`, via the raw `MMOTIFDES` instead),
 #: "going to a place to walk/ride" (7.8, destination exists, but the
-#: movement itself is the point) are excluded from every day/energy
-#: computation in step 11's report -- the whole report's base scope, not
-#: an optional variant.
-NEEDS_EXCLUDED_MOTIVE_CODES = (7.6, 7.7, 7.8)
+#: movement itself is the point), or any top-level motive group 8
+#: purpose (8.1-8.4: holidays, second/occasional residence, other
+#: private reasons -- none of them a needs-fulfilment destination) are
+#: excluded from every day/energy computation in step 11's report -- the
+#: whole report's base scope, not an optional variant.
+NEEDS_EXCLUDED_MOTIVE_CODES = (7.6, 7.7, 7.8, 8.1, 8.2, 8.3, 8.4)
 
 #: SQL fragment for ``day_summary``'s candidate-trip filter (and any
 #: other per-leg query that must match its scope): keeps a trip unless
@@ -539,7 +537,6 @@ def build_trip_legs(
     carpool_walk_sql = _dbl(car.carpool_passenger.walk_to_meeting_point_min)
     carpool_wait_sql = _dbl(car.carpool_passenger.wait_standing_min)
     terminal_scale_sql = _dbl(terminal_scale)
-    train_threshold_sql = _dbl(TRAIN_LONG_THRESHOLD_KM)
     car_modes_sql = ", ".join(f"'{m}'" for m in _CAR_MODE_GROUPS)
     # Flags only the upper bound, on the *declared* speed (before any
     # correction): a trip this fast cannot credibly be the mode it is
@@ -620,9 +617,7 @@ def build_trip_legs(
                     AND coalesce(d.MACCOMPM, 0) = 0 THEN 'car_passenger_carpool'
                 WHEN d.mtp = 3.2 THEN 'car_passenger_household'
                 WHEN d.mtp IN (5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7) THEN 'urban_pt'
-                WHEN (d.mtp IN (5.8, 5.9) OR floor(d.mtp) = 6)
-                    AND d.MDISTTOT_fin < {train_threshold_sql} THEN 'train_short'
-                WHEN d.mtp IN (5.8, 5.9) OR floor(d.mtp) = 6 THEN 'train_long'
+                WHEN d.mtp IN (5.8, 5.9) OR floor(d.mtp) = 6 THEN 'train'
                 ELSE 'other'
             END AS mode_group,
             {vehicle_mapping_sql} AS vehicle,
@@ -836,15 +831,7 @@ def build_trip_legs(
                 + ride_rate_kj_per_min * greatest(duration_min
                     - {terminal_scale_sql} * (access_walk_ori_min
                         + access_walk_des_min + wait_min + stairs_time_min), 0)
-            WHEN 'train_short' THEN
-                {walk_rate_kh_sql} * {terminal_scale_sql}
-                    * (access_walk_ori_min + access_walk_des_min)
-                + {standing_kh_sql} * {terminal_scale_sql} * wait_min
-                + {terminal_scale_sql} * stairs_energy_kh_kj
-                + ride_rate_kj_per_min * greatest(duration_min
-                    - {terminal_scale_sql} * (access_walk_ori_min
-                        + access_walk_des_min + wait_min + stairs_time_min), 0)
-            WHEN 'train_long' THEN
+            WHEN 'train' THEN
                 {walk_rate_kh_sql} * {terminal_scale_sql}
                     * (access_walk_ori_min + access_walk_des_min)
                 + {standing_kh_sql} * {terminal_scale_sql} * wait_min
@@ -898,15 +885,7 @@ def build_trip_legs(
                 + ride_rate_kj_per_min * greatest(duration_min
                     - {terminal_scale_sql} * (access_walk_ori_min
                         + access_walk_des_min + wait_min + stairs_time_min), 0)
-            WHEN 'train_short' THEN
-                {walk_rate_cp_sql} * {terminal_scale_sql}
-                    * (access_walk_ori_min + access_walk_des_min)
-                + {standing_cp_sql} * {terminal_scale_sql} * wait_min
-                + {terminal_scale_sql} * stairs_energy_cp_kj
-                + ride_rate_kj_per_min * greatest(duration_min
-                    - {terminal_scale_sql} * (access_walk_ori_min
-                        + access_walk_des_min + wait_min + stairs_time_min), 0)
-            WHEN 'train_long' THEN
+            WHEN 'train' THEN
                 {walk_rate_cp_sql} * {terminal_scale_sql}
                     * (access_walk_ori_min + access_walk_des_min)
                 + {standing_cp_sql} * {terminal_scale_sql} * wait_min

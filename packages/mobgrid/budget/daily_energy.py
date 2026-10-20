@@ -27,23 +27,25 @@ KH_DAILY_ENERGY_KJ = 615.0
 
 #: Day-mode groups directly comparable with Koelbl & Helbing's six
 #: reference modes, expanded per the updated section 9.9 point 3 (a
-#: household/carpool passenger split and a short/long train split);
-#: 'multimodal' and 'other' are kept apart (section 9.9 point 3).
+#: household/carpool passenger split); 'multimodal' and 'other' are kept
+#: apart (section 9.9 point 3). The short/long train split (step 11
+#: round 8) is merged back into a single 'train' group: train_long had
+#: too few observations to be a meaningful separate group.
 DAY_MODE_GROUPS = (
     "walking_only", "cycle", "car_driver", "car_passenger_household",
-    "car_passenger_carpool", "urban_pt", "train_short", "train_long",
+    "car_passenger_carpool", "urban_pt", "train",
 )
 
 #: The six groups of section 9.9's F8 robustness check ("For walk, bike,
 #: driver, both passenger groups, urban PT and train short").
 F8_ROBUSTNESS_GROUPS = (
     "walking_only", "cycle", "car_driver", "car_passenger_household",
-    "car_passenger_carpool", "urban_pt", "train_short",
+    "car_passenger_carpool", "urban_pt", "train",
 )
 
 #: The four "core" groups of F8's core/full comparison: walk, car driver,
-#: urban PT, train short (no bike or either passenger group).
-F8_CORE_ROBUSTNESS_GROUPS = ("walking_only", "car_driver", "urban_pt", "train_short")
+#: urban PT, train (no bike or either passenger group).
+F8_CORE_ROBUSTNESS_GROUPS = ("walking_only", "car_driver", "urban_pt", "train")
 
 
 def create_day_summary(

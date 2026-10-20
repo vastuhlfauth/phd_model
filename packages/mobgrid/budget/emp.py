@@ -163,19 +163,22 @@ def _compute_motive_decomposition(
 
 
 def _compute_motive_energy_matrix(
-    con: duckdb.DuckDBPyConnection,
+    con: duckdb.DuckDBPyConnection, *, where_sql: str = "TRUE"
 ) -> tuple[list[str], list[float], np.ndarray]:
     """(mode_groups, top_level_motives, matrix): weighted KH energy sum
     per (mode_group, top-level motive) cell, for the "energy by motive,
     all modes" figure (section 9.9 point 1 follow-up, generalising the
     cycling-only motive table to every mode). Top-level (``floor``) only
     -- a dozen or so sub-codes per mode would make an unreadable stacked
-    bar legend."""
-    rows = con.sql("""
+    bar legend. ``where_sql`` filters ``trip_legs`` directly (e.g.
+    ``emp2019.NEEDS_ONLY_WHERE_SQL``, for the "final decomposition"
+    panel): unlike every other needs-only query in this module, this one
+    is never joined through ``day_summary``, so it needs its own filter."""
+    rows = con.sql(f"""
         SELECT mode_group, floor(motive) AS top_motive,
             sum(pond_jour * energy_kh_kj) AS energy_kh_sum
         FROM trip_legs
-        WHERE energy_kh_kj IS NOT NULL AND motive IS NOT NULL
+        WHERE energy_kh_kj IS NOT NULL AND motive IS NOT NULL AND ({where_sql})
         GROUP BY 1, 2
     """).fetchall()
     mode_groups = sorted({row[0] for row in rows})
@@ -428,13 +431,12 @@ def run(
         GROUP BY 1 ORDER BY 1
     """).fetchall()
 
-    motive_mode_groups, motive_top_motives, motive_matrix = (
-        _compute_motive_energy_matrix(con)
+    motive_matrix_before = _compute_motive_energy_matrix(con)
+    motive_matrix_after = _compute_motive_energy_matrix(
+        con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL
     )
     figures.append(
-        _figure_f9_motive_energy(
-            motive_mode_groups, motive_top_motives, motive_matrix, out_dir
-        )
+        _figure_f9_motive_energy(motive_matrix_before, motive_matrix_after, out_dir)
     )
 
     # Point 2: data-quality correction counts (upper-bound speed flags,
@@ -629,6 +631,36 @@ def _trips_per_day_by_group(
     return results
 
 
+def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
+    """(rows, cols, matrix): % of all weighted person-days in each
+    (population category, main-mode group) cell, with "overall" margins
+    in both directions (row 0/col 0), for F1's frequency heatmap. Excludes
+    the 'unknown' population category, as elsewhere in this report."""
+    categories = sorted(
+        {c for c in days["population_category"] if c != "unknown"}
+    )
+    modes = sorted(set(days["day_mode_group"]))
+    rows = ["overall", *categories]
+    cols = ["overall", *modes]
+    total_weight = days["pond_jour"].sum()
+    matrix = np.zeros((len(rows), len(cols)))
+    for i, category in enumerate(rows):
+        category_mask = (
+            np.ones(len(days["pond_jour"]), dtype=bool) if category == "overall"
+            else days["population_category"] == category
+        )
+        for j, mode in enumerate(cols):
+            mode_mask = (
+                np.ones(len(days["pond_jour"]), dtype=bool) if mode == "overall"
+                else days["day_mode_group"] == mode
+            )
+            matrix[i, j] = (
+                days["pond_jour"][category_mask & mode_mask].sum()
+                / total_weight * 100.0
+            )
+    return rows, cols, matrix
+
+
 def _figure_f1_trips_per_day(
     days: dict,
     trips_mean: float,
@@ -636,7 +668,9 @@ def _figure_f1_trips_per_day(
     trips_by_density: list[tuple[str, int, float, tuple[float, float]]],
     out_dir: Path,
 ) -> Path:
-    fig, (ax_hist, ax_pop, ax_density) = plt.subplots(1, 3, figsize=(17, 5))
+    fig, ((ax_hist, ax_pop), (ax_density, ax_freq)) = plt.subplots(
+        2, 2, figsize=(14, 11)
+    )
 
     max_trips = int(days["trips_per_day"].max())
     bins = np.arange(0.5, max_trips + 1.5, 1)
@@ -668,6 +702,24 @@ def _figure_f1_trips_per_day(
         ax.set_xticklabels(labels, rotation=30, ha="right")
         ax.set_ylabel("Mean trips per day")
         ax.set_title(title)
+
+    freq_rows, freq_cols, freq_matrix = _frequency_matrix(days)
+    image = ax_freq.imshow(freq_matrix, aspect="auto", cmap="viridis")
+    ax_freq.set_xticks(range(len(freq_cols)))
+    ax_freq.set_xticklabels(freq_cols, rotation=30, ha="right", fontsize=8)
+    ax_freq.set_yticks(range(len(freq_rows)))
+    ax_freq.set_yticklabels(freq_rows, fontsize=8)
+    for i in range(freq_matrix.shape[0]):
+        for j in range(freq_matrix.shape[1]):
+            ax_freq.text(
+                j, i, f"{freq_matrix[i, j]:.1f}", ha="center", va="center",
+                fontsize=6, color="white",
+            )
+    ax_freq.set_title(
+        "(D) Frequency heatmap: % of all person-days\n"
+        "(row/col 'overall' = marginal totals)", fontsize=9,
+    )
+    fig.colorbar(image, ax=ax_freq, label="% of all weighted person-days")
 
     fig.suptitle("F1. Trips per person and day (section 9.9, point 2)")
     fig.tight_layout()
@@ -1125,40 +1177,59 @@ def _figure_f8_robustness(
 
 
 def _figure_f9_motive_energy(
-    mode_groups: list[str], top_motives: list[float], matrix: np.ndarray, out_dir: Path,
+    before: tuple[list[str], list[float], np.ndarray],
+    after: tuple[list[str], list[float], np.ndarray],
+    out_dir: Path,
 ) -> Path:
     """F9: stacked bar of weighted KH energy by top-level motive, one bar
     per mode group, each normalised to 100% (section 9.9 point 1
     follow-up, "a graph with a stacked bar of energy values per
-    motive"). Computed on the full, pre-exclusion dataset (every motive,
+    motive"). (A) the full, pre-exclusion dataset (every motive,
     including `NEEDS_EXCLUDED_MOTIVE_CODES`): the evidence behind this
-    report's needs-only scope, not itself scoped to it."""
-    totals = matrix.sum(axis=1, keepdims=True)
-    shares = np.divide(
-        matrix, totals, out=np.zeros_like(matrix), where=totals > 0
-    ) * 100.0
-
-    fig, ax = plt.subplots(figsize=(11, 6))
-    x = np.arange(len(mode_groups))
-    bottom = np.zeros(len(mode_groups))
+    report's needs-only scope. (B) the final, needs-only-scoped dataset
+    ("the final decomposition"): motive 7 (leisure) shrinks to its
+    remaining, non-excluded sub-codes (7.1-7.5) and motive 8
+    (holidays/second home) disappears entirely, since every one of its
+    sub-codes is excluded.
+    """
+    # One shared top-motive -> colour mapping across both panels (a
+    # motive missing from one panel keeps the same colour it would have
+    # had, so the two panels stay visually comparable).
+    all_top_motives = sorted(set(before[1]) | set(after[1]))
     cmap = plt.get_cmap("tab10")
-    for j, top_motive in enumerate(top_motives):
-        label = emp2019.TOP_LEVEL_MOTIVE_LABEL_BY_CODE.get(
-            top_motive, f"code {top_motive:g}"
-        )
-        ax.bar(
-            x, shares[:, j], bottom=bottom, label=f"{top_motive:g} {label}",
-            color=cmap(j % 10),
-        )
-        bottom += shares[:, j]
-    ax.set_xticks(x)
-    ax.set_xticklabels(mode_groups, rotation=30, ha="right")
-    ax.set_ylabel("Share of weighted energy, % (kh)")
-    ax.set_title(
+    colour_by_motive = {
+        motive: cmap(i % 10) for i, motive in enumerate(all_top_motives)
+    }
+
+    fig, axes = plt.subplots(1, 2, figsize=(18, 6))
+    for ax, (mode_groups, top_motives, matrix), title in (
+        (axes[0], before, "(A) Full dataset (evidence for the scope decision)"),
+        (axes[1], after, "(B) Final decomposition (needs-only scope)"),
+    ):
+        totals = matrix.sum(axis=1, keepdims=True)
+        shares = np.divide(
+            matrix, totals, out=np.zeros_like(matrix), where=totals > 0
+        ) * 100.0
+        x = np.arange(len(mode_groups))
+        bottom = np.zeros(len(mode_groups))
+        for j, top_motive in enumerate(top_motives):
+            label = emp2019.TOP_LEVEL_MOTIVE_LABEL_BY_CODE.get(
+                top_motive, f"code {top_motive:g}"
+            )
+            ax.bar(
+                x, shares[:, j], bottom=bottom, label=f"{top_motive:g} {label}",
+                color=colour_by_motive[top_motive],
+            )
+            bottom += shares[:, j]
+        ax.set_xticks(x)
+        ax.set_xticklabels(mode_groups, rotation=30, ha="right")
+        ax.set_ylabel("Share of weighted energy, % (kh)")
+        ax.set_title(title, fontsize=10)
+        ax.legend(fontsize=6, bbox_to_anchor=(1.02, 1), loc="upper left")
+    fig.suptitle(
         "F9. Energy by top-level motive, all modes (100% stacked, "
-        "full dataset, section 9.9 point 1)"
+        "section 9.9 point 1)"
     )
-    ax.legend(fontsize=7, bbox_to_anchor=(1.02, 1), loc="upper left")
     fig.tight_layout()
     path = out_dir / "f09_motive_energy.png"
     fig.savefig(path, dpi=110)
@@ -1310,8 +1381,9 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "walking only, bike, car driver, car passenger with a household "
         "driver, car passenger with a non-household driver (carpool), "
-        "urban PT, train short (< 80 km), train long (>= 80 km), "
-        "multimodal (two or more distinct non-walk modes in the day; "
+        "urban PT, train (short- and long-distance merged, step 11 round 8: "
+        "train_long had too few observations to be a meaningful separate "
+        "group), multimodal (two or more distinct non-walk modes in the day; "
         "driving and riding as a passenger count as two), other. "
         f"**'other' contains:** {emp2019.OTHER_MODE_DESCRIPTION}.",
         "",
@@ -1352,14 +1424,16 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "scope (2026-10-20 project decision, not an optional variant): "
         "trips whose corrected motive (`motive`, `MOT_SEQ_COMPL`) is "
         "sport (7.6), a destination-less stroll (7.7, \"se promener sans "
-        "destination precise\") or going to a place to walk/ride (7.8, a "
-        "destination exists, but the movement itself is the point) are "
-        "excluded from every day's energy/time sums and from day "
-        "classification; a day whose only trips were these becomes a "
-        "non-traveller for this analysis. A missing/refused motive is "
-        "kept, not excluded. See F9 and the table below for the evidence "
-        "behind this decision, computed on the full, pre-exclusion "
-        "dataset.",
+        "destination precise\"), going to a place to walk/ride (7.8, a "
+        "destination exists, but the movement itself is the point), or "
+        "any top-level motive group 8 purpose (8.1-8.4: holidays, "
+        "second/occasional residence, other private reasons -- none of "
+        "them a needs-fulfilment destination) are excluded from every "
+        "day's energy/time sums and from day classification; a day whose "
+        "only trips were these becomes a non-traveller for this analysis. "
+        "A missing/refused motive is kept, not excluded. See F9 and the "
+        "table below for the evidence behind this decision, computed on "
+        "the full, pre-exclusion dataset.",
         "",
         "| Group | excluded trip share | n excluded / n total | excluded "
         "share of day energy (kh) | excluded share of day energy (cp) |",
@@ -1423,7 +1497,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "TODO(confirm), no survey or observed pickup pattern.",
         "",
         "## F8 robustness (max/min ratio and CV of the group means, "
-        "walk/bike/driver/both passenger groups/urban PT/train short)",
+        "walk/bike/driver/both passenger groups/urban PT/train)",
         "",
         *_format_robustness_table(results["robustness_rows"]),
         "",
@@ -1601,7 +1675,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "- F3/F4/F5 use the full set of day-mode groups (including "
         "multimodal and other); F8's robustness check is restricted to "
         "the six groups the task names (walk, bike, driver, both "
-        "passenger groups, urban PT, train short).",
+        "passenger groups, urban PT, train).",
         "- F8's figure shows bootstrap CIs for the base case and the "
         "terminal-legs x0.5/x1.5 extremes only (not every table variant), "
         "per the task's \"figure ... for the base case and the extremes\".",

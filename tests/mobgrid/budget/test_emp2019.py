@@ -43,9 +43,9 @@ def test_every_mode_group_is_classified(trip_legs: duckdb.DuckDBPyConnection) ->
         4: "car_passenger_household",
         5: "car_passenger_carpool",
         6: "urban_pt",
-        7: "train_long",
+        7: "train",
         8: "other",
-        11: "train_short",
+        11: "train",
     }
     for ident_ind, mode_group in expected.items():
         assert _mode_group(trip_legs, ident_ind) == mode_group

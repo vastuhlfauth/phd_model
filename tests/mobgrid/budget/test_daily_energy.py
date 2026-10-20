@@ -45,8 +45,8 @@ def test_single_trip_days_are_classified_by_their_only_mode(
         2: "cycle",
         3: "car_driver",
         6: "urban_pt",
-        7: "train_long",
-        11: "train_short",
+        7: "train",
+        11: "train",
     }
 
 
