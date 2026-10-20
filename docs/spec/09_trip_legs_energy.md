@@ -223,14 +223,25 @@ where n_p is the number of trips per person and day for purpose p (work, educati
 
 **What is tested.** The hypothesis is about equality, not about a level: the mean, and ideally the whole distribution, of daily travel energy should be the same for every main-mode group, whatever the number and the purposes of the day's trips. Individual days vary widely (Kölbl & Helbing fit a gamma-like distribution), so the test compares means and distributions across groups, not the spread between individuals. The level of Ē depends on the rate set: walking costs about a quarter less with the Compendium than with KH, and the checks of step 7, at Kölbl & Helbing's mean daily times with three trips a day, give about 500 kJ with Compendium rates for walking, cycling, bus, car-driver and train days.
 
+**Scope: travel for needs.** The budget concerns travel to fulfil needs (work, study, shopping, services, visits, accompanying someone, leisure at a destination), not movement for its own sake. Trips whose purpose is sport, a stroll without destination, going to a place to walk or ride, holidays, a second or occasional residence or other private reasons are left out of the day's energy and time (decision of 20 October 2026). For return trips the purpose is that of the outward trip they close. In EMP 2019 these trips are a quarter of the trips of walking days and 30% of those of cycling days, and carry half of the energy of cycling days.
+
 **Re-estimation on EMP 2019 and the EMC² surveys:**
 
-1. Rebuild each respondent's survey day as legs. `K_DEPLOC` gives, for each trip, the main mode, the declared duration (`DUREE`), the distance (`MDISTTOT_fin`), the purpose and the companions, with the weight `POND_jour`; it has no leg detail, so terminal legs (walks to and from stops and cars, waits, parking search) take the defaults of sections 9.4 to 9.7 by density class of the trip ends, and the vehicle leg takes the rest of the declared duration. Sensitivity: terminal legs ±50%. Walking and cycling trips calibrate v0 and P_0 (declared distance over duration, by age band).
+1. Rebuild each respondent's survey day as legs. `K_DEPLOC` gives, for each trip, the main mode, the declared duration (`DUREE`), the distance (`MDISTTOT_fin`), the purpose and the companions, with the weight `POND_jour`; it has no leg detail, so terminal legs (walks to and from stops and cars, waits, parking search) take the defaults of sections 9.4 to 9.7 by density class of the trip ends, and the vehicle leg takes the rest of the declared duration. Sensitivity: terminal legs ±50%. Walking and cycling trips calibrate v0 and P_0 (declared distance over duration, by age band). Both surveys also record, for each trip, the declared walking time and the waiting time for public transport (`MTEMPSMAP`, `MTPSATTENT`); they are not used to build the legs, so that the model's own defaults are what is tested, but they are compared with the modelled terminal legs by mode group.
 2. Sum to a daily travel energy per person over all trips of the described day, with both rate sets (KH and Compendium); persons without trips are reported apart.
 3. Test the hypothesis. Days are grouped as in Kölbl & Helbing, by the one mode used besides walking: walking only, bike, car driver, car passenger with a household driver, car passenger with a driver from another household (carpool, formal or informal), urban PT, short train trips (under 80 km) and long train trips (80 km or more); multimodal days (two or more modes besides walking, driving and riding as a passenger counting as two) and other modes apart. Is mean daily travel energy equal across groups, while daily travel time differs? Then within each population category of the study (section 6.1: children 6–17, employed, unemployed, retired, other inactive) and each density class of the commune of residence (the four levels of the INSEE density grid, in the public tables). Comparisons across ages use net MET-minutes, so that body mass does not drive them [TO CONFIRM: Youth Compendium (Butte et al. 2018) for children].
 4. Use the EMC² surveys of 14 EPCIs, which locate residents at a finer zoning, to test the variation within urban areas (centre, suburbs, periphery).
 5. Fit the distribution of daily travel energy (gamma-like, as in Kölbl & Helbing) and compare its mean with 615 kJ.
 6. Define Ē_c for each 1 km cell from exogenous characteristics only (age structure, activity, household size from section 6; density class if it remains significant once modes are controlled for), so that the budget does not depend on the modes it is meant to explain [decision after estimation].
+
+**Change between 2008 and 2019 (ENTD 2008).** The same reconstruction is run on ENTD 2008, its codes mapped to those of EMP 2019 (`docs/data/entd2008.md`). Days are counted per described day with their own weights (weekday, Saturday, Sunday). The model is the same in both years (rates, P_0, terminal legs), so differences come from behaviour, not from the model. The question: did each group's daily energy stay the same while modes, distances and times changed? The 4-level density grid does not exist in ENTD 2008, so the comparison uses, in both years, a proxy available in both surveys: the urban-unit status of each trip end crossed with the size of the residence's urban unit. EMP 2019 is also run with this proxy, to measure its effect against the grid.
+
+| Trip-end status | Residence unit: rural or under 20,000 (size class 0–3) | 20,000 to 199,999 (4–6) | 200,000 or more, Paris (7–8) |
+|---|---|---|---|
+| City centre | sparse | intermediate | dense |
+| Suburb | sparse | intermediate | intermediate |
+| Isolated town | sparse | sparse | sparse |
+| Rural, outside urban units | very sparse | very sparse | very sparse |
 
 **Outputs of the re-estimation** (weighted, with 95% confidence intervals by bootstrap over households, both rate sets):
 
@@ -240,7 +251,9 @@ where n_p is the number of trips per person and day for purpose p (work, educati
 - mean daily energy and mean daily time by main-mode group, overall, for each population category and each density class, with cells of fewer than 50 persons left blank;
 - robustness of the group means to the rate set, the terminal legs (×0.5 to ×1.5), P_0, weekdays only and local trips only;
 - car passengers: household and carpool, and the walking trips of passenger days;
-- calibrated v0 and P_0.
+- calibrated v0 and P_0;
+- declared walking and waiting times against the modelled terminal legs, by mode group;
+- for ENTD 2008, the same outputs, and a comparison of 2008 and 2019 (group means and medians of daily energy and time, n, both rate sets, density proxy in both years).
 
 ## 9.10 Monetary cost
 

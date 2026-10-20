@@ -96,7 +96,7 @@ In this order, on one pilot département with its halo and for the 2021 baseline
 | 8 | `mobgrid/graph` | CSR graph; bounded multi-source Dijkstra with secondary weights, predecessors and the three products | Same distances as scipy's Dijkstra on random graphs; products equal brute-force sums and minima |
 | 9 | `mobgrid/layers/gridgraph.py` | Representative points (section 4.2); 1 km grid edges to 8, 16 or 24 neighbours (the three variants built for the pilot comparison), stray check, time per road class, capacity | Edge times equal OSRM between neighbouring cells within tolerance; points on the network |
 | 10 | `mobgrid/od` | Car and bike O-D and products for the pilot, Parquet output | Validation metrics of section 13 against OSRM |
-| 11 | `mobgrid/budget` | EMP 2019 survey days rebuilt as legs; daily energy per person | Constancy tests of section 9.9 reported |
+| 11 | `mobgrid/budget` | EMP 2019 survey days rebuilt as legs; daily energy per person; ENTD 2008 with the same method | Constancy tests of section 9.9 reported for 2019 and 2008, and their change |
 
 Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (timeline, triage, bounds), national tiling.
 
