@@ -2,9 +2,66 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-20 by Copilot (step 11, twelfth round: fixed 3 implausible ENTD 2008 cycling-distance outliers that were inflating the 2008-2019 comparison's overall means and the multimodal group through cycling's "stops" energy sub-term; bike's flagged distance is now corrected like walk's and car's; branch `step/mobgrid-budget-entd2008`, awaiting review)_
+_Last updated: 2026-10-22 by Copilot (merged `step/mobgrid-budget-entd2008` and `docs/spec-9.9-update` into `main`; both source branches deleted locally and on `origin`)_
 
-### Session handoff (2026-10-20, end of session)
+### Merge wrap-up (2026-10-22)
+
+- **Merged into `main`:**
+  - `step/mobgrid-budget-entd2008` (step 11, ENTD 2008 comparison and
+    the bike-distance-correction fix): merge commit `faa7219`.
+  - `docs/spec-9.9-update` (spec section 9's section 9.3/9.7/9.9 text
+    updated to match the re-estimation's actual behaviour -- speed
+    correction, P0 calibration and its 45 km/h guard, survey weights
+    and the bootstrap CI, the merged train group, the EMP 2019 day
+    selection and `IMMODEP` columns, and the "other" modes' missing
+    energy formula; plus sections 00, 13, 15, 16): merge commit
+    `8528a00`. Spec section 9 itself was updated across commits
+    `571b034`, `53476df` and `7715d99` on that branch.
+- Both branches, now fully contained in `main`, were deleted locally and
+  on `origin`.
+- Pre-merge checks (branch `step/mobgrid-budget-entd2008`): 398 passed,
+  0 failed (`pytest -m "not pilot"`); of the repo's only 2 pilot-marked
+  tests, 1 passed and 1 failed with the known pre-existing
+  `tests/mobgrid/pt/test_calibration_pilot.py
+  ::test_chosen_parameters_resolve_the_clear_cut_known_cases` failure
+  (`AttributeError: 'dict' object has no attribute 'r_m'`, root cause
+  commit `b7be54e`, unrelated to this work); `ruff check .` clean.
+  Post-merge, `pytest -m "not pilot"` on `main` repeats the same 398
+  passed / 0 failed.
+- **Correction to the 2026-10-20 session handoff below:** its claim that
+  "both pilot tests in `tests/mobgrid/budget/` pass on real data" was
+  wrong -- there is no pilot-marked test in `tests/mobgrid/budget/` at
+  all. Its one real-data check,
+  `test_emp.py::test_real_emp_2019_mean_daily_energy_is_within_kh_order_of_magnitude`,
+  is gated by `@pytest.mark.skipif(not _REAL_DATA_AVAILABLE, ...)`, not
+  `@pytest.mark.pilot`; its module docstring wrongly claimed the
+  latter and has been fixed. Since it is skipif-, not marker-gated, it
+  already runs inside the default `-m "not pilot"` suite whenever the
+  EMP 2019 archive is present, which is why it is already counted in
+  the 398 passed above. The only `pilot`-marked tests in the whole repo
+  are the 2 in `tests/mobgrid/pt/test_calibration_pilot.py`.
+- **Open points from spec section 9.9, still open after this merge:**
+  1. Walking v0: keep the configured 4.8 km/h, or adopt a survey-derived
+     value (3.4-3.6 km/h door-to-door, both surveys) -- not decided
+     (section 9.3).
+  2. No mode has a duration plausibility check, and `urban_pt`/`train`
+     have no speed check either (only walk, cycle and the three car
+     groups are checked) -- section 9.9's own open-choices list now
+     names this gap, not yet implemented.
+  3. The EMP 2019 short-walk distances: 15.4% of walking trips are
+     speed-flagged and distance-corrected (1,569 of 10,180), against
+     1.7% in ENTD 2008 (467 of 27,429) -- a ninefold gap `[TO CONFIRM:
+     how MDISTTOT_fin is computed for short walks]`, not investigated.
+  4. EMP 2019 trips per person and day (and the share of days without
+     trips) still need computing from `IMMODEP_A`-`IMMODEP_G` (plus the
+     summary flag `IMMODEP_FLAG`) in `K_INDIVIDU`, crossed with the
+     described day's trips -- not implemented yet (section 9.9, step 1).
+  5. The pre-existing `test_calibration_pilot.py` failure (commit
+     `b7be54e`, `GtfsRebuildConfig.chosen` now a per-mode-family dict,
+     test still reads it as a single object) remains unfixed; out of
+     scope for the budget/spec work merged here.
+
+### Session handoff (2026-10-20, end of session; superseded above -- branch now merged into `main`, see "Merge wrap-up" above)
 
 - **Branch:** `step/mobgrid-budget-entd2008`, pushed to `origin` with
   upstream tracking. Not merged.
@@ -16,9 +73,15 @@ _Last updated: 2026-10-20 by Copilot (step 11, twelfth round: fixed 3 implausibl
   regression test, the regenerated reports, and the pre-existing
   `test_calibration_pilot.py` issue below) is ready, see the session's
   final chat summary or `CHANGELOG.md`.
-- **Tests/lint:** 398 tests pass (`-m "not pilot"`), plus both pilot
-  tests in `tests/mobgrid/budget/` pass on real data; `ruff check .` is
-  clean. `ruff format --check .` flags this branch's files, but also 46
+- **Tests/lint:** 398 tests pass (`-m "not pilot"`). Correction (2026-10-22):
+  there is no pilot-marked test in `tests/mobgrid/budget/` -- its one
+  real-data check, `test_emp.py
+  ::test_real_emp_2019_mean_daily_energy_is_within_kh_order_of_magnitude`,
+  is gated by `@pytest.mark.skipif(not _REAL_DATA_AVAILABLE, ...)`, not
+  `@pytest.mark.pilot` (its docstring wrongly claimed the latter; fixed
+  in `tests/mobgrid/budget/test_emp.py`), so it already runs as part of
+  the default (`-m "not pilot"`) suite above, not a separate pilot run.
+  `ruff check .` is clean. `ruff format --check .` flags this branch's files, but also 46
   files repo-wide never touched this session -- the project's own
   validation command is `ruff check` (not `ruff format`), so this was
   not treated as a failure; not changed, to avoid an unrelated reformat
