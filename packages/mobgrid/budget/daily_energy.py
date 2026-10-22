@@ -45,7 +45,7 @@ DAY_MODE_GROUPS = (
     "train",
 )
 
-#: The six groups of section 9.9's F8 robustness check ("For walk, bike,
+#: The seven groups of section 9.9's F8 robustness check ("For walk, bike,
 #: driver, both passenger groups, urban PT and train short").
 F8_ROBUSTNESS_GROUPS = (
     "walking_only",
