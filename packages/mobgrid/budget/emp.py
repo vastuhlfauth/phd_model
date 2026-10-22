@@ -40,6 +40,10 @@ ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONFIG_PATH = ROOT / "config" / "energy.yaml"
 DEFAULT_OUT_DIR = ROOT / "docs" / "data" / "step11_budget"
 
+#: `typejour`/`V2_TYPJOUR` day-type codes, both surveys (`docs/data/
+#: entd2008.md`'s "1 weekday, 2 Saturday, 3 Sunday in both").
+_DAY_TYPE_LABEL = {1: "weekdays", 2: "Saturdays", 3: "Sundays"}
+
 #: Minimum weighted-day cell size below which a mean is left blank
 #: (section 9.9's F4/F5: "with cells of fewer than 50 persons left blank").
 MIN_CELL_N = 50
@@ -311,6 +315,49 @@ def run(
         density_source=density_source,
     )
     days = _day_rows(con)
+    n_days_within_scope = con.sql("SELECT count(*) FROM day_summary").fetchone()[0]
+
+    # Children as car drivers (round 4's point 4): the mtp code (already
+    # harmonised to EMP 2019's, `trips_norm`) behind every
+    # day_mode_group='car_driver' day of a children_6_17 respondent.
+    # Computed here, against the still needs-only-scoped `day_summary`/
+    # `trip_legs` (same scope as `mode_stats`'s table above, not the
+    # later full, pre-exclusion `day_summary` rebuild used by the
+    # motive-share diagnostics below): otherwise the two reported
+    # figures silently differed (56/148 full-scope days vs. 50/140
+    # needs-only, in the table).
+    children_car_driver_mtp = con.sql(f"""
+        SELECT mtp, count(*), min(age), max(age)
+        FROM trip_legs
+        WHERE mode_group = 'car_driver' AND population_category = 'children_6_17'
+            AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
+        GROUP BY 1 ORDER BY 1
+    """).fetchall()
+    children_car_driver_n = con.sql("""
+        SELECT count(*) FROM day_summary
+        WHERE day_mode_group = 'car_driver' AND population_category = 'children_6_17'
+    """).fetchone()[0]
+
+    # Sample flow (section 9.9, "Change between 2008 and 2019": persons
+    # and days kept apart), replacing the old "Sample:" line's
+    # `n_days + non_traveler_n` reconstruction of "respondents" (which
+    # silently dropped every respondent who had a trip but whose day
+    # fell out of scope, or ended with null energy, between "days with
+    # trips" and `n_days` here). Days-with-trips/with-energy are read
+    # off a full (pre-motive-scope) `day_summary` rebuild, then the view
+    # is rebuilt back to the needs-only scope so every later
+    # computation (this function's own, and the diagnostics below) sees
+    # what it expects.
+    n_respondents = survey.respondent_n(con)
+    daily_energy.create_day_summary(con, where_sql="TRUE")
+    n_days_with_trips = con.sql("SELECT count(*) FROM day_summary").fetchone()[0]
+    n_days_with_energy = con.sql(
+        "SELECT count(*) FROM day_summary WHERE total_energy_kh_kj IS NOT NULL"
+    ).fetchone()[0]
+    days_with_trips_by_type = con.sql(
+        "SELECT typejour, count(*) FROM day_summary GROUP BY 1 ORDER BY 1"
+    ).fetchall()
+    daily_energy.create_day_summary(con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL)
 
     mode_stats = _group_stats(days, "day_mode_group", n_reps=n_reps, seed=seed)
     population_stats = _group_stats(
@@ -565,29 +612,22 @@ def run(
     # "7.6,7.7,7.8 might have large impact on bike"), full dataset.
     cycle_motive_decomposition = _compute_motive_decomposition(con, "cycle")
 
-    # Children as car drivers (round 4's point 4): the mtp code (already
-    # harmonised to EMP 2019's, `trips_norm`) behind every
-    # day_mode_group='car_driver' day of a children_6_17 respondent.
-    children_car_driver_mtp = con.sql("""
-        SELECT mtp, count(*), min(age), max(age)
-        FROM trip_legs
-        WHERE mode_group = 'car_driver' AND population_category = 'children_6_17'
-        GROUP BY 1 ORDER BY 1
-    """).fetchall()
-    children_car_driver_n = con.sql("""
-        SELECT count(*) FROM day_summary
-        WHERE day_mode_group = 'car_driver' AND population_category = 'children_6_17'
-    """).fetchone()[0]
-
     non_traveler = survey.non_traveler_summary(con)
     # Weekday surveyed-day mix among travellers, now read directly from
-    # `day_summary.typejour` (one row per day, no join needed).
-    traveler_day_type_share = dict(
+    # `day_summary.typejour` (one row per day, no join needed), as a
+    # *share* of the total (previously a raw `sum(pond_jour)` fed
+    # straight into a `.1%` format, printing e.g. "2500207431.3%").
+    traveler_day_type_weight = dict(
         con.sql("""
         SELECT typejour, sum(pond_jour) FROM day_summary
         WHERE total_energy_kh_kj IS NOT NULL GROUP BY typejour
     """).fetchall()
     )
+    traveler_day_type_total = sum(traveler_day_type_weight.values())
+    traveler_day_type_share = {
+        day_type: weight / traveler_day_type_total
+        for day_type, weight in traveler_day_type_weight.items()
+    }
 
     return {
         "config": config,
@@ -627,8 +667,14 @@ def run(
         "children_car_driver_mtp": children_car_driver_mtp,
         "children_car_driver_n": children_car_driver_n,
         "quirk_fill_rates": quirk_fill_rates,
+        "n_respondents": n_respondents,
+        "n_days_with_trips": n_days_with_trips,
+        "n_days_with_energy": n_days_with_energy,
+        "n_days_within_scope": n_days_within_scope,
+        "days_with_trips_by_type": days_with_trips_by_type,
         "non_traveler_n": non_traveler["n"],
-        "non_traveler_share": non_traveler["share"],
+        "non_traveler_share_weighted": non_traveler["share_weighted"],
+        "non_traveler_share_unweighted": non_traveler["share_unweighted"],
         "non_traveler_mimmosem_match": non_traveler["mimmosem_match"],
         "traveler_day_type_share": traveler_day_type_share,
         "figures": figures,
@@ -1695,7 +1741,6 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     walk_carpool = walk_trips.get("car_passenger_carpool", float("nan"))
     survey_name = results["survey_name"]
     is_emp2019 = survey_name == emp2019.SURVEY_NAME
-    sample_unit = "respondent-days" if is_emp2019 else "described days"
     if is_emp2019:
         variables_used_line = (
             "**Variables used** (K_DEPLOC unless noted): mode `mtp`; duration "
@@ -1743,12 +1788,35 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         variables_used_line,
         "",
-        f"**Sample:** {results['n_days']:,} {sample_unit} with at least "
-        "one classified trip "
-        f"({results['non_traveler_n']} of "
-        f"{results['n_days'] + results['non_traveler_n']} "
-        f"respondents report no trip that day, {results['non_traveler_share']:.1%} "
-        "by individual weight, reported apart per point 2).",
+        '**Sample flow** (persons and days kept apart, section 9.9\'s '
+        '"Change between 2008 and 2019"; one described day per respondent '
+        "in EMP 2019, up to three in ENTD 2008, weekday/Saturday/Sunday):",
+        "",
+        "| Step | n |",
+        "|---|---|",
+        f"| Respondents | {results['n_respondents']:,} |",
+        "| Days with trips"
+        + (
+            " ("
+            + ", ".join(
+                f"{count:,} {_DAY_TYPE_LABEL.get(day_type, f'type {day_type}')}"
+                for day_type, count in results["days_with_trips_by_type"]
+            )
+            + ")"
+            if not is_emp2019
+            else ""
+        )
+        + f" | {results['n_days_with_trips']:,} |",
+        f"| Days with energy | {results['n_days_with_energy']:,} |",
+        f"| Days within scope | {results['n_days_within_scope']:,} |",
+        f"| Days within scope with energy | {results['n_days']:,} |",
+        "",
+        f"{results['non_traveler_n']:,} of {results['n_respondents']:,} "
+        "respondents report no trip "
+        + ("that day" if is_emp2019 else "on the reference weekday")
+        + f" ({results['non_traveler_share_unweighted']:.1%} unweighted, "
+        f"{results['non_traveler_share_weighted']:.1%} by individual weight; "
+        "reported apart per point 2).",
         "",
         "## Main-mode-of-the-day groups (point 3)",
         "",
@@ -2070,9 +2138,9 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
                     results["traveler_day_type_share"].items()
                 )
             )
-            + f" (weekday-dominated: {results['non_traveler_share']:.1%} overall "
-            "immobility is a weekday-weighted figure, not comparable to "
-            "all-week averages that include weekends, when immobility is "
+            + f" (weekday-dominated: {results['non_traveler_share_weighted']:.1%} "
+            "overall immobility is a weekday-weighted figure, not comparable "
+            "to all-week averages that include weekends, when immobility is "
             "known to be much higher).",
         ]
     else:
@@ -2082,8 +2150,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             '(`docs/data/entd2008.md`\'s "Persons without trips"); weekend '
             "immobility (`V2_MIMMOSAM`/`V2_MIMMODIM`) is not used, matching "
             "EMP 2019, which identifies weekday non-travellers only. "
-            f"Weekday share of persons without trips: "
-            f"{results['non_traveler_share']:.1%}.",
+            "Weekday share of persons without trips: "
+            f"{results['non_traveler_share_unweighted']:.1%} unweighted, "
+            f"{results['non_traveler_share_weighted']:.1%} by individual "
+            "weight.",
         ]
     lines += [
         "",
@@ -2121,7 +2191,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "energy and the P0 estimator's ride-time denominator.",
         "- F3/F4/F5 use the full set of day-mode groups (including "
         "multimodal and other); F8's robustness check is restricted to "
-        "the six groups the task names (walk, bike, driver, both "
+        "the seven groups the task names (walk, bike, driver, both "
         "passenger groups, urban PT, train).",
         "- F8's figure shows bootstrap CIs for the base case and the "
         "terminal-legs x0.5/x1.5 extremes only (not every table variant), "
@@ -2322,10 +2392,14 @@ def run_compare(
         "",
         "## Weekday share of persons without trips, both years",
         "",
-        f"- 2008: {results_2008['non_traveler_share']:.1%} "
-        f"(n={results_2008['non_traveler_n']})",
-        f"- 2019: {results_2019_proxy['non_traveler_share']:.1%} "
-        f"(n={results_2019_proxy['non_traveler_n']})",
+        f"- 2008: {results_2008['non_traveler_share_unweighted']:.1%} unweighted, "
+        f"{results_2008['non_traveler_share_weighted']:.1%} by individual weight "
+        f"(n={results_2008['non_traveler_n']} of "
+        f"{results_2008['n_respondents']:,} respondents)",
+        f"- 2019: {results_2019_proxy['non_traveler_share_unweighted']:.1%} "
+        f"unweighted, {results_2019_proxy['non_traveler_share_weighted']:.1%} by "
+        f"individual weight (n={results_2019_proxy['non_traveler_n']} of "
+        f"{results_2019_proxy['n_respondents']:,} respondents)",
         "",
         "## 2008-calibrated v0 and P0 (for information only; the model "
         "uses the same parameters in both years, section 9.9)",

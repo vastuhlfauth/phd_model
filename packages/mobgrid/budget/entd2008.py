@@ -352,15 +352,28 @@ def quirk_fill_rates(con: duckdb.DuckDBPyConnection) -> dict:
     }
 
 
+def respondent_n(con: duckdb.DuckDBPyConnection) -> int:
+    """The selected-respondent roster size (section 9.9, "Change between
+    2008 and 2019": persons and days kept apart). One row per selected
+    (Kish) respondent, up to three described days each (`k_individu`,
+    "Donnees mobilite quotidienne, mobilite du Kish" -- not
+    `q_tcm_individu`'s 49,283 rows, which cover every household member,
+    selected or not, and are used only for ages/occupations)."""
+    return con.sql("SELECT count(*) FROM k_individu").fetchone()[0]
+
+
 def non_traveler_summary(con: duckdb.DuckDBPyConnection) -> dict:
     """Section 9.9's "Persons without trips", 2008: `k_individu`'s
     `V2_MOBILREF = 0` (not mobile) on the reference weekday, weighted by
-    `PONDKI` (the person weight); the denominator is the weekday
-    (`typejour = 1`) travelling days of ``day_summary``, the same
-    reference-weekday scope (`docs/data/entd2008.md`'s "Persons without
-    trips": "Weekend immobility... is not needed for the comparison,
-    since EMP 2019 identifies weekday non-travellers only").
+    `PONDKI` (the person weight); weighted and unweighted shares are
+    both over the full respondent roster (``respondent_n``), not the
+    narrower within-scope-with-energy traveller count the share used to
+    be computed against. Weekend immobility (`V2_MIMMOSAM`, `V2_MIMMODIM`)
+    is not needed for the comparison, since EMP 2019 identifies weekday
+    non-travellers only.
     """
+    n_respondents = respondent_n(con)
+    total_weight = con.sql("SELECT sum(PONDKI) FROM k_individu").fetchone()[0]
     non_traveler_weight = (
         con.sql("SELECT sum(PONDKI) FROM k_individu WHERE V2_MOBILREF = 0").fetchone()[
             0
@@ -370,14 +383,10 @@ def non_traveler_summary(con: duckdb.DuckDBPyConnection) -> dict:
     non_traveler_n = con.sql(
         "SELECT count(*) FROM k_individu WHERE V2_MOBILREF = 0"
     ).fetchone()[0]
-    traveler_weekday_weight = (
-        con.sql("""
-        SELECT sum(pond_ind) FROM day_summary
-        WHERE typejour = 1 AND total_energy_kh_kj IS NOT NULL
-    """).fetchone()[0]
-        or 0.0
-    )
-    share = float(non_traveler_weight) / (
-        float(non_traveler_weight) + float(traveler_weekday_weight)
-    )
-    return {"n": int(non_traveler_n), "share": share, "mimmosem_match": None}
+    return {
+        "n": int(non_traveler_n),
+        "n_respondents": n_respondents,
+        "share_weighted": float(non_traveler_weight) / float(total_weight),
+        "share_unweighted": non_traveler_n / n_respondents,
+        "mimmosem_match": None,
+    }
