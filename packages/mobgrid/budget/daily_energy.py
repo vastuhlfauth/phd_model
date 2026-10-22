@@ -1,12 +1,17 @@
 """Day-level aggregation and the section 9.9 hypothesis test (step 11).
 
-Sums ``emp2019.trip_legs`` to one row per respondent (point 2), groups
-days by main mode, population category (section 6.1) and home density
-(point 3), fits a gamma-like distribution of daily travel energy and
-compares its mean with Koelbl & Helbing's (2003) ~615 kJ (point 5), and
-calibrates v0 and P0 from the walking and cycling trips (step 1's closing
-sentence). Section 9.9's EMC² cross-check (point 4) and the definition of
-Ē_c for 1 km cells (point 6) are out of scope for this step.
+Sums ``trip_legs`` to one row per described day (point 2), groups days by
+main mode, population category (section 6.1) and home density (point 3),
+fits a gamma-like distribution of daily travel energy and compares its
+mean with Koelbl & Helbing's (2003) ~615 kJ (point 5), and calibrates v0
+and P0 from the walking and cycling trips (step 1's closing sentence).
+Section 9.9's EMC² cross-check (point 4) and the definition of Ē_c for
+1 km cells (point 6) are out of scope for this step. Survey-agnostic
+(``trip_legs.day_id`` is EMP 2019's `IDENT_IND` or ENTD 2008's
+`IDENT_JOUR`, `docs/data/entd2008.md`): each survey builds its own
+``non_travelers``-equivalent summary (``emp2019.non_traveler_summary``,
+``entd2008.non_traveler_summary``), since the two surveys identify
+non-travellers differently.
 """
 
 from __future__ import annotations
@@ -17,7 +22,6 @@ from dataclasses import dataclass
 import duckdb
 import numpy as np
 
-from mobgrid.budget.emp2019 import _POPULATION_CATEGORY_BY_SITUA, _case_sql
 from mobgrid.energy import bike
 from mobgrid.energy.rates import EnergyConfig
 
@@ -32,15 +36,25 @@ KH_DAILY_ENERGY_KJ = 615.0
 #: round 8) is merged back into a single 'train' group: train_long had
 #: too few observations to be a meaningful separate group.
 DAY_MODE_GROUPS = (
-    "walking_only", "cycle", "car_driver", "car_passenger_household",
-    "car_passenger_carpool", "urban_pt", "train",
+    "walking_only",
+    "cycle",
+    "car_driver",
+    "car_passenger_household",
+    "car_passenger_carpool",
+    "urban_pt",
+    "train",
 )
 
 #: The six groups of section 9.9's F8 robustness check ("For walk, bike,
 #: driver, both passenger groups, urban PT and train short").
 F8_ROBUSTNESS_GROUPS = (
-    "walking_only", "cycle", "car_driver", "car_passenger_household",
-    "car_passenger_carpool", "urban_pt", "train",
+    "walking_only",
+    "cycle",
+    "car_driver",
+    "car_passenger_household",
+    "car_passenger_carpool",
+    "urban_pt",
+    "train",
 )
 
 #: The four "core" groups of F8's core/full comparison: walk, car driver,
@@ -51,10 +65,12 @@ F8_CORE_ROBUSTNESS_GROUPS = ("walking_only", "car_driver", "urban_pt", "train")
 def create_day_summary(
     con: duckdb.DuckDBPyConnection, *, where_sql: str = "TRUE"
 ) -> None:
-    """Create the ``day_summary`` view: one row per EMP 2019 respondent
-    with at least one trip matching ``where_sql`` (applied to
-    ``trip_legs``; used by the F8 robustness check's "weekdays only" and
-    "local trips only" variants, section 9.9).
+    """Create the ``day_summary`` view: one row per described day
+    (``trip_legs.day_id``: EMP 2019's `IDENT_IND`, one day per person;
+    ENTD 2008's `IDENT_JOUR`, up to three days per person) with at least
+    one trip matching ``where_sql`` (applied to ``trip_legs``; used by
+    the F8 robustness check's "weekdays only" and "local trips only"
+    variants, section 9.9).
 
     ``day_mode_group`` is 'walking_only' (every matching trip of the day
     is a walk), the single non-walk mode used (``trip_legs.mode_group``,
@@ -68,12 +84,14 @@ def create_day_summary(
         WITH candidate AS (
             SELECT * FROM trip_legs WHERE {where_sql}
         ),
-        per_person AS (
+        per_day AS (
             SELECT
-                ident_ind,
+                day_id,
+                any_value(ident_ind) AS ident_ind,
                 any_value(ident_men) AS ident_men,
                 any_value(pond_jour) AS pond_jour,
                 any_value(pond_ind) AS pond_ind,
+                any_value(typejour) AS typejour,
                 any_value(age_band) AS age_band,
                 any_value(population_category) AS population_category,
                 count(*) AS trips_per_day,
@@ -88,7 +106,7 @@ def create_day_summary(
                 (array_agg(density_ori ORDER BY (moridom <> 1), num_dep))[1]
                     AS home_density
             FROM candidate
-            GROUP BY ident_ind
+            GROUP BY day_id
         )
         SELECT *,
             CASE
@@ -97,41 +115,8 @@ def create_day_summary(
                 WHEN len(non_walk_modes) = 1 THEN non_walk_modes[1]
                 ELSE 'multimodal'
             END AS day_mode_group
-        FROM per_person
+        FROM per_day
     """)
-
-
-def create_non_travelers(con: duckdb.DuckDBPyConnection) -> None:
-    """Create the ``non_travelers`` view: Kish respondents with no trip
-    recorded on their surveyed day (section 9.9 point 2, "persons without
-    trips are reported apart")."""
-    population_case = _case_sql(
-        "k.SITUA", _POPULATION_CATEGORY_BY_SITUA, default="'unknown'",
-        quote_values=True,
-    )
-    con.sql(f"""
-        CREATE OR REPLACE VIEW non_travelers AS
-        SELECT
-            k.IDENT_IND AS ident_ind,
-            i.pond_indC AS pond_ind,
-            k.AGE6 AS age_band,
-            CASE WHEN k.AGE BETWEEN 6 AND 17 THEN 'children_6_17'
-                 ELSE {population_case} END AS population_category,
-            -- Immobility is "no trip on the described day"; `MIMMOSEM`
-            -- (K_INDIVIDU) is an independent weekday-immobility flag that
-            -- matches this exactly for every respondent in this release
-            -- (see the step 11 report): EMP 2019's public tables record
-            -- no day-of-week for a fully immobile respondent (`MDATE_jour`
-            -- is blank), so a Saturday/Sunday non-traveller cannot be
-            -- told apart from a weekday one here.
-            i.MIMMOSEM AS mimmosem
-        FROM tcm_ind_kish k
-        JOIN k_individu i ON i.IDENT_IND = k.IDENT_IND
-        WHERE NOT EXISTS (
-            SELECT 1 FROM trip_legs t WHERE t.ident_ind = k.IDENT_IND
-        )
-    """)
-
 
 
 @dataclass(frozen=True)
@@ -295,7 +280,9 @@ class SpeedCalibration:
 
 
 def calibrate_v0_kmh(
-    con: duckdb.DuckDBPyConnection, *, by_age_band: bool = False,
+    con: duckdb.DuckDBPyConnection,
+    *,
+    by_age_band: bool = False,
     where_sql: str = "TRUE",
 ) -> list[SpeedCalibration]:
     """v0, the ratio of weighted sums of distance and duration (section
@@ -327,7 +314,10 @@ class P0Calibration:
 
 
 def calibrate_p0(
-    con: duckdb.DuckDBPyConnection, config: EnergyConfig, *, by_age_band: bool = False,
+    con: duckdb.DuckDBPyConnection,
+    config: EnergyConfig,
+    *,
+    by_age_band: bool = False,
     where_sql: str = "TRUE",
 ) -> list[P0Calibration]:
     """P0, from the implied flat speed = ratio of weighted sums of
@@ -356,20 +346,27 @@ def calibrate_p0(
     for group, n, speed_kmh in rows:
         speed_m_per_s = speed_kmh * 1000.0 / 3600.0
         p0_w = bike.required_power_w(
-            speed_m_per_s, config.reference_mass_kg, 0.0, crr, config.bike.cda_m2,
-            config.bike.rho_air_kg_per_m3, config.bike.drivetrain_efficiency,
+            speed_m_per_s,
+            config.reference_mass_kg,
+            0.0,
+            crr,
+            config.bike.cda_m2,
+            config.bike.rho_air_kg_per_m3,
+            config.bike.drivetrain_efficiency,
         )
         results.append(
-            P0Calibration(
-                group=group, n=n, implied_flat_speed_kmh=speed_kmh, p0_w=p0_w
-            )
+            P0Calibration(group=group, n=n, implied_flat_speed_kmh=speed_kmh, p0_w=p0_w)
         )
     return results
 
 
 def bootstrap_mean_ci(
-    household: np.ndarray, weight: np.ndarray, value: np.ndarray,
-    *, n_reps: int = 200, seed: int = 0,
+    household: np.ndarray,
+    weight: np.ndarray,
+    value: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
 ) -> tuple[float, tuple[float, float]]:
     """Weighted mean of ``value`` and its 95% bootstrap CI, resampled
     over households (section 9.9, "95% confidence intervals by bootstrap
@@ -492,17 +489,21 @@ def robustness_row(
     stat_time = group_stat_fn(group_codes, n_groups, weight, time_min)[mask]
     kh_ratio, kh_cv, kh_min, kh_max = _ratio_and_cv(stat_kh, group_labels)
     cp_ratio, cp_cv, cp_min, cp_max = _ratio_and_cv(stat_cp, group_labels)
-    time_ratio, time_cv, time_min_g, time_max_g = _ratio_and_cv(
-        stat_time, group_labels
-    )
+    time_ratio, time_cv, time_min_g, time_max_g = _ratio_and_cv(stat_time, group_labels)
     return RobustnessRow(
-        variant=variant, scope=scope, statistic=statistic,
-        energy_kh_ratio=kh_ratio, energy_kh_cv=kh_cv,
-        energy_kh_min_group=kh_min, energy_kh_max_group=kh_max,
-        energy_cp_ratio=cp_ratio, energy_cp_cv=cp_cv,
-        energy_cp_min_group=cp_min, energy_cp_max_group=cp_max,
-        time_ratio=time_ratio, time_cv=time_cv,
-        time_min_group=time_min_g, time_max_group=time_max_g,
+        variant=variant,
+        scope=scope,
+        statistic=statistic,
+        energy_kh_ratio=kh_ratio,
+        energy_kh_cv=kh_cv,
+        energy_kh_min_group=kh_min,
+        energy_kh_max_group=kh_max,
+        energy_cp_ratio=cp_ratio,
+        energy_cp_cv=cp_cv,
+        energy_cp_min_group=cp_min,
+        energy_cp_max_group=cp_max,
+        time_ratio=time_ratio,
+        time_cv=time_cv,
+        time_min_group=time_min_g,
+        time_max_group=time_max_g,
     )
-
-

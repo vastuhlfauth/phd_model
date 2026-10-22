@@ -1,11 +1,15 @@
-"""Section 9.9 re-estimation on EMP 2019: CLI, figures and report (step 11).
+"""Section 9.9 re-estimation on EMP 2019 and ENTD 2008: CLI, figures and
+report (step 11).
 
 ``python -m mobgrid.budget.emp --out docs/data/step11_budget`` extracts
 the public EMP 2019 tables, rebuilds every respondent's surveyed day as
-legs (``emp2019``), aggregates it to a daily travel time/energy budget
-and runs the hypothesis test of steps 1-3 and 5 (``daily_energy``), plus
-the F8 robustness check added to section 9.9. EMC² (step 4) and Ē_c
-(step 6) are out of scope.
+legs (``emp2019``, ``mobgrid.budget.trip_legs``), aggregates it to a
+daily travel time/energy budget and runs the hypothesis test of steps
+1-3 and 5 (``daily_energy``), plus the F8 robustness check added to
+section 9.9. ``--survey entd2008`` runs the same pipeline on ENTD 2008
+(``mobgrid.budget.entd2008``, section 9.9's "Change between 2008 and
+2019"); ``--compare`` runs both and writes the 2008-2019 comparison
+report instead. EMC² (step 4) and Ē_c (step 6) are out of scope.
 
 Writes figures F1, F3 (Compendium + a KH appendix), F4-F8 to ``--out``
 and a Markdown report to ``<out>.md``, mirroring ``mobgrid.energy.checks``.
@@ -14,6 +18,7 @@ and a Markdown report to ``<out>.md``, mirroring ``mobgrid.energy.checks``.
 from __future__ import annotations
 
 import argparse
+import tempfile
 from pathlib import Path
 
 import duckdb
@@ -23,7 +28,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mobgrid.budget import daily_energy, emp2019
+from mobgrid.budget import daily_energy, emp2019, entd2008
 from mobgrid.energy.rates import (
     MET_MINUTE_KJ_PER_KG,
     EnergyConfig,
@@ -82,11 +87,11 @@ def _compute_cycle_decomposition(
     c0_cp = config.walking.c0_j_per_kg_m["compendium"]
 
     rows = con.sql(f"""
-        SELECT ident_ind, mode_group, distance_km, bike_ride_time_for_energy_s,
+        SELECT day_id, mode_group, distance_km, bike_ride_time_for_energy_s,
             duration_min, pond_jour
         FROM trip_legs
-        WHERE ident_ind IN
-            (SELECT ident_ind FROM day_summary WHERE day_mode_group = 'cycle')
+        WHERE day_id IN
+            (SELECT day_id FROM day_summary WHERE day_mode_group = 'cycle')
             AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
     """).fetchnumpy()
     cycle_mask = rows["mode_group"] == "cycle"
@@ -104,11 +109,11 @@ def _compute_cycle_decomposition(
     walk_kh_kj = mass * c0_kh * walk_dist_km
     walk_cp_kj = mass * c0_cp * walk_dist_km
 
-    # One shared ident_ind -> day-index map (every row here belongs to a
-    # cycle day, so a leg's ident_ind is always one of ``cycle_days``);
+    # One shared day_id -> day-index map (every row here belongs to a
+    # cycle day, so a leg's day_id is always one of ``cycle_days``);
     # sums each component to one total per day (a day can have more than
     # one leg of the same mode) via bincount, not a Python-level loop.
-    cycle_days, cycle_index = np.unique(rows["ident_ind"], return_inverse=True)
+    cycle_days, cycle_index = np.unique(rows["day_id"], return_inverse=True)
     n_days = len(cycle_days)
     weight_by_day = np.zeros(n_days)
     weight_by_day[cycle_index[cycle_mask]] = rows["pond_jour"][cycle_mask]
@@ -217,29 +222,50 @@ def _group_stats(
     days: dict, group_column: str, *, n_reps: int, seed: int
 ) -> list[daily_energy.GroupStats]:
     return daily_energy.bootstrap_group_stats(
-        days[group_column], days["ident_men"], days["pond_jour"],
-        days["total_time_min"], days["total_energy_kh_kj"],
-        days["total_energy_cp_kj"], n_reps=n_reps, seed=seed,
+        days[group_column],
+        days["ident_men"],
+        days["pond_jour"],
+        days["total_time_min"],
+        days["total_energy_kh_kj"],
+        days["total_energy_cp_kj"],
+        n_reps=n_reps,
+        seed=seed,
     )
 
 
 def _build_base(
-    con: duckdb.DuckDBPyConnection, config: EnergyConfig, *, where_sql: str = "TRUE"
+    con: duckdb.DuckDBPyConnection,
+    survey,
+    config: EnergyConfig,
+    *,
+    where_sql: str = "TRUE",
+    density_source: str | None = None,
 ) -> None:
-    emp2019.build_trip_legs(con, config)
+    survey.build_trip_legs(con, config, density_source=density_source)
     daily_energy.create_day_summary(con, where_sql=where_sql)
-    daily_energy.create_non_travelers(con)
 
 
 def run(
     out_dir: Path,
-    zip_path: Path = emp2019.DEFAULT_ZIP_PATH,
+    survey=emp2019,
+    data_path: Path | None = None,
     config_path: Path = DEFAULT_CONFIG_PATH,
     n_reps: int = 200,
     seed: int = 0,
+    density_source: str | None = None,
 ) -> dict:
     """Run the full re-estimation; return every computed statistic and
     figure path, used by ``write_markdown`` and the test suite.
+
+    Survey-agnostic (``survey`` is ``mobgrid.budget.emp2019`` or
+    ``mobgrid.budget.entd2008``, both exposing the same
+    ``extract_tables``/``register_views``/``build_trip_legs``/
+    ``non_traveler_summary`` interface, section 9.9's "Change between
+    2008 and 2019"): every table and figure below reads ``trip_legs``/
+    ``day_summary``, built identically from either survey's own
+    ``trips_norm``. ``density_source`` defaults to the survey's own
+    ``DEFAULT_DENSITY_SOURCE`` ('grid' for EMP 2019, 'proxy' for ENTD
+    2008, which has no density grid).
 
     Section 9.9's scope (2026-10-20 project decision): every table and
     figure below is restricted to commuting/needs-fulfilment travel
@@ -253,12 +279,37 @@ def run(
     """
     config = load_energy_config(config_path)
     out_dir.mkdir(parents=True, exist_ok=True)
+    data_path = data_path or survey.DEFAULT_DATA_PATH
+    density_source = density_source or survey.DEFAULT_DENSITY_SOURCE
 
     con = duckdb.connect()
-    csv_paths = emp2019.extract_tables(zip_path)
-    emp2019.register_views(con, csv_paths)
+    # A custom (typically tmp-scoped) `data_path` gets its own, equally
+    # tmp-scoped extraction directory: the default extraction directory
+    # under `data/interim/` is cached across runs (resumable) *by file
+    # name*, not by `data_path`, so reusing it for a different archive
+    # (e.g. a test's synthetic one) would silently serve stale,
+    # previously extracted CSVs instead.
+    interim_dir = (
+        None
+        if data_path == survey.DEFAULT_DATA_PATH
+        else data_path.parent / f"_interim_{survey.__name__.rsplit('.', 1)[-1]}_csv"
+    )
+    csv_paths = survey.extract_tables(data_path, interim_dir)
+    survey.register_views(con, csv_paths)
 
-    _build_base(con, config, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL)
+    # ENTD 2008 only (section 9.9's "Quirks"): fill rate and mean change
+    # of the undocumented `distcor`/`v2_mduree` correction columns.
+    quirk_fill_rates = (
+        survey.quirk_fill_rates(con) if hasattr(survey, "quirk_fill_rates") else None
+    )
+
+    _build_base(
+        con,
+        survey,
+        config,
+        where_sql=emp2019.NEEDS_ONLY_WHERE_SQL,
+        density_source=density_source,
+    )
     days = _day_rows(con)
 
     mode_stats = _group_stats(days, "day_mode_group", n_reps=n_reps, seed=seed)
@@ -275,14 +326,23 @@ def run(
     )
     gamma_kh = daily_energy.gamma_moments_fit(mean_kh, var_kh)
     gamma_cp = daily_energy.gamma_moments_fit(mean_cp, var_cp)
+    # Overall (all groups combined) weighted mean daily time, alongside
+    # `mean_kh`/`mean_cp` (used by `--compare`'s figure, section 9.9's
+    # "Outputs of the re-estimation": global means next to the group
+    # breakdown).
+    mean_time_min = float(
+        np.sum(days["pond_jour"] * days["total_time_min"]) / days["pond_jour"].sum()
+    )
 
     by_group = {s.group: s for s in mode_stats}
     kh_means = [
-        by_group[g].mean_energy_kh_kj for g in daily_energy.DAY_MODE_GROUPS
+        by_group[g].mean_energy_kh_kj
+        for g in daily_energy.DAY_MODE_GROUPS
         if g in by_group
     ]
     cp_means = [
-        by_group[g].mean_energy_cp_kj for g in daily_energy.DAY_MODE_GROUPS
+        by_group[g].mean_energy_cp_kj
+        for g in daily_energy.DAY_MODE_GROUPS
         if g in by_group
     ]
     ratio_kh = max(kh_means) / min(kh_means) if kh_means else float("nan")
@@ -302,8 +362,11 @@ def run(
     )
 
     trips_mean, trips_ci = daily_energy.bootstrap_mean_ci(
-        days["ident_men"], days["pond_jour"], days["trips_per_day"].astype(float),
-        n_reps=n_reps, seed=seed,
+        days["ident_men"],
+        days["pond_jour"],
+        days["trips_per_day"].astype(float),
+        n_reps=n_reps,
+        seed=seed,
     )
     trips_by_population = _trips_per_day_by_group(
         days, "population_category", n_reps=n_reps, seed=seed
@@ -338,23 +401,30 @@ def run(
                     THEN pond_jour ELSE 0 END)
         FROM trip_legs WHERE ({emp2019.NEEDS_ONLY_WHERE_SQL})
     """).fetchone()
-    walk_trips_by_day_group = dict(con.sql(f"""
+    walk_trips_by_day_group = dict(
+        con.sql(f"""
         SELECT d.day_mode_group,
             sum(CASE WHEN t.mode_group = 'walk' THEN 1 ELSE 0 END) * 1.0
-                / count(DISTINCT d.ident_ind)
+                / count(DISTINCT d.day_id)
         FROM day_summary d
-        JOIN trip_legs t ON t.ident_ind = d.ident_ind
+        JOIN trip_legs t ON t.day_id = d.day_id
         WHERE d.day_mode_group IN
             ('car_driver', 'car_passenger_household', 'car_passenger_carpool')
             AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
         GROUP BY d.day_mode_group
-    """).fetchall())
+    """).fetchall()
+    )
 
     # F8 robustness (section 9.9): re-run the pipeline under each
     # variant, always within the needs-only scope.
     robustness_rows, robustness_ci = _run_robustness(
-        con, config, n_reps=n_reps, seed=seed,
+        con,
+        survey,
+        config,
+        n_reps=n_reps,
+        seed=seed,
         base_where_sql=emp2019.NEEDS_ONLY_WHERE_SQL,
+        density_source=density_source,
     )
     # Restore the needs-only base for the figures below.
     daily_energy.create_day_summary(con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL)
@@ -367,7 +437,8 @@ def run(
     days_weekday = _day_rows(con)
     cycle_weekday_stats = next(
         (
-            s for s in _group_stats(
+            s
+            for s in _group_stats(
                 days_weekday, "day_mode_group", n_reps=n_reps, seed=seed
             )
             if s.group == "cycle"
@@ -383,8 +454,13 @@ def run(
     )
     figures = [
         _figure_f1_trips_per_day(
-            days, trips_mean, trips_by_population, trips_by_density,
-            motive_by_population, motive_by_density, out_dir,
+            days,
+            trips_mean,
+            trips_by_population,
+            trips_by_density,
+            motive_by_population,
+            motive_by_density,
+            out_dir,
         ),
         *_figure_f3_energy_density(con, out_dir),
         *f4_paths,
@@ -411,13 +487,13 @@ def run(
                 / sum(t.pond_jour) AS trip_share,
             count(*) FILTER (WHERE t.motive IN ({excluded_codes_sql})) AS n_excluded,
             count(*) AS n_total
-        FROM trip_legs t JOIN day_summary d ON d.ident_ind = t.ident_ind
+        FROM trip_legs t JOIN day_summary d ON d.day_id = t.day_id
         WHERE d.total_energy_kh_kj IS NOT NULL
         GROUP BY 1 ORDER BY 1
     """).fetchall()
     excluded_energy_shares = con.sql(f"""
         WITH excluded_leg_energy AS (
-            SELECT ident_ind,
+            SELECT day_id,
                 sum(energy_kh_kj)
                     FILTER (WHERE motive IN ({excluded_codes_sql})) AS excluded_kh,
                 sum(energy_cp_kj)
@@ -429,7 +505,7 @@ def run(
                 / sum(d.pond_jour * d.total_energy_kh_kj) AS excluded_energy_share_kh,
             sum(d.pond_jour * coalesce(e.excluded_cp, 0))
                 / sum(d.pond_jour * d.total_energy_cp_kj) AS excluded_energy_share_cp
-        FROM day_summary d LEFT JOIN excluded_leg_energy e ON e.ident_ind = d.ident_ind
+        FROM day_summary d LEFT JOIN excluded_leg_energy e ON e.day_id = d.day_id
         WHERE d.total_energy_kh_kj IS NOT NULL
         GROUP BY 1 ORDER BY 1
     """).fetchall()
@@ -451,18 +527,39 @@ def run(
         FROM trip_legs GROUP BY 1 ORDER BY 1
     """).fetchall()
 
+    # Declared walking/waiting minutes (`MTEMPSMAP`/`MTPSATTENT`, ENTD
+    # 2008's converted equivalents) against the modelled terminal-leg
+    # minutes, by mode group (section 9.9, step 1's closing sentence,
+    # and "Outputs of the re-estimation": "declared walking and waiting
+    # times against the modelled terminal legs, by mode group"); a check
+    # only -- neither is used to build the legs themselves.
+    declared_vs_modelled_walk_wait = con.sql("""
+        SELECT mode_group,
+            avg(declared_walk_min) AS declared_walk_min,
+            avg(declared_wait_min) AS declared_wait_min,
+            avg(coalesce(walk_to_car_min, 0) + coalesce(walk_from_car_min, 0)
+                + coalesce(access_walk_ori_min, 0) + coalesce(access_walk_des_min, 0))
+                AS modelled_walk_min,
+            avg(wait_min) AS modelled_wait_min,
+            count(*) AS n
+        FROM trip_legs
+        WHERE mode_group IN
+            ('car_driver', 'car_passenger_household', 'car_passenger_carpool',
+             'urban_pt', 'train')
+        GROUP BY 1 ORDER BY 1
+    """).fetchall()
+
     # Cycling energy by motive (section 9.9 point 1 follow-up, user note:
     # "7.6,7.7,7.8 might have large impact on bike"), full dataset.
     cycle_motive_decomposition = _compute_motive_decomposition(con, "cycle")
 
-    # Children as car drivers (round 4's point 4): the raw mtp code
-    # behind every day_mode_group='car_driver' day of a children_6_17
-    # respondent.
+    # Children as car drivers (round 4's point 4): the mtp code (already
+    # harmonised to EMP 2019's, `trips_norm`) behind every
+    # day_mode_group='car_driver' day of a children_6_17 respondent.
     children_car_driver_mtp = con.sql("""
-        SELECT d.mtp, count(*), min(t.age), max(t.age)
-        FROM trip_legs t
-        JOIN k_deploc d ON d.IDENT_IND = t.ident_ind AND d.num_dep = t.num_dep
-        WHERE t.mode_group = 'car_driver' AND t.population_category = 'children_6_17'
+        SELECT mtp, count(*), min(age), max(age)
+        FROM trip_legs
+        WHERE mode_group = 'car_driver' AND population_category = 'children_6_17'
         GROUP BY 1 ORDER BY 1
     """).fetchall()
     children_car_driver_n = con.sql("""
@@ -470,31 +567,27 @@ def run(
         WHERE day_mode_group = 'car_driver' AND population_category = 'children_6_17'
     """).fetchone()[0]
 
-    non_travelers = con.sql(
-        "SELECT pond_ind, mimmosem FROM non_travelers"
-    ).fetchnumpy()
-    travelers_pond_ind = con.sql(
-        "SELECT pond_ind FROM day_summary WHERE total_energy_kh_kj IS NOT NULL"
-    ).fetchnumpy()["pond_ind"]
-    non_traveler_weight = non_travelers["pond_ind"].sum()
-    non_traveler_share = non_traveler_weight / (
-        non_traveler_weight + travelers_pond_ind.sum()
+    non_traveler = survey.non_traveler_summary(con)
+    # Weekday surveyed-day mix among travellers, now read directly from
+    # `day_summary.typejour` (one row per day, no join needed).
+    traveler_day_type_share = dict(
+        con.sql("""
+        SELECT typejour, sum(pond_jour) FROM day_summary
+        WHERE total_energy_kh_kj IS NOT NULL GROUP BY typejour
+    """).fetchall()
     )
-    non_traveler_mimmosem_match = float(np.mean(non_travelers["mimmosem"] == 1))
-    traveler_day_type_share = dict(con.sql("""
-        SELECT any_value(t.typejour), sum(d.pond_jour)
-        FROM day_summary d JOIN trip_legs t ON t.ident_ind = d.ident_ind
-        GROUP BY d.ident_ind
-    """).fetchall())
 
     return {
         "config": config,
+        "survey_name": survey.SURVEY_NAME,
+        "density_source": density_source,
         "n_days": len(days["day_mode_group"]),
         "mode_stats": mode_stats,
         "population_stats": population_stats,
         "density_stats": density_stats,
         "mean_kh": mean_kh,
         "mean_cp": mean_cp,
+        "mean_time_min": mean_time_min,
         "gamma_kh": gamma_kh,
         "gamma_cp": gamma_cp,
         "ratio_kh": ratio_kh,
@@ -515,14 +608,16 @@ def run(
         "excluded_trip_shares": excluded_trip_shares,
         "excluded_energy_shares": excluded_energy_shares,
         "quality_counts": quality_counts,
+        "declared_vs_modelled_walk_wait": declared_vs_modelled_walk_wait,
         "cycle_decomposition": cycle_decomposition,
         "cycle_motive_decomposition": cycle_motive_decomposition,
         "cycle_weekday_stats": cycle_weekday_stats,
         "children_car_driver_mtp": children_car_driver_mtp,
         "children_car_driver_n": children_car_driver_n,
-        "non_traveler_n": len(non_travelers["pond_ind"]),
-        "non_traveler_share": non_traveler_share,
-        "non_traveler_mimmosem_match": non_traveler_mimmosem_match,
+        "quirk_fill_rates": quirk_fill_rates,
+        "non_traveler_n": non_traveler["n"],
+        "non_traveler_share": non_traveler["share"],
+        "non_traveler_mimmosem_match": non_traveler["mimmosem_match"],
         "traveler_day_type_share": traveler_day_type_share,
         "figures": figures,
     }
@@ -530,11 +625,13 @@ def run(
 
 def _run_robustness(
     con: duckdb.DuckDBPyConnection,
+    survey,
     config: EnergyConfig,
     *,
     n_reps: int,
     seed: int,
     base_where_sql: str = "TRUE",
+    density_source: str | None = None,
 ) -> tuple[list[daily_energy.RobustnessRow], dict[str, list[daily_energy.GroupStats]]]:
     """F8: re-run the pipeline under each robustness variant (section 9.9).
 
@@ -564,19 +661,27 @@ def _run_robustness(
             for statistic in ("mean", "median"):
                 rows.append(
                     daily_energy.robustness_row(
-                        name, rows_data["day_mode_group"], rows_data["pond_jour"],
-                        rows_data["total_time_min"], rows_data["total_energy_kh_kj"],
+                        name,
+                        rows_data["day_mode_group"],
+                        rows_data["pond_jour"],
+                        rows_data["total_time_min"],
+                        rows_data["total_energy_kh_kj"],
                         rows_data["total_energy_cp_kj"],
-                        scope=scope, groups_of_interest=groups_of_interest,
+                        scope=scope,
+                        groups_of_interest=groups_of_interest,
                         statistic=statistic,
                     )
                 )
         if want_ci:
             ci_stats[name] = daily_energy.bootstrap_group_stats(
-                rows_data["day_mode_group"], rows_data["ident_men"],
-                rows_data["pond_jour"], rows_data["total_time_min"],
-                rows_data["total_energy_kh_kj"], rows_data["total_energy_cp_kj"],
-                n_reps=n_reps, seed=seed,
+                rows_data["day_mode_group"],
+                rows_data["ident_men"],
+                rows_data["pond_jour"],
+                rows_data["total_time_min"],
+                rows_data["total_energy_kh_kj"],
+                rows_data["total_energy_cp_kj"],
+                n_reps=n_reps,
+                seed=seed,
             )
 
     def _summary(extra_where: str = "TRUE") -> None:
@@ -585,11 +690,15 @@ def _run_robustness(
         )
 
     # Terminal-leg scale sweep (also provides the base case).
-    emp2019.build_trip_legs(con, config, terminal_scale=0.5)
+    survey.build_trip_legs(
+        con, config, terminal_scale=0.5, density_source=density_source
+    )
     _summary()
     _row("terminal legs x0.5", want_ci=True)
 
-    emp2019.build_trip_legs(con, config, terminal_scale=1.0)
+    survey.build_trip_legs(
+        con, config, terminal_scale=1.0, density_source=density_source
+    )
     _summary()
     _row("terminal legs x1 (base case)", want_ci=True)
 
@@ -601,13 +710,30 @@ def _run_robustness(
     _row("local trips only (MOBLOC=1)", want_ci=False)
     _summary()  # restore the (base_where_sql-filtered) unfiltered base
 
-    emp2019.build_trip_legs(con, config, terminal_scale=1.5)
+    survey.build_trip_legs(
+        con, config, terminal_scale=1.5, density_source=density_source
+    )
     _summary()
     _row("terminal legs x1.5", want_ci=True)
 
-    emp2019.build_trip_legs(con, config, bike_p0_override_w=P0_REFERENCE_W)
+    survey.build_trip_legs(
+        con, config, bike_p0_override_w=P0_REFERENCE_W, density_source=density_source
+    )
     _summary()
     _row(f"P0 = {P0_REFERENCE_W:g} W (section 9.7 reference)", want_ci=False)
+
+    # Restore `trip_legs` itself to the base case (terminal_scale=1,
+    # calibrated P0): every variant above rebuilds `trip_legs` in place,
+    # so without this the last variant's mutation (here, the P0=52.5 W
+    # override) would silently leak into every `trip_legs`-reading
+    # computation that runs after this sweep (F4-F9, the cycle
+    # decomposition, etc.) -- the bug behind section 9.9's 2026-10-20
+    # fix 0 (F4's "overall" cycle/multimodal means briefly disagreed with
+    # the main group table because of exactly this).
+    survey.build_trip_legs(
+        con, config, terminal_scale=1.0, density_source=density_source
+    )
+    _summary()
 
     return rows, ci_stats
 
@@ -627,8 +753,11 @@ def _trips_per_day_by_group(
         if n == 0:
             continue
         mean, ci = daily_energy.bootstrap_mean_ci(
-            days["ident_men"][mask], days["pond_jour"][mask],
-            days["trips_per_day"][mask].astype(float), n_reps=n_reps, seed=seed,
+            days["ident_men"][mask],
+            days["pond_jour"][mask],
+            days["trips_per_day"][mask].astype(float),
+            n_reps=n_reps,
+            seed=seed,
         )
         results.append((str(group), n, mean, ci))
     return results
@@ -641,21 +770,21 @@ def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
     charts -- with "overall" margins in both directions (row 0/col 0,
     mean trips/day ignoring the other axis). Excludes the 'unknown'
     population category, as elsewhere in this report."""
-    categories = sorted(
-        {c for c in days["population_category"] if c != "unknown"}
-    )
+    categories = sorted({c for c in days["population_category"] if c != "unknown"})
     modes = sorted(set(days["day_mode_group"]))
     rows = ["overall", *categories]
     cols = ["overall", *modes]
     matrix = np.zeros((len(rows), len(cols)))
     for i, category in enumerate(rows):
         category_mask = (
-            np.ones(len(days["pond_jour"]), dtype=bool) if category == "overall"
+            np.ones(len(days["pond_jour"]), dtype=bool)
+            if category == "overall"
             else days["population_category"] == category
         )
         for j, mode in enumerate(cols):
             mode_mask = (
-                np.ones(len(days["pond_jour"]), dtype=bool) if mode == "overall"
+                np.ones(len(days["pond_jour"]), dtype=bool)
+                if mode == "overall"
                 else days["day_mode_group"] == mode
             )
             cell_mask = category_mask & mode_mask
@@ -665,7 +794,8 @@ def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
                     np.sum(cell_weight * days["trips_per_day"][cell_mask])
                     / cell_weight.sum()
                 )
-                if cell_weight.sum() > 0 else np.nan
+                if cell_weight.sum() > 0
+                else np.nan
             )
     return rows, cols, matrix
 
@@ -682,16 +812,18 @@ def _trips_by_group_and_motive(
     ``NEEDS_ONLY_WHERE_SQL``, since it cannot be classified) gets its
     own ``-1.0`` sentinel code, labelled "not recorded". Excludes the
     'unknown' population category, as elsewhere in this report."""
-    denom = dict(con.sql(
-        f"SELECT {group_col}, sum(pond_jour) FROM day_summary "
-        f"WHERE {group_col} != 'unknown' GROUP BY 1"
-    ).fetchall())
+    denom = dict(
+        con.sql(
+            f"SELECT {group_col}, sum(pond_jour) FROM day_summary "
+            f"WHERE {group_col} != 'unknown' GROUP BY 1"
+        ).fetchall()
+    )
     rows = con.sql(f"""
         SELECT d.{group_col} AS group_value, COALESCE(floor(t.motive), -1.0)
                 AS top_motive,
             sum(t.pond_jour) AS weighted_n
         FROM trip_legs t
-        JOIN day_summary d ON d.ident_ind = t.ident_ind
+        JOIN day_summary d ON d.day_id = t.day_id
         WHERE d.{group_col} != 'unknown' AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
         GROUP BY 1, 2
     """).fetchall()
@@ -728,8 +860,11 @@ def _figure_f1_trips_per_day(
     ax_hist.bar(bins[:-1] + 0.5, pct, width=0.9, color="tab:blue")
     ax_hist.axvline(trips_mean, color="black", linestyle="--")
     ax_hist.text(
-        trips_mean, ax_hist.get_ylim()[1] * 0.95, f"mean={trips_mean:.2f}",
-        ha="left", va="top",
+        trips_mean,
+        ax_hist.get_ylim()[1] * 0.95,
+        f"mean={trips_mean:.2f}",
+        ha="left",
+        va="top",
     )
     ax_hist.set_xlabel("Trips per person and day (integer-centred bins)")
     ax_hist.set_ylabel("% of person-days")
@@ -737,9 +872,7 @@ def _figure_f1_trips_per_day(
 
     # One shared top-motive -> colour mapping across (B) and (C), as F9
     # does across its two panels.
-    all_top_motives = sorted(
-        set(motive_by_population[1]) | set(motive_by_density[1])
-    )
+    all_top_motives = sorted(set(motive_by_population[1]) | set(motive_by_density[1]))
     cmap = plt.get_cmap("tab20")
     colour_by_motive = {
         motive: ("lightgrey" if motive < 0 else cmap(i % 20))
@@ -747,22 +880,34 @@ def _figure_f1_trips_per_day(
     }
 
     for ax, cis, (groups, top_motives, matrix), title in (
-        (ax_pop, trips_by_population, motive_by_population,
-         "(B) By population category, stacked by motive"),
-        (ax_density, trips_by_density, motive_by_density,
-         "(C) By density class, stacked by motive"),
+        (
+            ax_pop,
+            trips_by_population,
+            motive_by_population,
+            "(B) By population category, stacked by motive",
+        ),
+        (
+            ax_density,
+            trips_by_density,
+            motive_by_density,
+            "(C) By density class, stacked by motive",
+        ),
     ):
         ci_by_group = {row[0]: row for row in cis}
         x = np.arange(len(groups))
         bottom = np.zeros(len(groups))
         for j, top_motive in enumerate(top_motives):
             label = (
-                "not recorded" if top_motive < 0
+                "not recorded"
+                if top_motive < 0
                 else f"{top_motive:g} "
                 f"{emp2019.TOP_LEVEL_MOTIVE_LABEL_BY_CODE.get(top_motive, '')}"
             )
             ax.bar(
-                x, matrix[:, j], bottom=bottom, label=label,
+                x,
+                matrix[:, j],
+                bottom=bottom,
+                label=label,
                 color=colour_by_motive[top_motive],
             )
             bottom += matrix[:, j]
@@ -770,7 +915,11 @@ def _figure_f1_trips_per_day(
         lower = [ci_by_group[g][2] - ci_by_group[g][3][0] for g in groups]
         upper = [ci_by_group[g][3][1] - ci_by_group[g][2] for g in groups]
         ax.errorbar(
-            x, totals, yerr=[lower, upper], fmt="none", ecolor="black",
+            x,
+            totals,
+            yerr=[lower, upper],
+            fmt="none",
+            ecolor="black",
             capsize=3,
         )
         ax.set_xticks(x)
@@ -789,8 +938,13 @@ def _figure_f1_trips_per_day(
         for j in range(freq_matrix.shape[1]):
             if not np.isnan(freq_matrix[i, j]):
                 ax_freq.text(
-                    j, i, f"{freq_matrix[i, j]:.1f}", ha="center", va="center",
-                    fontsize=6, color="white",
+                    j,
+                    i,
+                    f"{freq_matrix[i, j]:.1f}",
+                    ha="center",
+                    va="center",
+                    fontsize=6,
+                    color="white",
                 )
     ax_freq.set_title(
         "(D) Mean trips per day by population category x main-mode group\n"
@@ -825,7 +979,8 @@ def _figure_f3_energy_density(
     bandwidth_scale = 1.5
 
     for rate_key, rate_label, rate_suffix in (
-        ("cp", "Compendium", ""), ("kh", "KH", "_appendix_kh"),
+        ("cp", "Compendium", ""),
+        ("kh", "KH", "_appendix_kh"),
     ):
         energy_column = f"total_energy_{rate_key}_kj"
         rows = con.sql(
@@ -841,8 +996,7 @@ def _figure_f3_energy_density(
         grid_log = np.linspace(log_energy.min(), log_energy.max(), 300)
         grid_kj = np.exp(grid_log)
         present_groups = [
-            g for g in day_groups
-            if (rows["day_mode_group"] == g).sum() >= MIN_CELL_N
+            g for g in day_groups if (rows["day_mode_group"] == g).sum() >= MIN_CELL_N
         ]
 
         fig, (ax_stack, ax_norm) = plt.subplots(1, 2, figsize=(13, 5))
@@ -856,7 +1010,11 @@ def _figure_f3_energy_density(
             )
             scaled = density * (sub_weight.sum() / total_weight)
             ax_stack.fill_between(
-                grid_kj, cumulative, cumulative + scaled, label=group, alpha=0.85,
+                grid_kj,
+                cumulative,
+                cumulative + scaled,
+                label=group,
+                alpha=0.85,
             )
             cumulative += scaled
             mean_kj = np.exp(np.average(sub_log, weights=sub_weight))
@@ -895,11 +1053,13 @@ def _figure_f3_energy_density(
                 ax.plot(grid_kj, density, label=group)
             ax.set_xscale("log")
             ax.axvline(
-                daily_energy.KH_DAILY_ENERGY_KJ, color="grey", linestyle="--",
+                daily_energy.KH_DAILY_ENERGY_KJ,
+                color="grey",
+                linestyle="--",
                 linewidth=0.8,
             )
             ax.set_title(category, fontsize=9)
-        for ax in axes.flat[len(categories):]:
+        for ax in axes.flat[len(categories) :]:
             ax.axis("off")
         axes.flat[0].legend(fontsize=6, loc="upper right")
         fig.suptitle(
@@ -926,9 +1086,14 @@ def _bootstrap_stats_where(
     if len(rows["day_mode_group"]) == 0:
         return {}
     stats = daily_energy.bootstrap_group_stats(
-        rows["day_mode_group"], rows["ident_men"], rows["pond_jour"],
-        rows["total_time_min"], rows["total_energy_kh_kj"],
-        rows["total_energy_cp_kj"], n_reps=n_reps, seed=seed,
+        rows["day_mode_group"],
+        rows["ident_men"],
+        rows["pond_jour"],
+        rows["total_time_min"],
+        rows["total_energy_kh_kj"],
+        rows["total_energy_cp_kj"],
+        n_reps=n_reps,
+        seed=seed,
     )
     return {s.group: s for s in stats}
 
@@ -962,7 +1127,11 @@ def _panel_overall_stats(
 
 
 def _figure_f4_mean_by_mode(
-    con: duckdb.DuckDBPyConnection, out_dir: Path, *, n_reps: int, seed: int,
+    con: duckdb.DuckDBPyConnection,
+    out_dir: Path,
+    *,
+    n_reps: int,
+    seed: int,
 ) -> tuple[list[Path], list[tuple[str, dict[str, daily_energy.GroupStats]]]]:
     """F4: mean daily energy and time, 95% CI and n on the bars, overall
     and one panel per population category; blank when n < 50."""
@@ -1008,22 +1177,40 @@ def _figure_f4_mean_by_mode(
                 uppers.append(max(ci[1] - mean, 0.0))
                 medians.append(getattr(stat, f"median_energy_{rate_key}_kj"))
             ax.bar(
-                x + offset, means, width, yerr=[lowers, uppers], label=rate_key,
+                x + offset,
+                means,
+                width,
+                yerr=[lowers, uppers],
+                label=rate_key,
                 capsize=2,
             )
             ax.scatter(
-                x + offset, medians, marker="D", color="black", s=14, zorder=3,
+                x + offset,
+                medians,
+                marker="D",
+                color="black",
+                s=14,
+                zorder=3,
                 label=f"{rate_key} median" if ax is axes.flat[0] else None,
             )
             for xi, mean in zip(x + offset, means, strict=True):
                 if not np.isnan(mean):
                     ax.text(
-                        xi, mean, f"{mean:.0f}", ha="center", va="bottom",
+                        xi,
+                        mean,
+                        f"{mean:.0f}",
+                        ha="center",
+                        va="bottom",
                         fontsize=6,
                     )
         for i, group in enumerate(present):
             ax.text(
-                i, 0, f"n={stats[group].n}", ha="center", va="bottom", fontsize=6,
+                i,
+                0,
+                f"n={stats[group].n}",
+                ha="center",
+                va="bottom",
+                fontsize=6,
                 rotation=90,
             )
         # Reference lines use the y-axis transform (x in axes fraction,
@@ -1035,7 +1222,10 @@ def _figure_f4_mean_by_mode(
         )
         for value, color, linestyle, text_va, show_legend in (
             (
-                daily_energy.KH_DAILY_ENERGY_KJ, "grey", "--", "bottom",
+                daily_energy.KH_DAILY_ENERGY_KJ,
+                "grey",
+                "--",
+                "bottom",
                 "Koelbl & Helbing 615 kJ",
             ),
             (panel_mean_kh, "tab:blue", "-.", "bottom", "computed mean (kh)"),
@@ -1044,18 +1234,27 @@ def _figure_f4_mean_by_mode(
             (panel_median_cp, "tab:orange", ":", "top", "overall median (cp)"),
         ):
             ax.axhline(
-                value, color=color, linestyle=linestyle, linewidth=0.8,
+                value,
+                color=color,
+                linestyle=linestyle,
+                linewidth=0.8,
                 label=show_legend if ax is axes.flat[0] else None,
             )
             ax.text(
-                0.98, value, f"{value:.0f}", transform=label_transform,
-                color=color, fontsize=6, ha="right", va=text_va,
+                0.98,
+                value,
+                f"{value:.0f}",
+                transform=label_transform,
+                color=color,
+                fontsize=6,
+                ha="right",
+                va=text_va,
             )
         ax.set_xticks(x)
         ax.set_xticklabels(present, rotation=45, ha="right", fontsize=7)
         ax.set_title(label, fontsize=9)
         ax.legend(fontsize=6)
-    for ax in axes.flat[len(panels):]:
+    for ax in axes.flat[len(panels) :]:
         ax.axis("off")
     fig.suptitle(
         "F4a. Mean daily energy by main-mode group, 95% CI, n, median "
@@ -1079,13 +1278,18 @@ def _figure_f4_mean_by_mode(
         ax.bar(x, means, color="tab:gray")
         for i, group in enumerate(present):
             ax.text(
-                i, 0, f"n={stats[group].n}", ha="center", va="bottom", fontsize=6,
+                i,
+                0,
+                f"n={stats[group].n}",
+                ha="center",
+                va="bottom",
+                fontsize=6,
                 rotation=90,
             )
         ax.set_xticks(x)
         ax.set_xticklabels(present, rotation=45, ha="right", fontsize=7)
         ax.set_title(label, fontsize=9)
-    for ax in axes.flat[len(panels):]:
+    for ax in axes.flat[len(panels) :]:
         ax.axis("off")
     fig.suptitle("F4b. Mean daily travel time by main-mode group, n (section 9.9)")
     fig.tight_layout()
@@ -1134,8 +1338,13 @@ def _figure_f5_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
             for j in range(matrix.shape[1]):
                 if not np.isnan(matrix[i, j]):
                     ax.text(
-                        j, i, f"{matrix[i, j]:.0f}\n(n={n_matrix[i, j]})",
-                        ha="center", va="center", fontsize=6, color="white",
+                        j,
+                        i,
+                        f"{matrix[i, j]:.0f}\n(n={n_matrix[i, j]})",
+                        ha="center",
+                        va="center",
+                        fontsize=6,
+                        color="white",
                     )
         ax.set_title(title, fontsize=10)
         fig.colorbar(image, ax=ax, label="Mean daily energy, kJ (Compendium)")
@@ -1195,10 +1404,15 @@ def _figure_f7_passengers(
     x = np.arange(len(groups))
     width = 0.35
     ax_energy.bar(
-        x - width / 2, [passenger_trip_stats[g][2] for g in groups], width, label="kh",
+        x - width / 2,
+        [passenger_trip_stats[g][2] for g in groups],
+        width,
+        label="kh",
     )
     ax_energy.bar(
-        x + width / 2, [passenger_trip_stats[g][3] for g in groups], width,
+        x + width / 2,
+        [passenger_trip_stats[g][3] for g in groups],
+        width,
         label="compendium",
     )
     ax_energy.set_xticks(x)
@@ -1228,7 +1442,8 @@ def _figure_f7_passengers(
 
 
 def _figure_f8_robustness(
-    robustness_ci: dict[str, list[daily_energy.GroupStats]], out_dir: Path,
+    robustness_ci: dict[str, list[daily_energy.GroupStats]],
+    out_dir: Path,
 ) -> Path:
     """F8: group means +/- 95% CI for the base case and the terminal-leg
     extremes (section 9.9's F8)."""
@@ -1246,16 +1461,23 @@ def _figure_f8_robustness(
         ]
         lowers = [
             by_group[g].mean_energy_cp_kj - by_group[g].mean_energy_cp_ci[0]
-            if g in by_group else 0.0
+            if g in by_group
+            else 0.0
             for g in groups
         ]
         uppers = [
             by_group[g].mean_energy_cp_ci[1] - by_group[g].mean_energy_cp_kj
-            if g in by_group else 0.0
+            if g in by_group
+            else 0.0
             for g in groups
         ]
         ax_energy.bar(
-            x + offset, means, width, yerr=[lowers, uppers], label=variant, capsize=2,
+            x + offset,
+            means,
+            width,
+            yerr=[lowers, uppers],
+            label=variant,
+            capsize=2,
         )
         time_means = [
             by_group[g].mean_time_min if g in by_group else np.nan for g in groups
@@ -1313,9 +1535,10 @@ def _figure_f9_motive_energy(
         (axes[1], after, "(B) Final decomposition (needs-only scope)"),
     ):
         totals = matrix.sum(axis=1, keepdims=True)
-        shares = np.divide(
-            matrix, totals, out=np.zeros_like(matrix), where=totals > 0
-        ) * 100.0
+        shares = (
+            np.divide(matrix, totals, out=np.zeros_like(matrix), where=totals > 0)
+            * 100.0
+        )
         x = np.arange(len(mode_groups))
         bottom = np.zeros(len(mode_groups))
         for j, top_motive in enumerate(top_motives):
@@ -1323,7 +1546,10 @@ def _figure_f9_motive_energy(
                 top_motive, f"code {top_motive:g}"
             )
             ax.bar(
-                x, shares[:, j], bottom=bottom, label=f"{top_motive:g} {label}",
+                x,
+                shares[:, j],
+                bottom=bottom,
+                label=f"{top_motive:g} {label}",
                 color=colour_by_motive[top_motive],
             )
             bottom += shares[:, j]
@@ -1333,8 +1559,7 @@ def _figure_f9_motive_energy(
         ax.set_title(title, fontsize=10)
         ax.legend(fontsize=6, bbox_to_anchor=(1.02, 1), loc="upper left")
     fig.suptitle(
-        "F9. Energy by top-level motive, all modes (100% stacked, "
-        "section 9.9 point 1)"
+        "F9. Energy by top-level motive, all modes (100% stacked, section 9.9 point 1)"
     )
     fig.tight_layout()
     path = out_dir / "f09_motive_energy.png"
@@ -1417,7 +1642,8 @@ def _format_motive_table(
     excluded_energy_cp = 0.0
     for motive, n, weighted_n, energy_kh, energy_cp, mean_dist, mean_dur in rows:
         label = (
-            "missing/refused" if motive is None
+            "missing/refused"
+            if motive is None
             else emp2019.MOTIVE_LABEL_BY_CODE.get(motive, f"code {motive:g}")
         )
         lines.append(
@@ -1435,8 +1661,7 @@ def _format_motive_table(
         "",
         f"**Excluded from the main report's scope** (motives {excluded_codes}: "
         + ", ".join(
-            emp2019.MOTIVE_LABEL_BY_CODE[c]
-            for c in emp2019.NEEDS_EXCLUDED_MOTIVE_CODES
+            emp2019.MOTIVE_LABEL_BY_CODE[c] for c in emp2019.NEEDS_EXCLUDED_MOTIVE_CODES
         )
         + f"), among {mode_label} trips: "
         f"{excluded_weighted_n / total_weighted_n:.1%} of weighted trips, "
@@ -1447,36 +1672,66 @@ def _format_motive_table(
 
 
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
-    """Write the section 9.9 re-estimation report (steps 1-3, 5, F8)."""
+    """Write the section 9.9 re-estimation report (steps 1-3, 5, F8),
+    for either survey (``results['survey_name']``, section 9.9's "Change
+    between 2008 and 2019")."""
     config = results["config"]
     carpool = config.car.carpool_passenger
     walk_trips = results["walk_trips_by_day_group"]
     walk_driver = walk_trips.get("car_driver", float("nan"))
     walk_household = walk_trips.get("car_passenger_household", float("nan"))
     walk_carpool = walk_trips.get("car_passenger_carpool", float("nan"))
+    survey_name = results["survey_name"]
+    is_emp2019 = survey_name == emp2019.SURVEY_NAME
+    sample_unit = "respondent-days" if is_emp2019 else "described days"
+    if is_emp2019:
+        variables_used_line = (
+            "**Variables used** (K_DEPLOC unless noted): mode `mtp`; duration "
+            "`DUREE`; distance `MDISTTOT_fin`; purpose `MMOTIFDES`/`MOTPREC` "
+            "(read, not used by this step's formulas); companions "
+            "`MACCOMPM`/`MACCOMPHM` (household vs carpool passenger split); day "
+            "`TYPEJOUR`, `mobloc` (F8's local-trips variant); weights "
+            "`POND_JOUR` (day) and `pond_indC` (K_INDIVIDU, individual); age "
+            "band `AGE6` (TCM_IND_KISH); population category (section 6.1) from "
+            "`SITUA` (TCM_IND_KISH) combined with `AGE` for the 6-17 children "
+            "group; density of residence `DENSITECOM_ORI` of the home-departure "
+            "trip (`MORIDOM`); non-traveller cross-check `MIMMOSEM` (K_INDIVIDU)."
+        )
+    else:
+        variables_used_line = (
+            "**Variables used** (`docs/data/entd2008.md`'s complete mapping, "
+            "K_DEPLOC unless noted): mode `V2_MTP` (converted); duration "
+            "`v2_mduree`/`V2_DUREE`; distance `distcor`/`V2_MDISTTOT`; purpose "
+            "`V2_MMOTIFDES`/`V2_MMOTIFORI` (converted); companions "
+            "`V2_MACCOMPM`/`V2_MACCOMPHM`; day `V2_TYPJOUR`, `mobloc` (from "
+            "`V2_DLOCAL`); weights `POIDS_JOUR` (day) and `PONDKI` "
+            "(K_INDIVIDU, individual); age band `AGE6` (Q_TCM_INDIVIDU); "
+            "population category (section 6.1) from `SITUA` (Q_TCM_INDIVIDU) "
+            "combined with `AGE` for the 6-17 children group; density: the "
+            "urban-unit-status x residence-size proxy (no density grid in "
+            "ENTD 2008); non-traveller check `V2_MOBILREF` (K_INDIVIDU, "
+            "reference weekday only)."
+        )
     lines = [
-        "# Step 11 (`mobgrid/budget`): EMP 2019 re-estimation (section 9.9)",
+        f"# Step 11 (`mobgrid/budget`): {survey_name} re-estimation (section 9.9)",
         "",
         "Generated by `python -m mobgrid.budget.emp`. Rebuilds section 9.9's "
-        "re-estimation steps 1-3 and 5 on the EMP 2019 public tables, plus the "
-        "F8 robustness check; terminal legs reuse sections 9.4-9.7's formulas "
-        "and `config/energy.yaml`'s already-calibrated car/stairs/waiting/"
-        "PT-ride defaults, plus provisional PT headway/station-height/"
+        f"re-estimation steps 1-3 and 5 on the {survey_name} public tables, "
+        "plus the F8 robustness check; terminal legs reuse sections 9.4-9.7's "
+        "formulas and `config/energy.yaml`'s already-calibrated car/stairs/"
+        "waiting/PT-ride defaults, plus provisional PT headway/station-height/"
         "access-walk defaults (TODO(confirm), `config.pt_ride`). EMC² (step "
-        "4) and Ē_c (step 6) are out of scope.",
+        "4) and Ē_c (step 6) are out of scope. Same model parameters "
+        "(`config/energy.yaml`) in both surveys: differences reflect "
+        'behaviour, not the model (section 9.9, "Change between 2008 and '
+        '2019"). Density: '
+        f"`{results['density_source']}` "
+        "(the INSEE grid, or section 9.9's urban-unit-status x "
+        "residence-size proxy; ENTD 2008 always uses the proxy).",
         "",
-        "**Variables used** (K_DEPLOC unless noted): mode `mtp`; duration "
-        "`DUREE`; distance `MDISTTOT_fin`; purpose `MMOTIFDES`/`MOTPREC` "
-        "(read, not used by this step's formulas); companions "
-        "`MACCOMPM`/`MACCOMPHM` (household vs carpool passenger split); day "
-        "`TYPEJOUR`, `mobloc` (F8's local-trips variant); weights "
-        "`POND_JOUR` (day) and `pond_indC` (K_INDIVIDU, individual); age "
-        "band `AGE6` (TCM_IND_KISH); population category (section 6.1) from "
-        "`SITUA` (TCM_IND_KISH) combined with `AGE` for the 6-17 children "
-        "group; density of residence `DENSITECOM_ORI` of the home-departure "
-        "trip (`MORIDOM`); non-traveller cross-check `MIMMOSEM` (K_INDIVIDU).",
+        variables_used_line,
         "",
-        f"**Sample:** {results['n_days']:,} respondent-days with at least "
+        f"**Sample:** {results['n_days']:,} {sample_unit} with at least "
         "one classified trip "
         f"({results['non_traveler_n']} of "
         f"{results['n_days'] + results['non_traveler_n']} "
@@ -1499,10 +1754,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             f"{code:g} (n={n}, ages {age_min}-{age_max})"
             for code, n, age_min, age_max in results["children_car_driver_mtp"]
         )
-        + ". Both codes are `mtp` category 3 \"Automobile\" (3.1 "
-        "\"Conducteur\", 3.3 \"Tantot conducteur tantot passager\"), not a "
+        + '. Both codes are `mtp` category 3 "Automobile" (3.1 '
+        '"Conducteur", 3.3 "Tantot conducteur tantot passager"), not a '
         "two-wheeler code (2.x): no two-wheeler reclassification applies. "
-        "`mtp` 3.1 includes \"voiturette\" (a license-free microcar, legal "
+        '`mtp` 3.1 includes "voiturette" (a license-free microcar, legal '
         "from age 14 in France), plausible for the 14-17 share, but not "
         "for the many 6-13 year olds here; most likely EMP's own "
         "household/accompanying-trip coding records the car's use rather "
@@ -1512,14 +1767,43 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "INSEE's own 4-level grid names and order: dense (1, densely "
         "populated communes), intermediate (2), sparse (3, peu denses), "
-        "very_sparse (4, tres peu denses); `emp2019._DENSITY_LABEL_BY_CODE` "
-        "maps `DENSITECOM_ORI`/`_DES` directly, and "
-        "`emp2019._DENSITY_KEY_TRANSLATION` re-keys `config.car`/"
+        "very_sparse (4, tres peu denses). EMP 2019's `emp2019._DENSITY_"
+        "LABEL_BY_CODE` maps `DENSITECOM_ORI`/`_DES` directly (grid); both "
+        "surveys' `trip_legs.density_proxy_case_sql` computes the same "
+        "four labels from the urban-unit-status x residence-size proxy of "
+        'section 9.9\'s "Change between 2008 and 2019" when '
+        f"`density_source='proxy'` (this report: `{results['density_source']}`). "
+        "`trip_legs._DENSITY_KEY_TRANSLATION` re-keys `config.car`/"
         "`config.pt_ride`'s existing density defaults (chosen for step 7 "
         "as `dense`/`urban`/`suburban`/`rural`) to these same INSEE names "
         "and order, checked against `data/raw/emp2019/emp2019-categories.pdf`'s "
-        "\"Degre de densite\" table.",
+        '"Degre de densite" table.',
         "",
+    ]
+    if results["quirk_fill_rates"] is not None:
+        rates = results["quirk_fill_rates"]
+        lines += [
+            "## Quirks: `distcor`/`v2_mduree` fill rate and mean change (section 9.9)",
+            "",
+            "`k_deploc`'s seven undocumented correction columns "
+            '(`docs/data/entd2008.md`\'s "Quirks"); `distcor`/`v2_mduree` '
+            "are used (when filled) by `trips_norm`, the other five are not.",
+            "",
+            f"- `distcor`: {rates['distcor_fill_rate']:.2%} filled, mean "
+            f"change {rates['distcor_mean_change_km']:.2f} km "
+            "(corrected - declared) where filled."
+            if rates["distcor_mean_change_km"] is not None
+            else f"- `distcor`: {rates['distcor_fill_rate']:.2%} filled.",
+            f"- `v2_mduree`: {rates['v2_mduree_fill_rate']:.2%} filled, mean "
+            f"change {rates['v2_mduree_mean_change_min']:.2f} min "
+            "(corrected - declared) where filled."
+            if rates["v2_mduree_mean_change_min"] is not None
+            else f"- `v2_mduree`: {rates['v2_mduree_fill_rate']:.2%} filled "
+            "(never filled in this release: `duration_min` always falls "
+            "back to `V2_DUREE`).",
+            "",
+        ]
+    lines += [
         "## Mean daily energy and time by main-mode group (point 3)",
         "",
         *_format_group_table(results["mode_stats"]),
@@ -1529,8 +1813,8 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "Every table and figure above and below is restricted to this "
         "scope (2026-10-20 project decision, not an optional variant): "
         "trips whose corrected motive (`motive`, `MOT_SEQ_COMPL`) is "
-        "sport (7.6), a destination-less stroll (7.7, \"se promener sans "
-        "destination precise\"), going to a place to walk/ride (7.8, a "
+        'sport (7.6), a destination-less stroll (7.7, "se promener sans '
+        'destination precise"), going to a place to walk/ride (7.8, a '
         "destination exists, but the movement itself is the point), or "
         "any top-level motive group 8 purpose (8.1-8.4: holidays, "
         "second/occasional residence, other private reasons -- none of "
@@ -1549,9 +1833,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         row[0]: (row[1], row[2]) for row in results["excluded_energy_shares"]
     }
     for mode, trip_share, n_excluded, n_total in results["excluded_trip_shares"]:
-        energy_kh, energy_cp = excluded_energy_by_group.get(
-            mode, (float("nan"),) * 2
-        )
+        energy_kh, energy_cp = excluded_energy_by_group.get(mode, (float("nan"),) * 2)
         lines.append(
             f"| {mode} | {trip_share:.1%} | {n_excluded:,} / {n_total:,} | "
             f"{energy_kh:.1%} | {energy_cp:.1%} |"
@@ -1566,12 +1848,16 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         f"{emp2019.CYCLE_SPEED_UPPER_KMH:g} km/h, car (driver or passenger) > "
         f"{emp2019.CAR_SPEED_UPPER_KMH:g} km/h -- their declared distance is "
         "replaced by declared duration x the mode's own median speed "
-        "(from its not-flagged trips). Cycling energy is time-based "
-        "(round 4), so only walk's and car's corrected distances feed the "
-        "energy formulas; bike is flagged (reported) but not corrected.",
+        "(from its not-flagged trips). Cycling energy's main work term "
+        'is time-based (round 4), but its "stops" sub-term still '
+        "multiplies by distance and by the distance-derived ride speed "
+        "squared (section 9.7), so a flagged bike trip's distance is "
+        "corrected too, like walk and car (round 9).",
         "",
-        *[f"- {mode}: {corrected:,} of {total:,} trips corrected"
-          for mode, corrected, total in results["quality_counts"]],
+        *[
+            f"- {mode}: {corrected:,} of {total:,} trips corrected"
+            for mode, corrected, total in results["quality_counts"]
+        ],
         "",
         "## Mean daily energy and time by main-mode group, overall and by "
         "population category (F4)",
@@ -1635,7 +1921,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "speed; P0 is `bike.required_power_w` at the single ratio-estimated "
         "implied flat speed (not an average of per-trip, nonlinear P0 "
         "values). EMP 2019's own mode codes do not separate e-bikes from "
-        "bicycles (`mtp` 2.1 includes \"assistance electrique\"), so they "
+        'bicycles (`mtp` 2.1 includes "assistance electrique"), so they '
         "cannot be excluded or reported apart.",
         f"- Overall P0: {results['p0_overall'].p0_w:.1f} W at an implied flat "
         f"speed of {results['p0_overall'].implied_flat_speed_kmh:.2f} km/h, n="
@@ -1651,10 +1937,36 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         p0_stat = p0_by_band.get(v0_stat.group)
         p0_text = (
             f"{p0_stat.n} | {p0_stat.implied_flat_speed_kmh:.2f} | {p0_stat.p0_w:.1f}"
-            if p0_stat else "0 | - | -"
+            if p0_stat
+            else "0 | - | -"
         )
         lines.append(
             f"| {v0_stat.group} | {v0_stat.n} | {v0_stat.speed_kmh:.2f} | {p0_text} |"
+        )
+
+    lines += [
+        "",
+        "## Declared vs modelled walk/wait minutes, by mode group (step 1)",
+        "",
+        "Unweighted trip-level means; a check only, since neither declared "
+        "value is used to build the terminal legs themselves (section 9.9, "
+        '"Outputs of the re-estimation").',
+        "",
+        "| Mode group | n | declared walk (min) | modelled walk (min) | "
+        "declared wait (min) | modelled wait (min) |",
+        "|---|---|---|---|---|---|",
+    ]
+    for row in results["declared_vs_modelled_walk_wait"]:
+        mode_group, declared_walk, declared_wait, modelled_walk, modelled_wait, n = row
+        lines.append(
+            f"| {mode_group} | {n} | "
+            + (f"{declared_walk:.1f}" if declared_walk is not None else "-")
+            + " | "
+            + f"{modelled_walk:.1f} | "
+            + (f"{declared_wait:.1f}" if declared_wait is not None else "-")
+            + " | "
+            + (f"{modelled_wait:.1f}" if modelled_wait is not None else "-")
+            + " |"
         )
 
     cycle_all = next(s for s in results["mode_stats"] if s.group == "cycle")
@@ -1713,8 +2025,8 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "### Cycling energy by motive (point 1 follow-up)",
         "",
         "`MOT_SEQ_COMPL`, EMP's own chain-level, corrected trip purpose "
-        "(unlike the raw `MMOTIFDES`); excludes \"return home\"/\"return "
-        "to residence\" codes 1.1-1.3 (a return leg is recoded to the "
+        '(unlike the raw `MMOTIFDES`); excludes "return home"/"return '
+        'to residence" codes 1.1-1.3 (a return leg is recoded to the '
         "purpose of the outward leg it closes). Full, pre-exclusion "
         "dataset (unlike every other table in this report): this is the "
         "evidence behind the needs-only scope above, not itself scoped "
@@ -1728,23 +2040,40 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "## Non-traveller immobility (point 2)",
         "",
-        "Identified as: a Kish respondent with zero rows in K_DEPLOC for "
-        "their described day. Cross-check: every one of these respondents "
-        f"has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 "
-        f"({results['non_traveler_mimmosem_match']:.0%} match); `MDATE_jour` "
-        "is blank only for these same respondents, so EMP 2019's public "
-        "release records no day-of-week for a fully immobile respondent -- "
-        "a Saturday/Sunday non-traveller cannot be told apart from a "
-        "weekday one in these tables. The surveyed-day mix among "
-        "travellers is "
-        + ", ".join(
-            f"TYPEJOUR={day_type}: {share:.1%}"
-            for day_type, share in sorted(results["traveler_day_type_share"].items())
-        )
-        + f" (weekday-dominated: {results['non_traveler_share']:.1%} overall "
-        "immobility is a weekday-weighted figure, not comparable to "
-        "all-week averages that include weekends, when immobility is "
-        "known to be much higher).",
+    ]
+    if is_emp2019:
+        lines += [
+            "Identified as: a Kish respondent with zero rows in K_DEPLOC for "
+            "their described day. Cross-check: every one of these respondents "
+            f"has K_INDIVIDU's `MIMMOSEM` (weekday immobility) = 1 "
+            f"({results['non_traveler_mimmosem_match']:.0%} match); `MDATE_jour` "
+            "is blank only for these same respondents, so EMP 2019's public "
+            "release records no day-of-week for a fully immobile respondent -- "
+            "a Saturday/Sunday non-traveller cannot be told apart from a "
+            "weekday one in these tables. The surveyed-day mix among "
+            "travellers is "
+            + ", ".join(
+                f"TYPEJOUR={day_type}: {share:.1%}"
+                for day_type, share in sorted(
+                    results["traveler_day_type_share"].items()
+                )
+            )
+            + f" (weekday-dominated: {results['non_traveler_share']:.1%} overall "
+            "immobility is a weekday-weighted figure, not comparable to "
+            "all-week averages that include weekends, when immobility is "
+            "known to be much higher).",
+        ]
+    else:
+        lines += [
+            "Identified as: `k_individu.V2_MOBILREF = 0` (not mobile) on the "
+            "reference weekday, weighted by `PONDKI` "
+            '(`docs/data/entd2008.md`\'s "Persons without trips"); weekend '
+            "immobility (`V2_MIMMOSAM`/`V2_MIMMODIM`) is not used, matching "
+            "EMP 2019, which identifies weekday non-travellers only. "
+            f"Weekday share of persons without trips: "
+            f"{results['non_traveler_share']:.1%}.",
+        ]
+    lines += [
         "",
         "## Figures",
         "",
@@ -1784,24 +2113,429 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "passenger groups, urban PT, train).",
         "- F8's figure shows bootstrap CIs for the base case and the "
         "terminal-legs x0.5/x1.5 extremes only (not every table variant), "
-        "per the task's \"figure ... for the base case and the extremes\".",
+        'per the task\'s "figure ... for the base case and the extremes".',
     ]
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _group_table_two_surveys(
+    stats_a: list[daily_energy.GroupStats],
+    label_a: str,
+    stats_b: list[daily_energy.GroupStats],
+    label_b: str,
+) -> list[str]:
+    """Markdown table: n, mean/median energy (both rate sets, with 95%
+    CI on the means) and mean time, two surveys/variants side by side,
+    one row per group present in either."""
+    by_a = {s.group: s for s in stats_a}
+    by_b = {s.group: s for s in stats_b}
+    groups = sorted(
+        set(by_a) | set(by_b),
+        key=lambda g: -(by_a[g].weighted_n if g in by_a else by_b[g].weighted_n),
+    )
+    lines = [
+        f"| Group | n ({label_a}) | n ({label_b}) | mean time ({label_a}) | "
+        f"mean time ({label_b}) | mean kh ({label_a}) [CI] | "
+        f"mean kh ({label_b}) [CI] | median kh ({label_a}) | "
+        f"median kh ({label_b}) | mean cp ({label_a}) [CI] | "
+        f"mean cp ({label_b}) [CI] | median cp ({label_a}) | "
+        f"median cp ({label_b}) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for group in groups:
+        a, b = by_a.get(group), by_b.get(group)
+
+        def _cell(stat, attr, fmt="{:.1f}"):
+            return fmt.format(getattr(stat, attr)) if stat else "-"
+
+        def _ci_cell(stat, attr):
+            if not stat:
+                return "-"
+            lo, hi = getattr(stat, attr)
+            return f"[{lo:.1f}, {hi:.1f}]"
+
+        lines.append(
+            f"| {group} | {a.n if a else 0} | {b.n if b else 0} | "
+            f"{_cell(a, 'mean_time_min')} | {_cell(b, 'mean_time_min')} | "
+            f"{_cell(a, 'mean_energy_kh_kj')} {_ci_cell(a, 'mean_energy_kh_ci')} | "
+            f"{_cell(b, 'mean_energy_kh_kj')} {_ci_cell(b, 'mean_energy_kh_ci')} | "
+            f"{_cell(a, 'median_energy_kh_kj')} | {_cell(b, 'median_energy_kh_kj')} | "
+            f"{_cell(a, 'mean_energy_cp_kj')} {_ci_cell(a, 'mean_energy_cp_ci')} | "
+            f"{_cell(b, 'mean_energy_cp_kj')} {_ci_cell(b, 'mean_energy_cp_ci')} | "
+            f"{_cell(a, 'median_energy_cp_kj')} | {_cell(b, 'median_energy_cp_kj')} |"
+        )
+    return lines
+
+
+def run_compare(
+    out_path: Path,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+    emp2019_data_path: Path | None = None,
+    entd2008_data_path: Path | None = None,
+) -> Path:
+    """Section 9.9's "Change between 2008 and 2019": runs EMP 2019 (grid
+    and proxy density) and ENTD 2008 (proxy, its only option), then
+    writes ``<out_path>.md`` with the 2008-2019 and grid-vs-proxy
+    comparisons. None of the three runs' own figures/reports are a
+    deliverable of ``--compare`` itself (run the plain, single-survey
+    CLI for those): they go to a temporary directory, discarded once
+    this report is written; only the one comparison figure below is
+    kept, under ``out_path``.
+    """
+    out_path.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        results_2019_proxy = run(
+            Path(tmp) / "emp2019_proxy",
+            emp2019,
+            emp2019_data_path,
+            config_path,
+            n_reps=n_reps,
+            seed=seed,
+            density_source="proxy",
+        )
+        results_2019_grid = run(
+            Path(tmp) / "emp2019_grid",
+            emp2019,
+            emp2019_data_path,
+            config_path,
+            n_reps=n_reps,
+            seed=seed,
+            density_source="grid",
+        )
+        results_2008 = run(
+            Path(tmp) / "entd2008_proxy",
+            entd2008,
+            entd2008_data_path,
+            config_path,
+            n_reps=n_reps,
+            seed=seed,
+            density_source="proxy",
+        )
+
+    lines = [
+        "# Step 11 (`mobgrid/budget`): 2008-2019 comparison (section 9.9)",
+        "",
+        "Generated by `python -m mobgrid.budget.emp --compare`. Same model "
+        "parameters in both years (`config/energy.yaml`); EMP 2019 is run "
+        "with both the INSEE density grid and section 9.9's urban-unit-"
+        "status x residence-size proxy, ENTD 2008 with the proxy only (no "
+        "density grid in ENTD 2008).",
+        "",
+        "## Group table, 2008 vs 2019 (density proxy in both)",
+        "",
+        *_group_table_two_surveys(
+            results_2008["mode_stats"],
+            "2008",
+            results_2019_proxy["mode_stats"],
+            "2019",
+        ),
+        "",
+        "## EMP 2019: density grid vs proxy, same groups",
+        "",
+        *_group_table_two_surveys(
+            results_2019_grid["mode_stats"],
+            "grid",
+            results_2019_proxy["mode_stats"],
+            "proxy",
+        ),
+        "",
+        "## Robustness (F8 base case, core and full scope, means)",
+        "",
+        "| Scope | energy ratio (kh), 2008 | energy ratio (kh), 2019 | "
+        "CV (kh), 2008 | CV (kh), 2019 | energy ratio (cp), 2008 | "
+        "energy ratio (cp), 2019 |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    rows_2008 = {
+        r.scope: r
+        for r in results_2008["robustness_rows"]
+        if r.variant == "terminal legs x1 (base case)" and r.statistic == "mean"
+    }
+    rows_2019 = {
+        r.scope: r
+        for r in results_2019_proxy["robustness_rows"]
+        if r.variant == "terminal legs x1 (base case)" and r.statistic == "mean"
+    }
+    for scope in ("core", "full"):
+        r8, r9 = rows_2008.get(scope), rows_2019.get(scope)
+        lines.append(
+            f"| {scope} | "
+            + (f"{r8.energy_kh_ratio:.2f}" if r8 else "-")
+            + " | "
+            + (f"{r9.energy_kh_ratio:.2f}" if r9 else "-")
+            + " | "
+            + (f"{r8.energy_kh_cv:.2f}" if r8 else "-")
+            + " | "
+            + (f"{r9.energy_kh_cv:.2f}" if r9 else "-")
+            + " | "
+            + (f"{r8.energy_cp_ratio:.2f}" if r8 else "-")
+            + " | "
+            + (f"{r9.energy_cp_ratio:.2f}" if r9 else "-")
+            + " |"
+        )
+
+    lines += [
+        "",
+        "## Declared vs modelled walk/wait minutes per trip, car driver, "
+        "urban PT and train, both years",
+        "",
+        "| Mode group | n, 2008 | n, 2019 | declared walk, 2008 | "
+        "declared walk, 2019 | modelled walk, 2008 | modelled walk, 2019 | "
+        "declared wait, 2008 | declared wait, 2019 | modelled wait, 2008 | "
+        "modelled wait, 2019 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    by_group_2008 = {
+        row[0]: row for row in results_2008["declared_vs_modelled_walk_wait"]
+    }
+    by_group_2019 = {
+        row[0]: row for row in results_2019_proxy["declared_vs_modelled_walk_wait"]
+    }
+    for group in ("car_driver", "urban_pt", "train"):
+        row8, row9 = by_group_2008.get(group), by_group_2019.get(group)
+
+        def _fmt(row, idx):
+            return f"{row[idx]:.1f}" if row and row[idx] is not None else "-"
+
+        lines.append(
+            f"| {group} | {row8[5] if row8 else 0} | {row9[5] if row9 else 0} | "
+            f"{_fmt(row8, 1)} | {_fmt(row9, 1)} | {_fmt(row8, 3)} | {_fmt(row9, 3)} | "
+            f"{_fmt(row8, 2)} | {_fmt(row9, 2)} | {_fmt(row8, 4)} | {_fmt(row9, 4)} |"
+        )
+
+    lines += [
+        "",
+        "## Weekday share of persons without trips, both years",
+        "",
+        f"- 2008: {results_2008['non_traveler_share']:.1%} "
+        f"(n={results_2008['non_traveler_n']})",
+        f"- 2019: {results_2019_proxy['non_traveler_share']:.1%} "
+        f"(n={results_2019_proxy['non_traveler_n']})",
+        "",
+        "## 2008-calibrated v0 and P0 (for information only; the model "
+        "uses the same parameters in both years, section 9.9)",
+        "",
+        f"- v0: {results_2008['v0_overall'].speed_kmh:.2f} km/h, "
+        f"n={results_2008['v0_overall'].n} "
+        f"(2019: {results_2019_proxy['v0_overall'].speed_kmh:.2f} km/h, "
+        f"n={results_2019_proxy['v0_overall'].n})",
+        f"- P0: {results_2008['p0_overall'].p0_w:.1f} W at an implied flat "
+        f"speed of {results_2008['p0_overall'].implied_flat_speed_kmh:.2f} km/h, "
+        f"n={results_2008['p0_overall'].n} "
+        f"(2019: {results_2019_proxy['p0_overall'].p0_w:.1f} W, "
+        f"n={results_2019_proxy['p0_overall'].n})",
+        "",
+        "## Overall (all groups combined), both years",
+        "",
+        f"- Mean daily energy: 2008 {results_2008['mean_kh']:.1f} kJ (kh), "
+        f"{results_2008['mean_cp']:.1f} kJ (cp); 2019 "
+        f"{results_2019_proxy['mean_kh']:.1f} kJ (kh), "
+        f"{results_2019_proxy['mean_cp']:.1f} kJ (cp).",
+        f"- Mean daily time: 2008 {results_2008['mean_time_min']:.1f} min; "
+        f"2019 {results_2019_proxy['mean_time_min']:.1f} min.",
+        "",
+    ]
+
+    figure_path = _figure_compare_energy_time(
+        results_2008["mode_stats"],
+        results_2019_proxy["mode_stats"],
+        (results_2008["mean_kh"], results_2019_proxy["mean_kh"]),
+        (results_2008["mean_cp"], results_2019_proxy["mean_cp"]),
+        (results_2008["mean_time_min"], results_2019_proxy["mean_time_min"]),
+        out_path,
+    )
+    lines += [
+        "## Figure",
+        "",
+        f"![{figure_path.stem}]({figure_path.relative_to(out_path.parent).as_posix()})",
+        "",
+    ]
+
+    md_path = out_path.with_suffix(".md")
+    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return md_path
+
+
+def _figure_compare_energy_time(
+    stats_2008: list[daily_energy.GroupStats],
+    stats_2019: list[daily_energy.GroupStats],
+    overall_mean_energy_kh: tuple[float, float],
+    overall_mean_energy_cp: tuple[float, float],
+    overall_mean_time_min: tuple[float, float],
+    out_dir: Path,
+) -> Path:
+    """One figure: mean daily energy (both rate sets) and time by group,
+    2008 vs 2019, with CI (section 9.9's "Outputs of the re-estimation"
+    comparison list), plus each year's own global mean (all groups
+    combined, the ``overall_mean_*`` tuples, 2008 then 2019) as a
+    labelled horizontal reference line on every panel, as F4a does for
+    the single-survey report."""
+    by_2008 = {s.group: s for s in stats_2008}
+    by_2019 = {s.group: s for s in stats_2019}
+    groups = [g for g in daily_energy.DAY_MODE_GROUPS if g in by_2008 or g in by_2019]
+    x = np.arange(len(groups))
+    width = 0.35
+
+    fig, (ax_energy_kh, ax_energy_cp, ax_time) = plt.subplots(1, 3, figsize=(19, 6))
+    for ax, rate_key in ((ax_energy_kh, "kh"), (ax_energy_cp, "cp")):
+        for offset, by_year, label in (
+            (-width / 2, by_2008, "2008"),
+            (width / 2, by_2019, "2019"),
+        ):
+            means = [
+                getattr(by_year[g], f"mean_energy_{rate_key}_kj")
+                if g in by_year
+                else np.nan
+                for g in groups
+            ]
+            lowers = [
+                getattr(by_year[g], f"mean_energy_{rate_key}_kj")
+                - getattr(by_year[g], f"mean_energy_{rate_key}_ci")[0]
+                if g in by_year
+                else 0.0
+                for g in groups
+            ]
+            uppers = [
+                getattr(by_year[g], f"mean_energy_{rate_key}_ci")[1]
+                - getattr(by_year[g], f"mean_energy_{rate_key}_kj")
+                if g in by_year
+                else 0.0
+                for g in groups
+            ]
+            ax.bar(
+                x + offset,
+                means,
+                width,
+                yerr=[lowers, uppers],
+                label=label,
+                capsize=2,
+            )
+    for offset, by_year, label in (
+        (-width / 2, by_2008, "2008"),
+        (width / 2, by_2019, "2019"),
+    ):
+        times = [by_year[g].mean_time_min if g in by_year else np.nan for g in groups]
+        ax_time.bar(x + offset, times, width, label=label)
+
+    for ax, overall_values, unit in (
+        (ax_energy_kh, overall_mean_energy_kh, "kJ"),
+        (ax_energy_cp, overall_mean_energy_cp, "kJ"),
+        (ax_time, overall_mean_time_min, "min"),
+    ):
+        label_transform = ax.get_yaxis_transform()
+        for value, year, color, va in (
+            (overall_values[0], "2008", "tab:blue", "bottom"),
+            (overall_values[1], "2019", "tab:orange", "top"),
+        ):
+            ax.axhline(value, color=color, linestyle="--", linewidth=1.0)
+            # Left-anchored (not right): a right-anchored label can
+            # render into the neighbouring subplot's own white
+            # background and look clipped there, since adjacent panels
+            # share a narrow gap (``fig.tight_layout()`` does not widen
+            # it for text added after the axes are built).
+            ax.text(
+                0.02,
+                value,
+                f"{year}: {value:.0f} {unit}",
+                transform=label_transform,
+                color=color,
+                fontsize=8,
+                ha="left",
+                va=va,
+            )
+
+    ax_energy_kh.set_xticks(x)
+    ax_energy_kh.set_xticklabels(groups, rotation=30, ha="right")
+    ax_energy_kh.set_ylabel("Mean daily energy, kJ (KH)")
+    ax_energy_kh.legend()
+    ax_energy_cp.set_xticks(x)
+    ax_energy_cp.set_xticklabels(groups, rotation=30, ha="right")
+    ax_energy_cp.set_ylabel("Mean daily energy, kJ (compendium)")
+    ax_energy_cp.legend()
+    ax_time.set_xticks(x)
+    ax_time.set_xticklabels(groups, rotation=30, ha="right")
+    ax_time.set_ylabel("Mean daily time, minutes")
+    ax_time.legend()
+    fig.suptitle(
+        "Mean daily energy (both rate sets) and time by main-mode group, "
+        "2008 vs 2019 (density proxy in both, section 9.9); dashed lines "
+        "are each year's own global mean, all groups combined"
+    )
+    fig.tight_layout()
+    path = out_dir / "compare_energy_time.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Re-estimate section 9.9's daily energy budget on EMP 2019."
+        description="Re-estimate section 9.9's daily energy budget (EMP 2019 "
+        "and ENTD 2008)."
     )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT_DIR)
-    parser.add_argument("--data-zip", type=Path, default=emp2019.DEFAULT_ZIP_PATH)
+    parser.add_argument(
+        "--survey",
+        choices=["emp2019", "entd2008"],
+        default="emp2019",
+    )
+    parser.add_argument("--data-path", type=Path, default=None)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--bootstrap-reps", type=int, default=200)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--density",
+        choices=["grid", "proxy"],
+        default=None,
+        help="Density source; defaults to the survey's own "
+        "DEFAULT_DENSITY_SOURCE ('grid' for EMP 2019, 'proxy' for ENTD "
+        "2008, which has no density grid and always uses it).",
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Run both surveys and write the 2008-2019 comparison report "
+        "to <out>.md instead of a single-survey report.",
+    )
+    parser.add_argument(
+        "--emp2019-data-path",
+        type=Path,
+        default=None,
+        help="With --compare: EMP 2019 data path (default: emp2019.DEFAULT_DATA_PATH).",
+    )
+    parser.add_argument(
+        "--entd2008-data-path",
+        type=Path,
+        default=None,
+        help="With --compare: ENTD 2008 raw directory (default: "
+        "entd2008.DEFAULT_DATA_PATH).",
+    )
     args = parser.parse_args(argv)
 
+    if args.compare:
+        md_path = run_compare(
+            args.out,
+            args.config,
+            n_reps=args.bootstrap_reps,
+            seed=args.seed,
+            emp2019_data_path=args.emp2019_data_path,
+            entd2008_data_path=args.entd2008_data_path,
+        )
+        print(f"Wrote {md_path}")
+        return 0
+
+    survey = {"emp2019": emp2019, "entd2008": entd2008}[args.survey]
     results = run(
-        args.out, args.data_zip, args.config, n_reps=args.bootstrap_reps, seed=args.seed
+        args.out,
+        survey,
+        args.data_path,
+        args.config,
+        n_reps=args.bootstrap_reps,
+        seed=args.seed,
+        density_source=args.density,
     )
     md_path = args.out.with_suffix(".md")
     write_markdown(md_path, args.out, results)

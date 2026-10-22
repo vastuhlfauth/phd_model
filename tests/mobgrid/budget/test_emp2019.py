@@ -58,7 +58,7 @@ def test_classified_trips_have_positive_energy_in_both_rate_sets(
         "SELECT ident_ind, energy_kh_kj, energy_cp_kj FROM trip_legs "
         "WHERE mode_group != 'other'"
     ).fetchall()
-    assert len(rows) == 10  # 9 single-trip persons (except 'other') + 1 multimodal leg
+    assert len(rows) == 12  # 11 single-trip persons (except 'other') + 1 multimodal leg
     for _, energy_kh, energy_cp in rows:
         assert energy_kh > 0
         assert energy_cp > 0
@@ -120,13 +120,16 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
     with zipfile.ZipFile(zip_path, "w") as archive:
         archive.writestr(
             "5. k_deploc_public_V4.csv",
-            "\n".join([
-                "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
-                "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
-                "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL",
-                "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9999",
-                "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9.1",
-            ]),
+            "\n".join(
+                [
+                    "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
+                    "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
+                    "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
+                    "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                    "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9999,C,C,5,2",
+                    "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9.1,C,C,5,2",
+                ]
+            ),
         )
         archive.writestr(
             "tcm_ind_kish_public_V3.csv",
@@ -134,16 +137,22 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
         )
         archive.writestr(
             "k_individu_public_V3.csv",
-            "\n".join([
-                "IDENT_IND;pond_indC;MIMMOSEM", "1;100.0;2", "2;100.0;2",
-            ]),
+            "\n".join(
+                [
+                    "IDENT_IND;pond_indC;MIMMOSEM",
+                    "1;100.0;2",
+                    "2;100.0;2",
+                ]
+            ),
         )
-        archive.writestr(
-            "tcm_ind_public_V3.csv", "ident_ind;ident_men\n1;M1\n2;M2"
-        )
+        archive.writestr("tcm_ind_public_V3.csv", "ident_ind;ident_men\n1;M1\n2;M2")
         archive.writestr(
             "q_menage_public_V3.csv",
             "\n".join(["IDENT_MEN;pond_menC", "M1;100.0", "M2;100.0"]),
+        )
+        archive.writestr(
+            "tcm_men_public_V3.csv",
+            "\n".join(['"ident_men","TUU2017_RES"', '"M1","7"', '"M2","7"']),
         )
     con = duckdb.connect()
     csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv2")
@@ -151,3 +160,106 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
     emp2019.build_trip_legs(con, config)
     motive = con.sql("SELECT motive FROM trip_legs WHERE ident_ind = 1").fetchone()[0]
     assert motive is None
+
+
+def test_implausibly_fast_cycle_trip_has_its_distance_corrected(
+    tmp_path: Path,
+) -> None:
+    """Round 9 fix: a flagged (> 35 km/h) cycling trip's declared
+    distance is corrected like walk's and car's, not left as-is --
+    cycling's "stops" energy sub-term otherwise still multiplies by the
+    raw, implausible distance and by the resulting (also implausible)
+    ride speed squared (section 9.7), inflating a single day's energy
+    by orders of magnitude (an ENTD 2008 real-data case: a declared
+    376 km/65 min cycling leg produced ~1.3M kJ for that one day).
+
+    Two respondents cycle at a plausible 12 km/h (median); a third's
+    declared distance implies 300 km/h, above `CYCLE_SPEED_UPPER_KMH`
+    (35): its corrected distance must equal its declared duration times
+    that 12 km/h median, not its declared (implausible) distance, and
+    its energy must stay in the same order of magnitude as the two
+    plausible trips, not orders of magnitude higher.
+    """
+    config = load_energy_config(CONFIG_PATH)
+    zip_path = tmp_path / "emp2019-data.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr(
+            "5. k_deploc_public_V4.csv",
+            "\n".join(
+                [
+                    "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
+                    "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
+                    "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
+                    "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                    # 4 km in 20 min = 12 km/h, not flagged (two respondents,
+                    # for a clean median).
+                    "D1,M1,1,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    "D2,M2,2,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    # 50 km in 10 min = 300 km/h, flagged (> 35 km/h).
+                    "D3,M3,3,1,100.0,1,1,1,10,50.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                ]
+            ),
+        )
+        archive.writestr(
+            "tcm_ind_kish_public_V3.csv",
+            "\n".join(
+                [
+                    "IDENT_IND;AGE;AGE6;SITUA",
+                    "1;30;30;1",
+                    "2;30;30;1",
+                    "3;30;30;1",
+                ]
+            ),
+        )
+        archive.writestr(
+            "k_individu_public_V3.csv",
+            "\n".join(
+                [
+                    "IDENT_IND;pond_indC;MIMMOSEM",
+                    "1;100.0;2",
+                    "2;100.0;2",
+                    "3;100.0;2",
+                ]
+            ),
+        )
+        archive.writestr(
+            "tcm_ind_public_V3.csv", "ident_ind;ident_men\n1;M1\n2;M2\n3;M3"
+        )
+        archive.writestr(
+            "q_menage_public_V3.csv",
+            "\n".join(
+                [
+                    "IDENT_MEN;pond_menC",
+                    "M1;100.0",
+                    "M2;100.0",
+                    "M3;100.0",
+                ]
+            ),
+        )
+        archive.writestr(
+            "tcm_men_public_V3.csv",
+            "\n".join(
+                [
+                    '"ident_men","TUU2017_RES"',
+                    '"M1","7"',
+                    '"M2","7"',
+                    '"M3","7"',
+                ]
+            ),
+        )
+    con = duckdb.connect()
+    csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv3")
+    emp2019.register_views(con, csv_paths)
+    emp2019.build_trip_legs(con, config)
+
+    flagged, distance_km, energy_cp = con.sql(
+        "SELECT speed_flagged_upper, distance_km, energy_cp_kj "
+        "FROM trip_legs WHERE ident_ind = 3"
+    ).fetchone()
+    assert flagged is True
+    assert distance_km == pytest.approx(10.0 / 60.0 * 12.0)
+
+    plausible_energy = con.sql(
+        "SELECT energy_cp_kj FROM trip_legs WHERE ident_ind = 1"
+    ).fetchone()[0]
+    assert energy_cp < plausible_energy * 10
