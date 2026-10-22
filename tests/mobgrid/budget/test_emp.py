@@ -62,11 +62,15 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
 #: fails if the refactor silently changes a single number. ``n``,
 #: `weighted_n`` and every mean/median (kJ, minutes) are unaffected by
 #: the split: it only moves *where* the SQL lives, not what it computes.
+#: Re-pinned 22 October 2026 for the bike stop-term fix (costed at the
+#: P0 flat speed, not the trip's own ride speed): only ``cycle``'s own
+#: mean/median energy (and so the all-groups ``mean_kh``/``mean_cp``
+#: below) changed, from 189.156/189.3728 kJ to 184.0764/184.2932 kJ.
 _EXPECTED_BASE_CASE_GROUP_TABLE = {
     "car_driver": (1, 100.0, 25.0, 227.04, 208.68, 227.04, 208.68),
     "car_passenger_carpool": (1, 100.0, 25.0, 203.4, 163.1937, 203.4, 163.1937),
     "car_passenger_household": (1, 100.0, 25.0, 183.84, 148.0118, 183.84, 148.0118),
-    "cycle": (1, 100.0, 15.0, 189.156, 189.3728, 189.156, 189.3728),
+    "cycle": (1, 100.0, 15.0, 184.0764, 184.2932, 184.0764, 184.2932),
     "multimodal": (1, 100.0, 50.0, 437.7562, 371.7277, 437.7562, 371.7277),
     "train": (2, 200.0, 60.0, 316.5711, 264.4647, 228.7158, 187.1174),
     "urban_pt": (1, 100.0, 30.0, 231.7162, 190.1317, 231.7162, 190.1317),
@@ -104,8 +108,8 @@ def test_refactor_preserves_emp2019_base_case_group_table(
     }
     assert actual == _EXPECTED_BASE_CASE_GROUP_TABLE
     assert results["n_days"] == 9
-    assert round(results["mean_kh"], 4) == 271.0056
-    assert round(results["mean_cp"], 4) == 228.2486
+    assert round(results["mean_kh"], 4) == 270.4412
+    assert round(results["mean_cp"], 4) == 227.6842
 
 
 def test_cli_entd2008_survey_writes_report(

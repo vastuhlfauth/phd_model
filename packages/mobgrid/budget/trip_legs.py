@@ -18,6 +18,7 @@ from __future__ import annotations
 import duckdb
 
 from mobgrid.energy import legs, walk
+from mobgrid.energy.bike import solve_bike_speed_m_per_s
 from mobgrid.energy.rates import (
     MET_MINUTE_KJ_PER_KG,
     EnergyConfig,
@@ -420,7 +421,12 @@ def build_trip_legs(
     bias the ratio-of-weighted-sums v0/P0 estimator avoids for
     calibration, but that the energy formula used to reintroduce.
     ``p0_calibrated_w`` (the per-trip implied power) is still exposed, as
-    a diagnostic only, no longer used by the energy formula.
+    a diagnostic only, no longer used by the energy formula. The "stops"
+    sub-term (section 9.7's 2 stops/km, each costing a kinetic-energy
+    term) is costed at the same, single flat speed the rider holds at
+    this P0 (the inverse force-balance solve, ``bike.
+    solve_bike_speed_m_per_s``), not at each trip's own distance/ride-time
+    speed, for the same reason (22 October 2026 decision).
 
     ``density_source`` selects the trip ends' density class: ``'grid'``
     (default) reads ``trips_norm.density_ori_grid``/``density_des_grid``
@@ -505,6 +511,28 @@ def build_trip_legs(
     stops = bike.stops
     crr = bike.surface_crr["asphalt_concrete_paved_default"]
     bike_total_mass = mass + bike.bike_mass_kg
+    # Stops are costed at the flat speed the rider holds at the
+    # calibrated P0 (22 October 2026 decision, section 9.9's "Legs
+    # without paths"), not at each trip's own (declared-distance/
+    # ride-time) speed: that speed is noisy (declared distances and
+    # durations), and the stop energy grows with its square, so costing
+    # it at each trip's own speed inflated the group mean (the same
+    # Jensen's-inequality bias the time-based ride-work term already
+    # avoids, section 9.9 point 3). The inverse of the same force-
+    # balance equation `daily_energy.calibrate_p0` solves forward
+    # (speed -> P0), on the rider's own mass only (not the bike's,
+    # matching that calibration's convention), flat ground, no headwind.
+    bike_flat_speed_m_per_s = float(
+        solve_bike_speed_m_per_s(
+            bike_p0_w,
+            mass,
+            0.0,
+            crr,
+            bike.cda_m2,
+            bike.rho_air_kg_per_m3,
+            bike.drivetrain_efficiency,
+        )
+    )
     walk_to_car_by_density = relabel_density(car.walk_to_car.apartment_min_by_density)
     parking_search_by_density = relabel_density(car.parking_search_min_by_density)
     walk_from_car_by_density = relabel_density(car.walk_from_car_min_by_density)
@@ -518,6 +546,7 @@ def build_trip_legs(
     drivetrain_eff_sql = _dbl(bike.drivetrain_efficiency)
     muscular_eff_sql = _dbl(bike.gross_muscular_efficiency)
     bike_total_mass_sql = _dbl(bike_total_mass)
+    bike_flat_speed_m_per_s_sql = _dbl(bike_flat_speed_m_per_s)
     stops_per_km_sql = _dbl(stops.stops_per_km)
     stop_decel_term_sql = _dbl(1.0 / stops.deceleration_m_per_s2)
     stop_accel_term_sql = _dbl(1.0 / stops.acceleration_m_per_s2)
@@ -773,7 +802,8 @@ def build_trip_legs(
                 + {standing_kh_sql} * {bike_get_park_total_min_sql}
                     * {terminal_scale_sql}
                 + {stops_per_km_sql} * distance_km
-                    * 0.5 * {bike_total_mass_sql} * pow(bike_ride_speed_m_per_s, 2)
+                    * 0.5 * {bike_total_mass_sql}
+                    * pow({bike_flat_speed_m_per_s_sql}, 2)
                     / {muscular_eff_sql} / 1000.0 * {terminal_scale_sql}
             WHEN 'car_driver' THEN
                 {walk_rate_kh_sql} * {terminal_scale_sql}
@@ -827,7 +857,8 @@ def build_trip_legs(
                 + {standing_cp_sql} * {bike_get_park_total_min_sql}
                     * {terminal_scale_sql}
                 + {stops_per_km_sql} * distance_km
-                    * 0.5 * {bike_total_mass_sql} * pow(bike_ride_speed_m_per_s, 2)
+                    * 0.5 * {bike_total_mass_sql}
+                    * pow({bike_flat_speed_m_per_s_sql}, 2)
                     / {muscular_eff_sql} / 1000.0 * {terminal_scale_sql}
             WHEN 'car_driver' THEN
                 {walk_rate_cp_sql} * {terminal_scale_sql}

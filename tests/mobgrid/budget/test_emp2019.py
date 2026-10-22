@@ -12,7 +12,11 @@ from pathlib import Path
 import duckdb
 import pytest
 from mobgrid.budget import emp2019
-from mobgrid.energy.rates import load_energy_config
+from mobgrid.energy.rates import (
+    MET_MINUTE_KJ_PER_KG,
+    activity_rate_kj_per_min,
+    load_energy_config,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config" / "energy.yaml"
@@ -263,3 +267,97 @@ def test_implausibly_fast_cycle_trip_has_its_distance_corrected(
         "SELECT energy_cp_kj FROM trip_legs WHERE ident_ind = 1"
     ).fetchone()[0]
     assert energy_cp < plausible_energy * 10
+
+
+def test_stop_energy_per_stop_is_the_same_regardless_of_declared_speed(
+    tmp_path: Path,
+) -> None:
+    """22 October 2026 decision: the "stops" sub-term is now costed at
+    the flat speed the rider holds at the calibrated P0, not at the
+    trip's own (declared-distance/ride-time) speed. So, even though an
+    implausibly-fast-declared trip's corrected distance (and so its
+    number of stops) differs from a normal trip's, its energy *per
+    stop* must be identical -- unlike before this fix, when a trip's own
+    (possibly still-differing, post-correction) ride speed set a
+    different, trip-specific kJ/stop.
+
+    Respondent 1 cycles normally (4 km/20 min = 12 km/h, not flagged).
+    Respondent 2's declared speed is implausible (50 km/10 min =
+    300 km/h, above `CYCLE_SPEED_UPPER_KMH`): its distance is corrected
+    to 10 min x the (12 km/h) median of the not-flagged trips = 2 km, a
+    different distance (and stop count) from respondent 1's, but its
+    stop energy per stop must still equal respondent 1's.
+    """
+    config = load_energy_config(CONFIG_PATH)
+    zip_path = tmp_path / "emp2019-data.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr(
+            "5. k_deploc_public_V4.csv",
+            "\n".join(
+                [
+                    "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
+                    "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
+                    "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
+                    "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                    # 4 km in 20 min = 12 km/h, not flagged.
+                    "D1,M1,1,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    # 50 km in 10 min = 300 km/h, flagged (> 35 km/h).
+                    "D2,M2,2,1,100.0,1,1,1,10,50.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                ]
+            ),
+        )
+        archive.writestr(
+            "tcm_ind_kish_public_V3.csv",
+            "\n".join(["IDENT_IND;AGE;AGE6;SITUA", "1;30;30;1", "2;30;30;1"]),
+        )
+        archive.writestr(
+            "k_individu_public_V3.csv",
+            "\n".join(["IDENT_IND;pond_indC;MIMMOSEM", "1;100.0;2", "2;100.0;2"]),
+        )
+        archive.writestr("tcm_ind_public_V3.csv", "ident_ind;ident_men\n1;M1\n2;M2")
+        archive.writestr(
+            "q_menage_public_V3.csv",
+            "\n".join(["IDENT_MEN;pond_menC", "M1;100.0", "M2;100.0"]),
+        )
+        archive.writestr(
+            "tcm_men_public_V3.csv",
+            "\n".join(['"ident_men","TUU2017_RES"', '"M1","7"', '"M2","7"']),
+        )
+    con = duckdb.connect()
+    csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv_stops")
+    emp2019.register_views(con, csv_paths)
+    emp2019.build_trip_legs(con, config)
+
+    rows = con.sql(
+        "SELECT ident_ind, distance_km, bike_ride_time_for_energy_s, "
+        "speed_flagged_upper, energy_kh_kj FROM trip_legs ORDER BY ident_ind"
+    ).fetchall()
+    (ident1, dist1, ride1, flagged1, kh1), (ident2, dist2, ride2, flagged2, kh2) = rows
+    assert (flagged1, flagged2) == (False, True)
+    # The two trips' corrected distances (and so stop counts) genuinely
+    # differ: this is not a trivial, already-equal case.
+    assert dist1 != pytest.approx(dist2)
+
+    bike = config.bike
+    mass = config.reference_mass_kg
+    standing_kh = activity_rate_kj_per_min(
+        config.activity_rates["standing_relaxed"], "kh", mass
+    )
+    unloaded_rate_kj_per_min = (
+        bike.pedalling_unloaded_net_met * MET_MINUTE_KJ_PER_KG * mass
+    )
+    get_park_total_min = 2.0 * bike.get_park_min
+
+    def kj_per_stop(distance_km: float, ride_s: float, energy_kh: float) -> float:
+        ride_work_kj = (
+            bike.power.p0_w / bike.gross_muscular_efficiency * ride_s / 1000.0
+        )
+        unloaded_kj = unloaded_rate_kj_per_min * ride_s / 60.0
+        get_park_kj = standing_kh * get_park_total_min
+        stops_kj = energy_kh - ride_work_kj - unloaded_kj - get_park_kj
+        n_stops = bike.stops.stops_per_km * distance_km
+        return stops_kj / n_stops
+
+    assert kj_per_stop(dist1, ride1, kh1) == pytest.approx(
+        kj_per_stop(dist2, ride2, kh2), rel=1e-6
+    )
