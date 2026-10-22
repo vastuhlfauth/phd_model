@@ -2,9 +2,12 @@
 
 ``test_cli_writes_figures_and_report_on_synthetic_data`` is isolated (no
 network, no ``data/raw`` access): it runs the full command against the
-tiny synthetic archive of ``conftest.py``. The real-data checks are
-``@pytest.mark.pilot`` and skipped when the EMP 2019 archive has not been
-downloaded (see ``.github/instructions/tests.instructions.md``).
+tiny synthetic archive of ``conftest.py``. The one real-data check,
+``test_real_emp_2019_mean_daily_energy_is_within_kh_order_of_magnitude``,
+is gated by ``@pytest.mark.skipif`` (not ``@pytest.mark.pilot``, unlike
+``.github/instructions/tests.instructions.md``'s convention) and skipped
+only when the EMP 2019 archive has not been downloaded; it otherwise
+runs as part of the default suite.
 """
 
 from __future__ import annotations
