@@ -2,7 +2,37 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-22 by Copilot (merged `step/mobgrid-budget-entd2008` and `docs/spec-9.9-update` into `main`; both source branches deleted locally and on `origin`)_
+_Last updated: 2026-10-22 by Copilot (branch `fix/step11-reporting`: six step 11 reporting/model fixes, reports regenerated; see below)_
+
+### Step 11 reporting fixes (2026-10-22, branch `fix/step11-reporting`, pushed, not merged)
+
+- Fixed, one commit each (full detail in `CHANGELOG.md`'s "2026-10-22 —
+  step 11 fixes"): bike stop energy now costed at the P0 flat speed, not
+  each trip's own ride speed (cycle-day mean energy -5.5% EMP 2019,
+  -4.0% ENTD 2008); `declared_vs_modelled_walk_wait` no longer
+  double-counts PT access walk onto car modes; the `**Sample:**` line
+  replaced by an explicit, unit-consistent sample-flow table (true
+  respondent counts: EMP 2019 13,825, ENTD 2008 18,632 via `k_individu`,
+  not `q_tcm_individu`'s 49,283-row full household roster); the day-type
+  mix now prints a share, not a raw weight; children-as-car-drivers'
+  prose and table now use the same needs-only scope (50/140, not
+  56/148); `F8_ROBUSTNESS_GROUPS`'s "six groups" comment/prose corrected
+  to seven; `config/energy.yaml`'s P0 comment now cites the 727-trip
+  reliable subset, not the 1,023-trip total.
+- Applied `spec_update_2026-10-22_part5_stops.diff` (section 9.9/00
+  summary: bike stops at the P0 flat speed; ENTD 2008 sample flow in
+  consistent units) before the code changes.
+- Regenerated all three reports and figures (EMP 2019 grid, ENTD 2008,
+  the 2008-2019 comparison with the proxy); `pytest -q -m "not pilot"`:
+  399 passed, 2 deselected; `ruff check .`: clean.
+- New regression test:
+  `test_emp2019.py::test_stop_energy_per_stop_is_the_same_regardless_of_declared_speed`.
+- **Not yet done:** the ENTD 2008 Saturday/Sunday "days without trips"
+  denominators (via `V2_MIMMOSAM`/`V2_MIMMODIM`) are plausible but
+  unverified against an explicit per-respondent weekend-day-eligibility
+  flag -- flagged, not asserted, in the sample-flow table (weekday-only
+  figures are fully verified). The open points below (from the
+  2026-10-20 merge) are unaffected and still open.
 
 ### Merge wrap-up (2026-10-22)
 
