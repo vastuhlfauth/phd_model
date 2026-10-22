@@ -532,14 +532,26 @@ def run(
     # minutes, by mode group (section 9.9, step 1's closing sentence,
     # and "Outputs of the re-estimation": "declared walking and waiting
     # times against the modelled terminal legs, by mode group"); a check
-    # only -- neither is used to build the legs themselves.
+    # only -- neither is used to build the legs themselves. The modelled
+    # walk is mode-specific, matching the energy formula (`trip_legs.
+    # build_trip_legs`): car's walk-to/from-car only (`access_walk_ori/
+    # des_min` is a PT/train-only concept, computed for every row
+    # regardless of mode, but not part of car's own energy -- adding it
+    # here used to double the car figure, 17.6-19.2 modelled minutes
+    # against a 9/10-minute default cap).
     declared_vs_modelled_walk_wait = con.sql("""
         SELECT mode_group,
             avg(declared_walk_min) AS declared_walk_min,
             avg(declared_wait_min) AS declared_wait_min,
-            avg(coalesce(walk_to_car_min, 0) + coalesce(walk_from_car_min, 0)
-                + coalesce(access_walk_ori_min, 0) + coalesce(access_walk_des_min, 0))
-                AS modelled_walk_min,
+            avg(CASE
+                WHEN mode_group IN
+                    ('car_driver', 'car_passenger_household',
+                     'car_passenger_carpool')
+                    THEN coalesce(walk_to_car_min, 0) + coalesce(walk_from_car_min, 0)
+                WHEN mode_group IN ('urban_pt', 'train')
+                    THEN coalesce(access_walk_ori_min, 0)
+                        + coalesce(access_walk_des_min, 0)
+            END) AS modelled_walk_min,
             avg(wait_min) AS modelled_wait_min,
             count(*) AS n
         FROM trip_legs
