@@ -214,8 +214,9 @@ bike:
   # calibrated on observed commuter speeds on gradients (Parkin & Rotheram
   # 2010)". P_0 = 34.8 W is now confirmed by the section 9.9
   # re-estimation (step 11, EMP 2019: implied flat speed of about 13.5
-  # km/h on 1,023 reliable cycle trips, e-bikes apart). k and P_max are
-  # still not calibrated.
+  # km/h, from 727 reliable cycle trips -- e-bikes can't be separated
+  # in EMP 2019, whose own mode codes do not distinguish them from
+  # bicycles). k and P_max are still not calibrated.
   # TODO(confirm): [TO CONFIRM: k and P_max against Parkin & Rotheram
   # 2010 / pilot commuter speeds], section 9.7.
   power:

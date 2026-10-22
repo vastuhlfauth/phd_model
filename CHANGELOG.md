@@ -4,7 +4,73 @@ Notable changes to the `mobgrid.budget` step 11 re-estimation (section
 9.9). Not an exhaustive history; see `docs/progress.md` for the full
 decision log.
 
-## Unreleased (branch `step/mobgrid-budget-entd2008`)
+## 2026-10-22 — step 11 fixes
+
+### Fixed
+
+- **Bike stop energy** now costed at the single flat speed the rider
+  holds at the calibrated P0 (the inverse of the same force-balance
+  solve `daily_energy.calibrate_p0` uses forward), not at each trip's
+  own declared-distance/ride-time speed: that speed is noisy and the
+  stop term is quadratic, so a small share of fast-declared trips
+  dominated it (6% of EMP 2019 bike trips above 25 km/h gave 37% of the
+  stop energy; the term carried 11.5%/10.2% of cycling-day energy in
+  EMP 2019/ENTD 2008). Regression test:
+  `tests/mobgrid/budget/test_emp2019.py::test_stop_energy_per_stop_is_the_same_regardless_of_declared_speed`.
+
+  | Metric | Before | After |
+  |---|---|---|
+  | EMP 2019 (grid) `cycle` mean energy (KH / CP) | 631.0 / 613.6 kJ | 595.9 / 578.6 kJ |
+  | EMP 2019 (grid) `multimodal` mean energy (KH / CP) | 754.6 / 658.8 kJ | 749.4 / 653.6 kJ |
+  | ENTD 2008 `cycle` mean energy (KH / CP) | 588.0 / 570.0 kJ | 564.3 / 546.3 kJ |
+  | ENTD 2008 `multimodal` mean energy (KH / CP) | 687.7 / 605.9 kJ | 686.5 / 604.7 kJ |
+  | Compare report overall mean energy, 2019 (proxy, KH / CP) | 544.4 / 495.7 kJ | 543.4 / 494.7 kJ |
+  | Compare report overall mean energy, 2008 (KH / CP) | 533.3 / 481.1 kJ | 532.7 / 480.4 kJ |
+  | Cycle-day stop-term share of total energy, 2019 (2008) | 11.5% (10.2%) | 6.3% (6.4%) |
+
+  Every other group's mean energy is unchanged (the term only enters
+  the `cycle` energy formula).
+
+- **`declared_vs_modelled_walk_wait`** (the declared-vs-modelled walk/wait
+  check table) summed car's walk-to/from-car *and* PT's access-walk
+  legs for every mode, including car ones (`access_walk_ori/des_min` is
+  computed for every row regardless of mode): car's modelled walk was
+  silently doubled, 17.6-19.2 min against a 9/10-minute default cap.
+  Now mode-specific, matching the energy formula: car modes use only
+  walk_to_car + walk_from_car; urban_pt/train use only access_walk_ori
+  + access_walk_des. EMP 2019 `car_driver`'s modelled walk: 17.6 -> 6.3 min.
+
+- **Sample-flow accounting**: the `**Sample:**` line's
+  `n_days + non_traveler_n` reconstruction of "respondents" silently
+  dropped respondents who had a trip but whose day fell out of scope or
+  ended with null energy; replaced with an explicit sample-flow table
+  (respondents -> days with trips -> days with energy -> days within
+  scope -> days within scope with energy), in consistent units (persons
+  and days kept apart). True respondent counts: EMP 2019 13,825 (the
+  old line implied 12,429); ENTD 2008 18,632, `k_individu` (the old line
+  implied 35,957, conflating a day-record count with `q_tcm_individu`'s
+  49,283-row full household roster). Non-traveller share is now reported
+  both unweighted and weighted, over the full roster.
+
+- **Day-type mix**: `traveler_day_type_share` printed a raw
+  `sum(pond_jour)` straight into a `.1%` format (e.g.
+  "TYPEJOUR=1: 25002074313.3%"); now an actual share of the total.
+
+- **Children-as-car-drivers**: the prose's day count (56 EMP 2019 / 148
+  ENTD 2008) was read off a `day_summary` already silently rebuilt to
+  the full, pre-exclusion motive scope by a later diagnostic block,
+  while the table's count (50/140) used the needs-only scope. Both
+  numbers are now computed together, in the needs-only scope: EMP 2019
+  56 -> 50, ENTD 2008 148 -> 140.
+
+- **"Six groups" comment/prose**: `F8_ROBUSTNESS_GROUPS` has always held
+  7 groups; the comment above it and the matching report prose said six.
+
+- **`config/energy.yaml`'s P0 comment** cited the total raw cycle-trip
+  count (1,023) as the "reliable" one; the re-estimation's own reliable
+  subset (passing the get/park + stop-delay reliability checks) is 727.
+
+## 2026-10-20 — step 11, ENTD 2008
 
 ### Fixed
 

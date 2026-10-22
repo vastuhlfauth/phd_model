@@ -324,22 +324,35 @@ def create_non_travelers(con: duckdb.DuckDBPyConnection) -> None:
     """)
 
 
+def respondent_n(con: duckdb.DuckDBPyConnection) -> int:
+    """The Kish respondent roster size (section 9.9, "Change between
+    2008 and 2019": persons and days kept apart). One row per
+    respondent, one described day each (`tcm_ind_kish`, the Kish
+    selection table, not `tcm_ind`'s full household roster)."""
+    return con.sql("SELECT count(*) FROM tcm_ind_kish").fetchone()[0]
+
+
 def non_traveler_summary(con: duckdb.DuckDBPyConnection) -> dict:
     """Section 9.9 point 2's "persons without trips" summary: weighted
-    non-traveller share plus the EMP-specific `MIMMOSEM` cross-check
-    (``emp.py``'s "Non-traveller immobility" section)."""
+    and unweighted non-traveller share, over the *full* respondent
+    roster (``respondent_n``, not the narrower within-scope-with-energy
+    traveller count the share used to be computed against), plus the
+    EMP-specific `MIMMOSEM` cross-check (``emp.py``'s "Non-traveller
+    immobility" section)."""
     create_non_travelers(con)
     non_travelers = con.sql("SELECT pond_ind, mimmosem FROM non_travelers").fetchnumpy()
-    travelers_pond_ind = con.sql(
-        "SELECT pond_ind FROM day_summary WHERE total_energy_kh_kj IS NOT NULL"
-    ).fetchnumpy()["pond_ind"]
+    n_respondents = respondent_n(con)
+    total_weight = con.sql("""
+        SELECT sum(i.pond_indC) FROM tcm_ind_kish k
+        JOIN k_individu i ON i.IDENT_IND = k.IDENT_IND
+    """).fetchone()[0]
+    non_traveler_n = int(len(non_travelers["pond_ind"]))
     non_traveler_weight = float(non_travelers["pond_ind"].sum())
-    non_traveler_share = non_traveler_weight / (
-        non_traveler_weight + float(travelers_pond_ind.sum())
-    )
     mimmosem_match = float(np.mean(non_travelers["mimmosem"] == 1))
     return {
-        "n": int(len(non_travelers["pond_ind"])),
-        "share": non_traveler_share,
+        "n": non_traveler_n,
+        "n_respondents": n_respondents,
+        "share_weighted": non_traveler_weight / float(total_weight),
+        "share_unweighted": non_traveler_n / n_respondents,
         "mimmosem_match": mimmosem_match,
     }
