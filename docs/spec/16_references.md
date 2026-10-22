@@ -65,6 +65,7 @@
 - Metz, D. (2008). The myth of travel time saving. Transport Reviews 28(3), 321–336.
 - Minetti, A. E., Moia, C., Roi, G. S., Susta, D., Ferretti, G. (2002). Energy cost of walking and running at extreme uphill and downhill slopes. Journal of Applied Physiology 93(3), 1039–1046.
 - Mokhtarian, P. L., Chen, C. (2004). TTB or not TTB, that is the question: a review and analysis of the empirical literature on travel time (and money) budgets. Transportation Research Part A 38(9–10), 643–675.
+- Observatoire des territoires (2023). Se déplacer au quotidien : enjeux spatiaux, enjeux sociaux. Fiche d'analyse, Agence nationale de la cohésion des territoires. https://www.observatoire-des-territoires.gouv.fr/sites/default/files/2023-05/fiche_analyse_mobilites_quotidiennes.pdf
 - Owen, A., Murphy, B. (2019). Temporal sampling and service frequency harmonics in transit accessibility evaluation. Journal of Transport and Land Use 12(1). doi:10.5198/jtlu.2019.1379
 - Pandolf, K. B., Givoni, B., Goldman, R. F. (1977). Predicting energy expenditure with loads while standing or walking very slowly. Journal of Applied Physiology 43(4), 577–581.
 - Parkin, J., Rotheram, J. (2010). Design speeds and acceleration characteristics of bicycle traffic for use in planning, design and appraisal. Transport Policy 17(5), 335–341.
