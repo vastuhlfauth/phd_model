@@ -28,30 +28,30 @@ INSEE's own 4-level grid names and order: dense (1, densely populated communes),
 
 ## Time budget: constancy across density classes (point 3)
 
-The reference constant (section 9.9, 27 October 2026 decision): is mean daily travel time the same across density classes of residence, within each population category? Day with trips, needs scope. Cells of fewer than 50 persons blank.
+The reference constant (section 9.9, 27 October 2026 decision): is mean daily travel time the same across density classes of residence, within each population category? Day with trips, needs scope. Cells of fewer than 50 persons blank. The 95% CI column (bootstrap over households) gives time the same treatment energy already has (section 9.9's income update).
 
-| Category | Density | n | mean time (min) | median time (min) |
-|---|---|---|---|---|
-| children_6_17 | dense | 405 | 57.7 | 41.0 |
-| children_6_17 | intermediate | 304 | 48.2 | 35.0 |
-| children_6_17 | sparse | 319 | 53.6 | 35.0 |
-| children_6_17 | very_sparse | 32 | - | - |
-| employed | dense | 2008 | 88.6 | 70.0 |
-| employed | intermediate | 1400 | 77.6 | 60.0 |
-| employed | sparse | 1694 | 83.5 | 65.0 |
-| employed | very_sparse | 205 | 89.1 | 70.0 |
-| unemployed | dense | 292 | 91.5 | 70.0 |
-| unemployed | intermediate | 184 | 72.4 | 46.0 |
-| unemployed | sparse | 152 | 73.4 | 40.0 |
-| unemployed | very_sparse | 19 | - | - |
-| retired | dense | 1242 | 67.7 | 50.0 |
-| retired | intermediate | 1202 | 55.7 | 40.0 |
-| retired | sparse | 1342 | 57.4 | 40.0 |
-| retired | very_sparse | 166 | 59.7 | 40.0 |
-| other_inactive | dense | 503 | 81.0 | 66.0 |
-| other_inactive | intermediate | 269 | 75.5 | 55.0 |
-| other_inactive | sparse | 203 | 69.2 | 55.0 |
-| other_inactive | very_sparse | 22 | - | - |
+| Category | Density | n | mean time (min) | 95% CI | median time (min) |
+|---|---|---|---|---|---|
+| children_6_17 | dense | 405 | 57.7 | [53.0, 63.5] | 41.0 |
+| children_6_17 | intermediate | 304 | 48.2 | [42.9, 56.9] | 35.0 |
+| children_6_17 | sparse | 319 | 53.6 | [47.6, 60.6] | 35.0 |
+| children_6_17 | very_sparse | 32 | - | - | - |
+| employed | dense | 2008 | 88.6 | [84.6, 94.1] | 70.0 |
+| employed | intermediate | 1400 | 77.6 | [73.4, 82.5] | 60.0 |
+| employed | sparse | 1694 | 83.5 | [78.7, 88.0] | 65.0 |
+| employed | very_sparse | 205 | 89.1 | [77.6, 100.5] | 70.0 |
+| unemployed | dense | 292 | 91.5 | [78.9, 106.4] | 70.0 |
+| unemployed | intermediate | 184 | 72.4 | [59.5, 89.0] | 46.0 |
+| unemployed | sparse | 152 | 73.4 | [53.9, 106.7] | 40.0 |
+| unemployed | very_sparse | 19 | - | - | - |
+| retired | dense | 1242 | 67.7 | [63.7, 71.8] | 50.0 |
+| retired | intermediate | 1202 | 55.7 | [51.9, 59.8] | 40.0 |
+| retired | sparse | 1342 | 57.4 | [52.9, 63.6] | 40.0 |
+| retired | very_sparse | 166 | 59.7 | [51.2, 68.3] | 40.0 |
+| other_inactive | dense | 503 | 81.0 | [74.1, 89.1] | 66.0 |
+| other_inactive | intermediate | 269 | 75.5 | [57.5, 101.5] | 55.0 |
+| other_inactive | sparse | 203 | 69.2 | [56.0, 83.7] | 55.0 |
+| other_inactive | very_sparse | 22 | - | - | - |
 
 ### Constancy summary
 
@@ -62,6 +62,302 @@ The reference constant (section 9.9, 27 October 2026 decision): is mean daily tr
 | unemployed | - | 1.26 | 0.11 |
 | retired | 1.13 | 1.22 | 0.08 |
 | other_inactive | - | 1.17 | 0.06 |
+
+## Time budget: constancy across income quintiles (section 9.9's income update)
+
+Household income per consumption unit (modified OECD scale), in quintiles computed within this survey with individual weights (`docs/data/entd2008.md`'s "Income variables"): is mean daily travel time the same across income quintiles, within each population category, as income is treated as density is? Day with trips, needs scope. `'unknown'` (missing/refused income) is its own class, excluded from the constancy summary (not an ordered quantile).
+
+| Category | Income quintile | n | mean time (min) | 95% CI | median time (min) |
+|---|---|---|---|---|---|
+| children_6_17 | q1 | 180 | 50.1 | [43.2, 57.8] | 40.0 |
+| children_6_17 | q2 | 259 | 58.0 | [50.2, 68.7] | 40.0 |
+| children_6_17 | q3 | 204 | 49.7 | [45.3, 56.3] | 40.0 |
+| children_6_17 | q4 | 219 | 56.2 | [47.2, 68.4] | 37.0 |
+| children_6_17 | q5 | 198 | 52.1 | [46.0, 60.0] | 40.0 |
+| children_6_17 | unknown | 0 | - | - | - |
+| employed | q1 | 211 | 77.3 | [66.3, 92.7] | 50.0 |
+| employed | q2 | 683 | 74.5 | [67.8, 79.5] | 60.0 |
+| employed | q3 | 1008 | 87.3 | [79.8, 96.4] | 65.0 |
+| employed | q4 | 1488 | 82.2 | [78.2, 86.2] | 65.0 |
+| employed | q5 | 1917 | 89.1 | [85.3, 93.0] | 70.0 |
+| employed | unknown | 0 | - | - | - |
+| unemployed | q1 | 259 | 67.9 | [58.7, 78.1] | 50.0 |
+| unemployed | q2 | 177 | 79.5 | [66.3, 95.4] | 65.0 |
+| unemployed | q3 | 88 | 110.4 | [70.9, 163.9] | 60.0 |
+| unemployed | q4 | 72 | 81.4 | [64.8, 101.2] | 75.0 |
+| unemployed | q5 | 51 | 84.0 | [54.7, 108.5] | 60.0 |
+| unemployed | unknown | 0 | - | - | - |
+| retired | q1 | 183 | 50.2 | [43.8, 58.1] | 35.0 |
+| retired | q2 | 705 | 54.7 | [49.9, 60.8] | 40.0 |
+| retired | q3 | 802 | 58.1 | [53.4, 63.6] | 40.0 |
+| retired | q4 | 1080 | 59.0 | [53.9, 66.5] | 40.0 |
+| retired | q5 | 1182 | 67.7 | [62.8, 72.2] | 45.0 |
+| retired | unknown | 0 | - | - | - |
+| other_inactive | q1 | 295 | 70.3 | [62.0, 79.6] | 60.0 |
+| other_inactive | q2 | 313 | 81.9 | [65.3, 109.8] | 60.0 |
+| other_inactive | q3 | 157 | 70.6 | [58.1, 83.2] | 60.0 |
+| other_inactive | q4 | 127 | 87.5 | [72.1, 104.1] | 62.0 |
+| other_inactive | q5 | 105 | 73.6 | [60.1, 88.5] | 65.0 |
+| other_inactive | unknown | 0 | - | - | - |
+
+### Constancy summary
+
+| Category | q5/q1 | max/min | CV across classes |
+|---|---|---|---|
+| children_6_17 | 1.04 | 1.17 | 0.06 |
+| employed | 1.15 | 1.20 | 0.07 |
+| unemployed | 1.24 | 1.63 | 0.17 |
+| retired | 1.35 | 1.35 | 0.10 |
+| other_inactive | 1.05 | 1.25 | 0.09 |
+
+## Trips per day and minutes per trip, by category, density and income quintile (section 9.9 point 2: daily time = trips/day x minutes/trip)
+
+### Trips per day
+
+#### By population category x density class
+
+| Category | Density | n | mean trips/day | 95% CI | median trips/day |
+|---|---|---|---|---|---|
+| children_6_17 | dense | 405 | 2.92 | [2.78, 3.12] | 2.00 |
+| children_6_17 | intermediate | 304 | 3.06 | [2.83, 3.31] | 2.00 |
+| children_6_17 | sparse | 319 | 2.87 | [2.70, 3.08] | 2.00 |
+| children_6_17 | very_sparse | 32 | - | - | - |
+| employed | dense | 2008 | 3.47 | [3.38, 3.56] | 3.00 |
+| employed | intermediate | 1400 | 3.49 | [3.39, 3.61] | 3.00 |
+| employed | sparse | 1694 | 3.75 | [3.61, 3.88] | 3.00 |
+| employed | very_sparse | 205 | 3.88 | [3.46, 4.27] | 4.00 |
+| unemployed | dense | 292 | 3.59 | [3.37, 3.84] | 3.00 |
+| unemployed | intermediate | 184 | 3.58 | [3.13, 4.02] | 2.00 |
+| unemployed | sparse | 152 | 3.36 | [2.87, 3.80] | 2.00 |
+| unemployed | very_sparse | 19 | - | - | - |
+| retired | dense | 1242 | 3.04 | [2.95, 3.14] | 2.00 |
+| retired | intermediate | 1202 | 3.03 | [2.91, 3.16] | 2.00 |
+| retired | sparse | 1342 | 2.95 | [2.85, 3.06] | 2.00 |
+| retired | very_sparse | 166 | 3.05 | [2.78, 3.33] | 2.00 |
+| other_inactive | dense | 503 | 3.13 | [2.94, 3.33] | 2.00 |
+| other_inactive | intermediate | 269 | 3.66 | [3.31, 4.11] | 3.00 |
+| other_inactive | sparse | 203 | 3.15 | [2.82, 3.46] | 2.00 |
+| other_inactive | very_sparse | 22 | - | - | - |
+
+#### By population category x income quintile
+
+| Category | Income quintile | n | mean trips/day | 95% CI | median trips/day |
+|---|---|---|---|---|---|
+| children_6_17 | q1 | 180 | 2.96 | [2.73, 3.20] | 2.00 |
+| children_6_17 | q2 | 259 | 3.10 | [2.84, 3.45] | 2.00 |
+| children_6_17 | q3 | 204 | 2.75 | [2.54, 3.00] | 2.00 |
+| children_6_17 | q4 | 219 | 2.86 | [2.70, 3.04] | 2.00 |
+| children_6_17 | q5 | 198 | 3.02 | [2.81, 3.22] | 2.00 |
+| children_6_17 | unknown | 0 | - | - | - |
+| employed | q1 | 211 | 3.55 | [3.27, 3.94] | 3.00 |
+| employed | q2 | 683 | 3.65 | [3.44, 3.85] | 3.00 |
+| employed | q3 | 1008 | 3.69 | [3.55, 3.84] | 3.00 |
+| employed | q4 | 1488 | 3.58 | [3.47, 3.70] | 3.00 |
+| employed | q5 | 1917 | 3.48 | [3.37, 3.58] | 3.00 |
+| employed | unknown | 0 | - | - | - |
+| unemployed | q1 | 259 | 3.50 | [3.15, 3.92] | 2.00 |
+| unemployed | q2 | 177 | 3.46 | [3.05, 3.86] | 3.00 |
+| unemployed | q3 | 88 | 3.53 | [3.05, 4.16] | 3.00 |
+| unemployed | q4 | 72 | 3.97 | [3.45, 4.55] | 4.00 |
+| unemployed | q5 | 51 | 3.25 | [2.69, 3.98] | 2.00 |
+| unemployed | unknown | 0 | - | - | - |
+| retired | q1 | 183 | 2.55 | [2.37, 2.74] | 2.00 |
+| retired | q2 | 705 | 2.77 | [2.66, 2.90] | 2.00 |
+| retired | q3 | 802 | 2.93 | [2.81, 3.04] | 2.00 |
+| retired | q4 | 1080 | 3.03 | [2.91, 3.16] | 2.00 |
+| retired | q5 | 1182 | 3.23 | [3.13, 3.34] | 3.00 |
+| retired | unknown | 0 | - | - | - |
+| other_inactive | q1 | 295 | 3.06 | [2.83, 3.30] | 2.00 |
+| other_inactive | q2 | 313 | 3.30 | [3.03, 3.62] | 2.00 |
+| other_inactive | q3 | 157 | 3.36 | [2.94, 3.81] | 3.00 |
+| other_inactive | q4 | 127 | 3.28 | [2.89, 3.77] | 2.00 |
+| other_inactive | q5 | 105 | 3.38 | [3.00, 3.77] | 3.00 |
+| other_inactive | unknown | 0 | - | - | - |
+
+### Minutes per trip
+
+#### By population category x density class
+
+| Category | Density | n | mean min/trip | 95% CI | median min/trip |
+|---|---|---|---|---|---|
+| children_6_17 | dense | 405 | 21.32 | [19.13, 23.60] | 15.00 |
+| children_6_17 | intermediate | 304 | 17.48 | [15.64, 19.73] | 12.50 |
+| children_6_17 | sparse | 319 | 20.05 | [17.54, 22.63] | 15.00 |
+| children_6_17 | very_sparse | 32 | - | - | - |
+| employed | dense | 2008 | 29.32 | [27.79, 31.30] | 21.25 |
+| employed | intermediate | 1400 | 26.70 | [24.53, 29.21] | 16.71 |
+| employed | sparse | 1694 | 26.34 | [24.73, 28.18] | 18.75 |
+| employed | very_sparse | 205 | 27.22 | [22.44, 33.02] | 17.60 |
+| unemployed | dense | 292 | 32.60 | [24.46, 45.58] | 20.00 |
+| unemployed | intermediate | 184 | 22.08 | [17.81, 28.42] | 15.00 |
+| unemployed | sparse | 152 | 34.83 | [18.73, 65.75] | 15.00 |
+| unemployed | very_sparse | 19 | - | - | - |
+| retired | dense | 1242 | 24.95 | [22.70, 27.35] | 16.25 |
+| retired | intermediate | 1202 | 19.67 | [18.30, 21.42] | 14.29 |
+| retired | sparse | 1342 | 20.99 | [18.78, 23.63] | 15.00 |
+| retired | very_sparse | 166 | 20.95 | [18.01, 25.35] | 15.00 |
+| other_inactive | dense | 503 | 29.38 | [26.23, 33.30] | 22.50 |
+| other_inactive | intermediate | 269 | 23.17 | [18.47, 30.90] | 15.00 |
+| other_inactive | sparse | 203 | 23.51 | [19.92, 26.91] | 17.50 |
+| other_inactive | very_sparse | 22 | - | - | - |
+
+#### By population category x income quintile
+
+| Category | Income quintile | n | mean min/trip | 95% CI | median min/trip |
+|---|---|---|---|---|---|
+| children_6_17 | q1 | 180 | 20.07 | [16.58, 24.48] | 12.50 |
+| children_6_17 | q2 | 259 | 19.89 | [17.42, 22.50] | 15.00 |
+| children_6_17 | q3 | 204 | 19.65 | [17.66, 22.39] | 15.00 |
+| children_6_17 | q4 | 219 | 20.58 | [17.69, 24.57] | 15.00 |
+| children_6_17 | q5 | 198 | 18.77 | [15.97, 22.19] | 15.00 |
+| children_6_17 | unknown | 0 | - | - | - |
+| employed | q1 | 211 | 24.61 | [19.94, 30.46] | 15.00 |
+| employed | q2 | 683 | 23.61 | [21.37, 25.29] | 17.50 |
+| employed | q3 | 1008 | 28.11 | [25.44, 31.57] | 18.00 |
+| employed | q4 | 1488 | 26.53 | [25.28, 28.15] | 20.00 |
+| employed | q5 | 1917 | 30.41 | [28.80, 32.55] | 20.00 |
+| employed | unknown | 0 | - | - | - |
+| unemployed | q1 | 259 | 21.78 | [18.65, 25.49] | 15.00 |
+| unemployed | q2 | 177 | 26.67 | [21.41, 33.39] | 16.83 |
+| unemployed | q3 | 88 | 58.82 | [22.06, 109.93] | 16.00 |
+| unemployed | q4 | 72 | 22.36 | [17.31, 27.84] | 16.67 |
+| unemployed | q5 | 51 | 30.67 | [19.99, 41.97] | 19.17 |
+| unemployed | unknown | 0 | - | - | - |
+| retired | q1 | 183 | 21.10 | [17.28, 25.25] | 15.00 |
+| retired | q2 | 705 | 20.99 | [19.01, 23.35] | 15.00 |
+| retired | q3 | 802 | 21.66 | [19.42, 24.60] | 15.00 |
+| retired | q4 | 1080 | 20.51 | [18.55, 22.83] | 15.00 |
+| retired | q5 | 1182 | 23.95 | [21.60, 27.10] | 15.00 |
+| retired | unknown | 0 | - | - | - |
+| other_inactive | q1 | 295 | 26.50 | [22.61, 30.81] | 20.00 |
+| other_inactive | q2 | 313 | 28.07 | [22.33, 35.64] | 20.00 |
+| other_inactive | q3 | 157 | 24.26 | [20.02, 30.08] | 16.00 |
+| other_inactive | q4 | 127 | 28.03 | [23.60, 33.06] | 23.33 |
+| other_inactive | q5 | 105 | 23.85 | [18.52, 28.50] | 17.50 |
+| other_inactive | unknown | 0 | - | - | - |
+
+#### By density class and by income quintile (marginals)
+
+| Group | n | weighted n | mean trips/day | 95% CI | median trips/day |
+|---|---|---|---|---|---|
+| dense | 4458 | 124,863,046 | 3.27 | [3.21, 3.33] | 3.00 |
+| sparse | 3712 | 90,497,649 | 3.37 | [3.28, 3.44] | 3.00 |
+| intermediate | 3360 | 87,493,794 | 3.32 | [3.25, 3.40] | 3.00 |
+| very_sparse | 444 | 9,671,561 | 3.47 | [3.18, 3.72] | 3.00 |
+
+| Group | n | weighted n | mean trips/day | 95% CI | median trips/day |
+|---|---|---|---|---|---|
+| q5 | 3454 | 86,830,242 | 3.36 | [3.29, 3.44] | 3.00 |
+| q4 | 2990 | 76,184,515 | 3.34 | [3.26, 3.43] | 3.00 |
+| q3 | 2259 | 61,051,836 | 3.33 | [3.23, 3.42] | 2.00 |
+| q2 | 2139 | 57,526,924 | 3.30 | [3.19, 3.40] | 2.00 |
+| q1 | 1132 | 30,932,533 | 3.17 | [3.05, 3.31] | 2.00 |
+
+| Group | n | weighted n | mean min/trip | 95% CI | median min/trip |
+|---|---|---|---|---|---|
+| employed | 5307 | 150,389,289 | 27.67 | [26.75, 28.69] | 19.33 |
+| retired | 3952 | 67,697,803 | 21.90 | [20.74, 23.31] | 15.00 |
+| children_6_17 | 1060 | 50,539,780 | 19.81 | [18.49, 21.14] | 15.00 |
+| other_inactive | 997 | 27,787,489 | 26.38 | [23.83, 28.71] | 20.00 |
+| unemployed | 647 | 15,840,084 | 29.92 | [22.92, 39.71] | 16.00 |
+
+| Group | n | weighted n | mean min/trip | 95% CI | median min/trip |
+|---|---|---|---|---|---|
+| dense | 4458 | 124,863,046 | 27.40 | [26.38, 28.66] | 20.00 |
+| sparse | 3712 | 90,497,649 | 24.24 | [22.88, 25.81] | 15.67 |
+| intermediate | 3360 | 87,493,794 | 22.89 | [21.74, 24.74] | 15.00 |
+| very_sparse | 444 | 9,671,561 | 24.77 | [21.05, 28.21] | 17.50 |
+
+| Group | n | weighted n | mean min/trip | 95% CI | median min/trip |
+|---|---|---|---|---|---|
+| q5 | 3454 | 86,830,242 | 27.40 | [26.12, 29.09] | 18.00 |
+| q4 | 2990 | 76,184,515 | 24.18 | [23.17, 25.25] | 16.67 |
+| q3 | 2259 | 61,051,836 | 26.18 | [23.80, 28.76] | 16.00 |
+| q2 | 2139 | 57,526,924 | 23.16 | [21.85, 24.75] | 15.71 |
+| q1 | 1132 | 30,932,533 | 22.82 | [21.05, 25.15] | 15.00 |
+
+## Per-person budget, days without trips included (section 9.9 point 2b)
+
+P(out on the weekday) x T(weekday|out), weekday only (comparable with ENTD 2008's own, unverified-weekend-eligibility budget); EMP 2019 additionally reports the all-week budget, Sigma_d w_d . P(out on day type d) . T(d|out), w_d = 5/7, 1/7, 1/7 (P from `IMMODEP_A`-`G`, T from the described days of each day type; point estimate only, no bootstrap CI).
+
+### By population category
+
+#### Weekday
+
+| Category | n | P(out) | T\|out (min) | budget (min) | 95% CI |
+|---|---|---|---|---|---|
+| children_6_17 | 860 | 0.912 | 53.4 | 48.7 | [45.7, 51.8] |
+| employed | 4199 | 0.946 | 87.6 | 82.9 | [79.9, 85.2] |
+| unemployed | 514 | 0.818 | 80.5 | 65.8 | [57.8, 73.7] |
+| retired | 3077 | 0.727 | 60.7 | 44.1 | [42.0, 45.9] |
+| other_inactive | 788 | 0.815 | 74.9 | 61.0 | [56.5, 66.0] |
+| overall | 9448 | 0.863 | 74.7 | 64.5 | [63.2, 66.3] |
+
+#### All-week
+
+| Category | n | P(out) | T\|out (min) | budget (min) | 95% CI |
+|---|---|---|---|---|---|
+| children_6_17 | 90 | 0.912 | 53.4 | 46.8 | - |
+| employed | 483 | 0.946 | 87.6 | 77.5 | - |
+| unemployed | 53 | 0.818 | 80.5 | 64.4 | - |
+| retired | 374 | 0.727 | 60.7 | 43.3 | - |
+| other_inactive | 93 | 0.815 | 74.9 | 60.1 | - |
+| overall | 1093 | 0.863 | 74.7 | 61.5 | - |
+
+### By population category x density class (weekday budget)
+
+| Category | Density | n | P(out) | T\|out (min) | budget (min) | 95% CI |
+|---|---|---|---|---|---|---|
+| children_6_17 | dense | 328 | 0.926 | 57.4 | 53.1 | [48.5, 59.3] |
+| children_6_17 | intermediate | 251 | 0.901 | 47.4 | 42.7 | [38.3, 47.4] |
+| children_6_17 | sparse | 253 | 0.901 | 53.7 | 48.4 | [41.8, 57.3] |
+| children_6_17 | very_sparse | 0 | - | - | - | - |
+| employed | dense | 1578 | 0.957 | 89.8 | 86.0 | [81.2, 90.9] |
+| employed | intermediate | 1097 | 0.943 | 82.9 | 78.1 | [73.1, 84.3] |
+| employed | sparse | 1366 | 0.938 | 88.0 | 82.5 | [78.2, 87.7] |
+| employed | very_sparse | 158 | 0.924 | 93.5 | 86.4 | [76.3, 95.9] |
+| unemployed | dense | 236 | 0.845 | 96.1 | 81.2 | [68.8, 95.0] |
+| unemployed | intermediate | 143 | 0.801 | 74.5 | 59.7 | [44.3, 77.0] |
+| unemployed | sparse | 121 | 0.800 | 57.6 | 46.1 | [37.5, 54.9] |
+| unemployed | very_sparse | 0 | - | - | - | - |
+| retired | dense | 980 | 0.768 | 68.4 | 52.5 | [48.8, 56.5] |
+| retired | intermediate | 913 | 0.720 | 57.2 | 41.2 | [38.0, 44.7] |
+| retired | sparse | 1051 | 0.703 | 55.9 | 39.3 | [37.1, 42.1] |
+| retired | very_sparse | 133 | 0.654 | 60.0 | 39.2 | [33.3, 47.2] |
+| other_inactive | dense | 391 | 0.850 | 79.0 | 67.1 | [61.9, 73.8] |
+| other_inactive | intermediate | 221 | 0.786 | 65.5 | 51.5 | [43.1, 59.7] |
+| other_inactive | sparse | 157 | 0.779 | 79.6 | 61.9 | [50.9, 76.1] |
+| other_inactive | very_sparse | 0 | - | - | - | - |
+
+### By population category x income quintile (weekday budget)
+
+| Category | Income quintile | n | P(out) | T\|out (min) | budget (min) | 95% CI |
+|---|---|---|---|---|---|---|
+| children_6_17 | q1 | 141 | 0.875 | 52.3 | 45.7 | [39.0, 53.6] |
+| children_6_17 | q2 | 206 | 0.907 | 53.5 | 48.5 | [43.1, 54.3] |
+| children_6_17 | q3 | 163 | 0.925 | 53.4 | 49.4 | [44.5, 56.2] |
+| children_6_17 | q4 | 180 | 0.914 | 58.4 | 53.3 | [40.5, 65.5] |
+| children_6_17 | q5 | 170 | 0.942 | 49.2 | 46.3 | [40.3, 52.4] |
+| employed | q1 | 168 | 0.914 | 76.3 | 69.8 | [58.2, 84.1] |
+| employed | q2 | 534 | 0.931 | 77.2 | 71.9 | [66.7, 78.1] |
+| employed | q3 | 805 | 0.944 | 92.3 | 87.2 | [78.0, 97.8] |
+| employed | q4 | 1176 | 0.950 | 84.5 | 80.3 | [76.3, 84.8] |
+| employed | q5 | 1516 | 0.957 | 93.1 | 89.0 | [85.1, 93.3] |
+| unemployed | q1 | 200 | 0.782 | 73.2 | 57.3 | [49.5, 66.2] |
+| unemployed | q2 | 138 | 0.810 | 79.4 | 64.3 | [50.5, 85.1] |
+| unemployed | q3 | 71 | 0.833 | 91.8 | 76.5 | [50.9, 114.0] |
+| unemployed | q4 | 63 | 0.891 | 83.1 | 74.1 | [57.4, 89.2] |
+| unemployed | q5 | 0 | - | - | - | - |
+| retired | q1 | 126 | 0.611 | 51.2 | 31.3 | [25.9, 38.9] |
+| retired | q2 | 562 | 0.651 | 55.7 | 36.3 | [32.4, 40.7] |
+| retired | q3 | 649 | 0.699 | 58.5 | 40.9 | [37.2, 44.4] |
+| retired | q4 | 818 | 0.751 | 58.6 | 44.0 | [40.6, 47.5] |
+| retired | q5 | 922 | 0.799 | 68.4 | 54.6 | [49.5, 59.3] |
+| other_inactive | q1 | 232 | 0.796 | 64.8 | 51.6 | [45.3, 59.5] |
+| other_inactive | q2 | 257 | 0.808 | 72.4 | 58.5 | [52.0, 66.2] |
+| other_inactive | q3 | 130 | 0.843 | 76.1 | 64.1 | [54.9, 75.8] |
+| other_inactive | q4 | 100 | 0.812 | 88.8 | 72.1 | [55.2, 88.0] |
+| other_inactive | q5 | 69 | 0.833 | 81.0 | 67.5 | [52.4, 84.5] |
 
 ## Mean daily energy and time by main-mode group (point 3)
 
@@ -353,9 +649,13 @@ Identified as: a Kish respondent with zero rows in K_DEPLOC for their described 
 
 ![f01_trips_per_day](step11_budget/f01_trips_per_day.png)
 
-![f02_time_density_by_category](step11_budget/f02_time_density_by_category.png)
+![f01b_trips_per_day_by_category](step11_budget/f01b_trips_per_day_by_category.png)
 
-![f02b_time_heatmap_category_density](step11_budget/f02b_time_heatmap_category_density.png)
+![f01c_minutes_per_trip_by_category](step11_budget/f01c_minutes_per_trip_by_category.png)
+
+![f02a_time_density_overall](step11_budget/f02a_time_density_overall.png)
+
+![f02b_time_density_by_category](step11_budget/f02b_time_density_by_category.png)
 
 ![f03a_energy_density_overall](step11_budget/f03a_energy_density_overall.png)
 
@@ -371,11 +671,15 @@ Identified as: a Kish respondent with zero rows in K_DEPLOC for their described 
 
 ![f05_heatmaps](step11_budget/f05_heatmaps.png)
 
+![f05b_time_heatmaps](step11_budget/f05b_time_heatmaps.png)
+
 ![f06_v0_p0](step11_budget/f06_v0_p0.png)
 
 ![f07_passengers](step11_budget/f07_passengers.png)
 
 ![f08_robustness](step11_budget/f08_robustness.png)
+
+![f10_constancy](step11_budget/f10_constancy.png)
 
 ![f09_motive_energy](step11_budget/f09_motive_energy.png)
 
