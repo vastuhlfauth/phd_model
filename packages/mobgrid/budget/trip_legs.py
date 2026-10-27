@@ -634,9 +634,11 @@ def build_trip_legs(
     if density_source == "grid":
         density_ori_sql = "coalesce(density_ori_grid, 'intermediate')"
         density_des_sql = "coalesce(density_des_grid, 'intermediate')"
+        density_res_sql = "coalesce(density_res_grid, 'intermediate')"
     else:
         density_ori_sql = density_proxy_case_sql("uu_status_ori", "tuu_res")
         density_des_sql = density_proxy_case_sql("uu_status_des", "tuu_res")
+        density_res_sql = density_proxy_case_sql("uu_status_res", "tuu_res")
 
     # `terminal_legs`'s own walk/wait selection (known at build time, not
     # per row: a plain Python branch, like `effective_terminal_scale`
@@ -682,7 +684,13 @@ def build_trip_legs(
             END AS mode_group,
             {vehicle_mapping_sql} AS vehicle,
             ({density_ori_sql}) AS density_ori,
-            ({density_des_sql}) AS density_des
+            ({density_des_sql}) AS density_des,
+            -- The residence commune's own density (27 October 2026
+            -- decision, section 9.9): `home_density` (`daily_energy.
+            -- create_day_summary`) now reads this, not the density of
+            -- the trip departing from home -- it is a property of the
+            -- person, known even for a respondent with no trip at all.
+            ({density_res_sql}) AS residence_density
         FROM trips_norm
     ),
     -- Terminal-leg defaults (section 9.4-9.7), computed from `density_ori`/
@@ -871,6 +879,7 @@ def build_trip_legs(
     SELECT
         ident_dep, ident_ind, ident_men, day_id, pond_jour, pond_ind, typejour,
         mobloc, num_dep, moridom, mtp, mode_group, vehicle, density_ori, density_des,
+        residence_density,
         age, age_band, population_category, is_loop_trip, motive,
         declared_walk_min, declared_wait_min,
         -- Modelled terminal-leg minutes (section 9.9, step 1: "compared

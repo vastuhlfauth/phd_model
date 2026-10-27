@@ -156,7 +156,13 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
         )
         archive.writestr(
             "tcm_men_public_V3.csv",
-            "\n".join(['"ident_men","TUU2017_RES"', '"M1","7"', '"M2","7"']),
+            "\n".join(
+                [
+                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES"',
+                    '"M1","7","C","1"',
+                    '"M2","7","C","1"',
+                ]
+            ),
         )
     con = duckdb.connect()
     csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv2")
@@ -244,10 +250,10 @@ def test_implausibly_fast_cycle_trip_has_its_distance_corrected(
             "tcm_men_public_V3.csv",
             "\n".join(
                 [
-                    '"ident_men","TUU2017_RES"',
-                    '"M1","7"',
-                    '"M2","7"',
-                    '"M3","7"',
+                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES"',
+                    '"M1","7","C","1"',
+                    '"M2","7","C","1"',
+                    '"M3","7","C","1"',
                 ]
             ),
         )
@@ -321,7 +327,13 @@ def test_stop_energy_per_stop_is_the_same_regardless_of_declared_speed(
         )
         archive.writestr(
             "tcm_men_public_V3.csv",
-            "\n".join(['"ident_men","TUU2017_RES"', '"M1","7"', '"M2","7"']),
+            "\n".join(
+                [
+                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES"',
+                    '"M1","7","C","1"',
+                    '"M2","7","C","1"',
+                ]
+            ),
         )
     con = duckdb.connect()
     csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv_stops")

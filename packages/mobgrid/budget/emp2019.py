@@ -200,6 +200,14 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
         )
         + "\n    ELSE 'intermediate'\nEND"
     )
+    density_res_sql = (
+        "CASE m.DENSITECOM_RES\n    "
+        + "\n    ".join(
+            f"WHEN {code} THEN '{label}'"
+            for code, label in _DENSITY_LABEL_BY_CODE.items()
+        )
+        + "\n    ELSE 'intermediate'\nEND"
+    )
     uu_status_ori_sql = trip_legs._case_sql(
         "d.STATUTCOM_UU_ORI",
         _UU_STATUS_BY_CODE,
@@ -207,6 +215,11 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
     )
     uu_status_des_sql = trip_legs._case_sql(
         "d.STATUTCOM_UU_DES",
+        _UU_STATUS_BY_CODE,
+        quote_values=True,
+    )
+    uu_status_res_sql = trip_legs._case_sql(
+        "m.STATUTCOM_UU_RES",
         _UU_STATUS_BY_CODE,
         quote_values=True,
     )
@@ -246,9 +259,11 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
             END AS motive,
             ({uu_status_ori_sql}) AS uu_status_ori,
             ({uu_status_des_sql}) AS uu_status_des,
+            ({uu_status_res_sql}) AS uu_status_res,
             CAST(m.TUU2017_RES AS VARCHAR) AS tuu_res,
             ({density_ori_sql}) AS density_ori_grid,
             ({density_des_sql}) AS density_des_grid,
+            ({density_res_sql}) AS density_res_grid,
             k.AGE AS age,
             k.AGE6 AS age_band,
             -- Section 6.1's five population categories: children under

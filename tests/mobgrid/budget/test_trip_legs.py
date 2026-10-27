@@ -87,27 +87,28 @@ def _make_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
             is_loop_trip BOOLEAN, age INTEGER, age_band VARCHAR,
             population_category VARCHAR, declared_walk_min DOUBLE,
             declared_wait_min DOUBLE, uu_status_ori VARCHAR,
-            uu_status_des VARCHAR, tuu_res VARCHAR,
-            density_ori_grid VARCHAR, density_des_grid VARCHAR
+            uu_status_des VARCHAR, uu_status_res VARCHAR, tuu_res VARCHAR,
+            density_ori_grid VARCHAR, density_des_grid VARCHAR,
+            density_res_grid VARCHAR
         )
     """)
     con.sql("""
         INSERT INTO trips_norm VALUES
             ('D1', '1', 'M1', '1', 100.0, 100.0, 1, 1, 1, 1, 30.0, 5.0,
              NULL, NULL, 3.1, 9.1, FALSE, 30, '30', 'employed',
-             3.0, NULL, 'C', 'C', '7', 'dense', 'dense'),
+             3.0, NULL, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense'),
             ('D2', '2', 'M2', '2', 100.0, 100.0, 1, 1, 1, 1, 30.0, 5.0,
              NULL, NULL, 3.1, 9.1, FALSE, 30, '30', 'employed',
-             NULL, NULL, 'C', 'C', '7', 'dense', 'dense'),
+             NULL, NULL, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense'),
             ('D3', '3', 'M3', '3', 100.0, 100.0, 1, 1, 1, 1, 20.0, 3.0,
              NULL, NULL, 2.1, 9.1, FALSE, 30, '30', 'employed',
-             2.5, NULL, 'C', 'C', '7', 'dense', 'dense'),
+             2.5, NULL, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense'),
             ('D4', '4', 'M4', '4', 100.0, 100.0, 1, 1, 1, 1, 30.0, 4.0,
              NULL, NULL, 5.7, 9.1, FALSE, 30, '30', 'employed',
-             4.0, 3.0, 'C', 'C', '7', 'dense', 'dense'),
+             4.0, 3.0, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense'),
             ('D5', '5', 'M5', '5', 100.0, 100.0, 1, 1, 1, 1, 90.0, 120.0,
              NULL, NULL, 6.3, 9.1, FALSE, 30, '30', 'employed',
-             6.0, 5.0, 'C', 'C', '7', 'dense', 'dense')
+             6.0, 5.0, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense')
     """)
 
 

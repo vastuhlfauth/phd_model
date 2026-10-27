@@ -85,14 +85,17 @@ _K_INDIVIDU_ROWS = [f"{i};100.0;{'1' if i == 10 else '2'}" for i in range(1, 14)
 _Q_MENAGE_HEADER = "IDENT_MEN;pond_menC"
 _Q_MENAGE_ROWS = [f"M{i};100.0" for i in range(1, 14)]
 
-#: TCM_MEN's `TUU2017_RES` (section 9.9's density proxy), added to EMP
-#: 2019's loaded tables by this task; '7' (200,000-1,999,999) for every
+#: TCM_MEN's `TUU2017_RES` (section 9.9's density proxy) and
+#: `STATUTCOM_UU_RES`/`DENSITECOM_RES` (the residence density itself,
+#: 27 October 2026 decision: `home_density` reads this, not a trip
+#: end's), added to EMP 2019's loaded tables; '7'/'C'/'1' for every
 #: household, consistent with every trip's 'C' (city centre) status
-#: above giving 'dense' under the proxy. Comma-quoted, like the real
-#: `tcm_men_public_V3.csv` (unlike every other EMP 2019 table besides
-#: `k_deploc`, which is semicolon-separated).
-_TCM_MEN_HEADER = '"ident_men","TUU2017_RES"'
-_TCM_MEN_ROWS = [f'"M{i}","7"' for i in range(1, 14)]
+#: above giving 'dense' under the proxy, and '1' being 'dense' under
+#: the grid. Comma-quoted, like the real `tcm_men_public_V3.csv`
+#: (unlike every other EMP 2019 table besides `k_deploc`, which is
+#: semicolon-separated).
+_TCM_MEN_HEADER = '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES"'
+_TCM_MEN_ROWS = [f'"M{i}","7","C","1"' for i in range(1, 14)]
 
 
 def write_synthetic_emp_zip(path: Path) -> None:
@@ -199,16 +202,16 @@ _ENTD_Q_TCM_INDIVIDU_ROWS = [
     "8;31;30;1",
 ]
 
-_ENTD_Q_TCM_MENAGE_HEADER = "IDENT_MEN;TU99"
+_ENTD_Q_TCM_MENAGE_HEADER = "IDENT_MEN;TU99;numcom_UUCat"
 _ENTD_Q_TCM_MENAGE_ROWS = [
-    "M1;7",
-    "M2;7",
-    "M3;7",
-    "M4;7",
-    "M5;0",
-    "M6;5",
-    "M7;7",
-    "M8;7",
+    "M1;7;ville centre",
+    "M2;7;ville centre",
+    "M3;7;ville centre",
+    "M4;7;ville centre",
+    "M5;0;commune rurale",
+    "M6;5;banlieue",
+    "M7;7;ville centre",
+    "M8;7;ville centre",
 ]
 
 

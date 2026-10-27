@@ -78,6 +78,7 @@ _CODE_COLUMN_TYPES = {
     "q_tcm_menage.csv": {
         "IDENT_MEN": "VARCHAR",
         "TU99": "VARCHAR",
+        "numcom_UUCat": "VARCHAR",
     },
 }
 
@@ -182,6 +183,18 @@ _POPULATION_CATEGORY_BY_SITUA = {
     "7": "other_inactive",
 }
 
+#: `q_tcm_menage.numcom_UUCat` (the residence commune's own urban-unit
+#: category, "Zonage de 1999") -> the same 4-code status
+#: `STATUTCOM_UU_ORI`/`_DES`/`_RES` use (27 October 2026 decision:
+#: residence density, not a trip end's, for `home_density`). Verified
+#: against the real file: exactly these 4 French labels, no stray codes.
+_UU_STATUS_BY_UUCAT = {
+    "ville centre": "C",
+    "banlieue": "B",
+    "ville isolée": "I",
+    "commune rurale": "R",
+}
+
 
 def extract_tables(
     raw_dir: Path = DEFAULT_RAW_DIR, out_dir: Path | None = None
@@ -239,6 +252,11 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
         default="'unknown'",
         quote_values=True,
     )
+    uu_status_res_sql = trip_legs._case_sql(
+        "m.numcom_UUCat",
+        _UU_STATUS_BY_UUCAT,
+        quote_values=True,
+    )
 
     con.sql(f"""
         CREATE OR REPLACE VIEW trips_norm AS
@@ -278,9 +296,11 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
             END AS motive,
             nullif(d.v2_moricom_UU2010, '') AS uu_status_ori,
             nullif(d.v2_mdescom_UU2010, '') AS uu_status_des,
+            ({uu_status_res_sql}) AS uu_status_res,
             m.TU99 AS tuu_res,
             CAST(NULL AS VARCHAR) AS density_ori_grid,
             CAST(NULL AS VARCHAR) AS density_des_grid,
+            CAST(NULL AS VARCHAR) AS density_res_grid,
             q.AGE AS age,
             q.AGE6 AS age_band,
             CASE

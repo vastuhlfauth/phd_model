@@ -100,11 +100,15 @@ def create_day_summary(
                 sum(energy_cp_kj) AS total_energy_cp_kj,
                 array_agg(DISTINCT mode_group)
                     FILTER (WHERE mode_group != 'walk') AS non_walk_modes,
-                -- Home density: the trip departing from home (MORIDOM=1,
-                -- section 9.9 point 3's "density class of the commune of
-                -- residence"), else the day's first trip, by trip number.
-                (array_agg(density_ori ORDER BY (moridom <> 1), num_dep))[1]
-                    AS home_density
+                -- Home density (27 October 2026 decision, section 9.9):
+                -- the residence commune's own density
+                -- (`trip_legs.residence_density`), constant per person
+                -- regardless of which trip ends up in `candidate`'s
+                -- scope -- not the density of the trip departing from
+                -- home (MORIDOM=1), which this replaces: that proxy was
+                -- undefined for a day with no home-departing trip in
+                -- scope, and is not even a property of the person.
+                any_value(residence_density) AS home_density
             FROM candidate
             GROUP BY day_id
         )
