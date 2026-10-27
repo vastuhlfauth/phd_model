@@ -16,6 +16,7 @@ that page -- it is the complete, authoritative source for this module.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import duckdb
@@ -195,6 +196,75 @@ _UU_STATUS_BY_UUCAT = {
     "commune rurale": "R",
 }
 
+#: Matches a run of digits, possibly with interior whitespace (regular
+#: or non-breaking space, the thousands separator of `TrancheRevenuMensuel`'s
+#: bracket labels, e.g. "1 200").
+_BRACKET_NUMBER_RE = re.compile(r"\d[\d\s]*\d|\d")
+
+
+def income_bracket_midpoint_eur(label: str | None) -> float | None:
+    """`Q_TCM_MENAGE.TrancheRevenuMensuel`'s free-text bracket label
+    (section 9.9's "Income variables") to its midpoint in euros: an
+    interior bracket's midpoint is the average of its two bounds; the
+    bottom open bracket ("Moins de ... €") is read at half its upper
+    bound; the top open bracket ("... € ou plus") at 1.5 times its lower
+    bound (spec 9.9). The franc-equivalent parenthetical is ignored (the
+    bounds are read from the text before the first `(`). Returns
+    ``None`` for a missing or unparsable label.
+    """
+    if not label:
+        return None
+    head = label.split("(")[0]
+    numbers = [
+        int(re.sub(r"\s", "", token)) for token in _BRACKET_NUMBER_RE.findall(head)
+    ]
+    if not numbers:
+        return None
+    if "plus" in head:
+        return 1.5 * numbers[0]
+    if len(numbers) == 1:
+        return numbers[0] / 2.0
+    return sum(numbers[:2]) / 2.0
+
+
+def build_respondent_income(con: duckdb.DuckDBPyConnection) -> None:
+    """Create the ``respondent_income`` view (``ident_ind`` ->
+    ``income_quintile``): household income per consumption unit, from
+    `TrancheRevenuMensuel`'s bracket midpoint (``income_bracket_midpoint_eur``,
+    registered here as a DuckDB scalar function) divided by `NBUC` (the
+    household's own modified-OECD consumption-unit count, already
+    matching this project's formula exactly, `docs/data/entd2008.md`'s
+    "Income variables"), re-cut into quintiles by
+    ``trip_legs.weighted_quintile_view_sql``.
+    """
+    try:
+        con.create_function(
+            "income_bracket_midpoint_eur",
+            income_bracket_midpoint_eur,
+            [str],
+            float,
+            null_handling="special",
+        )
+    except duckdb.NotImplementedException:
+        # Already registered on this connection (`build_trip_legs`/
+        # `build_respondent_income` can be called more than once per
+        # connection, e.g. the F8 robustness sweep): DuckDB has no
+        # "CREATE OR REPLACE FUNCTION", so a second registration is a
+        # harmless no-op here, not an error.
+        pass
+    base_sql = """
+        SELECT i.IDENT_IND AS ident_ind,
+            income_bracket_midpoint_eur(m.TrancheRevenuMensuel)
+                / nullif(m.NBUC, 0) AS income_value,
+            i.PONDKI AS weight
+        FROM k_individu i
+        LEFT JOIN q_tcm_menage m ON m.IDENT_MEN = i.idENT_MEN
+    """
+    con.sql(
+        "CREATE OR REPLACE VIEW respondent_income AS "
+        + trip_legs.weighted_quintile_view_sql(base_sql)
+    )
+
 
 def extract_tables(
     raw_dir: Path = DEFAULT_RAW_DIR, out_dir: Path | None = None
@@ -257,6 +327,7 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
         _UU_STATUS_BY_UUCAT,
         quote_values=True,
     )
+    build_respondent_income(con)
 
     con.sql(f"""
         CREATE OR REPLACE VIEW trips_norm AS
@@ -309,11 +380,13 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
             END AS population_category,
             d.V2_MTEMPSMAP AS declared_walk_min,
             d.V2_MTPSATTENT AS declared_wait_min,
-            i.PONDKI AS pond_ind
+            i.PONDKI AS pond_ind,
+            coalesce(ri.income_quintile, 'unknown') AS income_quintile
         FROM motives d
         JOIN q_tcm_individu q ON q.IDENT_IND = d.IDENT_IND
         JOIN k_individu i ON i.IDENT_IND = d.IDENT_IND
         LEFT JOIN q_tcm_menage m ON m.IDENT_MEN = d.IDENT_MEN
+        LEFT JOIN respondent_income ri ON ri.ident_ind = d.IDENT_IND
         WHERE d.POIDS_JOUR > 0
     """)
 
@@ -415,3 +488,76 @@ def non_traveler_summary(con: duckdb.DuckDBPyConnection) -> dict:
         "share_unweighted": non_traveler_n / n_respondents,
         "mimmosem_match": None,
     }
+
+
+def population_category_by_ident(con: duckdb.DuckDBPyConnection) -> dict:
+    """``population_category`` for every ENTD 2008 respondent
+    (`k_individu` joined to `q_tcm_individu` for age/situation), the same
+    section 6.1 mapping ``build_trips_norm`` uses -- needed for the
+    per-person budget (section 9.9 point 2), which groups non-travellers
+    (`V2_MOBILREF = 0`) too."""
+    case_sql = trip_legs._case_sql(
+        "q.SITUA",
+        _POPULATION_CATEGORY_BY_SITUA,
+        default="'unknown'",
+        quote_values=True,
+    )
+    rows = con.sql(f"""
+        SELECT i.IDENT_IND,
+            CASE WHEN q.AGE BETWEEN 6 AND 17 THEN 'children_6_17'
+                 ELSE {case_sql} END
+        FROM k_individu i JOIN q_tcm_individu q ON q.IDENT_IND = i.IDENT_IND
+    """).fetchall()
+    return dict(rows)
+
+
+def residence_density_by_ident(
+    con: duckdb.DuckDBPyConnection, density_source: str
+) -> dict:
+    """Residence density for every ENTD 2008 respondent (`k_individu`
+    joined to `q_tcm_menage` through `IDENT_MEN`), proxy only (no density
+    grid in ENTD 2008, so ``density_source='grid'`` is not offered;
+    section 9.9 point 2's per-person budget)."""
+    if density_source != "proxy":
+        raise ValueError("ENTD 2008 has no density grid: use density_source='proxy'")
+    uu_status_res_sql = trip_legs._case_sql(
+        "m.numcom_UUCat", _UU_STATUS_BY_UUCAT, quote_values=True
+    )
+    rows = con.sql(f"""
+        WITH base AS (
+            SELECT i.IDENT_IND AS ident_ind,
+                ({uu_status_res_sql}) AS uu_status_res,
+                m.TU99 AS tuu_res
+            FROM k_individu i
+            JOIN q_tcm_menage m ON m.IDENT_MEN = i.idENT_MEN
+        )
+        SELECT ident_ind,
+            ({trip_legs.density_proxy_case_sql("uu_status_res", "tuu_res")})
+        FROM base
+    """).fetchall()
+    return dict(rows)
+
+
+def income_quintile_by_ident(con: duckdb.DuckDBPyConnection) -> dict:
+    """``income_quintile`` for every ENTD 2008 respondent, from
+    ``respondent_income`` (built by ``build_respondent_income``, already
+    covering the full `k_individu` roster): section 9.9 point 2's
+    per-person budget needs the income quintile of non-travellers too."""
+    return dict(
+        con.sql("SELECT ident_ind, income_quintile FROM respondent_income").fetchall()
+    )
+
+
+def person_weekday_rows(con: duckdb.DuckDBPyConnection) -> list[tuple]:
+    """One row per respondent, the reference weekday only (ENTD 2008's
+    weekend eligibility is unverified, section 9.9 point 2): ``(ident_ind,
+    ident_men, pond_ind, day_type, immobile)``, ``day_type`` always
+    `'weekday'`, ``immobile`` from `V2_MOBILREF = 0` (`k_individu`,
+    weighted by `PONDKI`, as ``non_traveler_summary``)."""
+    rows = con.sql("""
+        SELECT IDENT_IND, idENT_MEN, PONDKI, V2_MOBILREF FROM k_individu
+    """).fetchall()
+    return [
+        (ident_ind, ident_men, float(pondki), "weekday", float(mobilref == 0))
+        for ident_ind, ident_men, pondki, mobilref in rows
+    ]

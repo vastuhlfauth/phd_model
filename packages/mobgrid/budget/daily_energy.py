@@ -105,6 +105,12 @@ def create_day_summary(
                 any_value(typejour) AS typejour,
                 any_value(age_band) AS age_band,
                 any_value(population_category) AS population_category,
+                -- Household income quintile (section 9.9's income
+                -- update): constant per person, like `home_density`,
+                -- so a day groups by it even if that day's own trips
+                -- don't all carry it identically (they do, but the
+                -- aggregation is the same `any_value` pattern).
+                any_value(income_quintile) AS income_quintile,
                 count(*) AS trips_per_day,
                 sum(duration_min) AS total_time_min,
                 sum(energy_kh_kj) AS total_energy_kh_kj,
@@ -260,6 +266,69 @@ def bootstrap_group_stats(
     ]
 
 
+@dataclass(frozen=True)
+class ScalarGroupStats:
+    """Weighted sample size, mean (with a 95% bootstrap CI over
+    households) and median of one arbitrary scalar, by group: the
+    shared engine behind every daily-time/trips-per-day/minutes-per-trip
+    table of section 9.9's income update (point 2/3), giving time the
+    same mean+CI+median treatment ``GroupStats`` already gives energy,
+    without changing ``GroupStats`` itself."""
+
+    group: str
+    n: int
+    weighted_n: float
+    mean: float
+    mean_ci: tuple[float, float]
+    median: float
+
+
+def bootstrap_scalar_group_stats(
+    group: np.ndarray,
+    household: np.ndarray,
+    weight: np.ndarray,
+    value: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> list[ScalarGroupStats]:
+    """Weighted mean (95% bootstrap CI over households) and median of
+    ``value`` by ``group`` (section 9.9: "mean, median and CI wherever
+    energy has them"). Reuses ``bootstrap_group_stats``'s own
+    group-mean/median/resampling helpers, generalised to one value
+    instead of three (time + two energies)."""
+    groups, group_codes = np.unique(group, return_inverse=True)
+    n_groups = len(groups)
+    households, household_codes = np.unique(household, return_inverse=True)
+    n_households = len(households)
+
+    point = _weighted_group_means(group_codes, n_groups, weight, value)
+    median = _weighted_group_medians(group_codes, n_groups, weight, value)
+
+    rng = np.random.default_rng(seed)
+    rep = np.empty((n_reps, n_groups))
+    for r in range(n_reps):
+        sample = rng.integers(0, n_households, size=n_households)
+        multiplicity = np.bincount(sample, minlength=n_households)
+        rep_weight = weight * multiplicity[household_codes]
+        rep[r] = _weighted_group_means(group_codes, n_groups, rep_weight, value)
+    ci = np.nanpercentile(rep, [2.5, 97.5], axis=0)
+    n_by_group = np.bincount(group_codes, minlength=n_groups)
+    weighted_n_by_group = np.bincount(group_codes, weights=weight, minlength=n_groups)
+
+    return [
+        ScalarGroupStats(
+            group=groups[i],
+            n=int(n_by_group[i]),
+            weighted_n=float(weighted_n_by_group[i]),
+            mean=float(point[i]),
+            mean_ci=(float(ci[0, i]), float(ci[1, i])),
+            median=float(median[i]),
+        )
+        for i in range(n_groups)
+    ]
+
+
 def gamma_moments_fit(mean: float, variance: float) -> tuple[float, float]:
     """Method-of-moments gamma fit (shape, scale): shape = mean^2/var,
     scale = var/mean (section 9.9 point 5, "gamma-like, as in Koelbl &
@@ -401,6 +470,49 @@ def bootstrap_mean_ci(
     return point_mean, (float(ci[0]), float(ci[1]))
 
 
+def bootstrap_diff_ci(
+    household_a: np.ndarray,
+    weight_a: np.ndarray,
+    value_a: np.ndarray,
+    household_b: np.ndarray,
+    weight_b: np.ndarray,
+    value_b: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> tuple[float, tuple[float, float]]:
+    """Point difference ``mean(b) - mean(a)`` and its 95% bootstrap CI,
+    independent household resamples in each survey added rep-by-rep
+    (section 9.9's "Weights and confidence intervals": "the 2008-2019
+    difference gets its interval from the two surveys' replicates"),
+    used for the weekday-only 2008-2019 comparison (per day with trips
+    and per person)."""
+    point = float(
+        np.sum(weight_b * value_b) / weight_b.sum()
+        - np.sum(weight_a * value_a) / weight_a.sum()
+    )
+    households_a, codes_a = np.unique(household_a, return_inverse=True)
+    households_b, codes_b = np.unique(household_b, return_inverse=True)
+    rng = np.random.default_rng(seed)
+    reps = np.empty(n_reps)
+    for rep in range(n_reps):
+        mult_a = np.bincount(
+            rng.integers(0, len(households_a), size=len(households_a)),
+            minlength=len(households_a),
+        )
+        mult_b = np.bincount(
+            rng.integers(0, len(households_b), size=len(households_b)),
+            minlength=len(households_b),
+        )
+        rw_a = weight_a * mult_a[codes_a]
+        rw_b = weight_b * mult_b[codes_b]
+        reps[rep] = (
+            np.sum(rw_b * value_b) / rw_b.sum() - np.sum(rw_a * value_a) / rw_a.sum()
+        )
+    ci = np.percentile(reps, [2.5, 97.5])
+    return point, (float(ci[0]), float(ci[1]))
+
+
 def weighted_gaussian_bandwidth(
     weight: np.ndarray, value: np.ndarray, *, scale: float = 1.0
 ) -> float:
@@ -522,3 +634,181 @@ def robustness_row(
         time_min_group=time_min_g,
         time_max_group=time_max_g,
     )
+
+
+#: Section 9.9 point 2's weekday/Saturday/Sunday weights for the
+#: all-week per-person budget, Sigma_d w_d . P(out on day type d) .
+#: T(d|out) (EMP 2019 only: ENTD 2008's weekend eligibility is
+#: unverified, so it reports a weekday-only per-person budget).
+DAY_TYPE_WEIGHT = {"weekday": 5.0 / 7.0, "saturday": 1.0 / 7.0, "sunday": 1.0 / 7.0}
+
+
+@dataclass(frozen=True)
+class PersonBudgetRow:
+    """One group's per-person budget (section 9.9 point 2): P(out),
+    the day-summary value given out, their product (the budget) and its
+    bootstrap 95% CI, and the day-summary cell size the "given out" term
+    is based on (the smallest across day types, for an all-week budget).
+    """
+
+    group: str
+    p_out: float
+    value_given_out: float
+    n: int
+    budget: float
+    budget_ci: tuple[float, float]
+
+
+def _weighted_ratio(numerator: np.ndarray, weight: np.ndarray) -> float:
+    total = weight.sum()
+    return float(numerator.sum() / total) if total > 0 else float("nan")
+
+
+def person_budget_by_group(
+    p_group: np.ndarray,
+    p_day_type: np.ndarray,
+    p_household: np.ndarray,
+    p_weight: np.ndarray,
+    p_immobile: np.ndarray,
+    t_group: np.ndarray,
+    t_day_type: np.ndarray,
+    t_household: np.ndarray,
+    t_weight: np.ndarray,
+    t_value: np.ndarray,
+    *,
+    groups: list[str],
+    day_types: tuple[str, ...] = ("weekday",),
+    day_type_weight: dict[str, float] | None = None,
+    min_cell_n: int = 50,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> dict[str, PersonBudgetRow]:
+    """Per-person budget by group (section 9.9 point 2): for each group
+    (plus ``None``, "overall"), P(out on each of ``day_types``) from the
+    person-level rows (one row per person and day-type occurrence:
+    EMP 2019's `IMMODEP_A`-`G` offsets, ENTD 2008's single reference
+    weekday) and the day-summary's weighted mean of ``t_value`` given
+    out, summed over ``day_types`` with ``day_type_weight`` (defaults to
+    1.0 on every day type given, i.e. weekday-only when
+    ``day_types=("weekday",)``, section 9.9's "Sigma_d w_d . P(out) .
+    T(out)"). A day type's own contribution is left out of the sum (not
+    just blanked) when its day-summary cell has fewer than
+    ``min_cell_n`` days.
+
+    95% CIs are bootstrapped over households (the same resampled
+    household multiplicities applied to both the person- and day-level
+    rows of that one day type, in every replicate) for a single day type
+    (``len(day_types) == 1``, both surveys' weekday budget); an all-week
+    budget (``len(day_types) > 1``, EMP 2019 only) reports the point
+    estimate only, each day type's own bootstrap being a separate,
+    independent resampling that the simple sum below does not combine
+    into one joint CI.
+    """
+    weights = day_type_weight or dict.fromkeys(day_types, 1.0)
+    results: dict[str, PersonBudgetRow] = {}
+    for group in (*groups, None):
+        label = group or "overall"
+        mask_p_all = (
+            p_group == group if group is not None else np.ones(len(p_group), bool)
+        )
+        mask_t_all = (
+            t_group == group if group is not None else np.ones(len(t_group), bool)
+        )
+
+        point_budget = 0.0
+        min_n = None
+        first_p_out = first_t_out = float("nan")
+        for day_type in day_types:
+            mp = mask_p_all & (p_day_type == day_type)
+            mt = mask_t_all & (t_day_type == day_type)
+            n = int(mt.sum())
+            if n < min_cell_n or mp.sum() == 0:
+                continue
+            p_out = _weighted_ratio(p_weight[mp] * (1 - p_immobile[mp]), p_weight[mp])
+            t_out = _weighted_ratio(t_weight[mt] * t_value[mt], t_weight[mt])
+            point_budget += weights[day_type] * p_out * t_out
+            min_n = n if min_n is None else min(min_n, n)
+            if day_type == day_types[0]:
+                first_p_out, first_t_out = p_out, t_out
+
+        if min_n is None:
+            results[label] = PersonBudgetRow(
+                group=label,
+                p_out=float("nan"),
+                value_given_out=float("nan"),
+                n=0,
+                budget=float("nan"),
+                budget_ci=(float("nan"), float("nan")),
+            )
+            continue
+
+        if len(day_types) == 1:
+            day_type = day_types[0]
+            mp = mask_p_all & (p_day_type == day_type)
+            mt = mask_t_all & (t_day_type == day_type)
+            reps = _bootstrap_budget_reps(
+                p_household[mp],
+                p_weight[mp],
+                p_weight[mp] * (1 - p_immobile[mp]),
+                t_household[mt],
+                t_weight[mt],
+                t_weight[mt] * t_value[mt],
+                n_reps=n_reps,
+                seed=seed,
+            )
+            ci = (
+                tuple(float(v) for v in np.nanpercentile(reps, [2.5, 97.5]))
+                if n_reps > 0
+                else (float("nan"), float("nan"))
+            )
+        else:
+            ci = (float("nan"), float("nan"))
+
+        results[label] = PersonBudgetRow(
+            group=label,
+            p_out=first_p_out,
+            value_given_out=first_t_out,
+            n=min_n,
+            budget=point_budget,
+            budget_ci=ci,
+        )
+    return results
+
+
+def _bootstrap_budget_reps(
+    household_p: np.ndarray,
+    weight_p: np.ndarray,
+    numerator_p: np.ndarray,
+    household_t: np.ndarray,
+    weight_t: np.ndarray,
+    numerator_t: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> np.ndarray:
+    """Bootstrap replicate array of P(out) x T(out), one day type's
+    per-person budget: households are drawn with replacement once per
+    rep, and the *same* multiplicities are applied to both the
+    person-level data (``numerator_p``/``weight_p``, e.g. weight *
+    (1 - immobile)) and the day-level data (``numerator_t``/``weight_t``,
+    e.g. weight * value) -- the household being the one resampling unit
+    (section 9.9's "Weights and confidence intervals")."""
+    households = np.unique(np.concatenate([household_p, household_t]))
+    hh_index = {h: i for i, h in enumerate(households)}
+    idx_p = np.array([hh_index[h] for h in household_p])
+    idx_t = np.array([hh_index[h] for h in household_t])
+    n_hh = len(households)
+    rng = np.random.default_rng(seed)
+    reps = np.empty(n_reps)
+    for rep in range(n_reps):
+        mult = np.bincount(rng.integers(0, n_hh, size=n_hh), minlength=n_hh)
+        mult_p = mult[idx_p]
+        mult_t = mult[idx_t]
+        denom_p = np.sum(weight_p * mult_p)
+        denom_t = np.sum(weight_t * mult_t)
+        p_rep = np.sum(numerator_p * mult_p) / denom_p if denom_p > 0 else np.nan
+        t_rep = np.sum(numerator_t * mult_t) / denom_t if denom_t > 0 else np.nan
+        reps[rep] = p_rep * t_rep
+    return reps
+
+

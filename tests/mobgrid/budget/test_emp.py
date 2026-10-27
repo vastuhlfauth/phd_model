@@ -41,11 +41,16 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
 
     assert exit_code == 0
     png_files = sorted(out_dir.glob("*.png"))
-    # F1, F2, F2b, F3 x4 (incl. KH appendix), F4a/b, F5, F6, F7, F8, F9 (motive).
-    assert len(png_files) == 14
+    # F1, F1b, F1c, F2a, F2b, F3 x4 (incl. KH appendix), F4a/b, F5, F5b,
+    # F6, F7, F8, F9 (motive), F10.
+    assert len(png_files) == 18
     assert any("f09_motive_energy" in p.name for p in png_files)
-    assert any("f02_time_density_by_category" in p.name for p in png_files)
-    assert any("f02b_time_heatmap_category_density" in p.name for p in png_files)
+    assert any("f01b_trips_per_day_by_category" in p.name for p in png_files)
+    assert any("f01c_minutes_per_trip_by_category" in p.name for p in png_files)
+    assert any("f02a_time_density_overall" in p.name for p in png_files)
+    assert any("f02b_time_density_by_category" in p.name for p in png_files)
+    assert any("f05b_time_heatmaps" in p.name for p in png_files)
+    assert any("f10_constancy" in p.name for p in png_files)
 
     md_path = out_dir.with_suffix(".md")
     assert md_path.is_file()
@@ -56,6 +61,9 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "F8 robustness" in report
     assert "Density classes" in report
     assert "Time budget: constancy across density classes" in report
+    assert "Time budget: constancy across income quintiles" in report
+    assert "Trips per day and minutes per trip" in report
+    assert "Per-person budget, days without trips included" in report
 
 
 #: The EMP 2019 base-case group table on the synthetic fixture (section

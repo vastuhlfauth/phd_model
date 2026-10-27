@@ -258,6 +258,56 @@ _TUU_RES_MEDIUM_CODES = ("4", "5", "6")
 _TUU_RES_LARGE_CODES = ("7", "8")
 
 
+#: Household income per consumption unit, in quintiles computed within
+#: each survey (section 9.9, 27 October 2026 income update): `'q1'`
+#: (poorest) to `'q5'` (richest), or `'unknown'` for a missing/refused
+#: income (`docs/data/entd2008.md`'s "Income variables").
+INCOME_QUINTILE_LABELS = ("q1", "q2", "q3", "q4", "q5", "unknown")
+
+
+def weighted_quintile_view_sql(
+    base_sql: str,
+    *,
+    id_col: str = "ident_ind",
+    value_col: str = "income_value",
+    weight_col: str = "weight",
+) -> str:
+    """SQL producing one ``(<id_col>, income_quintile)`` row per
+    respondent of ``base_sql`` (a query selecting at least ``id_col``,
+    ``value_col`` and ``weight_col``): a weighted quintile of
+    ``value_col`` (`'q1'` poorest to `'q5'` richest), cut at the
+    weighted-cumulative-share thresholds 20/40/60/80% (``weight_col``,
+    the individual weight, section 9.9: "quintiles ... with individual
+    weights"). A ``NULL`` ``value_col`` (missing/refused income) is
+    labelled `'unknown'`, excluded from the cut-point computation.
+    Called once per survey, each with its own income value and weight
+    columns (`docs/data/entd2008.md`'s "Income variables").
+    """
+    return f"""
+    WITH _base AS ({base_sql}),
+    _ranked AS (
+        SELECT
+            {id_col},
+            sum({weight_col}) OVER (ORDER BY {value_col}) AS _cum_weight,
+            sum({weight_col}) OVER () AS _total_weight
+        FROM _base
+        WHERE {value_col} IS NOT NULL
+    )
+    SELECT {id_col},
+        CASE
+            WHEN _cum_weight <= 0.2 * _total_weight THEN 'q1'
+            WHEN _cum_weight <= 0.4 * _total_weight THEN 'q2'
+            WHEN _cum_weight <= 0.6 * _total_weight THEN 'q3'
+            WHEN _cum_weight <= 0.8 * _total_weight THEN 'q4'
+            ELSE 'q5'
+        END AS income_quintile
+    FROM _ranked
+    UNION ALL
+    SELECT {id_col}, 'unknown' AS income_quintile
+    FROM _base WHERE {value_col} IS NULL
+    """
+
+
 def relabel_density(mapping: dict[str, float]) -> dict[str, float]:
     """Re-key a `config.car`/`config.pt_ride` density dict (`dense`,
     `urban`, `suburban`, `rural`) to the INSEE labels of
@@ -669,7 +719,7 @@ def build_trip_legs(
             typejour, mobloc, num_dep, moridom, duration_min,
             distance_km_declared, maccompm, maccomphm, mtp,
             motive, is_loop_trip, age, age_band, population_category,
-            declared_walk_min, declared_wait_min,
+            income_quintile, declared_walk_min, declared_wait_min,
             CASE
                 WHEN mtp IS NULL OR mtp = 9999 THEN 'other'
                 WHEN floor(mtp) = 1 THEN 'walk'
@@ -880,7 +930,7 @@ def build_trip_legs(
         ident_dep, ident_ind, ident_men, day_id, pond_jour, pond_ind, typejour,
         mobloc, num_dep, moridom, mtp, mode_group, vehicle, density_ori, density_des,
         residence_density,
-        age, age_band, population_category, is_loop_trip, motive,
+        age, age_band, population_category, income_quintile, is_loop_trip, motive,
         declared_walk_min, declared_wait_min,
         -- Modelled terminal-leg minutes (section 9.9, step 1: "compared
         -- with the modelled terminal legs by mode group"): car's

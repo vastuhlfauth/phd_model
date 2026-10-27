@@ -77,6 +77,29 @@ def test_other_mode_group_has_no_energy_formula(
     assert row == (None, None)
 
 
+def test_income_quintile_is_ordered_by_decile_rev_uc(
+    trip_legs: duckdb.DuckDBPyConnection,
+) -> None:
+    """EMP 2019 publishes no raw income bracket: `TCM_MEN.decile_rev_uc`
+    is used directly as the continuous rank fed to
+    `trip_legs.weighted_quintile_view_sql` (section 9.9's "Income
+    variables"). The synthetic fixture's `decile_rev_uc` runs 1..10
+    across its 13 households (`conftest.py`): the lowest decile
+    (ident_ind 1, M1) must rank at or below a higher decile (ident_ind
+    8, M8, decile 8; ident_ind 10/M10 has the highest decile, 10, but no
+    trip at all, so no `trip_legs` row to query)."""
+    rows = dict(
+        trip_legs.sql(
+            "SELECT ident_ind, income_quintile FROM trip_legs "
+            "WHERE ident_ind IN (1, 8)"
+        ).fetchall()
+    )
+    order = {"q1": 1, "q2": 2, "q3": 3, "q4": 4, "q5": 5}
+    assert rows[1] in order
+    assert rows[8] in order
+    assert order[rows[1]] <= order[rows[8]]
+
+
 def test_walking_and_cycling_calibrate_v0_and_p0(
     trip_legs: duckdb.DuckDBPyConnection,
 ) -> None:
@@ -158,9 +181,9 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
             "tcm_men_public_V3.csv",
             "\n".join(
                 [
-                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES"',
-                    '"M1","7","C","1"',
-                    '"M2","7","C","1"',
+                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES","decile_rev_uc"',
+                    '"M1","7","C","1","5"',
+                    '"M2","7","C","1","5"',
                 ]
             ),
         )
@@ -250,10 +273,10 @@ def test_implausibly_fast_cycle_trip_has_its_distance_corrected(
             "tcm_men_public_V3.csv",
             "\n".join(
                 [
-                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES"',
-                    '"M1","7","C","1"',
-                    '"M2","7","C","1"',
-                    '"M3","7","C","1"',
+                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES","decile_rev_uc"',
+                    '"M1","7","C","1","5"',
+                    '"M2","7","C","1","5"',
+                    '"M3","7","C","1","5"',
                 ]
             ),
         )
@@ -329,9 +352,9 @@ def test_stop_energy_per_stop_is_the_same_regardless_of_declared_speed(
             "tcm_men_public_V3.csv",
             "\n".join(
                 [
-                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES"',
-                    '"M1","7","C","1"',
-                    '"M2","7","C","1"',
+                    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES","decile_rev_uc"',
+                    '"M1","7","C","1","5"',
+                    '"M2","7","C","1","5"',
                 ]
             ),
         )
@@ -378,3 +401,86 @@ def test_stop_energy_per_stop_is_the_same_regardless_of_declared_speed(
     assert kj_per_stop(dist1, ride1, kh1) == pytest.approx(
         kj_per_stop(dist2, ride2, kh2), rel=1e-6
     )
+
+
+def _make_person_budget_con() -> duckdb.DuckDBPyConnection:
+    """A tiny, hand-built `k_individu`/`tcm_ind_kish`/`tcm_ind`/`tcm_men`
+    set (section 9.9 point 2's per-person budget): respondent 1
+    (interviewed Monday, delai 0, offset-1 = yesterday = Sunday) is
+    mobile on 5 of 7 described days; respondent 2 has no interview date
+    ("stayed home all week") and is immobile on every offset."""
+    con = duckdb.connect()
+    con.sql("""
+        CREATE TABLE k_individu (
+            IDENT_IND VARCHAR, IDENT_MEN VARCHAR, pond_indC DOUBLE,
+            MIMMOSEM INTEGER, MDATE_jour VARCHAR, MDATE_delai VARCHAR,
+            IMMODEP_A DOUBLE, IMMODEP_B DOUBLE, IMMODEP_C DOUBLE,
+            IMMODEP_D DOUBLE, IMMODEP_E DOUBLE, IMMODEP_F DOUBLE,
+            IMMODEP_G DOUBLE
+        )
+    """)
+    con.sql("""
+        INSERT INTO k_individu VALUES
+            ('1', 'M1', 100.0, 2, 'lundi', '0', 0, 0, 0, 0, 0, 1, 1),
+            ('2', 'M2', 100.0, 1, NULL, NULL, 1, 1, 1, 1, 1, 1, 1)
+    """)
+    con.sql("""
+        CREATE TABLE tcm_ind_kish (IDENT_IND VARCHAR, AGE INTEGER,
+            AGE6 VARCHAR, SITUA VARCHAR)
+    """)
+    con.sql("""
+        INSERT INTO tcm_ind_kish VALUES
+            ('1', 30, '30', '1'), ('2', 60, '60', '5')
+    """)
+    con.sql("CREATE TABLE tcm_ind (ident_ind VARCHAR, ident_men VARCHAR)")
+    con.sql("INSERT INTO tcm_ind VALUES ('1', 'M1'), ('2', 'M2')")
+    con.sql("""
+        CREATE TABLE tcm_men (ident_men VARCHAR, TUU2017_RES VARCHAR,
+            STATUTCOM_UU_RES VARCHAR, DENSITECOM_RES INTEGER,
+            decile_rev_uc INTEGER)
+    """)
+    con.sql("""
+        INSERT INTO tcm_men VALUES
+            ('M1', '7', 'C', 1, 2), ('M2', '0', 'H', 4, 9)
+    """)
+    return con
+
+
+def test_population_category_by_ident_covers_non_travellers() -> None:
+    con = _make_person_budget_con()
+    result = emp2019.population_category_by_ident(con)
+    assert result == {"1": "employed", "2": "retired"}
+
+
+def test_residence_density_by_ident_grid_and_proxy() -> None:
+    con = _make_person_budget_con()
+    grid = emp2019.residence_density_by_ident(con, "grid")
+    assert grid == {"1": "dense", "2": "very_sparse"}
+    proxy = emp2019.residence_density_by_ident(con, "proxy")
+    assert proxy == {"1": "dense", "2": "very_sparse"}
+
+
+def test_person_day_type_rows_assigns_offsets_by_interview_date() -> None:
+    """Respondent 1, interviewed Monday with 0 days' delay (so the
+    interview itself is Monday, day index 0): offset 1 ("yesterday") is
+    Sunday, offsets 2-6 are Saturday back to Tuesday, offset 7 is
+    Monday. Respondent 2 (no interview date) uses the fixed 5/1/1
+    fallback split."""
+    con = _make_person_budget_con()
+    rows = emp2019.person_day_type_rows(con)
+    by_person = {}
+    for ident_ind, _ident_men, _pond, day_type, immobile in rows:
+        by_person.setdefault(ident_ind, []).append((day_type, immobile))
+    # Respondent 1: offsets A-G = (0,0,0,0,0,1,1); offset 1 = Sunday,
+    # offset 7 = Monday (both weekday-adjacent via the 7-day wraparound).
+    day_types_1 = [day_type for day_type, _ in by_person["1"]]
+    assert day_types_1.count("sunday") == 1
+    assert day_types_1.count("saturday") == 1
+    assert day_types_1.count("weekday") == 5
+    # Respondent 2: no interview date, fixed 5 weekday/1 Saturday/1
+    # Sunday split, every offset immobile.
+    day_types_2 = [day_type for day_type, _ in by_person["2"]]
+    assert day_types_2.count("weekday") == 5
+    assert day_types_2.count("saturday") == 1
+    assert day_types_2.count("sunday") == 1
+    assert all(immobile == 1.0 for _, immobile in by_person["2"])

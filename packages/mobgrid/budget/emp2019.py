@@ -171,6 +171,30 @@ def register_views(con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]) -
             )
 
 
+def build_respondent_income(con: duckdb.DuckDBPyConnection) -> None:
+    """Create the ``respondent_income`` view (``ident_ind`` ->
+    ``income_quintile``): EMP 2019 publishes no raw income bracket, so
+    ``TCM_MEN.decile_rev_uc`` (INSEE's own consolidated decile of
+    household income per consumption unit) is used directly as the
+    continuous rank fed to ``trip_legs.weighted_quintile_view_sql``,
+    re-cut under this project's individual weighting
+    (``docs/data/entd2008.md``'s "Income variables").
+    """
+    base_sql = """
+        SELECT k.IDENT_IND AS ident_ind,
+            m.decile_rev_uc AS income_value,
+            i.pond_indC AS weight
+        FROM tcm_ind_kish k
+        JOIN k_individu i ON i.IDENT_IND = k.IDENT_IND
+        JOIN tcm_ind t ON t.ident_ind = k.IDENT_IND
+        LEFT JOIN tcm_men m ON m.ident_men = t.ident_men
+    """
+    con.sql(
+        "CREATE OR REPLACE VIEW respondent_income AS "
+        + trip_legs.weighted_quintile_view_sql(base_sql)
+    )
+
+
 def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
     """Create the ``trips_norm`` view from EMP 2019's raw tables: the
     survey-specific half of the trip-leg reconstruction
@@ -178,6 +202,7 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
     by survey"). ``mobgrid.budget.trip_legs.build_trip_legs`` reads this
     view onward, shared with ENTD 2008.
     """
+    build_respondent_income(con)
     population_category_sql = trip_legs._case_sql(
         "k.SITUA",
         _POPULATION_CATEGORY_BY_SITUA,
@@ -275,11 +300,13 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
             END AS population_category,
             d.MTEMPSMAP AS declared_walk_min,
             d.MTPSATTENT AS declared_wait_min,
-            i.pond_indC AS pond_ind
+            i.pond_indC AS pond_ind,
+            coalesce(ri.income_quintile, 'unknown') AS income_quintile
         FROM k_deploc d
         JOIN tcm_ind_kish k ON k.IDENT_IND = d.IDENT_IND
         JOIN k_individu i ON i.IDENT_IND = d.IDENT_IND
         LEFT JOIN tcm_men m ON m.ident_men = d.IDENT_MEN
+        LEFT JOIN respondent_income ri ON ri.ident_ind = d.IDENT_IND
     """)
 
 
@@ -376,3 +403,150 @@ def non_traveler_summary(con: duckdb.DuckDBPyConnection) -> dict:
         "share_unweighted": non_traveler_n / n_respondents,
         "mimmosem_match": mimmosem_match,
     }
+
+
+#: EMP 2019's `MDATE_jour` day names -> Monday=0 .. Sunday=6, for
+#: ``person_day_type_rows``' IMMODEP-offset-to-day-type mapping (section
+#: 9.9 point 2's per-person budget).
+_WEEKDAY_IDX = {
+    "lundi": 0,
+    "mardi": 1,
+    "mercredi": 2,
+    "jeudi": 3,
+    "vendredi": 4,
+    "samedi": 5,
+    "dimanche": 6,
+}
+
+
+def population_category_by_ident(con: duckdb.DuckDBPyConnection) -> dict:
+    """``population_category`` for every EMP 2019 respondent
+    (`tcm_ind_kish`, the full Kish roster, including the respondents who
+    describe no day), the same section 6.1 mapping ``build_trips_norm``
+    uses -- needed for the per-person budget (section 9.9 point 2),
+    which groups non-travellers too."""
+    case_sql = trip_legs._case_sql(
+        "k.SITUA",
+        _POPULATION_CATEGORY_BY_SITUA,
+        default="'unknown'",
+        quote_values=True,
+    )
+    rows = con.sql(f"""
+        SELECT k.IDENT_IND,
+            CASE WHEN k.AGE BETWEEN 6 AND 17 THEN 'children_6_17'
+                 ELSE {case_sql} END
+        FROM tcm_ind_kish k
+    """).fetchall()
+    return dict(rows)
+
+
+def residence_density_by_ident(
+    con: duckdb.DuckDBPyConnection, density_source: str
+) -> dict:
+    """Residence density for every EMP 2019 respondent
+    (`TCM_MEN.DENSITECOM_RES`/`STATUTCOM_UU_RES`, joined through
+    `tcm_ind` for the household link), independent of whether they have
+    a trip -- unlike ``trip_legs.residence_density``, which has no row
+    for a respondent with no described day at all (section 9.9 point 2's
+    per-person budget)."""
+    density_grid_sql = (
+        "CASE m.DENSITECOM_RES\n    "
+        + "\n    ".join(
+            f"WHEN {code} THEN '{label}'"
+            for code, label in _DENSITY_LABEL_BY_CODE.items()
+        )
+        + "\n    ELSE 'intermediate'\nEND"
+    )
+    uu_status_res_sql = trip_legs._case_sql(
+        "m.STATUTCOM_UU_RES", _UU_STATUS_BY_CODE, quote_values=True
+    )
+    density_sql = (
+        "coalesce(density_res_grid, 'intermediate')"
+        if density_source == "grid"
+        else trip_legs.density_proxy_case_sql("uu_status_res", "tuu_res")
+    )
+    rows = con.sql(f"""
+        WITH base AS (
+            SELECT ti.IDENT_IND AS ident_ind,
+                ({uu_status_res_sql}) AS uu_status_res,
+                CAST(m.TUU2017_RES AS VARCHAR) AS tuu_res,
+                ({density_grid_sql}) AS density_res_grid
+            FROM tcm_ind_kish ti
+            JOIN tcm_ind t ON t.ident_ind = ti.IDENT_IND
+            JOIN tcm_men m ON m.ident_men = t.ident_men
+        )
+        SELECT ident_ind, ({density_sql}) FROM base
+    """).fetchall()
+    return dict(rows)
+
+
+def income_quintile_by_ident(con: duckdb.DuckDBPyConnection) -> dict:
+    """``income_quintile`` for every EMP 2019 respondent, from
+    ``respondent_income`` (built by ``build_respondent_income``, already
+    covering the full Kish roster): section 9.9 point 2's per-person
+    budget needs the income quintile of non-travellers too, not just of
+    the trips in ``trip_legs``."""
+    return dict(
+        con.sql("SELECT ident_ind, income_quintile FROM respondent_income").fetchall()
+    )
+
+
+def person_day_type_rows(con: duckdb.DuckDBPyConnection) -> list[tuple]:
+    """One row per (respondent, IMMODEP offset 1-7) with data: ``(ident_ind,
+    ident_men, pond_ind, day_type, immobile)`` (section 9.9 point 2's
+    per-person budget). Offsets with a blank `IMMODEP_*` (a respondent
+    whose offset was never asked, `IMMODEP_FLAG` -1/-2) are dropped. A
+    respondent with no interview date (`MDATE_delai` blank, "stayed home
+    all week", `MIMMOSEM` = 1) has every offset immobile, so the exact
+    offset-to-day-type assignment does not matter for them; a fixed
+    5 weekday/1 Saturday/1 Sunday split is used, keeping the same 5/1/1
+    composition every 7-day window has regardless of its start.
+    """
+    rows = con.sql("""
+        SELECT IDENT_IND, IDENT_MEN, pond_indC, MDATE_jour, MDATE_delai,
+            IMMODEP_A, IMMODEP_B, IMMODEP_C, IMMODEP_D, IMMODEP_E,
+            IMMODEP_F, IMMODEP_G
+        FROM k_individu
+    """).fetchall()
+
+    out = []
+    for (
+        ident_ind,
+        ident_men,
+        pond_ind,
+        mdate_jour,
+        mdate_delai,
+        a,
+        b,
+        c,
+        d,
+        e,
+        f,
+        g,
+    ) in rows:
+        weekday_idx = _WEEKDAY_IDX.get(mdate_jour)
+        delai = None
+        if mdate_delai not in (None, ""):
+            delai = int(mdate_delai)
+        has_date = weekday_idx is not None and delai is not None
+        interview_idx = (weekday_idx + delai) % 7 if has_date else None
+        for offset, value in enumerate((a, b, c, d, e, f, g), start=1):
+            if value in (None, ""):
+                continue
+            immobile = float(value)
+            if has_date:
+                day_idx = (interview_idx - offset) % 7
+                day_type = (
+                    "weekday"
+                    if day_idx <= 4
+                    else ("saturday" if day_idx == 5 else "sunday")
+                )
+            else:
+                day_type = (
+                    "weekday"
+                    if offset <= 5
+                    else ("saturday" if offset == 6 else "sunday")
+                )
+            out.append((ident_ind, ident_men, float(pond_ind), day_type, immobile))
+    return out
+

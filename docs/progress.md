@@ -2,7 +2,108 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-27 by Copilot (branch `step/time-budget`: section 9.9's travel time budget, part A and B; pushed, not merged)_
+_Last updated: 2026-10-27 by Copilot (branch `step/time-budget`: household income quintiles, time-figure parity, per-person budget folded into the permanent report; pushed)_
+
+### Step 11: household income and time-parity figures (2026-10-27, branch `step/time-budget`, pushed, not merged)
+
+Applied `spec_update_2026-10-27_income.diff` (`docs/spec/09_trip_legs_energy.md`
+only), commit `dd363c2`: income per consumption unit alongside density
+as a dimension tested for constancy; daily time split into trips/day x
+minutes/trip; time given the same mean/median/CI treatment as energy.
+
+**Income variables (section 9.9's "Income variables", `docs/data/
+entd2008.md`):**
+
+- EMP 2019 publishes no raw income bracket; `TCM_MEN.decile_rev_uc`
+  (INSEE's own consolidated, fully-imputed decile of income per
+  consumption unit, 0% missing in the real data) is used directly as
+  the continuous rank.
+- ENTD 2008's `Q_TCM_MENAGE.TrancheRevenuMensuel` (14 bracket labels)
+  is parsed to its midpoint in euros (`entd2008.income_bracket_midpoint_eur`:
+  interior brackets average their bounds, the bottom open bracket is
+  half its upper bound, the top open bracket 1.5x its lower bound, spec
+  9.9), divided by `NBUC` (already the modified-OECD consumption-unit
+  count, verified identical formula to the spec's). Deliberately not
+  the same as the table's own `REVUC`/`NIVIE`/`NIVIE10` ("simulated"
+  income, checked to differ from bracket-midpoint/NBUC on 2,000 real
+  households, only 11.9% match to within 1 EUR).
+  `TrancheRevenuMensuel`/`NBUC` are both 100% filled in the real data,
+  so ENTD 2008's `'unknown'` income class is also empty there; the code
+  still handles a missing bracket/zero `NBUC` robustly.
+- Quintiles (`'q1'` poorest to `'q5'` richest, `'unknown'` for missing)
+  computed per survey with individual weights
+  (`trip_legs.weighted_quintile_view_sql`, a weighted-cumulative-share
+  cut at 20/40/60/80% over the whole respondent roster, not per trip).
+  New `trips_norm`/`trip_legs`/`day_summary` column `income_quintile`.
+
+**New engines (`daily_energy.py`):**
+
+- `ScalarGroupStats`/`bootstrap_scalar_group_stats`: mean+95% CI+median
+  of one arbitrary scalar by group (time, trips/day, minutes/trip),
+  giving time the same treatment `GroupStats` already gives energy,
+  without changing `GroupStats` itself (used by every new time-with-CI
+  table/figure).
+- `PersonBudgetRow`/`person_budget_by_group`: the per-person budget
+  (P(out) x T(out), days without trips included), weekday-only (both
+  surveys) or all-week with `DAY_TYPE_WEIGHT` (EMP 2019 only, point
+  estimate, no joint CI across day types) -- ported and generalised
+  from the prior session's scratch script
+  (`C:\codes\step11_bundle\time_budget_partA.py`), now a permanent,
+  tested part of the pipeline (previously explicitly left out of Part
+  B: "not yet done" above).
+- `bootstrap_diff_ci`: 2008-2019 mean difference with its own bootstrap
+  CI (independent resampling in each survey), used for the new
+  weekday-only comparison.
+
+**New `emp2019.py`/`entd2008.py` functions** (mirrors of the existing
+`residence_density`/`non_traveler_summary` pattern, covering the *full*
+respondent roster, not just those with a trip): `population_category_by_ident`,
+`residence_density_by_ident`, `income_quintile_by_ident`,
+`person_day_type_rows` (EMP 2019, ported from the scratch script) /
+`person_weekday_rows` (ENTD 2008).
+
+**Report additions (`emp.py`, both surveys):**
+
+- Category x density time table gained a 95% CI column (`_format_category_key_table`,
+  generalising the old `_format_category_density_table`); new,
+  identically-formatted category x income quintile table and its own
+  constancy summary (q5/q1, max/min, CV).
+- Trips-per-day and minutes-per-trip by category x density, category x
+  income, and density/income marginals, all with CI (section 9.9 point
+  2's "daily time = trips/day x minutes/trip" split).
+- Per-person budget (P0 2b): by category, and by category x density/
+  income, weekday (both surveys) and all-week (EMP 2019 only).
+- P0 under declared legs: already satisfied before this task (`run()`'s
+  base case is always `terminal_legs='declared'`; the report text
+  already names this explicitly) -- verified, no change needed.
+- `--compare` gained a weekday-only 2008-2019 comparison (`_format_weekday_comparison`):
+  daily time by category, per day with trips (with `bootstrap_diff_ci`)
+  and per person (point difference, each side's own CI).
+
+**New/reworked figures** (18 PNGs now, up from 14): F01b (trips/day by
+category x density/income, CI), F01c (minutes/trip, same breakdowns);
+F02 reworked into F02a (stacked by mode, overall, linear time axis) +
+F02b (per-category panels, normalised) -- the same treatment F03a/F03b
+give energy, replacing the old F02 (category-only KDE) and F02b
+(category x density heatmap, folded into F05b below); F04b reworked to
+F04a's layout (mean+95%CI+median by mode, one panel per category, not
+just a plain n-labelled bar); F05b, a new 4-panel time heatmap (mode x
+category, mode x density, category x density, category x income); F10,
+one panel per category, mean time with CI by density/income quintile,
+day-with-trips (circles) and per-person (crosses).
+
+**Known scope reductions (documented, not oversights):** every new
+income/density breakdown is needs-only scope (matching the existing
+density tables, which were never duplicated for the "all trips"
+variant either); the per-person budget's cross-survey comparison has no
+joint bootstrap CI (point difference only, each side's own single-
+survey CI shown) -- a joint CI would need both surveys' raw person/day
+arrays available simultaneously, which `run()`'s per-survey return
+value does not expose.
+
+Full test suite: run after this entry (see below); `ruff check .`
+clean. Real reports **not regenerated** (same policy as the previous
+entry): exact commands given in the session's final report.
 
 ### Step 11: travel time budget as the reference (2026-10-27, branch `step/time-budget`, pushed, not merged)
 

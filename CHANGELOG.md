@@ -4,6 +4,43 @@ Notable changes to the `mobgrid.budget` step 11 re-estimation (section
 9.9). Not an exhaustive history; see `docs/progress.md` for the full
 decision log.
 
+## 2026-10-27 — household income and time-figure parity (section 9.9)
+
+### Added
+
+- **Household income per consumption unit, in quintiles** (modified
+  OECD scale), computed per survey with individual weights: EMP 2019
+  from `TCM_MEN.decile_rev_uc` (no raw bracket is published); ENTD 2008
+  from `Q_TCM_MENAGE.TrancheRevenuMensuel`'s bracket midpoint divided by
+  `NBUC`. New `income_quintile` column on `trips_norm`/`trip_legs`/
+  `day_summary`; documented in `docs/data/entd2008.md`/`emp2019.md`.
+- **Per-person budget** (P(out) x T(out), days without trips included),
+  folded into the permanent report for the first time: by population
+  category, and by category x density/income, weekday (both surveys)
+  and all-week (EMP 2019 only). Previously scratch-only.
+- **Trips per day and minutes per trip**, by category, density and
+  income quintile, with 95% CI (section 9.9 point 2's "daily time =
+  trips/day x minutes/trip").
+- **Time given the same mean/median/95% CI treatment as energy**:
+  `daily_energy.ScalarGroupStats`/`bootstrap_scalar_group_stats`, used
+  throughout (category x density/income tables, F04b, F05b, F10).
+- **`--compare` gained a weekday-only 2008-2019 comparison** (daily
+  time by category, per day with trips with a bootstrap difference
+  interval, and per person).
+- **New/reworked figures:** F01b (trips/day by category x density/
+  income), F01c (minutes/trip, same breakdowns), F02a/F02b (reworked,
+  mirroring F03a/F03b's stacked/normalised-by-mode layout), F04b
+  (reworked to F04a's mean+CI+median layout), F05b (4-panel time
+  heatmap: mode x category, mode x density, category x density,
+  category x income), F10 (constancy, one panel per category).
+
+### Changed
+
+- `_format_category_density_table`/`_format_constancy_summary_table`
+  generalised (`_format_category_key_table`/`_constancy_summary`) to
+  work for any ordered key (density or income), with an optional time
+  95% CI column.
+
 ## 2026-10-27 — travel time budget as the reference (section 9.9)
 
 ### Changed

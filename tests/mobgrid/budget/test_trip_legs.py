@@ -85,7 +85,8 @@ def _make_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
             moridom INTEGER, duration_min DOUBLE, distance_km_declared DOUBLE,
             maccompm DOUBLE, maccomphm DOUBLE, mtp DOUBLE, motive DOUBLE,
             is_loop_trip BOOLEAN, age INTEGER, age_band VARCHAR,
-            population_category VARCHAR, declared_walk_min DOUBLE,
+            population_category VARCHAR, income_quintile VARCHAR,
+            declared_walk_min DOUBLE,
             declared_wait_min DOUBLE, uu_status_ori VARCHAR,
             uu_status_des VARCHAR, uu_status_res VARCHAR, tuu_res VARCHAR,
             density_ori_grid VARCHAR, density_des_grid VARCHAR,
@@ -95,19 +96,19 @@ def _make_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
     con.sql("""
         INSERT INTO trips_norm VALUES
             ('D1', '1', 'M1', '1', 100.0, 100.0, 1, 1, 1, 1, 30.0, 5.0,
-             NULL, NULL, 3.1, 9.1, FALSE, 30, '30', 'employed',
+             NULL, NULL, 3.1, 9.1, FALSE, 30, '30', 'employed', 'q1',
              3.0, NULL, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense'),
             ('D2', '2', 'M2', '2', 100.0, 100.0, 1, 1, 1, 1, 30.0, 5.0,
-             NULL, NULL, 3.1, 9.1, FALSE, 30, '30', 'employed',
+             NULL, NULL, 3.1, 9.1, FALSE, 30, '30', 'employed', 'q2',
              NULL, NULL, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense'),
             ('D3', '3', 'M3', '3', 100.0, 100.0, 1, 1, 1, 1, 20.0, 3.0,
-             NULL, NULL, 2.1, 9.1, FALSE, 30, '30', 'employed',
+             NULL, NULL, 2.1, 9.1, FALSE, 30, '30', 'employed', 'q3',
              2.5, NULL, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense'),
             ('D4', '4', 'M4', '4', 100.0, 100.0, 1, 1, 1, 1, 30.0, 4.0,
-             NULL, NULL, 5.7, 9.1, FALSE, 30, '30', 'employed',
+             NULL, NULL, 5.7, 9.1, FALSE, 30, '30', 'employed', 'q4',
              4.0, 3.0, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense'),
             ('D5', '5', 'M5', '5', 100.0, 100.0, 1, 1, 1, 1, 90.0, 120.0,
-             NULL, NULL, 6.3, 9.1, FALSE, 30, '30', 'employed',
+             NULL, NULL, 6.3, 9.1, FALSE, 30, '30', 'employed', 'q5',
              6.0, 5.0, 'C', 'C', 'C', '7', 'dense', 'dense', 'dense')
     """)
 

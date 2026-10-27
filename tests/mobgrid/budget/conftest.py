@@ -79,8 +79,20 @@ _TCM_IND_KISH_ROWS = [
     "13;34;30;1",
 ]
 
-_K_INDIVIDU_HEADER = "IDENT_IND;pond_indC;MIMMOSEM"
-_K_INDIVIDU_ROWS = [f"{i};100.0;{'1' if i == 10 else '2'}" for i in range(1, 14)]
+#: `IDENT_MEN`/`MDATE_jour`/`MDATE_delai`/`IMMODEP_A`-`G` (section 9.9
+#: point 2's per-person budget): every respondent has no interview date
+#: (blank `MDATE_jour`/`MDATE_delai`, the fixed 5 weekday/1 Saturday/1
+#: Sunday fallback split), immobile on every offset for ident_ind 10
+#: (the non-traveller) and mobile for everyone else.
+_K_INDIVIDU_HEADER = (
+    "IDENT_IND;IDENT_MEN;pond_indC;MIMMOSEM;MDATE_jour;MDATE_delai;"
+    "IMMODEP_A;IMMODEP_B;IMMODEP_C;IMMODEP_D;IMMODEP_E;IMMODEP_F;IMMODEP_G"
+)
+_K_INDIVIDU_ROWS = [
+    f"{i};M{i};100.0;{'1' if i == 10 else '2'};;;"
+    f"{'1;1;1;1;1;1;1' if i == 10 else '0;0;0;0;0;0;0'}"
+    for i in range(1, 14)
+]
 
 _Q_MENAGE_HEADER = "IDENT_MEN;pond_menC"
 _Q_MENAGE_ROWS = [f"M{i};100.0" for i in range(1, 14)]
@@ -94,8 +106,13 @@ _Q_MENAGE_ROWS = [f"M{i};100.0" for i in range(1, 14)]
 #: the grid. Comma-quoted, like the real `tcm_men_public_V3.csv`
 #: (unlike every other EMP 2019 table besides `k_deploc`, which is
 #: semicolon-separated).
-_TCM_MEN_HEADER = '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES"'
-_TCM_MEN_ROWS = [f'"M{i}","7","C","1"' for i in range(1, 14)]
+#: `decile_rev_uc` (income variables, section 9.9): varied 1-10 across
+#: the 13 households, so the weighted-quintile computation
+#: (``emp2019.build_respondent_income``) has a real spread to cut.
+_TCM_MEN_HEADER = (
+    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES","decile_rev_uc"'
+)
+_TCM_MEN_ROWS = [f'"M{i}","7","C","1","{((i - 1) % 10) + 1}"' for i in range(1, 14)]
 
 
 def write_synthetic_emp_zip(path: Path) -> None:
@@ -202,16 +219,21 @@ _ENTD_Q_TCM_INDIVIDU_ROWS = [
     "8;31;30;1",
 ]
 
-_ENTD_Q_TCM_MENAGE_HEADER = "IDENT_MEN;TU99;numcom_UUCat"
+#: `TrancheRevenuMensuel`/`NBUC` (income variables, section 9.9): varied
+#: across the 8 households, so ``entd2008.build_respondent_income`` has
+#: a real bracket-midpoint/consumption-unit spread to quintile; M7 (the
+#: non-traveller) gets a blank bracket, covering the missing/refused
+#: ('unknown') path.
+_ENTD_Q_TCM_MENAGE_HEADER = "IDENT_MEN;TU99;numcom_UUCat;TrancheRevenuMensuel;NBUC"
 _ENTD_Q_TCM_MENAGE_ROWS = [
-    "M1;7;ville centre",
-    "M2;7;ville centre",
-    "M3;7;ville centre",
-    "M4;7;ville centre",
-    "M5;0;commune rurale",
-    "M6;5;banlieue",
-    "M7;7;ville centre",
-    "M8;7;ville centre",
+    "M1;7;ville centre;Moins de 400 €;1.0",
+    "M2;7;ville centre;De 800 € à moins de 1 000 €;1.5",
+    "M3;7;ville centre;De 1 500 € à moins de 1 800 €;2.0",
+    "M4;7;ville centre;De 2 500 € à moins de 3 000 €;2.5",
+    "M5;0;commune rurale;De 3 000 € à moins de 4 000 €;1.5",
+    "M6;5;banlieue;De 4 000 € à moins de 6 000 €;2.0",
+    "M7;7;ville centre;;1.0",
+    "M8;7;ville centre;10 000 € ou plus;1.0",
 ]
 
 

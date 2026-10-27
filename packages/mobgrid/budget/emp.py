@@ -216,7 +216,8 @@ def _weighted_query(
 def _day_rows(con: duckdb.DuckDBPyConnection) -> dict:
     """Fetch every classified-day column needed by the figures/report."""
     return con.sql(
-        "SELECT day_mode_group, population_category, home_density, ident_men, "
+        "SELECT day_mode_group, population_category, home_density, "
+        "income_quintile, ident_men, typejour, "
         "pond_jour, total_time_min, total_energy_kh_kj, total_energy_cp_kj, "
         "trips_per_day FROM day_summary WHERE total_energy_kh_kj IS NOT NULL"
     ).fetchnumpy()
@@ -243,12 +244,23 @@ def _category_density_stats(
     """Population category x density class, combined into one group key
     for `bootstrap_group_stats` (section 9.9, point 2a); keyed back out
     to ``(category, density)`` tuples."""
+    return _category_by_key_stats(
+        days, "home_density", n_reps=n_reps, seed=seed
+    )
+
+
+def _category_by_key_stats(
+    days: dict, key_column: str, *, n_reps: int, seed: int
+) -> dict[tuple[str, str], daily_energy.GroupStats]:
+    """Population category x ``key_column`` (``home_density`` or
+    ``income_quintile``), combined into one group key for
+    `bootstrap_group_stats` (section 9.9 point 2a/3's income update);
+    keyed back out to ``(category, key)`` tuples. Generalises
+    ``_category_density_stats`` to any second grouping key."""
     combined = np.array(
         [
-            f"{c}||{d}"
-            for c, d in zip(
-                days["population_category"], days["home_density"], strict=False
-            )
+            f"{c}||{k}"
+            for c, k in zip(days["population_category"], days[key_column], strict=False)
         ]
     )
     stats = daily_energy.bootstrap_group_stats(
@@ -263,8 +275,8 @@ def _category_density_stats(
     )
     result = {}
     for s in stats:
-        category, density = s.group.split("||", 1)
-        result[(category, density)] = s
+        category, key = s.group.split("||", 1)
+        result[(category, key)] = s
     return result
 
 
@@ -275,27 +287,103 @@ def _density_constancy_summary(
     the dense/very_sparse ratio, the highest/lowest-density-class ratio
     and the coefficient of variation across classes, mean daily time
     (cells of fewer than `MIN_CELL_N` persons excluded)."""
+    return _constancy_summary(
+        category_density_stats, named_pair=("dense", "very_sparse")
+    )
+
+
+def _income_constancy_summary(
+    category_income_stats: dict[tuple[str, str], daily_energy.GroupStats],
+) -> list[tuple[str, float, float, float]]:
+    """Section 9.9's income constancy summary: within each population
+    category, the highest (q5) / lowest (q1) quintile ratio and the
+    coefficient of variation across quintiles, mean daily time (cells of
+    fewer than `MIN_CELL_N` persons excluded; `'unknown'` is not a
+    quintile, so it is excluded from both)."""
+    return _constancy_summary(category_income_stats, named_pair=("q5", "q1"))
+
+
+def _constancy_summary(
+    category_key_stats: dict[tuple[str, str], daily_energy.GroupStats],
+    *,
+    named_pair: tuple[str, str],
+) -> list[tuple[str, float, float, float]]:
+    """Generic constancy summary (section 9.9's density and income
+    updates): within each population category, ``named_pair``'s ratio
+    (e.g. dense/very_sparse, or q5/q1), the highest/lowest-key ratio and
+    the coefficient of variation across keys, mean daily time (cells of
+    fewer than `MIN_CELL_N` persons excluded). `'unknown'` keys (an
+    unrecognised density code, or a missing/refused income) are excluded
+    from the summary, as they are not part of the ordered scale."""
     rows = []
     for category in daily_energy.POPULATION_CATEGORIES:
         present = {
-            density: s
-            for (cat, density), s in category_density_stats.items()
-            if cat == category and s.n >= MIN_CELL_N
+            key: s
+            for (cat, key), s in category_key_stats.items()
+            if cat == category and s.n >= MIN_CELL_N and key != "unknown"
         }
         if not present:
             rows.append((category, float("nan"), float("nan"), float("nan")))
             continue
-        values = {d: s.mean_time_min for d, s in present.items()}
-        dense_very_sparse = (
-            values["dense"] / values["very_sparse"]
-            if "dense" in values and "very_sparse" in values
+        values = {key: s.mean_time_min for key, s in present.items()}
+        named_ratio = (
+            values[named_pair[0]] / values[named_pair[1]]
+            if named_pair[0] in values and named_pair[1] in values
             else float("nan")
         )
         arr = np.array(list(values.values()))
         ratio = arr.max() / arr.min()
         cv = arr.std() / arr.mean()
-        rows.append((category, dense_very_sparse, ratio, cv))
+        rows.append((category, named_ratio, ratio, cv))
     return rows
+
+
+def _scalar_by_group(
+    days: dict, group_column: str, value: np.ndarray, *, n_reps: int, seed: int
+) -> list[daily_energy.ScalarGroupStats]:
+    """Mean (with 95% bootstrap CI), median and n of ``value`` (e.g.
+    ``total_time_min``, trips/day, minutes/trip) by ``days[group_column]``
+    (section 9.9's time-parity update: "the same treatment energy
+    already has"). Excludes the `'unknown'` group (population category
+    or income), as elsewhere in this report."""
+    mask = days[group_column] != "unknown"
+    return daily_energy.bootstrap_scalar_group_stats(
+        days[group_column][mask],
+        days["ident_men"][mask],
+        days["pond_jour"][mask],
+        value[mask],
+        n_reps=n_reps,
+        seed=seed,
+    )
+
+
+def _scalar_by_combined_key(
+    days: dict, key_column: str, value: np.ndarray, *, n_reps: int, seed: int
+) -> dict[tuple[str, str], daily_energy.ScalarGroupStats]:
+    """Population category x ``key_column`` (``home_density`` or
+    ``income_quintile``), combined into one group key for
+    ``bootstrap_scalar_group_stats``; keyed back out to ``(category,
+    key)`` tuples (section 9.9's trips-per-day/minutes-per-trip and
+    time-with-CI tables)."""
+    combined = np.array(
+        [
+            f"{c}||{k}"
+            for c, k in zip(days["population_category"], days[key_column], strict=False)
+        ]
+    )
+    stats = daily_energy.bootstrap_scalar_group_stats(
+        combined,
+        days["ident_men"],
+        days["pond_jour"],
+        value,
+        n_reps=n_reps,
+        seed=seed,
+    )
+    result = {}
+    for s in stats:
+        category, key = s.group.split("||", 1)
+        result[(category, key)] = s
+    return result
 
 
 def _build_base(
@@ -434,6 +522,23 @@ def run(
     category_density_stats = _category_density_stats(days, n_reps=n_reps, seed=seed)
     density_constancy_summary = _density_constancy_summary(category_density_stats)
 
+    # Section 9.9's income update: household income per consumption
+    # unit, in quintiles computed within this survey
+    # (`trip_legs.weighted_quintile_view_sql`); the same category x key
+    # table/constancy-summary machinery as density, plus a time-with-CI
+    # column giving time the same treatment energy already has.
+    income_stats = _group_stats(days, "income_quintile", n_reps=n_reps, seed=seed)
+    category_income_stats = _category_by_key_stats(
+        days, "income_quintile", n_reps=n_reps, seed=seed
+    )
+    income_constancy_summary = _income_constancy_summary(category_income_stats)
+    category_density_time_ci = _scalar_by_combined_key(
+        days, "home_density", days["total_time_min"], n_reps=n_reps, seed=seed
+    )
+    category_income_time_ci = _scalar_by_combined_key(
+        days, "income_quintile", days["total_time_min"], n_reps=n_reps, seed=seed
+    )
+
     mean_kh, var_kh = daily_energy.weighted_mean_variance(
         days["pond_jour"], days["total_energy_kh_kj"]
     )
@@ -490,8 +595,83 @@ def run(
     trips_by_density = _trips_per_day_by_group(
         days, "home_density", n_reps=n_reps, seed=seed
     )
+    # Section 9.9 point 2's trips-per-day/minutes-per-trip split: daily
+    # time = trips/day x minutes/trip, so a constant daily time can come
+    # from constant trips or from trips that compensate each other.
+    # Scalar (mean+CI+median) versions of the marginals, for the new
+    # tables (`trips_by_population`/`trips_by_density` above stay in
+    # their original (group, n, mean, ci) tuple form, used only by the
+    # F1 figure).
+    minutes_per_trip = days["total_time_min"] / days["trips_per_day"]
+    trips_per_day_float = days["trips_per_day"].astype(float)
+    trips_by_density_scalar = _scalar_by_group(
+        days, "home_density", trips_per_day_float, n_reps=n_reps, seed=seed
+    )
+    trips_by_income = _scalar_by_group(
+        days, "income_quintile", trips_per_day_float, n_reps=n_reps, seed=seed
+    )
+    minutes_per_trip_by_population = _scalar_by_group(
+        days, "population_category", minutes_per_trip, n_reps=n_reps, seed=seed
+    )
+    minutes_per_trip_by_density = _scalar_by_group(
+        days, "home_density", minutes_per_trip, n_reps=n_reps, seed=seed
+    )
+    minutes_per_trip_by_income = _scalar_by_group(
+        days, "income_quintile", minutes_per_trip, n_reps=n_reps, seed=seed
+    )
+    trips_by_category_density = _scalar_by_combined_key(
+        days, "home_density", trips_per_day_float, n_reps=n_reps, seed=seed
+    )
+    trips_by_category_income = _scalar_by_combined_key(
+        days, "income_quintile", trips_per_day_float, n_reps=n_reps, seed=seed
+    )
+    minutes_per_trip_by_category_density = _scalar_by_combined_key(
+        days, "home_density", minutes_per_trip, n_reps=n_reps, seed=seed
+    )
+    minutes_per_trip_by_category_income = _scalar_by_combined_key(
+        days, "income_quintile", minutes_per_trip, n_reps=n_reps, seed=seed
+    )
     motive_by_population = _trips_by_group_and_motive(con, "population_category")
     motive_by_density = _trips_by_group_and_motive(con, "home_density")
+
+    # Section 9.9 point 2's per-person budget: P(out) x T(out), days
+    # without trips included, by population category and by category x
+    # density/income. Weekday only in both surveys (comparable with
+    # 2008); EMP 2019 also reports the all-week budget (its IMMODEP
+    # questions cover the whole week; ENTD 2008's weekend eligibility is
+    # unverified, so it stays weekday-only, per the user's instruction).
+    person = _person_universe(survey, con, density_source)
+    (
+        person_budget_weekday_population,
+        person_budget_weekday_category_density,
+        person_budget_weekday_category_income,
+    ) = _person_budget_tables(
+        person,
+        days,
+        value=days["total_time_min"],
+        day_types=("weekday",),
+        day_type_weight=None,
+        n_reps=n_reps,
+        seed=seed,
+    )
+    if person["day_types"] == ("weekday", "saturday", "sunday"):
+        (
+            person_budget_all_week_population,
+            person_budget_all_week_category_density,
+            person_budget_all_week_category_income,
+        ) = _person_budget_tables(
+            person,
+            days,
+            value=days["total_time_min"],
+            day_types=person["day_types"],
+            day_type_weight=daily_energy.DAY_TYPE_WEIGHT,
+            n_reps=n_reps,
+            seed=seed,
+        )
+    else:
+        person_budget_all_week_population = None
+        person_budget_all_week_category_density = None
+        person_budget_all_week_category_income = None
 
     # Car passengers: household vs carpool, and the walking trips of
     # passenger days (section 9.9, "Outputs of the re-estimation").
@@ -578,14 +758,39 @@ def run(
             motive_by_density,
             out_dir,
         ),
-        _figure_f2_time_density_by_category(con, out_dir),
-        _figure_f2b_time_heatmap_category_density(con, out_dir),
+        _figure_scalar_by_category_key(
+            trips_by_category_density,
+            trips_by_category_income,
+            title="F1b. Trips per day by population category x density "
+            "class / income quintile (95% CI, section 9.9 point 2)",
+            ylabel="Mean trips per day",
+            filename="f01b_trips_per_day_by_category.png",
+            out_dir=out_dir,
+        ),
+        _figure_scalar_by_category_key(
+            minutes_per_trip_by_category_density,
+            minutes_per_trip_by_category_income,
+            title="F1c. Minutes per trip by population category x density "
+            "class / income quintile (95% CI, section 9.9 point 2)",
+            ylabel="Mean minutes per trip",
+            filename="f01c_minutes_per_trip_by_category.png",
+            out_dir=out_dir,
+        ),
+        *_figure_f2_time_density_by_category(con, out_dir),
         *_figure_f3_energy_density(con, out_dir),
         *f4_paths,
         _figure_f5_heatmaps(con, out_dir),
+        _figure_f5_time_heatmaps(con, out_dir),
         _figure_f6_v0_p0(v0_by_age_band, p0_by_age_band, config, out_dir),
         _figure_f7_passengers(passenger_trip_stats, walk_trips_by_day_group, out_dir),
         _figure_f8_robustness(robustness_ci, out_dir),
+        _figure_f10_constancy(
+            category_density_time_ci,
+            category_income_time_ci,
+            person_budget_weekday_category_density,
+            person_budget_weekday_category_income,
+            out_dir,
+        ),
     ]
 
     # ---- Diagnostics: full, unfiltered-by-motive dataset -- the
@@ -710,6 +915,34 @@ def run(
         "density_stats": density_stats,
         "category_density_stats": category_density_stats,
         "density_constancy_summary": density_constancy_summary,
+        "income_stats": income_stats,
+        "category_income_stats": category_income_stats,
+        "income_constancy_summary": income_constancy_summary,
+        "category_density_time_ci": category_density_time_ci,
+        "category_income_time_ci": category_income_time_ci,
+        "trips_by_income": trips_by_income,
+        "trips_by_density_scalar": trips_by_density_scalar,
+        "minutes_per_trip_by_population": minutes_per_trip_by_population,
+        "minutes_per_trip_by_density": minutes_per_trip_by_density,
+        "minutes_per_trip_by_income": minutes_per_trip_by_income,
+        "trips_by_category_density": trips_by_category_density,
+        "trips_by_category_income": trips_by_category_income,
+        "minutes_per_trip_by_category_density": minutes_per_trip_by_category_density,
+        "minutes_per_trip_by_category_income": minutes_per_trip_by_category_income,
+        "person_budget_weekday_population": person_budget_weekday_population,
+        "person_budget_weekday_category_density": (
+            person_budget_weekday_category_density
+        ),
+        "person_budget_weekday_category_income": (
+            person_budget_weekday_category_income
+        ),
+        "person_budget_all_week_population": person_budget_all_week_population,
+        "person_budget_all_week_category_density": (
+            person_budget_all_week_category_density
+        ),
+        "person_budget_all_week_category_income": (
+            person_budget_all_week_category_income
+        ),
         "mean_kh": mean_kh,
         "mean_cp": mean_cp,
         "mean_time_min": mean_time_min,
@@ -750,6 +983,16 @@ def run(
         "non_traveler_share_unweighted": non_traveler["share_unweighted"],
         "non_traveler_mimmosem_match": non_traveler["mimmosem_match"],
         "traveler_day_type_share": traveler_day_type_share,
+        # Weekday-only day arrays (section 9.9's 2008-2019 comparison,
+        # comparable in both surveys): used by `run_compare`'s
+        # `bootstrap_diff_ci` (ENTD 2008 describes only one weekday per
+        # respondent; EMP 2019's `typejour` marks the same reference
+        # weekday).
+        "weekday_days": {
+            key: days[key][days["typejour"] == 1]
+            for key in ("ident_men", "pond_jour", "total_time_min",
+                        "population_category", "trips_per_day")
+        },
         "figures": figures,
     }
 
@@ -920,6 +1163,134 @@ def _trips_per_day_by_group(
         )
         results.append((str(group), n, mean, ci))
     return results
+
+
+_DAY_TYPE_BY_TYPEJOUR = {1.0: "weekday", 2.0: "saturday", 3.0: "sunday"}
+
+
+def _person_universe(
+    survey, con: duckdb.DuckDBPyConnection, density_source: str
+) -> dict:
+    """The full respondent roster with its per-day-type immobility rows
+    (section 9.9 point 2's per-person budget), each respondent's
+    population category, residence density and income quintile joined
+    on: EMP 2019's `person_day_type_rows` (weekday/Saturday/Sunday, from
+    `IMMODEP_A`-`G`) or ENTD 2008's `person_weekday_rows` (weekday only,
+    from `V2_MOBILREF`), whichever the survey module exposes."""
+    if hasattr(survey, "person_day_type_rows"):
+        rows = survey.person_day_type_rows(con)
+        day_types = ("weekday", "saturday", "sunday")
+    else:
+        rows = survey.person_weekday_rows(con)
+        day_types = ("weekday",)
+    category_by_ident = survey.population_category_by_ident(con)
+    density_by_ident = survey.residence_density_by_ident(con, density_source)
+    income_by_ident = survey.income_quintile_by_ident(con)
+    ident_ind = np.array([r[0] for r in rows])
+    return {
+        "day_types": day_types,
+        "ident_men": np.array([r[1] for r in rows]),
+        "weight": np.array([r[2] for r in rows], dtype=float),
+        "day_type": np.array([r[3] for r in rows]),
+        "immobile": np.array([r[4] for r in rows], dtype=float),
+        "category": np.array(
+            [category_by_ident.get(i, "unknown") for i in ident_ind]
+        ),
+        "density": np.array(
+            [density_by_ident.get(i, "intermediate") for i in ident_ind]
+        ),
+        "income": np.array([income_by_ident.get(i, "unknown") for i in ident_ind]),
+    }
+
+
+def _person_budget_tables(
+    person: dict,
+    days: dict,
+    *,
+    value: np.ndarray,
+    day_types: tuple[str, ...],
+    day_type_weight: dict[str, float] | None,
+    n_reps: int,
+    seed: int,
+) -> tuple[
+    dict[str, daily_energy.PersonBudgetRow],
+    dict[tuple[str, str], daily_energy.PersonBudgetRow],
+    dict[tuple[str, str], daily_energy.PersonBudgetRow],
+]:
+    """Per-person budget (section 9.9 point 2) of ``value`` (a
+    ``days``-length array, e.g. `total_time_min`): by population
+    category alone, by category x density, and by category x income
+    quintile. ``day_types``/``day_type_weight`` select weekday-only
+    (both surveys) or all-week (EMP 2019 only, `daily_energy.
+    DAY_TYPE_WEIGHT`)."""
+    t_day_type = np.array(
+        [_DAY_TYPE_BY_TYPEJOUR.get(t, "weekday") for t in days["typejour"]]
+    )
+    by_category = daily_energy.person_budget_by_group(
+        person["category"],
+        person["day_type"],
+        person["ident_men"],
+        person["weight"],
+        person["immobile"],
+        days["population_category"],
+        t_day_type,
+        days["ident_men"],
+        days["pond_jour"],
+        value,
+        groups=list(daily_energy.POPULATION_CATEGORIES),
+        day_types=day_types,
+        day_type_weight=day_type_weight,
+        min_cell_n=MIN_CELL_N,
+        n_reps=n_reps,
+        seed=seed,
+    )
+
+    def _combined(key_array_p: np.ndarray, key_array_t: np.ndarray, key_order):
+        p_combined = np.array(
+            [f"{c}||{k}" for c, k in zip(person["category"], key_array_p, strict=False)]
+        )
+        t_combined = np.array(
+            [
+                f"{c}||{k}"
+                for c, k in zip(days["population_category"], key_array_t, strict=False)
+            ]
+        )
+        groups = [
+            f"{c}||{k}" for c in daily_energy.POPULATION_CATEGORIES for k in key_order
+        ]
+        raw = daily_energy.person_budget_by_group(
+            p_combined,
+            person["day_type"],
+            person["ident_men"],
+            person["weight"],
+            person["immobile"],
+            t_combined,
+            t_day_type,
+            days["ident_men"],
+            days["pond_jour"],
+            value,
+            groups=groups,
+            day_types=day_types,
+            day_type_weight=day_type_weight,
+            min_cell_n=MIN_CELL_N,
+            n_reps=n_reps,
+            seed=seed,
+        )
+        result = {}
+        for label, row in raw.items():
+            if label == "overall" or "||" not in label:
+                continue
+            category, key = label.split("||", 1)
+            result[(category, key)] = row
+        return result
+
+    by_category_density = _combined(
+        person["density"], days["home_density"], trip_legs.DENSITY_LABELS
+    )
+    by_category_income = _combined(
+        person["income"], days["income_quintile"], ("q1", "q2", "q3", "q4", "q5")
+    )
+    return by_category, by_category_density, by_category_income
 
 
 def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
@@ -1122,18 +1493,72 @@ def _figure_f1_trips_per_day(
     return path
 
 
+def _figure_scalar_by_category_key(
+    density_stats: dict[tuple[str, str], daily_energy.ScalarGroupStats],
+    income_stats: dict[tuple[str, str], daily_energy.ScalarGroupStats],
+    *,
+    title: str,
+    ylabel: str,
+    filename: str,
+    out_dir: Path,
+) -> Path:
+    """Two-panel bar chart (mean + 95% CI, n) by population category x
+    density class / income quintile: the shared engine behind f01b
+    (trips/day) and f01c (minutes/trip), section 9.9 point 2."""
+    categories = list(daily_energy.POPULATION_CATEGORIES)
+    fig, (ax_density, ax_income) = plt.subplots(1, 2, figsize=(14, 6))
+    for ax, stats, key_order, key_title in (
+        (ax_density, density_stats, trip_legs.DENSITY_LABELS, "density class"),
+        (ax_income, income_stats, ("q1", "q2", "q3", "q4", "q5"), "income quintile"),
+    ):
+        width = 0.8 / len(categories)
+        x = np.arange(len(key_order))
+        for i, category in enumerate(categories):
+            means, lowers, uppers = [], [], []
+            for key in key_order:
+                stat = stats.get((category, key))
+                if stat is None or stat.n < MIN_CELL_N:
+                    means.append(np.nan)
+                    lowers.append(0.0)
+                    uppers.append(0.0)
+                    continue
+                means.append(stat.mean)
+                lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
+                uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+            ax.bar(
+                x + i * width,
+                means,
+                width,
+                yerr=[lowers, uppers],
+                label=category,
+                capsize=2,
+            )
+        ax.set_xticks(x + width * (len(categories) - 1) / 2)
+        ax.set_xticklabels(key_order, rotation=30, ha="right")
+        ax.set_xlabel(f"By {key_title}")
+        ax.set_ylabel(ylabel)
+    ax_density.legend(fontsize=6)
+    fig.suptitle(title)
+    fig.tight_layout()
+    path = out_dir / filename
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
 def _figure_f2_time_density_by_category(
     con: duckdb.DuckDBPyConnection, out_dir: Path
-) -> Path:
-    """F2: weighted Gaussian kernel densities of daily travel time, one
-    curve per population category, overlaid and each normalised to 1
-    (section 9.9's time budget, 27 October 2026 decision: "the budget is
-    a property of persons", one b_k per category); dotted lines mark
-    each category's mean, matching F3's energy-density convention but on
-    a linear time axis (daily time is far less heavy-tailed than
-    energy)."""
+) -> list[Path]:
+    """F2: weighted Gaussian kernel densities of daily travel time, by
+    main-mode group, linear x-axis (daily time is far less heavy-tailed
+    than energy, unlike F3's log scale); (A) stacked and weight-scaled,
+    overall, (B) normalised and overlaid, one panel per population
+    category -- the same treatment F3 gives energy (section 9.9's
+    income update: "give time at least the same treatment as energy").
+    Groups/panels with fewer than ``MIN_CELL_N`` days are left out."""
+    day_groups = list(daily_energy.DAY_MODE_GROUPS) + ["multimodal", "other"]
     rows = con.sql("""
-        SELECT population_category, pond_jour, total_time_min
+        SELECT day_mode_group, population_category, pond_jour, total_time_min
         FROM day_summary
         WHERE total_time_min IS NOT NULL AND population_category != 'unknown'
     """).fetchnumpy()
@@ -1141,90 +1566,66 @@ def _figure_f2_time_density_by_category(
         rows["pond_jour"], rows["total_time_min"], scale=1.5
     )
     grid = np.linspace(0, np.percentile(rows["total_time_min"], 99.5), 300)
+    present_groups = [
+        g for g in day_groups if (rows["day_mode_group"] == g).sum() >= MIN_CELL_N
+    ]
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    for category in daily_energy.POPULATION_CATEGORIES:
-        mask = rows["population_category"] == category
-        if mask.sum() < MIN_CELL_N:
-            continue
+    fig, (ax_stack, ax_norm) = plt.subplots(1, 2, figsize=(13, 5))
+    cumulative = np.zeros_like(grid)
+    total_weight = rows["pond_jour"].sum()
+    for group in present_groups:
+        mask = rows["day_mode_group"] == group
         sub_time, sub_weight = rows["total_time_min"][mask], rows["pond_jour"][mask]
         density = daily_energy.weighted_gaussian_kde(
             grid, sub_time, sub_weight, bandwidth
         )
-        line = ax.plot(grid, density, label=category)[0]
-        mean_min = float(np.sum(sub_weight * sub_time) / sub_weight.sum())
-        ax.axvline(
-            mean_min, color=line.get_color(), linestyle=":", linewidth=0.8, alpha=0.7
+        scaled = density * (sub_weight.sum() / total_weight)
+        ax_stack.fill_between(
+            grid, cumulative, cumulative + scaled, label=group, alpha=0.85
         )
-    ax.set_xlabel("Daily travel time, minutes")
-    ax.set_ylabel("Density (each category normalised to 1)")
-    ax.set_title(
-        "F2. Daily travel time density by population category "
-        "(day with trips, needs scope, section 9.9)"
-    )
-    ax.legend(fontsize=7)
+        cumulative += scaled
+        mean_min = float(np.sum(sub_weight * sub_time) / sub_weight.sum())
+        ax_norm.plot(grid, density, label=group)
+        ax_norm.axvline(mean_min, linestyle=":", linewidth=0.8, alpha=0.6)
+    for ax in (ax_stack, ax_norm):
+        ax.set_xlabel("Daily travel time, minutes")
+    ax_stack.set_ylabel("Weighted density (stacked, group-scaled by its share)")
+    ax_stack.set_title("(A) Stacked by main-mode group")
+    ax_stack.legend(fontsize=6)
+    ax_norm.set_ylabel("Density (each group normalised to 1)")
+    ax_norm.set_title("(B) Normalised, overlaid; dotted lines mark group means")
+    ax_norm.legend(fontsize=6)
+    fig.suptitle("F2a. Daily travel time density, overall (section 9.9)")
     fig.tight_layout()
-    path = out_dir / "f02_time_density_by_category.png"
-    fig.savefig(path, dpi=110)
+    path_a = out_dir / "f02a_time_density_overall.png"
+    fig.savefig(path_a, dpi=110)
     plt.close(fig)
-    return path
 
-
-def _figure_f2b_time_heatmap_category_density(
-    con: duckdb.DuckDBPyConnection, out_dir: Path
-) -> Path:
-    """F2b: heatmap of mean daily travel time by population category x
-    density class (the residence commune's own density, section 9.9's
-    27 October 2026 decision), with n; blank where n < 50."""
-    categories = list(daily_energy.POPULATION_CATEGORIES)
-    densities = list(trip_legs.DENSITY_LABELS)
-    rows = con.sql("""
-        SELECT population_category, home_density, count(*) AS n,
-            sum(pond_jour * total_time_min) / sum(pond_jour) AS mean_time
-        FROM day_summary WHERE total_time_min IS NOT NULL
-            AND population_category != 'unknown'
-        GROUP BY 1, 2
-    """).fetchall()
-    matrix = np.full((len(categories), len(densities)), np.nan)
-    n_matrix = np.zeros((len(categories), len(densities)), dtype=int)
-    for category, density, n, mean_time in rows:
-        if category not in categories or density not in densities:
-            continue
-        i, j = categories.index(category), densities.index(density)
-        n_matrix[i, j] = n
-        if n >= MIN_CELL_N:
-            matrix[i, j] = mean_time
-
-    fig, ax = plt.subplots(figsize=(7, 6))
-    image = ax.imshow(matrix, aspect="auto", cmap="viridis")
-    ax.set_xticks(range(len(densities)))
-    ax.set_xticklabels(densities, rotation=30, ha="right")
-    ax.set_yticks(range(len(categories)))
-    ax.set_yticklabels(categories)
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
-            if not np.isnan(matrix[i, j]):
-                ax.text(
-                    j,
-                    i,
-                    f"{matrix[i, j]:.0f}\n(n={n_matrix[i, j]})",
-                    ha="center",
-                    va="center",
-                    fontsize=8,
-                    color="white",
-                )
-    fig.colorbar(image, ax=ax, label="Mean daily travel time, minutes")
-    ax.set_title(
-        "F2b. Mean daily travel time by population category x residence "
-        "density class\n(day with trips, needs scope, n < 50 cells "
-        "blank, section 9.9)",
-        fontsize=10,
+    categories = sorted(set(rows["population_category"]))
+    fig, axes = plt.subplots(2, 3, figsize=(16, 9))
+    for ax, category in zip(axes.flat, categories, strict=False):
+        category_mask = rows["population_category"] == category
+        for group in present_groups:
+            mask = category_mask & (rows["day_mode_group"] == group)
+            if mask.sum() < MIN_CELL_N:
+                continue
+            density = daily_energy.weighted_gaussian_kde(
+                grid, rows["total_time_min"][mask], rows["pond_jour"][mask], bandwidth
+            )
+            ax.plot(grid, density, label=group)
+        ax.set_title(category, fontsize=9)
+    for ax in axes.flat[len(categories) :]:
+        ax.axis("off")
+    axes.flat[0].legend(fontsize=6, loc="upper right")
+    fig.suptitle(
+        "F2b. Daily travel time density by population category "
+        "(normalised, section 9.9)"
     )
     fig.tight_layout()
-    path = out_dir / "f02b_time_heatmap_category_density.png"
-    fig.savefig(path, dpi=110)
+    path_b = out_dir / "f02b_time_density_by_category.png"
+    fig.savefig(path_b, dpi=110)
     plt.close(fig)
-    return path
+    return [path_a, path_b]
 
 
 def _figure_f3_energy_density(
@@ -1356,6 +1757,29 @@ def _bootstrap_stats_where(
         rows["total_time_min"],
         rows["total_energy_kh_kj"],
         rows["total_energy_cp_kj"],
+        n_reps=n_reps,
+        seed=seed,
+    )
+    return {s.group: s for s in stats}
+
+
+def _bootstrap_scalar_time_stats_where(
+    con: duckdb.DuckDBPyConnection, where_sql: str, *, n_reps: int, seed: int
+) -> dict[str, daily_energy.ScalarGroupStats]:
+    """Mean daily time with its 95% bootstrap CI, by main-mode group,
+    within one panel's ``where_sql`` scope (F4b's time-parity update:
+    "the same treatment energy already has")."""
+    rows = con.sql(
+        "SELECT day_mode_group, ident_men, pond_jour, total_time_min "
+        f"FROM day_summary WHERE total_time_min IS NOT NULL AND ({where_sql})"
+    ).fetchnumpy()
+    if len(rows["day_mode_group"]) == 0:
+        return {}
+    stats = daily_energy.bootstrap_scalar_group_stats(
+        rows["day_mode_group"],
+        rows["ident_men"],
+        rows["pond_jour"],
+        rows["total_time_min"],
         n_reps=n_reps,
         seed=seed,
     )
@@ -1531,15 +1955,47 @@ def _figure_f4_mean_by_mode(
     fig.savefig(path_energy, dpi=110)
     plt.close(fig)
 
+    time_panels = [
+        (
+            label,
+            _bootstrap_scalar_time_stats_where(
+                con, where_sql, n_reps=n_reps, seed=seed
+            ),
+        )
+        for label, where_sql in panel_where_sql
+    ]
     fig, axes = plt.subplots(2, 3, figsize=(19, 11))
-    for ax, (label, stats) in zip(axes.flat, panels, strict=False):
+    for ax, (label, stats), (_, time_stats) in zip(
+        axes.flat, panels, time_panels, strict=False
+    ):
         present = [g for g in groups if g in stats]
         x = np.arange(len(present))
-        means = [
-            stats[group].mean_time_min if stats[group].n >= MIN_CELL_N else np.nan
-            for group in present
-        ]
-        ax.bar(x, means, color="tab:gray")
+        means, lowers, uppers, medians = [], [], [], []
+        for group in present:
+            stat = time_stats.get(group)
+            if stat is None or stat.n < MIN_CELL_N:
+                means.append(np.nan)
+                lowers.append(0.0)
+                uppers.append(0.0)
+                medians.append(np.nan)
+                continue
+            means.append(stat.mean)
+            lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
+            uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+            medians.append(stat.median)
+        ax.bar(x, means, yerr=[lowers, uppers], color="tab:gray", capsize=2)
+        ax.scatter(
+            x,
+            medians,
+            marker="D",
+            color="black",
+            s=14,
+            zorder=3,
+            label="median" if ax is axes.flat[0] else None,
+        )
+        for xi, mean in zip(x, means, strict=True):
+            if not np.isnan(mean):
+                ax.text(xi, mean, f"{mean:.0f}", ha="center", va="bottom", fontsize=6)
         for i, group in enumerate(present):
             ax.text(
                 i,
@@ -1553,9 +2009,14 @@ def _figure_f4_mean_by_mode(
         ax.set_xticks(x)
         ax.set_xticklabels(present, rotation=45, ha="right", fontsize=7)
         ax.set_title(label, fontsize=9)
+        ax.legend(fontsize=6)
     for ax in axes.flat[len(panels) :]:
         ax.axis("off")
-    fig.suptitle("F4b. Mean daily travel time by main-mode group, n (section 9.9)")
+    fig.suptitle(
+        "F4b. Mean daily travel time by main-mode group, 95% CI, n, "
+        "median marker (section 9.9's income update: the same treatment "
+        "energy already has)"
+    )
     fig.tight_layout()
     path_time = out_dir / "f04b_mean_time_by_mode.png"
     fig.savefig(path_time, dpi=110)
@@ -1617,6 +2078,184 @@ def _figure_f5_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
     )
     fig.tight_layout()
     path = out_dir / "f05_heatmaps.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
+def _heatmap_matrix(
+    con: duckdb.DuckDBPyConnection,
+    row_col: str,
+    row_values: list[str],
+    col_col: str,
+    col_values: list[str],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Mean daily time (n, blank where n < 50) for a (``row_col``,
+    ``col_col``) heatmap cell (section 9.9's income update: time
+    heatmaps, mode x category, mode x density, category x density,
+    category x income quintile)."""
+    rows = con.sql(f"""
+        SELECT {row_col} AS r, {col_col} AS c, count(*) AS n,
+            sum(pond_jour * total_time_min) / sum(pond_jour) AS mean_time
+        FROM day_summary WHERE total_time_min IS NOT NULL
+            AND {row_col} != 'unknown' AND {col_col} != 'unknown'
+        GROUP BY 1, 2
+    """).fetchall()
+    matrix = np.full((len(row_values), len(col_values)), np.nan)
+    n_matrix = np.zeros((len(row_values), len(col_values)), dtype=int)
+    for r, c, n, mean_time in rows:
+        if r not in row_values or c not in col_values:
+            continue
+        i, j = row_values.index(r), col_values.index(c)
+        n_matrix[i, j] = n
+        if n >= MIN_CELL_N:
+            matrix[i, j] = mean_time
+    return matrix, n_matrix
+
+
+def _draw_heatmap_panel(fig, ax, matrix, n_matrix, row_values, col_values, title):
+    image = ax.imshow(matrix, aspect="auto", cmap="viridis")
+    ax.set_xticks(range(len(col_values)))
+    ax.set_xticklabels(col_values, rotation=30, ha="right", fontsize=7)
+    ax.set_yticks(range(len(row_values)))
+    ax.set_yticklabels(row_values, fontsize=7)
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            if not np.isnan(matrix[i, j]):
+                ax.text(
+                    j,
+                    i,
+                    f"{matrix[i, j]:.0f}\n(n={n_matrix[i, j]})",
+                    ha="center",
+                    va="center",
+                    fontsize=6,
+                    color="white",
+                )
+    ax.set_title(title, fontsize=9)
+    fig.colorbar(
+        image, ax=ax, label="Mean daily travel time, minutes", fraction=0.046
+    )
+
+
+def _figure_f5_time_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
+    """F5b: 4-panel heatmaps of mean daily travel time -- main-mode
+    group x population category, mode x density class, population
+    category x density class, category x income quintile -- with n;
+    blank where n < 50 (section 9.9's income update: "give time the
+    same treatment energy already has")."""
+    groups = list(daily_energy.DAY_MODE_GROUPS) + ["multimodal", "other"]
+    categories = list(daily_energy.POPULATION_CATEGORIES)
+    densities = list(trip_legs.DENSITY_LABELS)
+    incomes = ["q1", "q2", "q3", "q4", "q5"]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    panels = (
+        ("day_mode_group", groups, "population_category", categories,
+         "(A) mode x population category"),
+        ("day_mode_group", groups, "home_density", densities,
+         "(B) mode x density class"),
+        ("population_category", categories, "home_density", densities,
+         "(C) category x density class"),
+        ("population_category", categories, "income_quintile", incomes,
+         "(D) category x income quintile"),
+    )
+    for ax, (row_col, row_values, col_col, col_values, title) in zip(
+        axes.flat, panels, strict=True
+    ):
+        matrix, n_matrix = _heatmap_matrix(
+            con, row_col, row_values, col_col, col_values
+        )
+        _draw_heatmap_panel(fig, ax, matrix, n_matrix, row_values, col_values, title)
+    fig.suptitle(
+        "F5b. Mean daily travel time, four cross-tabulations (n < 50 "
+        "cells blank, section 9.9)"
+    )
+    fig.tight_layout()
+    path = out_dir / "f05b_time_heatmaps.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
+def _figure_f10_constancy(
+    category_density_time_ci: dict[tuple[str, str], daily_energy.ScalarGroupStats],
+    category_income_time_ci: dict[tuple[str, str], daily_energy.ScalarGroupStats],
+    person_budget_category_density: dict[tuple[str, str], daily_energy.PersonBudgetRow],
+    person_budget_category_income: dict[tuple[str, str], daily_energy.PersonBudgetRow],
+    out_dir: Path,
+) -> Path:
+    """F10: one panel per population category, mean daily time with 95%
+    CI by density class and by income quintile, per day with trips and
+    per person (section 9.9's constancy test): is the budget the same
+    across density classes and income classes within a category?"""
+    densities = list(trip_legs.DENSITY_LABELS)
+    incomes = ["q1", "q2", "q3", "q4", "q5"]
+    categories = list(daily_energy.POPULATION_CATEGORIES)
+
+    fig, axes = plt.subplots(2, 3, figsize=(19, 11))
+    for ax, category in zip(axes.flat, categories, strict=False):
+        all_xticks, all_xlabels = [], []
+        x_start = 0
+        for key_order, store, person_store, color, label in (
+            (densities, category_density_time_ci, person_budget_category_density,
+             "tab:blue", "density"),
+            (incomes, category_income_time_ci, person_budget_category_income,
+             "tab:orange", "income"),
+        ):
+            x = x_start + np.arange(len(key_order))
+            all_xticks.extend(x.tolist())
+            all_xlabels.extend(key_order)
+            x_start = x[-1] + 2  # a one-slot gap between the two series
+            means, lowers, uppers = [], [], []
+            for key in key_order:
+                stat = store.get((category, key))
+                if stat is None or stat.n < MIN_CELL_N:
+                    means.append(np.nan)
+                    lowers.append(0.0)
+                    uppers.append(0.0)
+                    continue
+                means.append(stat.mean)
+                lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
+                uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+            ax.errorbar(
+                x,
+                means,
+                yerr=[lowers, uppers],
+                fmt="o",
+                color=color,
+                capsize=3,
+                label=f"day with trips ({label})" if ax is axes.flat[0] else None,
+            )
+            person_means = []
+            for key in key_order:
+                row = person_store.get((category, key))
+                person_means.append(
+                    row.budget if row is not None and row.n >= MIN_CELL_N else np.nan
+                )
+            ax.plot(
+                x,
+                person_means,
+                marker="x",
+                linestyle="none",
+                color=color,
+                markersize=8,
+                label=f"per person ({label})" if ax is axes.flat[0] else None,
+            )
+        ax.set_xticks(all_xticks)
+        ax.set_xticklabels(all_xlabels, rotation=30, ha="right", fontsize=6)
+        ax.set_title(category, fontsize=9)
+        ax.set_ylabel("Mean daily time, minutes")
+    for ax in axes.flat[len(categories) :]:
+        ax.axis("off")
+    axes.flat[0].legend(fontsize=6, loc="upper right")
+    fig.suptitle(
+        "F10. Constancy: mean daily time by density class and income "
+        "quintile, within each population category (circles = day with "
+        "trips with 95% CI; crosses = per person, point estimate; "
+        "section 9.9)"
+    )
+    fig.tight_layout()
+    path = out_dir / "f10_constancy.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
@@ -1834,41 +2473,189 @@ def _figure_f9_motive_energy(
 
 def _format_category_density_table(
     category_density_stats: dict[tuple[str, str], daily_energy.GroupStats],
+    time_ci_stats: dict[tuple[str, str], daily_energy.ScalarGroupStats] | None = None,
 ) -> list[str]:
     """Population category x density class: mean daily time (n < 50
-    blank), section 9.9's time-budget table (point 2a). `GroupStats` has
-    no bootstrap CI on time (only on energy, section 9.9's design), so
-    only the point mean and median are shown here."""
-    lines = [
-        "| Category | Density | n | mean time (min) | median time (min) |",
-        "|---|---|---|---|---|",
-    ]
+    blank), section 9.9's time-budget table (point 2a). ``time_ci_stats``
+    (``_scalar_by_combined_key`` on ``total_time_min``) adds a 95% CI
+    column, giving time the same mean+CI+median treatment energy already
+    has (section 9.9's income update); omitted, the CI column is left
+    out (backward compatible)."""
+    return _format_category_key_table(
+        category_density_stats,
+        trip_legs.DENSITY_LABELS,
+        "Density",
+        time_ci_stats=time_ci_stats,
+    )
+
+
+def _format_category_key_table(
+    category_key_stats: dict[tuple[str, str], daily_energy.GroupStats],
+    key_order: tuple[str, ...],
+    key_label: str,
+    time_ci_stats: dict[tuple[str, str], daily_energy.ScalarGroupStats] | None = None,
+) -> list[str]:
+    """Population category x ``key_label`` (density or income quintile):
+    mean daily time (n < 50 blank), with an optional 95% CI column
+    (``time_ci_stats``, section 9.9's time-parity update). Generalises
+    ``_format_category_density_table`` to any ordered key."""
+    header = f"| Category | {key_label} | n | mean time (min)"
+    sep = "|---|---|---|---"
+    if time_ci_stats is not None:
+        header += " | 95% CI"
+        sep += "|---"
+    header += " | median time (min) |"
+    sep += "|---|"
+    lines = [header, sep]
     for category in daily_energy.POPULATION_CATEGORIES:
-        for density in trip_legs.DENSITY_LABELS:
-            stat = category_density_stats.get((category, density))
+        for key in key_order:
+            stat = category_key_stats.get((category, key))
             if stat is None or stat.n < MIN_CELL_N:
                 n = stat.n if stat else 0
-                lines.append(f"| {category} | {density} | {n} | - | - |")
+                row = f"| {category} | {key} | {n} | -"
+                if time_ci_stats is not None:
+                    row += " | -"
+                row += " | - |"
+                lines.append(row)
                 continue
-            lines.append(
-                f"| {category} | {density} | {stat.n} | "
-                f"{stat.mean_time_min:.1f} | {stat.median_time_min:.1f} |"
-            )
+            row = f"| {category} | {key} | {stat.n} | {stat.mean_time_min:.1f}"
+            if time_ci_stats is not None:
+                ci_stat = time_ci_stats.get((category, key))
+                row += (
+                    f" | [{ci_stat.mean_ci[0]:.1f}, {ci_stat.mean_ci[1]:.1f}]"
+                    if ci_stat is not None
+                    else " | -"
+                )
+            row += f" | {stat.median_time_min:.1f} |"
+            lines.append(row)
     return lines
 
 
 def _format_constancy_summary_table(
-    rows: list[tuple[str, float, float, float]],
+    rows: list[tuple[str, float, float, float]], named_label: str = "dense/very_sparse"
 ) -> list[str]:
     lines = [
-        "| Category | dense/very_sparse | max/min | CV across classes |",
+        f"| Category | {named_label} | max/min | CV across classes |",
         "|---|---|---|---|",
     ]
-    for category, dense_very_sparse, max_min, cv in rows:
-        dv = "-" if np.isnan(dense_very_sparse) else f"{dense_very_sparse:.2f}"
+    for category, named_ratio, max_min, cv in rows:
+        nr = "-" if np.isnan(named_ratio) else f"{named_ratio:.2f}"
         mm = "-" if np.isnan(max_min) else f"{max_min:.2f}"
         cvs = "-" if np.isnan(cv) else f"{cv:.2f}"
-        lines.append(f"| {category} | {dv} | {mm} | {cvs} |")
+        lines.append(f"| {category} | {nr} | {mm} | {cvs} |")
+    return lines
+
+
+def _format_scalar_group_table(
+    stats: list[daily_energy.ScalarGroupStats], *, label: str, decimals: int = 2
+) -> list[str]:
+    """Generic mean+CI+median table for one arbitrary scalar
+    (trips/day, minutes/trip, section 9.9 point 2): one row per group,
+    n < 50 blank."""
+    lines = [
+        f"| Group | n | weighted n | mean {label} | 95% CI | median {label} |",
+        "|---|---|---|---|---|---|",
+    ]
+    for stat in sorted(stats, key=lambda s: -s.weighted_n):
+        if stat.n < MIN_CELL_N:
+            lines.append(
+                f"| {stat.group} | {stat.n} | {stat.weighted_n:,.0f} | - | - | - |"
+            )
+            continue
+        lines.append(
+            f"| {stat.group} | {stat.n} | {stat.weighted_n:,.0f} | "
+            f"{stat.mean:.{decimals}f} | [{stat.mean_ci[0]:.{decimals}f}, "
+            f"{stat.mean_ci[1]:.{decimals}f}] | {stat.median:.{decimals}f} |"
+        )
+    return lines
+
+
+def _format_person_budget_table(
+    rows: dict[str, daily_energy.PersonBudgetRow],
+) -> list[str]:
+    """Per-person budget (section 9.9 point 2) by population category:
+    P(out), T|out, n, budget and its 95% CI (blank when there is no
+    bootstrap, i.e. an all-week budget)."""
+    lines = [
+        "| Category | n | P(out) | T\\|out (min) | budget (min) | 95% CI |",
+        "|---|---|---|---|---|---|",
+    ]
+    order = [*daily_energy.POPULATION_CATEGORIES, "overall"]
+    for category in order:
+        row = rows.get(category)
+        if row is None or row.n == 0:
+            lines.append(f"| {category} | 0 | - | - | - | - |")
+            continue
+        ci = (
+            f"[{row.budget_ci[0]:.1f}, {row.budget_ci[1]:.1f}]"
+            if not np.isnan(row.budget_ci[0])
+            else "-"
+        )
+        lines.append(
+            f"| {category} | {row.n} | {row.p_out:.3f} | "
+            f"{row.value_given_out:.1f} | {row.budget:.1f} | {ci} |"
+        )
+    return lines
+
+
+def _format_person_budget_key_table(
+    rows: dict[tuple[str, str], daily_energy.PersonBudgetRow],
+    key_order: tuple[str, ...],
+    key_label: str,
+) -> list[str]:
+    """Per-person budget by population category x key (density or
+    income quintile, section 9.9 point 2): P(out), T|out, n, budget and
+    its 95% CI."""
+    lines = [
+        f"| Category | {key_label} | n | P(out) | T\\|out (min) | "
+        "budget (min) | 95% CI |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for category in daily_energy.POPULATION_CATEGORIES:
+        for key in key_order:
+            row = rows.get((category, key))
+            if row is None or row.n == 0:
+                lines.append(f"| {category} | {key} | 0 | - | - | - | - |")
+                continue
+            ci = (
+                f"[{row.budget_ci[0]:.1f}, {row.budget_ci[1]:.1f}]"
+                if not np.isnan(row.budget_ci[0])
+                else "-"
+            )
+            lines.append(
+                f"| {category} | {key} | {row.n} | {row.p_out:.3f} | "
+                f"{row.value_given_out:.1f} | {row.budget:.1f} | {ci} |"
+            )
+    return lines
+
+
+def _format_scalar_category_key_table(
+    category_key_stats: dict[tuple[str, str], daily_energy.ScalarGroupStats],
+    key_order: tuple[str, ...],
+    key_label: str,
+    *,
+    label: str,
+    decimals: int = 2,
+) -> list[str]:
+    """Population category x key (density or income quintile): mean +
+    95% CI + median of one arbitrary scalar (trips/day, minutes/trip),
+    n < 50 blank."""
+    lines = [
+        f"| Category | {key_label} | n | mean {label} | 95% CI | median {label} |",
+        "|---|---|---|---|---|---|",
+    ]
+    for category in daily_energy.POPULATION_CATEGORIES:
+        for key in key_order:
+            stat = category_key_stats.get((category, key))
+            if stat is None or stat.n < MIN_CELL_N:
+                n = stat.n if stat else 0
+                lines.append(f"| {category} | {key} | {n} | - | - | - |")
+                continue
+            lines.append(
+                f"| {category} | {key} | {stat.n} | {stat.mean:.{decimals}f} | "
+                f"[{stat.mean_ci[0]:.{decimals}f}, {stat.mean_ci[1]:.{decimals}f}] | "
+                f"{stat.median:.{decimals}f} |"
+            )
     return lines
 
 
@@ -2121,13 +2908,152 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "The reference constant (section 9.9, 27 October 2026 decision): "
         "is mean daily travel time the same across density classes of "
         "residence, within each population category? Day with trips, "
-        "needs scope. Cells of fewer than 50 persons blank.",
+        "needs scope. Cells of fewer than 50 persons blank. The 95% CI "
+        "column (bootstrap over households) gives time the same "
+        "treatment energy already has (section 9.9's income update).",
         "",
-        *_format_category_density_table(results["category_density_stats"]),
+        *_format_category_density_table(
+            results["category_density_stats"], results["category_density_time_ci"]
+        ),
         "",
         "### Constancy summary",
         "",
         *_format_constancy_summary_table(results["density_constancy_summary"]),
+        "",
+        "## Time budget: constancy across income quintiles (section 9.9's "
+        "income update)",
+        "",
+        "Household income per consumption unit (modified OECD scale), in "
+        "quintiles computed within this survey with individual weights "
+        "(`docs/data/entd2008.md`'s \"Income variables\"): is mean daily "
+        "travel time the same across income quintiles, within each "
+        "population category, as income is treated as density is? Day "
+        "with trips, needs scope. `'unknown'` (missing/refused income) "
+        "is its own class, excluded from the constancy summary (not an "
+        "ordered quantile).",
+        "",
+        *_format_category_key_table(
+            results["category_income_stats"],
+            ("q1", "q2", "q3", "q4", "q5", "unknown"),
+            "Income quintile",
+            results["category_income_time_ci"],
+        ),
+        "",
+        "### Constancy summary",
+        "",
+        *_format_constancy_summary_table(
+            results["income_constancy_summary"], named_label="q5/q1"
+        ),
+        "",
+        "## Trips per day and minutes per trip, by category, density and "
+        "income quintile (section 9.9 point 2: daily time = trips/day x "
+        "minutes/trip)",
+        "",
+        "### Trips per day",
+        "",
+        "#### By population category x density class",
+        "",
+        *_format_scalar_category_key_table(
+            results["trips_by_category_density"],
+            trip_legs.DENSITY_LABELS,
+            "Density",
+            label="trips/day",
+        ),
+        "",
+        "#### By population category x income quintile",
+        "",
+        *_format_scalar_category_key_table(
+            results["trips_by_category_income"],
+            ("q1", "q2", "q3", "q4", "q5", "unknown"),
+            "Income quintile",
+            label="trips/day",
+        ),
+        "",
+        "### Minutes per trip",
+        "",
+        "#### By population category x density class",
+        "",
+        *_format_scalar_category_key_table(
+            results["minutes_per_trip_by_category_density"],
+            trip_legs.DENSITY_LABELS,
+            "Density",
+            label="min/trip",
+        ),
+        "",
+        "#### By population category x income quintile",
+        "",
+        *_format_scalar_category_key_table(
+            results["minutes_per_trip_by_category_income"],
+            ("q1", "q2", "q3", "q4", "q5", "unknown"),
+            "Income quintile",
+            label="min/trip",
+        ),
+        "",
+        "#### By density class and by income quintile (marginals)",
+        "",
+        *_format_scalar_group_table(
+            results["trips_by_density_scalar"], label="trips/day"
+        ),
+        "",
+        *_format_scalar_group_table(results["trips_by_income"], label="trips/day"),
+        "",
+        *_format_scalar_group_table(
+            results["minutes_per_trip_by_population"], label="min/trip"
+        ),
+        "",
+        *_format_scalar_group_table(
+            results["minutes_per_trip_by_density"], label="min/trip"
+        ),
+        "",
+        *_format_scalar_group_table(
+            results["minutes_per_trip_by_income"], label="min/trip"
+        ),
+        "",
+        "## Per-person budget, days without trips included (section 9.9 "
+        "point 2b)",
+        "",
+        "P(out on the weekday) x T(weekday|out), weekday only (comparable "
+        "with ENTD 2008's own, unverified-weekend-eligibility budget); "
+        + (
+            "EMP 2019 additionally reports the all-week budget, Sigma_d "
+            "w_d . P(out on day type d) . T(d|out), w_d = 5/7, 1/7, 1/7 "
+            "(P from `IMMODEP_A`-`G`, T from the described days of each "
+            "day type; point estimate only, no bootstrap CI)."
+            if results["person_budget_all_week_population"] is not None
+            else "ENTD 2008 reports the weekday budget only: its weekend "
+            "eligibility is unverified (`docs/progress.md`)."
+        ),
+        "",
+        "### By population category",
+        "",
+        "#### Weekday",
+        "",
+        *_format_person_budget_table(results["person_budget_weekday_population"]),
+        "",
+    ]
+    if results["person_budget_all_week_population"] is not None:
+        lines += [
+            "#### All-week",
+            "",
+            *_format_person_budget_table(results["person_budget_all_week_population"]),
+            "",
+        ]
+    lines += [
+        "### By population category x density class (weekday budget)",
+        "",
+        *_format_person_budget_key_table(
+            results["person_budget_weekday_category_density"],
+            trip_legs.DENSITY_LABELS,
+            "Density",
+        ),
+        "",
+        "### By population category x income quintile (weekday budget)",
+        "",
+        *_format_person_budget_key_table(
+            results["person_budget_weekday_category_income"],
+            ("q1", "q2", "q3", "q4", "q5"),
+            "Income quintile",
+        ),
         "",
     ]
     if results["quirk_fill_rates"] is not None:
@@ -2531,6 +3457,108 @@ def _group_table_two_surveys(
     return lines
 
 
+def _format_weekday_comparison(
+    results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
+) -> list[str]:
+    """Section 9.9's weekday-only 2008-2019 comparison (per day with
+    trips and per person), with a bootstrap difference interval: ENTD
+    2008 describes only the reference weekday, so this is the one
+    scope both surveys' per-person budgets are directly comparable on
+    (the per-day-with-trips comparison elsewhere in this report mixes
+    weekday/Saturday/Sunday)."""
+    lines = [
+        "## Weekday-only comparison, 2008 vs 2019 (density proxy in "
+        "both; section 9.9's per-person budget is only defined on the "
+        "weekday in both surveys)",
+        "",
+        "### Daily time, per day with trips",
+        "",
+        "| Category | 2008 (min) | 2019 (min) | 2019 - 2008 | 95% CI |",
+        "|---|---|---|---|---|",
+    ]
+    wd_2008, wd_2019 = results_2008["weekday_days"], results_2019["weekday_days"]
+    for category in (*daily_energy.POPULATION_CATEGORIES, None):
+        label = category or "overall"
+        mask_2008 = (
+            wd_2008["population_category"] == category
+            if category
+            else np.ones(len(wd_2008["pond_jour"]), dtype=bool)
+        )
+        mask_2019 = (
+            wd_2019["population_category"] == category
+            if category
+            else np.ones(len(wd_2019["pond_jour"]), dtype=bool)
+        )
+        n8, n9 = int(mask_2008.sum()), int(mask_2019.sum())
+        if n8 < MIN_CELL_N or n9 < MIN_CELL_N:
+            lines.append(f"| {label} | - | - | - | - |")
+            continue
+        mean_2008 = float(
+            np.sum(
+                wd_2008["pond_jour"][mask_2008]
+                * wd_2008["total_time_min"][mask_2008]
+            )
+            / wd_2008["pond_jour"][mask_2008].sum()
+        )
+        mean_2019 = float(
+            np.sum(
+                wd_2019["pond_jour"][mask_2019]
+                * wd_2019["total_time_min"][mask_2019]
+            )
+            / wd_2019["pond_jour"][mask_2019].sum()
+        )
+        diff, ci = daily_energy.bootstrap_diff_ci(
+            wd_2008["ident_men"][mask_2008],
+            wd_2008["pond_jour"][mask_2008],
+            wd_2008["total_time_min"][mask_2008],
+            wd_2019["ident_men"][mask_2019],
+            wd_2019["pond_jour"][mask_2019],
+            wd_2019["total_time_min"][mask_2019],
+            n_reps=n_reps,
+            seed=seed,
+        )
+        lines.append(
+            f"| {label} | {mean_2008:.1f} | {mean_2019:.1f} | {diff:+.1f} | "
+            f"[{ci[0]:+.1f}, {ci[1]:+.1f}] |"
+        )
+    lines += [
+        "",
+        "### Daily time, per person (days without trips included)",
+        "",
+        "P(out on the weekday) x T(weekday|out); the difference shown is "
+        "between the two surveys' independent point budgets, without a "
+        "joint bootstrap interval (each side's own 95% CI is shown "
+        "instead, from its single-survey per-person budget table above).",
+        "",
+        "| Category | 2008 (min) | 2008 95% CI | 2019 (min) | 2019 95% CI "
+        "| 2019 - 2008 |",
+        "|---|---|---|---|---|---|",
+    ]
+    budgets_2008 = results_2008["person_budget_weekday_population"]
+    budgets_2019 = results_2019["person_budget_weekday_population"]
+    for category in (*daily_energy.POPULATION_CATEGORIES, "overall"):
+        row8, row9 = budgets_2008.get(category), budgets_2019.get(category)
+        if row8 is None or row9 is None or row8.n == 0 or row9.n == 0:
+            lines.append(f"| {category} | - | - | - | - | - |")
+            continue
+        ci8 = (
+            f"[{row8.budget_ci[0]:.1f}, {row8.budget_ci[1]:.1f}]"
+            if not np.isnan(row8.budget_ci[0])
+            else "-"
+        )
+        ci9 = (
+            f"[{row9.budget_ci[0]:.1f}, {row9.budget_ci[1]:.1f}]"
+            if not np.isnan(row9.budget_ci[0])
+            else "-"
+        )
+        lines.append(
+            f"| {category} | {row8.budget:.1f} | {ci8} | {row9.budget:.1f} | "
+            f"{ci9} | {row9.budget - row8.budget:+.1f} |"
+        )
+    lines.append("")
+    return lines
+
+
 def run_compare(
     out_path: Path,
     config_path: Path = DEFAULT_CONFIG_PATH,
@@ -2736,6 +3764,9 @@ def run_compare(
         f"- Mean daily time: 2008 {results_2008['mean_time_min']:.1f} min; "
         f"2019 {results_2019_proxy['mean_time_min']:.1f} min.",
         "",
+        *_format_weekday_comparison(
+            results_2008, results_2019_proxy, n_reps=n_reps, seed=seed
+        ),
     ]
 
     figure_path = _figure_compare_energy_time(
