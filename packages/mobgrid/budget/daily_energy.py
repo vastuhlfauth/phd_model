@@ -29,6 +29,17 @@ from mobgrid.energy.rates import EnergyConfig
 #: 615 kJ of daily travel energy per person and day (section 9.9).
 KH_DAILY_ENERGY_KJ = 615.0
 
+#: Section 6.1's five population categories, in the order the time
+#: budget's b_k is reported (section 9.9, 27 October 2026 decision:
+#: "one budget b_k is defined for each population category").
+POPULATION_CATEGORIES = (
+    "children_6_17",
+    "employed",
+    "unemployed",
+    "retired",
+    "other_inactive",
+)
+
 #: Day-mode groups directly comparable with Koelbl & Helbing's six
 #: reference modes, expanded per the updated section 9.9 point 3 (a
 #: household/carpool passenger split); 'multimodal' and 'other' are kept

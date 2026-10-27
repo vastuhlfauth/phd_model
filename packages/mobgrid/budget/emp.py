@@ -28,7 +28,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mobgrid.budget import daily_energy, emp2019, entd2008
+from mobgrid.budget import daily_energy, emp2019, entd2008, trip_legs
 from mobgrid.energy.rates import (
     MET_MINUTE_KJ_PER_KG,
     EnergyConfig,
@@ -237,6 +237,67 @@ def _group_stats(
     )
 
 
+def _category_density_stats(
+    days: dict, *, n_reps: int, seed: int
+) -> dict[tuple[str, str], daily_energy.GroupStats]:
+    """Population category x density class, combined into one group key
+    for `bootstrap_group_stats` (section 9.9, point 2a); keyed back out
+    to ``(category, density)`` tuples."""
+    combined = np.array(
+        [
+            f"{c}||{d}"
+            for c, d in zip(
+                days["population_category"], days["home_density"], strict=False
+            )
+        ]
+    )
+    stats = daily_energy.bootstrap_group_stats(
+        combined,
+        days["ident_men"],
+        days["pond_jour"],
+        days["total_time_min"],
+        days["total_energy_kh_kj"],
+        days["total_energy_cp_kj"],
+        n_reps=n_reps,
+        seed=seed,
+    )
+    result = {}
+    for s in stats:
+        category, density = s.group.split("||", 1)
+        result[(category, density)] = s
+    return result
+
+
+def _density_constancy_summary(
+    category_density_stats: dict[tuple[str, str], daily_energy.GroupStats],
+) -> list[tuple[str, float, float, float]]:
+    """Section 9.9's constancy summary: within each population category,
+    the dense/very_sparse ratio, the highest/lowest-density-class ratio
+    and the coefficient of variation across classes, mean daily time
+    (cells of fewer than `MIN_CELL_N` persons excluded)."""
+    rows = []
+    for category in daily_energy.POPULATION_CATEGORIES:
+        present = {
+            density: s
+            for (cat, density), s in category_density_stats.items()
+            if cat == category and s.n >= MIN_CELL_N
+        }
+        if not present:
+            rows.append((category, float("nan"), float("nan"), float("nan")))
+            continue
+        values = {d: s.mean_time_min for d, s in present.items()}
+        dense_very_sparse = (
+            values["dense"] / values["very_sparse"]
+            if "dense" in values and "very_sparse" in values
+            else float("nan")
+        )
+        arr = np.array(list(values.values()))
+        ratio = arr.max() / arr.min()
+        cv = arr.std() / arr.mean()
+        rows.append((category, dense_very_sparse, ratio, cv))
+    return rows
+
+
 def _build_base(
     con: duckdb.DuckDBPyConnection,
     survey,
@@ -370,6 +431,8 @@ def run(
         days, "population_category", n_reps=n_reps, seed=seed
     )
     density_stats = _group_stats(days, "home_density", n_reps=n_reps, seed=seed)
+    category_density_stats = _category_density_stats(days, n_reps=n_reps, seed=seed)
+    density_constancy_summary = _density_constancy_summary(category_density_stats)
 
     mean_kh, var_kh = daily_energy.weighted_mean_variance(
         days["pond_jour"], days["total_energy_kh_kj"]
@@ -515,6 +578,8 @@ def run(
             motive_by_density,
             out_dir,
         ),
+        _figure_f2_time_density_by_category(con, out_dir),
+        _figure_f2b_time_heatmap_category_density(con, out_dir),
         *_figure_f3_energy_density(con, out_dir),
         *f4_paths,
         _figure_f5_heatmaps(con, out_dir),
@@ -643,6 +708,8 @@ def run(
         "mode_stats": mode_stats,
         "population_stats": population_stats,
         "density_stats": density_stats,
+        "category_density_stats": category_density_stats,
+        "density_constancy_summary": density_constancy_summary,
         "mean_kh": mean_kh,
         "mean_cp": mean_cp,
         "mean_time_min": mean_time_min,
@@ -753,21 +820,57 @@ def _run_robustness(
             con, where_sql=f"({base_where_sql}) AND ({extra_where})"
         )
 
-    # Terminal-leg scale sweep (also provides the base case).
-    survey.build_trip_legs(
-        con, config, terminal_scale=0.5, density_source=density_source
-    )
+    # Terminal-legs variants (section 9.9, 27 October 2026 decision):
+    # 'declared' (also the base case: every other table/figure in this
+    # report uses it, since it is `trip_legs.build_trip_legs`'s own
+    # default) and 'declared_plus1'. `terminal_scale`'s old x0.5/x1.5
+    # sweep only has an effect under `terminal_legs='defaults'`
+    # (`trip_legs.build_trip_legs`'s docstring), so those two rows pass
+    # it explicitly -- otherwise they would silently duplicate the base
+    # case under the new default.
+    survey.build_trip_legs(con, config, density_source=density_source)
     _summary()
-    _row("terminal legs x0.5", want_ci=True)
+    _row("declared (base case)", want_ci=True)
 
     survey.build_trip_legs(
-        con, config, terminal_scale=1.0, density_source=density_source
+        con, config, terminal_legs="declared_plus1", density_source=density_source
     )
     _summary()
-    _row("terminal legs x1 (base case)", want_ci=True)
+    _row("declared + 1 min (car/bike/urban PT)", want_ci=True)
 
-    # Weekdays-only and local-trips-only reuse the base (x1.0) trip legs,
-    # only `day_summary`'s own filter changes.
+    survey.build_trip_legs(
+        con,
+        config,
+        terminal_legs="defaults",
+        terminal_scale=0.5,
+        density_source=density_source,
+    )
+    _summary()
+    _row("former defaults, terminal legs x0.5", want_ci=True)
+
+    survey.build_trip_legs(
+        con,
+        config,
+        terminal_legs="defaults",
+        terminal_scale=1.0,
+        density_source=density_source,
+    )
+    _summary()
+    _row("former defaults, terminal legs x1", want_ci=True)
+
+    survey.build_trip_legs(
+        con,
+        config,
+        terminal_legs="defaults",
+        terminal_scale=1.5,
+        density_source=density_source,
+    )
+    _summary()
+    _row("former defaults, terminal legs x1.5", want_ci=True)
+
+    # Weekdays-only and local-trips-only reuse the base (declared-legs)
+    # trip legs, only `day_summary`'s own filter changes.
+    survey.build_trip_legs(con, config, density_source=density_source)
     _summary("typejour = 1")
     _row("weekdays only", want_ci=False)
     _summary("mobloc = 1")
@@ -775,18 +878,12 @@ def _run_robustness(
     _summary()  # restore the (base_where_sql-filtered) unfiltered base
 
     survey.build_trip_legs(
-        con, config, terminal_scale=1.5, density_source=density_source
-    )
-    _summary()
-    _row("terminal legs x1.5", want_ci=True)
-
-    survey.build_trip_legs(
         con, config, bike_p0_override_w=P0_REFERENCE_W, density_source=density_source
     )
     _summary()
     _row(f"P0 = {P0_REFERENCE_W:g} W (section 9.7 reference)", want_ci=False)
 
-    # Restore `trip_legs` itself to the base case (terminal_scale=1,
+    # Restore `trip_legs` itself to the base case (declared legs,
     # calibrated P0): every variant above rebuilds `trip_legs` in place,
     # so without this the last variant's mutation (here, the P0=52.5 W
     # override) would silently leak into every `trip_legs`-reading
@@ -794,9 +891,7 @@ def _run_robustness(
     # decomposition, etc.) -- the bug behind section 9.9's 2026-10-20
     # fix 0 (F4's "overall" cycle/multimodal means briefly disagreed with
     # the main group table because of exactly this).
-    survey.build_trip_legs(
-        con, config, terminal_scale=1.0, density_source=density_source
-    )
+    survey.build_trip_legs(con, config, density_source=density_source)
     _summary()
 
     return rows, ci_stats
@@ -1022,6 +1117,111 @@ def _figure_f1_trips_per_day(
     fig.suptitle("F1. Trips per person and day (section 9.9, point 2)")
     fig.tight_layout()
     path = out_dir / "f01_trips_per_day.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
+def _figure_f2_time_density_by_category(
+    con: duckdb.DuckDBPyConnection, out_dir: Path
+) -> Path:
+    """F2: weighted Gaussian kernel densities of daily travel time, one
+    curve per population category, overlaid and each normalised to 1
+    (section 9.9's time budget, 27 October 2026 decision: "the budget is
+    a property of persons", one b_k per category); dotted lines mark
+    each category's mean, matching F3's energy-density convention but on
+    a linear time axis (daily time is far less heavy-tailed than
+    energy)."""
+    rows = con.sql("""
+        SELECT population_category, pond_jour, total_time_min
+        FROM day_summary
+        WHERE total_time_min IS NOT NULL AND population_category != 'unknown'
+    """).fetchnumpy()
+    bandwidth = daily_energy.weighted_gaussian_bandwidth(
+        rows["pond_jour"], rows["total_time_min"], scale=1.5
+    )
+    grid = np.linspace(0, np.percentile(rows["total_time_min"], 99.5), 300)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for category in daily_energy.POPULATION_CATEGORIES:
+        mask = rows["population_category"] == category
+        if mask.sum() < MIN_CELL_N:
+            continue
+        sub_time, sub_weight = rows["total_time_min"][mask], rows["pond_jour"][mask]
+        density = daily_energy.weighted_gaussian_kde(
+            grid, sub_time, sub_weight, bandwidth
+        )
+        line = ax.plot(grid, density, label=category)[0]
+        mean_min = float(np.sum(sub_weight * sub_time) / sub_weight.sum())
+        ax.axvline(
+            mean_min, color=line.get_color(), linestyle=":", linewidth=0.8, alpha=0.7
+        )
+    ax.set_xlabel("Daily travel time, minutes")
+    ax.set_ylabel("Density (each category normalised to 1)")
+    ax.set_title(
+        "F2. Daily travel time density by population category "
+        "(day with trips, needs scope, section 9.9)"
+    )
+    ax.legend(fontsize=7)
+    fig.tight_layout()
+    path = out_dir / "f02_time_density_by_category.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
+def _figure_f2b_time_heatmap_category_density(
+    con: duckdb.DuckDBPyConnection, out_dir: Path
+) -> Path:
+    """F2b: heatmap of mean daily travel time by population category x
+    density class (the residence commune's own density, section 9.9's
+    27 October 2026 decision), with n; blank where n < 50."""
+    categories = list(daily_energy.POPULATION_CATEGORIES)
+    densities = list(trip_legs.DENSITY_LABELS)
+    rows = con.sql("""
+        SELECT population_category, home_density, count(*) AS n,
+            sum(pond_jour * total_time_min) / sum(pond_jour) AS mean_time
+        FROM day_summary WHERE total_time_min IS NOT NULL
+            AND population_category != 'unknown'
+        GROUP BY 1, 2
+    """).fetchall()
+    matrix = np.full((len(categories), len(densities)), np.nan)
+    n_matrix = np.zeros((len(categories), len(densities)), dtype=int)
+    for category, density, n, mean_time in rows:
+        if category not in categories or density not in densities:
+            continue
+        i, j = categories.index(category), densities.index(density)
+        n_matrix[i, j] = n
+        if n >= MIN_CELL_N:
+            matrix[i, j] = mean_time
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    image = ax.imshow(matrix, aspect="auto", cmap="viridis")
+    ax.set_xticks(range(len(densities)))
+    ax.set_xticklabels(densities, rotation=30, ha="right")
+    ax.set_yticks(range(len(categories)))
+    ax.set_yticklabels(categories)
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            if not np.isnan(matrix[i, j]):
+                ax.text(
+                    j,
+                    i,
+                    f"{matrix[i, j]:.0f}\n(n={n_matrix[i, j]})",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="white",
+                )
+    fig.colorbar(image, ax=ax, label="Mean daily travel time, minutes")
+    ax.set_title(
+        "F2b. Mean daily travel time by population category x residence "
+        "density class\n(day with trips, needs scope, n < 50 cells "
+        "blank, section 9.9)",
+        fontsize=10,
+    )
+    fig.tight_layout()
+    path = out_dir / "f02b_time_heatmap_category_density.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
@@ -1632,6 +1832,46 @@ def _figure_f9_motive_energy(
     return path
 
 
+def _format_category_density_table(
+    category_density_stats: dict[tuple[str, str], daily_energy.GroupStats],
+) -> list[str]:
+    """Population category x density class: mean daily time (n < 50
+    blank), section 9.9's time-budget table (point 2a). `GroupStats` has
+    no bootstrap CI on time (only on energy, section 9.9's design), so
+    only the point mean and median are shown here."""
+    lines = [
+        "| Category | Density | n | mean time (min) | median time (min) |",
+        "|---|---|---|---|---|",
+    ]
+    for category in daily_energy.POPULATION_CATEGORIES:
+        for density in trip_legs.DENSITY_LABELS:
+            stat = category_density_stats.get((category, density))
+            if stat is None or stat.n < MIN_CELL_N:
+                n = stat.n if stat else 0
+                lines.append(f"| {category} | {density} | {n} | - | - |")
+                continue
+            lines.append(
+                f"| {category} | {density} | {stat.n} | "
+                f"{stat.mean_time_min:.1f} | {stat.median_time_min:.1f} |"
+            )
+    return lines
+
+
+def _format_constancy_summary_table(
+    rows: list[tuple[str, float, float, float]],
+) -> list[str]:
+    lines = [
+        "| Category | dense/very_sparse | max/min | CV across classes |",
+        "|---|---|---|---|",
+    ]
+    for category, dense_very_sparse, max_min, cv in rows:
+        dv = "-" if np.isnan(dense_very_sparse) else f"{dense_very_sparse:.2f}"
+        mm = "-" if np.isnan(max_min) else f"{max_min:.2f}"
+        cvs = "-" if np.isnan(cv) else f"{cv:.2f}"
+        lines.append(f"| {category} | {dv} | {mm} | {cvs} |")
+    return lines
+
+
 def _format_group_table(stats: list[daily_energy.GroupStats]) -> list[str]:
     lines = [
         "| Group | n | weighted n | mean time (min) | median time (min) | "
@@ -1757,8 +1997,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             "`POND_JOUR` (day) and `pond_indC` (K_INDIVIDU, individual); age "
             "band `AGE6` (TCM_IND_KISH); population category (section 6.1) from "
             "`SITUA` (TCM_IND_KISH) combined with `AGE` for the 6-17 children "
-            "group; density of residence `DENSITECOM_ORI` of the home-departure "
-            "trip (`MORIDOM`); non-traveller cross-check `MIMMOSEM` (K_INDIVIDU)."
+            "group; density of residence `TCM_MEN.DENSITECOM_RES`/"
+            "`STATUTCOM_UU_RES` (27 October 2026 decision: the residence "
+            "commune's own density, not a trip end's); non-traveller "
+            "cross-check `MIMMOSEM` (K_INDIVIDU)."
         )
     else:
         variables_used_line = (
@@ -1770,8 +2012,9 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             "`V2_DLOCAL`); weights `POIDS_JOUR` (day) and `PONDKI` "
             "(K_INDIVIDU, individual); age band `AGE6` (Q_TCM_INDIVIDU); "
             "population category (section 6.1) from `SITUA` (Q_TCM_INDIVIDU) "
-            "combined with `AGE` for the 6-17 children group; density: the "
-            "urban-unit-status x residence-size proxy (no density grid in "
+            "combined with `AGE` for the 6-17 children group; density: "
+            "`Q_TCM_MENAGE.numcom_UUCat`/`TU99`, the residence commune's own "
+            "density proxy (27 October 2026 decision; no density grid in "
             "ENTD 2008); non-traveller check `V2_MOBILREF` (K_INDIVIDU, "
             "reference weekday only)."
         )
@@ -1863,7 +2106,28 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "`config.pt_ride`'s existing density defaults (chosen for step 7 "
         "as `dense`/`urban`/`suburban`/`rural`) to these same INSEE names "
         "and order, checked against `data/raw/emp2019/emp2019-categories.pdf`'s "
-        '"Degre de densite" table.',
+        '"Degre de densite" table. `home_density` (every per-day/per-person '
+        "table below) is the **residence** commune's own density "
+        "(`trip_legs.residence_density`; 27 October 2026 decision), from "
+        "`TCM_MEN.DENSITECOM_RES`/`STATUTCOM_UU_RES` (EMP 2019) or "
+        "`Q_TCM_MENAGE.numcom_UUCat`/`TU99` (ENTD 2008, proxy only) -- not "
+        "the density of the trip departing from home, which this "
+        "replaces: that proxy was undefined for a day with no "
+        "home-departing trip in scope, and was not a property of the "
+        "person.",
+        "",
+        "## Time budget: constancy across density classes (point 3)",
+        "",
+        "The reference constant (section 9.9, 27 October 2026 decision): "
+        "is mean daily travel time the same across density classes of "
+        "residence, within each population category? Day with trips, "
+        "needs scope. Cells of fewer than 50 persons blank.",
+        "",
+        *_format_category_density_table(results["category_density_stats"]),
+        "",
+        "### Constancy summary",
+        "",
+        *_format_constancy_summary_table(results["density_constancy_summary"]),
         "",
     ]
     if results["quirk_fill_rates"] is not None:
@@ -1974,12 +2238,15 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         f"`.wait_standing_min` = {carpool.wait_standing_min:g} min -- "
         "TODO(confirm), no survey or observed pickup pattern.",
         "",
-        "## F8 robustness (max/min ratio and CV of the group means, "
-        "walk/bike/driver/both passenger groups/urban PT/train)",
+        "## F8 robustness (time and energy; max/min ratio and CV of the "
+        "group means, walk/bike/driver/both passenger groups/urban PT/"
+        "train, over the terminal-legs variants: declared (base case), "
+        "declared + 1 min, and the former section 9.4-9.7 defaults at "
+        "x0.5/x1/x1.5, plus weekdays-only, local-trips-only and P0)",
         "",
         *_format_robustness_table(results["robustness_rows"]),
         "",
-        "## Constancy test (point 3, 5)",
+        "## Constancy test (point 3, 5): energy (Kolbl & Helbing's hypothesis)",
         "",
         f"- Overall weighted mean daily energy: {results['mean_kh']:.1f} kJ (kh), "
         f"{results['mean_cp']:.1f} kJ (compendium); Koelbl & Helbing's (2003) "
@@ -2001,18 +2268,23 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "average of per-trip speeds (avoids the bias of averaging a ratio).",
         f"- Overall v0: {results['v0_overall'].speed_kmh:.2f} km/h, n="
         f"{results['v0_overall'].n} (configured: {config.walking.v0_kmh:g} km/h).",
-        "- **P0 estimator:** get/park bike (2 min total) and the expected "
-        "stop delays (section 9.7, Webster 1958) are subtracted from the "
-        "declared duration at the naive speed before computing the ride "
-        "speed; P0 is `bike.required_power_w` at the single ratio-estimated "
-        "implied flat speed (not an average of per-trip, nonlinear P0 "
-        "values). EMP 2019's own mode codes do not separate e-bikes from "
-        'bicycles (`mtp` 2.1 includes "assistance electrique"), so they '
-        "cannot be excluded or reported apart.",
+        "- **P0 estimator:** the trip's own terminal-leg walk (27 October "
+        "2026 decision: `terminal_legs='declared'`, each trip's own "
+        "`MTEMPSMAP`/`V2_MTEMPSMAP`, falling back to the section 9.4-9.7 "
+        "defaults where missing) and the expected stop delays (section 9.7, "
+        "Webster 1958) are subtracted from the declared duration at the "
+        "naive speed before computing the ride speed; P0 is "
+        "`bike.required_power_w` at the single ratio-estimated implied "
+        "flat speed (not an average of per-trip, nonlinear P0 values). "
+        "EMP 2019's own mode codes do not separate e-bikes from bicycles "
+        '(`mtp` 2.1 includes "assistance electrique"), so they cannot be '
+        "excluded or reported apart.",
         f"- Overall P0: {results['p0_overall'].p0_w:.1f} W at an implied flat "
         f"speed of {results['p0_overall'].implied_flat_speed_kmh:.2f} km/h, n="
-        f"{results['p0_overall'].n} (section 9.7's reference: "
-        f"{P0_REFERENCE_W:g} W at 16 km/h).",
+        f"{results['p0_overall'].n} (configured `config.bike.power.p0_w` = "
+        f"{config.bike.power.p0_w:g} W; section 9.7's reference: "
+        f"{P0_REFERENCE_W:g} W at 16 km/h). `config/energy.yaml` is not "
+        "changed by this calibration.",
         "",
         "| Age band (AGE6) | n walk | v0 (km/h) | n cycle | implied flat "
         "speed (km/h) | P0 (W) |",
@@ -2034,9 +2306,12 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "## Declared vs modelled walk/wait minutes, by mode group (step 1)",
         "",
-        "Unweighted trip-level means; a check only, since neither declared "
-        "value is used to build the terminal legs themselves (section 9.9, "
-        '"Outputs of the re-estimation").',
+        "Unweighted trip-level means. Since the 27 October 2026 decision, "
+        "the declared value *is* the model's terminal-leg walk/wait by "
+        "default (`terminal_legs='declared'`, falling back to the "
+        "modelled default where missing): \"modelled\" below is the "
+        "section 9.4-9.7 default this report no longer uses by default, "
+        "kept as the comparison point.",
         "",
         "| Mode group | n | declared walk (min) | modelled walk (min) | "
         "declared wait (min) | modelled wait (min) |",
@@ -2187,9 +2462,9 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "- `mode_group='other'` trips have no energy formula and "
         "contribute 0 kJ to a day's total; a day with only such trips is "
         "its own 'other' group, separate from 'multimodal'.",
-        "- The day's home density is the origin density of its "
-        "home-departure trip (`MORIDOM=1`), or the first trip by number "
-        "if no such trip is recorded that day.",
+        "- The day's home density is the residence commune's own density "
+        "(`trip_legs.residence_density`, 27 October 2026 decision), not "
+        "the origin density of the home-departure trip.",
         "- Bike get/park and stop-delay adjustment: unreliable (would "
         "consume over half, or all but under a minute, of a very short "
         "trip's declared duration) for a small share of cycling trips; "
@@ -2199,9 +2474,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "multimodal and other); F8's robustness check is restricted to "
         "the seven groups the task names (walk, bike, driver, both "
         "passenger groups, urban PT, train).",
-        "- F8's figure shows bootstrap CIs for the base case and the "
-        "terminal-legs x0.5/x1.5 extremes only (not every table variant), "
-        'per the task\'s "figure ... for the base case and the extremes".',
+        "- F8's figure shows bootstrap CIs for every terminal-legs "
+        "variant with a CI (declared, declared + 1 min, former defaults "
+        "x0.5/x1/x1.5), not every table variant (not weekdays-only, "
+        "local-trips-only or the P0 reference, which have none).",
     ]
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -2321,6 +2597,37 @@ def run_compare(
             "2019",
         ),
         "",
+        "## Time budget: by population category, 2008 vs 2019 (density "
+        "proxy in both, section 9.9's 27 October 2026 decision)",
+        "",
+        *_group_table_two_surveys(
+            results_2008["population_stats"],
+            "2008",
+            results_2019_proxy["population_stats"],
+            "2019",
+        ),
+        "",
+        "### Constancy summary (density within category), both years",
+        "",
+        "| Category | dense/very_sparse 2008 | dense/very_sparse 2019 | "
+        "max/min 2008 | max/min 2019 | CV 2008 | CV 2019 |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    constancy_2008 = {r[0]: r for r in results_2008["density_constancy_summary"]}
+    constancy_2019 = {r[0]: r for r in results_2019_proxy["density_constancy_summary"]}
+    for category in daily_energy.POPULATION_CATEGORIES:
+        c8, c9 = constancy_2008.get(category), constancy_2019.get(category)
+
+        def _fmt_constancy(row, idx):
+            return "-" if row is None or np.isnan(row[idx]) else f"{row[idx]:.2f}"
+
+        lines.append(
+            f"| {category} | {_fmt_constancy(c8, 1)} | {_fmt_constancy(c9, 1)} | "
+            f"{_fmt_constancy(c8, 2)} | {_fmt_constancy(c9, 2)} | "
+            f"{_fmt_constancy(c8, 3)} | {_fmt_constancy(c9, 3)} |"
+        )
+    lines += [
+        "",
         "## EMP 2019: density grid vs proxy, same groups",
         "",
         *_group_table_two_surveys(
@@ -2340,12 +2647,12 @@ def run_compare(
     rows_2008 = {
         r.scope: r
         for r in results_2008["robustness_rows"]
-        if r.variant == "terminal legs x1 (base case)" and r.statistic == "mean"
+        if r.variant == "declared (base case)" and r.statistic == "mean"
     }
     rows_2019 = {
         r.scope: r
         for r in results_2019_proxy["robustness_rows"]
-        if r.variant == "terminal legs x1 (base case)" and r.statistic == "mean"
+        if r.variant == "declared (base case)" and r.statistic == "mean"
     }
     for scope in ("core", "full"):
         r8, r9 = rows_2008.get(scope), rows_2019.get(scope)
@@ -2439,8 +2746,16 @@ def run_compare(
         (results_2008["mean_time_min"], results_2019_proxy["mean_time_min"]),
         out_path,
     )
+    time_by_category_path = _figure_compare_time_by_category(
+        results_2008["population_stats"],
+        results_2019_proxy["population_stats"],
+        out_path,
+    )
     lines += [
-        "## Figure",
+        "## Figures",
+        "",
+        f"![{time_by_category_path.stem}]"
+        f"({time_by_category_path.relative_to(out_path.parent).as_posix()})",
         "",
         f"![{figure_path.stem}]({figure_path.relative_to(out_path.parent).as_posix()})",
         "",
@@ -2558,6 +2873,58 @@ def _figure_compare_energy_time(
     )
     fig.tight_layout()
     path = out_dir / "compare_energy_time.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
+def _figure_compare_time_by_category(
+    stats_2008: list[daily_energy.GroupStats],
+    stats_2019: list[daily_energy.GroupStats],
+    out_dir: Path,
+) -> Path:
+    """Time by population category, 2008 vs 2019 (section 9.9, 27
+    October 2026 decision: the time budget's own b_k, one value per
+    category, is now the reference constant). Day with trips, needs
+    scope, density proxy in both years."""
+    by_2008 = {s.group: s for s in stats_2008}
+    by_2019 = {s.group: s for s in stats_2019}
+    categories = [
+        c for c in daily_energy.POPULATION_CATEGORIES if c in by_2008 or c in by_2019
+    ]
+    x = np.arange(len(categories))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for offset, by_year, label in (
+        (-width / 2, by_2008, "2008"),
+        (width / 2, by_2019, "2019"),
+    ):
+        means = [
+            by_year[c].mean_time_min if c in by_year else np.nan for c in categories
+        ]
+        ns = [by_year[c].n if c in by_year else 0 for c in categories]
+        bars = ax.bar(x + offset, means, width, label=label)
+        for bar, n in zip(bars, ns, strict=False):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height(),
+                f"n={n}",
+                ha="center",
+                va="bottom",
+                fontsize=6,
+            )
+    ax.set_xticks(x)
+    ax.set_xticklabels(categories, rotation=30, ha="right")
+    ax.set_ylabel("Mean daily travel time, minutes")
+    ax.set_title(
+        "Daily travel time by population category, 2008 vs 2019\n"
+        "(day with trips, needs scope, density proxy in both, section 9.9)",
+        fontsize=10,
+    )
+    ax.legend()
+    fig.tight_layout()
+    path = out_dir / "compare_time_by_category.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path

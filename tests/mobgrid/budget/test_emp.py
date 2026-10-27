@@ -41,9 +41,11 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
 
     assert exit_code == 0
     png_files = sorted(out_dir.glob("*.png"))
-    # F1, F3 x4 (incl. KH appendix), F4a/b, F5, F6, F7, F8, F9 (motive).
-    assert len(png_files) == 12
+    # F1, F2, F2b, F3 x4 (incl. KH appendix), F4a/b, F5, F6, F7, F8, F9 (motive).
+    assert len(png_files) == 14
     assert any("f09_motive_energy" in p.name for p in png_files)
+    assert any("f02_time_density_by_category" in p.name for p in png_files)
+    assert any("f02b_time_heatmap_category_density" in p.name for p in png_files)
 
     md_path = out_dir.with_suffix(".md")
     assert md_path.is_file()
@@ -53,6 +55,7 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "car_passenger_household" in report
     assert "F8 robustness" in report
     assert "Density classes" in report
+    assert "Time budget: constancy across density classes" in report
 
 
 #: The EMP 2019 base-case group table on the synthetic fixture (section
@@ -178,6 +181,8 @@ def test_cli_compare_writes_report_and_figure(
     assert "Robustness" in report
     assert "Weekday share of persons without trips" in report
     assert (out_path / "compare_energy_time.png").is_file()
+    assert (out_path / "compare_time_by_category.png").is_file()
+    assert "Time budget: by population category" in report
 
 
 @pytest.mark.skipif(
