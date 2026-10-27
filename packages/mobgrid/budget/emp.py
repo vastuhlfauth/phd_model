@@ -269,7 +269,13 @@ def run(
     ``day_summary``, built identically from either survey's own
     ``trips_norm``. ``density_source`` defaults to the survey's own
     ``DEFAULT_DENSITY_SOURCE`` ('grid' for EMP 2019, 'proxy' for ENTD
-    2008, which has no density grid).
+    2008, which has no density grid). Terminal legs use
+    ``survey.build_trip_legs``'s own default (``'declared'``, section
+    9.9's 27 October 2026 decision; see
+    ``trip_legs.TERMINAL_LEGS_VARIANTS``) -- not yet a parameter of this
+    function (step 11, part A: only ``trip_legs.build_trip_legs`` itself
+    gained the new parameter; this report/figure pipeline is updated in
+    part B).
 
     Section 9.9's scope (2026-10-20 project decision): every table and
     figure below is restricted to commuting/needs-fulfilment travel

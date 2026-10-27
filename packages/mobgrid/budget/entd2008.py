@@ -305,11 +305,15 @@ def build_trip_legs(
     terminal_scale: float = 1.0,
     bike_p0_override_w: float | None = None,
     density_source: str | None = None,
+    terminal_legs: str = "declared",
 ) -> None:
     """Build ``trips_norm`` from ENTD 2008's raw tables, then
     ``trip_legs`` from it (``trip_legs.build_trip_legs``, shared with
     EMP 2019). ``density_source`` defaults to ``DEFAULT_DENSITY_SOURCE``
     ('proxy'): ENTD 2008 has no density grid, so 'grid' always raises.
+    ``terminal_legs`` is ``trip_legs.build_trip_legs``'s own parameter
+    (section 9.9's 27 October 2026 decision; see
+    ``trip_legs.TERMINAL_LEGS_VARIANTS``), passed straight through.
     """
     build_trips_norm(con)
     trip_legs.build_trip_legs(
@@ -318,6 +322,7 @@ def build_trip_legs(
         terminal_scale=terminal_scale,
         bike_p0_override_w=bike_p0_override_w,
         density_source=density_source or DEFAULT_DENSITY_SOURCE,
+        terminal_legs=terminal_legs,
     )
 
 

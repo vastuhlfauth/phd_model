@@ -326,7 +326,12 @@ def test_stop_energy_per_stop_is_the_same_regardless_of_declared_speed(
     con = duckdb.connect()
     csv_paths = emp2019.extract_tables(zip_path, tmp_path / "csv_stops")
     emp2019.register_views(con, csv_paths)
-    emp2019.build_trip_legs(con, config)
+    # `terminal_legs='defaults'`: this test is about the stop term's
+    # speed-independence, not the 27 October 2026 declared-legs decision
+    # (both trips here share the same declared `MTEMPSMAP`, which would
+    # pass just as well, but the hand-computed `kj_per_stop` below checks
+    # against the fixed `get_park_total_min` default explicitly).
+    emp2019.build_trip_legs(con, config, terminal_legs="defaults")
 
     rows = con.sql(
         "SELECT ident_ind, distance_km, bike_ride_time_for_energy_s, "
