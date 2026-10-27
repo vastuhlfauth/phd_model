@@ -2009,7 +2009,11 @@ def _figure_f4_mean_by_mode(
         ax.set_xticks(x)
         ax.set_xticklabels(present, rotation=45, ha="right", fontsize=7)
         ax.set_title(label, fontsize=9)
-        ax.legend(fontsize=6)
+        # Only the first panel's median marker carries a label (see
+        # above): calling legend() on the others would warn "no artists
+        # with labels found".
+        if ax is axes.flat[0]:
+            ax.legend(fontsize=6)
     for ax in axes.flat[len(panels) :]:
         ax.axis("off")
     fig.suptitle(
