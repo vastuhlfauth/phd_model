@@ -4,6 +4,68 @@ Notable changes to the `mobgrid.budget` step 11 re-estimation (section
 9.9). Not an exhaustive history; see `docs/progress.md` for the full
 decision log.
 
+## 2026-10-27 — travel time budget as the reference (section 9.9)
+
+### Changed
+
+- **The reference constant is now the daily travel time budget** (one
+  `b_k` per population category, section 6.1), not Kolbl & Helbing's
+  (2003) daily energy budget: re-estimated with declared terminal legs,
+  energy is no longer stable across main-mode groups, density classes
+  or years the way the energy hypothesis held under the former,
+  ~4x-too-long default car terminal legs. Daily energy is still
+  computed, in parallel, and reported (F3/F4/F5, the group table).
+  Spec section 9.9 (and 00/01/02/05/06/13/14/15/README) rewritten
+  accordingly (`spec_update_2026-10-27_time_budget.diff`).
+- **`trip_legs.build_trip_legs`'s new `terminal_legs` parameter**
+  (`'declared'`, the new default; `'declared_plus1'`; `'defaults'`, the
+  former section 9.4-9.7 model): each trip's own declared walking
+  (`MTEMPSMAP`/`V2_MTEMPSMAP`) and waiting (`MTPSATTENT`/
+  `V2_MTPSATTENT`) minutes now replace the car/carpool/PT/bike
+  terminal-leg defaults by default, falling back to them where missing.
+  `terminal_scale`'s x0.5/x1/x1.5 sweep now only has an effect under
+  `terminal_legs='defaults'`.
+- **`home_density`** is now the residence commune's own density
+  (`trip_legs.residence_density`: EMP 2019 `TCM_MEN.DENSITECOM_RES`/
+  `STATUTCOM_UU_RES`, ENTD 2008 `Q_TCM_MENAGE.numcom_UUCat`/`TU99`), not
+  the density of the first trip departing from home -- defined for
+  every respondent, including those with no described day at all.
+- **F8 robustness** sweeps `terminal_legs` explicitly (declared base
+  case, declared + 1 min, former defaults x0.5/x1/x1.5), fixing a
+  latent bug: `terminal_scale` silently stopped affecting the x0.5/x1.5
+  rows the moment `terminal_legs` defaulted away from `'defaults'`.
+- **New figures:** F2 (daily time density by population category), F2b
+  (category x density heatmap of time, with n), and `--compare`'s
+  time-by-population-category, 2008-vs-2019 figure.
+
+| Metric | Before (former defaults) | After (declared legs) |
+|---|---|---|
+| EMP 2019 (grid) across-mode-group energy ratio (KH / CP) | 1.61 / 1.76 | 4.31 / 4.12 |
+| ENTD 2008 across-mode-group energy ratio (KH / CP) | 2.06 / 2.16 | ~4.1 / ~3.95 |
+| EMP 2019 (grid) `car_driver` mean energy (KH / CP) | 624.1 / 595.2 kJ | 391.8 / 447.6 kJ |
+| P0 (EMP 2019, configured 34.8 W) | 34.8 W (reference) | 28.4 W calibrated |
+| P0 (ENTD 2008) | 34.0 W calibrated (former model) | 26.7 W calibrated |
+
+Daily *time* (not energy) is comparatively stable: within each
+population category, the dense/very_sparse ratio of mean daily time is
+0.94-1.34 and the max/min across density classes 1.06-1.39 (both
+years); the overall 2008-2019 difference is 5.3 min (day with trips,
+needs scope) or 6.0 min (per-person weekday budget), both with a
+bootstrap interval excluding zero.
+
+### Not regenerated in this session
+
+`docs/data/step11_budget.md`, `step11_budget_entd2008.md` and
+`step11_compare.md` still show the former (section 9.4-9.7 defaults,
+energy-led) report: regenerating them is a multi-minute real-data run,
+reserved for the user's own terminal. Commands:
+
+```powershell
+uv run python -m mobgrid.budget.emp --out docs/data/step11_budget
+uv run python -m mobgrid.budget.emp --survey entd2008 --out docs/data/step11_budget_entd2008
+uv run python -m mobgrid.budget.emp --compare --out docs/data/step11_compare
+```
+
 ## 2026-10-22 — step 11 fixes
 
 ### Fixed

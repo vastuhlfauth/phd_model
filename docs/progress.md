@@ -2,7 +2,97 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-22 by Copilot (branch `fix/step11-reporting`: six step 11 reporting/model fixes, reports regenerated; see below)_
+_Last updated: 2026-10-27 by Copilot (branch `step/time-budget`: section 9.9's travel time budget, part A and B; pushed, not merged)_
+
+### Step 11: travel time budget as the reference (2026-10-27, branch `step/time-budget`, pushed, not merged)
+
+Re-estimates section 9.9 with the daily travel time budget (one b_k per
+population category) as the model's reference constant, replacing the
+daily energy budget; energy is still computed, in parallel. Applied
+`spec_update_2026-10-27_time_budget.diff` (10 files in `docs/spec/`,
+commit `788da27`) first, not committed.
+
+**Part A (code, both committed):**
+
+- `trip_legs.build_trip_legs` gained `terminal_legs` (`'declared'`, the
+  new default; `'declared_plus1'`; `'defaults'`, the former section
+  9.4-9.7 model, the only variant `terminal_scale`'s x0.5/x1/x1.5 sweep
+  still applies to): each trip's own declared walking
+  (`MTEMPSMAP`/`V2_MTEMPSMAP`) and waiting (`MTPSATTENT`/
+  `V2_MTPSATTENT`) minutes now replace the car/carpool/PT/bike
+  terminal-leg defaults by default, falling back to them where missing
+  (0.3-3% of trips, by mode); the bike P0/ride-time back-calculation
+  uses the same selected value, not the fixed 2-min default. 7 new
+  tests (`test_trip_legs.py`), 2 pre-existing tests re-pinned to the new
+  default (intentional, documented). Commit `02d8dd2`.
+- `home_density` (`daily_energy.create_day_summary`) now reads a new
+  `trip_legs.residence_density` column, built from the household's own
+  residence-commune density (EMP 2019: `TCM_MEN.DENSITECOM_RES` grid,
+  `STATUTCOM_UU_RES` for the proxy; ENTD 2008: `Q_TCM_MENAGE.
+  numcom_UUCat` mapped to the same C/B/I/R codes, crossed with `TU99`),
+  not the density of the first trip departing from home -- defined for
+  every respondent, including the ~2.6% of EMP 2019 respondents with no
+  described day at all. Commit `3872c98`.
+- Full test suite: 405 passed, 2 deselected (pilot); `ruff check .`
+  clean, after each commit.
+
+**Part A (scratch, not committed; `C:\codes\step11_bundle\`):**
+
+- `time_budget_partA.py` / `time_budget_partA.md`: on the real EMP 2019
+  (grid, proxy) and ENTD 2008 (proxy) data -- sample flows; daily time
+  and trips/day by population category x density class, per day with
+  trips and per person (days without trips included, EMP 2019 via
+  `IMMODEP_A`-`G`'s weekday/Saturday/Sunday weighted budget, ENTD 2008
+  via `V2_MOBILREF` on the reference weekday), both needs and all-trips
+  scope; the constancy summary (dense/very_sparse, max/min, CV) for
+  both the day-with-trips and per-person measures; the 2008-2019
+  difference by category with a bootstrap interval (all day types
+  combined, and weekdays only, both measures); the energy group table
+  and F8 robustness over the terminal-legs variants; P0 calibrated
+  under declared legs next to the configured 34.8 W (EMP 2019: 28.4 W;
+  ENTD 2008: 26.7 W -- config unchanged); the section 9.6 calibration
+  table (declared walk by density x `MSTATION` parking type, drivers
+  and passengers, EMP 2019 grid); missing-declared-value shares.
+- Headline: daily time is fairly flat by density within each category
+  (max/min 1.06-1.26) and between years (overall 67.9 to 73.3 min); the
+  across-main-mode-group energy ratio rises from 1.6-2.2 (former
+  defaults) to 2.0-4.3 under declared legs -- energy is no longer
+  stable the way Kolbl & Helbing's hypothesis held under the old,
+  4x-too-long default car terminal legs.
+
+**Part B (code, committed):**
+
+- `daily_energy.POPULATION_CATEGORIES`: section 6.1's five categories,
+  shared order.
+- New figures F2 (daily time density by population category) and F2b
+  (category x density heatmap of time, with n), the time-budget
+  analogues of the former energy-only F3/F5; F3/F4/F5 (energy) kept, in
+  parallel. New report sections: category x density time table and its
+  constancy summary, in both the single-survey report and `--compare`
+  (which also gains a time-by-category 2008-vs-2019 figure and table,
+  and the constancy summary side by side).
+- F8 robustness now explicitly sweeps `terminal_legs` (declared base
+  case, declared_plus1, former defaults x0.5/x1/x1.5): fixed a latent
+  bug this task's own Part A work exposed -- `terminal_scale` has no
+  effect under the new `'declared'` default, so the pre-fix x0.5/x1.5
+  rows had silently become duplicates of x1 the moment `terminal_legs`
+  defaulted away from `'defaults'`.
+- Updated stale report text referencing the old `home_density`/P0/
+  declared-vs-modelled model. Full test suite: 405 passed (after Part
+  A's commits) / tests/mobgrid/budget: 62 passed after Part B's commit;
+  `ruff check .` clean. Commit `c0b8334`.
+
+**Not yet done (by design, not an oversight):** the three real reports
+(`docs/data/step11_budget.md`, `step11_budget_entd2008.md`,
+`step11_compare.md`) are **not regenerated** in this session: that is a
+multi-minute real-data run, which this project's own policy reserves
+for the user's terminal, not the agent. Exact commands given in the
+session's final report. The per-person budget's full `IMMODEP`
+machinery (Part A's scratch script) was deliberately **not** ported
+into the permanent `mobgrid.budget` report: the user's Part B figure/
+table list does not ask for it, and the day-with-trips measure already
+covers the explicitly requested figures; worth revisiting if the
+per-person budget becomes a permanent deliverable.
 
 ### Step 11 reporting fixes (2026-10-22, branch `fix/step11-reporting`, pushed, not merged)
 
