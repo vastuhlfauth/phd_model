@@ -38,7 +38,7 @@ mobility-france/
 │       ├── pt/              gtfs_clean, osm route relations, gtfs_rebuild, pt_changes, pt_openings, pt_policy, route_edits, raptor, r5py
 │       ├── energy/          rates, walk, bike, legs
 │       ├── od/              compute, products, aggregate, store
-│       ├── budget/          emp2019 days, daily energy
+│       ├── budget/          survey days, daily time budget and energy
 │       ├── scenario/        schema, timeline, triage, bounds, affected, run
 │       └── validation/      compare
 ├── legacy/                  current scripts, kept for comparison until replaced
@@ -96,7 +96,7 @@ In this order, on one pilot département with its halo and for the 2021 baseline
 | 8 | `mobgrid/graph` | CSR graph; bounded multi-source Dijkstra with secondary weights, predecessors and the three products | Same distances as scipy's Dijkstra on random graphs; products equal brute-force sums and minima |
 | 9 | `mobgrid/layers/gridgraph.py` | Representative points (section 4.2); 1 km grid edges to 8, 16 or 24 neighbours (the three variants built for the pilot comparison), stray check, time per road class, capacity | Edge times equal OSRM between neighbouring cells within tolerance; points on the network |
 | 10 | `mobgrid/od` | Car and bike O-D and products for the pilot, Parquet output | Validation metrics of section 13 against OSRM |
-| 11 | `mobgrid/budget` | EMP 2019 survey days rebuilt as legs; daily energy per person; ENTD 2008 with the same method | Constancy tests of section 9.9 reported for 2019 and 2008, and their change |
+| 11 | `mobgrid/budget` | EMP 2019 and ENTD 2008 survey days rebuilt as legs with declared walks and waits; daily travel time per day and per person by population category; energy in parallel | Constancy tests of the time budget (section 9.9) for 2019 and 2008, and their change |
 
 Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (timeline, triage, bounds), national tiling.
 
@@ -110,7 +110,7 @@ Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (time
 | Geometry | shapely 2 (vectorised), pyproj; exactextract | exactextract gives the exact share of each cell covered by a polygon, where rasterio.features only marks cells as in or out; contour access points with shapely |
 | Snapping and matching | scipy.spatial (cKDTree); DuckDB spatial | Nearest node per point; GTFS stops to OSM route relations (section 5.6) |
 | Elevation | rasterio | Sampling IGN elevation at nodes |
-| Statistics | statsmodels or scikit-learn | Household size model; Filosofi-like 2023; daily energy budget |
+| Statistics | statsmodels or scikit-learn | Household size model; Filosofi-like 2023; daily travel time budget |
 | Configuration and scenarios | pydantic, PyYAML | Typed validation of every parameter and edit |
 | Tile caching | xxhash | Content hash of each tile's inputs |
 | Parallelism | joblib or multiprocessing | One process per tile |
@@ -149,7 +149,7 @@ Then: walk layer, trunk layer, PT engine and fast variant, scenario engine (time
 | Phase | Content | Deliverable |
 |---|---|---|
 | 0. Data and origins | GTFS rebuilding (done); acquisition package and manifest with 2021 and 2023 vintages (done, national); origins at 200 m on the pilot; BPE list review | Thresholds; versioned base tables; origins validation |
-| 1. Pilot | Opportunities and destination flags; representative points; all network layers with leg formulas; comparison of 8, 16 and 24 neighbours; products; validation; r5py vs RAPTOR benchmark and fast variant; AequilibraE benchmark; speed calibration against OSRM; storage decisions; EMP 2019 budget re-estimation | Validation report; neighbourhood, engine, storage, allocation and energy choices |
+| 1. Pilot | Opportunities and destination flags; representative points; all network layers with leg formulas; comparison of 8, 16 and 24 neighbours; products; validation; r5py vs RAPTOR benchmark and fast variant; AequilibraE benchmark; speed calibration against OSRM; storage decisions; time budget re-estimation on EMP 2019 and ENTD 2008 | Validation report; neighbourhood, engine, storage, allocation and energy choices |
 | 2. National baseline | Origins and opportunities nationally; tiled national run, all modes, for 2021 | Baseline 2021 tables and products |
 | 3. Second state and scenarios | 2023 build; scenario engine (timeline, triage, bounds, caching); back-test 2021 to 2023 | 2023 tables; back-test report; scenario runs with logs |
 | 4. Congestion and crowding | Capacities of the reduced network; BPR functions calibrated on Google Maps data; equilibrium assignment; PT loads and crowding | Congested car costs; crowding-dependent PT energy |

@@ -6,7 +6,7 @@ The table translates the project requirements into design constraints.
 |---|---|
 | Time and distance per mode, per O-D pair, at cell scale; feeds a distribution model then a mode-share model | Store time and distance for every mode. For PT, also store components (access, wait, in-vehicle, transfers, egress, boardings) and the lines used. |
 | Bodily energy per mode, to explain mode choice | Energy built leg by leg along each path, slope-dependent for walking and cycling, body mass explicit; stored in kJ above rest (section 9). |
-| A daily energy budget per cell, from which mode choice is derived | Daily energy of all trips of a day; budget re-estimated on EMP 2019 with the same formulas (section 9.9). |
+| A daily travel time budget per cell, from which mode choice and the reach of destinations are derived | Daily travel time of all trips of a day, one budget per population category, re-estimated on EMP 2019 and ENTD 2008; daily energy in parallel (section 9.9). |
 | Accessibility to jobs, services, nature and people within time, distance or energy limits; nearest service by type | Computed inside the routing pass at full resolution, never from aggregated O-D data (sections 4.5 and 10.2). |
 | Walk and PT at 200 m; bike and car at 1 km | 200 m origins and destinations for walk and PT, 1 km for bike and car; storage can aggregate, accessibility does not. |
 | Origins: individuals, households, buildings at 200 m | Filosofi 2021 natural level redistributed with Fichiers fonciers dwellings at building points; Filosofi-like 2023 (section 6). |
