@@ -15,7 +15,11 @@ cannot silently differ between surveys.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import duckdb
+import numpy as np
+import pyarrow as pa
 
 from mobgrid.energy import legs, walk
 from mobgrid.energy.bike import solve_bike_speed_m_per_s
@@ -265,47 +269,184 @@ _TUU_RES_LARGE_CODES = ("7", "8")
 INCOME_QUINTILE_LABELS = ("q1", "q2", "q3", "q4", "q5", "unknown")
 
 
-def weighted_quintile_view_sql(
+@dataclass
+class IncomeQuintileSummary:
+    """``build_income_quintile_table``'s own cut points and shares (28
+    October 2026 decision: equal-sized quintiles by individual weight),
+    read back by ``income_quintile_summary`` for the report. ``cut_points``
+    is the 4 ascending weighted-quantile boundaries (20/40/60/80%), in
+    ``value_col``'s own unit (euros per consumption unit per month for
+    ENTD 2008; EMP 2019's 1-10 decile rank has no euro equivalent).
+    ``n_by_label``/``weight_share_by_label`` cover all 6
+    ``INCOME_QUINTILE_LABELS`` (including `'unknown'`): the weight shares
+    sum to 1 across all 6, so a non-zero `'unknown'` share makes the five
+    quintiles each a little under 20% of the *whole* roster, even though
+    each is 20% of the roster *with a known income* (the cut basis).
+    """
+
+    cut_points: list[float]
+    n_by_label: dict[str, int]
+    weight_share_by_label: dict[str, float]
+
+
+def build_income_quintile_table(
+    con: duckdb.DuckDBPyConnection,
     base_sql: str,
     *,
     id_col: str = "ident_ind",
     value_col: str = "income_value",
     weight_col: str = "weight",
-) -> str:
-    """SQL producing one ``(<id_col>, income_quintile)`` row per
-    respondent of ``base_sql`` (a query selecting at least ``id_col``,
-    ``value_col`` and ``weight_col``): a weighted quintile of
-    ``value_col`` (`'q1'` poorest to `'q5'` richest), cut at the
-    weighted-cumulative-share thresholds 20/40/60/80% (``weight_col``,
-    the individual weight, section 9.9: "quintiles ... with individual
-    weights"). A ``NULL`` ``value_col`` (missing/refused income) is
-    labelled `'unknown'`, excluded from the cut-point computation.
-    Called once per survey, each with its own income value and weight
-    columns (`docs/data/entd2008.md`'s "Income variables").
+    view_name: str = "respondent_income",
+    seed: int = 0,
+) -> None:
+    """Create/replace a ``(<id_col>, income_quintile)`` table named
+    ``view_name`` from ``base_sql`` (one row per respondent of the
+    project's *analysed* universe -- EMP 2019's `K_INDIVIDU` respondents,
+    ENTD 2008's `K_INDIVIDU` respondents -- with their own ``value_col``/
+    ``weight_col``): a weighted quintile of ``value_col`` (`'q1'` poorest
+    to `'q5'` richest), cut at the weighted-cumulative-share thresholds
+    20/40/60/80% of ``weight_col`` (the individual weight, section 9.9:
+    "quintiles ... with individual weights").
+
+    Unlike a naive ``ORDER BY value_col`` cumulative-sum cut, a tied
+    ``value_col`` straddling a cut point is split between the two
+    quintiles in proportion to its weight, by a seeded random draw
+    within the tie (28 October 2026 decision: equal-sized quintiles, not
+    lumpy ones -- EMP 2019's `decile_rev_uc` has only 10 distinct
+    values, and ENTD 2008's bracket-midpoint/`NBUC` often repeats, so a
+    deterministic tie order pushed whole blocks of weight into one
+    quintile, e.g. EMP 2019's q1/q5 holding 31M/87M of day weight instead
+    of an even split). A ``NULL`` ``value_col`` (missing/refused income)
+    is labelled `'unknown'`, excluded from the cut-point computation.
+
+    Also creates the ``income_quintile_summary``/``income_quintile_cutpoints``
+    tables (``income_quintile_summary``'s own read-back source): rebuilt
+    identically every call (same ``seed``), so the report's later
+    read-back always matches what ``view_name`` actually used, even
+    though ``build_trip_legs`` (and so this function) can be called more
+    than once per connection (e.g. the F8 robustness sweep).
     """
-    return f"""
-    WITH _base AS ({base_sql}),
-    _ranked AS (
-        SELECT
-            {id_col},
-            sum({weight_col}) OVER (ORDER BY {value_col}) AS _cum_weight,
-            sum({weight_col}) OVER () AS _total_weight
-        FROM _base
-        WHERE {value_col} IS NOT NULL
+    known = con.sql(f"""
+        SELECT {id_col} AS id, {value_col} AS value, {weight_col} AS weight
+        FROM ({base_sql}) WHERE {value_col} IS NOT NULL
+        ORDER BY {id_col}
+    """).fetchnumpy()
+    unknown = con.sql(f"""
+        SELECT {id_col} AS id, {weight_col} AS weight
+        FROM ({base_sql}) WHERE {value_col} IS NULL
+        ORDER BY {id_col}
+    """).fetchnumpy()
+
+    ids = np.asarray(known["id"])
+    values = np.asarray(known["value"], dtype=float)
+    weights = np.asarray(known["weight"], dtype=float)
+
+    # A random tiebreak (seeded on the id-sorted row order above, not
+    # on whatever order `base_sql` happened to return: reproducible
+    # regardless of DuckDB's own row ordering) decides, for any group of
+    # tied `value_col` straddling a cut point, which of its members fall
+    # below vs above it -- an unbiased split, not a block move.
+    rng = np.random.default_rng(seed)
+    tiebreak = rng.random(len(values))
+    order = np.lexsort((tiebreak, values))
+    cumulative = np.cumsum(weights[order])
+    total_known_weight = float(cumulative[-1]) if len(cumulative) else 0.0
+    thresholds = total_known_weight * np.array([0.2, 0.4, 0.6, 0.8])
+
+    quintile_names = np.array(INCOME_QUINTILE_LABELS[:5])
+    bucket = np.digitize(cumulative, thresholds, right=True)
+    sorted_labels = quintile_names[bucket]
+    labels = np.empty(len(values), dtype=object)
+    labels[order] = sorted_labels
+
+    sorted_values = values[order]
+    if len(sorted_values):
+        cut_points = [
+            float(
+                sorted_values[
+                    min(
+                        int(np.searchsorted(cumulative, t, side="left")),
+                        len(sorted_values) - 1,
+                    )
+                ]
+            )
+            for t in thresholds
+        ]
+    else:
+        cut_points = [float("nan")] * 4
+
+    unknown_ids = np.asarray(unknown["id"])
+    unknown_weights = np.asarray(unknown["weight"], dtype=float)
+    all_ids = np.concatenate([ids, unknown_ids])
+    all_labels = np.concatenate(
+        [labels, np.full(len(unknown_ids), "unknown", dtype=object)]
     )
-    SELECT {id_col},
-        CASE
-            WHEN _cum_weight <= 0.2 * _total_weight THEN 'q1'
-            WHEN _cum_weight <= 0.4 * _total_weight THEN 'q2'
-            WHEN _cum_weight <= 0.6 * _total_weight THEN 'q3'
-            WHEN _cum_weight <= 0.8 * _total_weight THEN 'q4'
-            ELSE 'q5'
-        END AS income_quintile
-    FROM _ranked
-    UNION ALL
-    SELECT {id_col}, 'unknown' AS income_quintile
-    FROM _base WHERE {value_col} IS NULL
-    """
+    all_weights = np.concatenate([weights, unknown_weights])
+
+    income_table = pa.table({id_col: all_ids, "income_quintile": all_labels})
+    con.register("_income_quintile_table", income_table)
+    con.sql(
+        f"CREATE OR REPLACE TABLE {view_name} AS "
+        "SELECT * FROM _income_quintile_table"
+    )
+    con.unregister("_income_quintile_table")
+
+    total_weight = float(all_weights.sum()) if len(all_weights) else 0.0
+    n_by_label = {}
+    weight_share_by_label = {}
+    for label in INCOME_QUINTILE_LABELS:
+        mask = all_labels == label
+        n_by_label[label] = int(mask.sum())
+        weight_share_by_label[label] = (
+            float(all_weights[mask].sum()) / total_weight if total_weight else 0.0
+        )
+
+    summary_table = pa.table({
+        "income_quintile": list(INCOME_QUINTILE_LABELS),
+        "n": [n_by_label[label] for label in INCOME_QUINTILE_LABELS],
+        "weight_share": [
+            weight_share_by_label[label] for label in INCOME_QUINTILE_LABELS
+        ],
+    })
+    con.register("_income_quintile_summary_table", summary_table)
+    con.sql(
+        "CREATE OR REPLACE TABLE income_quintile_summary AS "
+        "SELECT * FROM _income_quintile_summary_table"
+    )
+    con.unregister("_income_quintile_summary_table")
+
+    cutpoints_table = pa.table({
+        "idx": [1, 2, 3, 4],
+        "value": cut_points,
+    })
+    con.register("_income_quintile_cutpoints_table", cutpoints_table)
+    con.sql(
+        "CREATE OR REPLACE TABLE income_quintile_cutpoints AS "
+        "SELECT * FROM _income_quintile_cutpoints_table"
+    )
+    con.unregister("_income_quintile_cutpoints_table")
+
+
+def income_quintile_summary(con: duckdb.DuckDBPyConnection) -> IncomeQuintileSummary:
+    """Read ``build_income_quintile_table``'s own
+    ``income_quintile_summary``/``income_quintile_cutpoints`` tables back
+    into an ``IncomeQuintileSummary``, for the report (cut points, each
+    quintile's share of individual weight; day weight shares are a
+    separate, ``day_summary``-based computation, not this function's)."""
+    rows = con.sql(
+        "SELECT income_quintile, n, weight_share FROM income_quintile_summary"
+    ).fetchall()
+    cut_points = [
+        row[0]
+        for row in con.sql(
+            "SELECT value FROM income_quintile_cutpoints ORDER BY idx"
+        ).fetchall()
+    ]
+    return IncomeQuintileSummary(
+        cut_points=cut_points,
+        n_by_label={row[0]: row[1] for row in rows},
+        weight_share_by_label={row[0]: row[2] for row in rows},
+    )
 
 
 def relabel_density(mapping: dict[str, float]) -> dict[str, float]:

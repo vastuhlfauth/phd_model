@@ -245,6 +245,42 @@ def test_income_quintile_column_on_trip_legs(
     assert income_quintile in trip_legs.INCOME_QUINTILE_LABELS
 
 
+def test_missing_income_breakdown_distinguishes_every_failure_mode() -> None:
+    """28 October 2026's missing-income audit: a producer-side gap (no
+    `Q_TCM_MENAGE` row at all, or a blank bracket) is a different
+    failure mode from this project's own code (an unparseable bracket
+    label, or a missing/zero `NBUC` making the division `NULL`)."""
+    con = duckdb.connect()
+    con.sql(
+        "CREATE TABLE k_individu "
+        "(IDENT_IND VARCHAR, idENT_MEN VARCHAR, PONDKI DOUBLE)"
+    )
+    con.sql(
+        "INSERT INTO k_individu VALUES "
+        "('1', 'M1', 100.0), ('2', 'M2', 100.0), ('3', 'M3', 100.0), "
+        "('4', 'M4', 100.0), ('5', 'M5', 100.0)"
+    )
+    con.sql(
+        "CREATE TABLE q_tcm_menage "
+        "(IDENT_MEN VARCHAR, TrancheRevenuMensuel VARCHAR, NBUC DOUBLE)"
+    )
+    con.sql("""
+        INSERT INTO q_tcm_menage VALUES
+            ('M1', 'De 1 200 € à moins de 1 500 €', 2.0),
+            ('M2', NULL, 2.0),
+            ('M3', 'not a parseable label', 2.0),
+            ('M4', 'De 1 200 € à moins de 1 500 €', 0.0)
+    """)
+    # M5: no row in q_tcm_menage at all.
+
+    breakdown = entd2008.missing_income_breakdown(con)
+    assert breakdown["n_total"] == 5
+    assert breakdown["n_no_household_match"] == 1
+    assert breakdown["n_null_bracket"] == 1
+    assert breakdown["n_unparseable_bracket"] == 1
+    assert breakdown["n_null_nbuc"] == 1
+
+
 def test_population_category_by_ident_covers_non_traveller(
     trips_norm: duckdb.DuckDBPyConnection,
 ) -> None:

@@ -62,6 +62,9 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "Density classes" in report
     assert "Time budget: constancy across density classes" in report
     assert "Time budget: constancy across income quintiles" in report
+    assert "Quintile shares and cut points" in report
+    assert "Missing-income breakdown" in report
+    assert "no code-side failure mode to report here" in report
     assert "Trips per day and minutes per trip" in report
     assert "Per-person budget, days without trips included" in report
 
@@ -155,6 +158,9 @@ def test_cli_entd2008_survey_writes_report(
     assert "ENTD 2008 re-estimation" in report
     assert "proxy" in report
     assert "`distcor`/`v2_mduree` fill rate" in report
+    assert "Quintile shares and cut points" in report
+    assert "Missing-income breakdown" in report
+    assert "income_bracket_midpoint_eur` could not parse" in report
 
 
 def test_cli_compare_writes_report_and_figure(
@@ -191,6 +197,8 @@ def test_cli_compare_writes_report_and_figure(
     assert (out_path / "compare_energy_time.png").is_file()
     assert (out_path / "compare_time_by_category.png").is_file()
     assert "Time budget: by population category" in report
+    assert "Weekday-only comparison, 2008 vs 2019" in report
+    assert "per person (days without trips included)" in report
 
 
 @pytest.mark.skipif(

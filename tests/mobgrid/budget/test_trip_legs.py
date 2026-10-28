@@ -246,3 +246,88 @@ def test_unknown_terminal_legs_raises(config) -> None:
     _make_trips_norm(con)
     with pytest.raises(ValueError, match="terminal_legs"):
         trip_legs.build_trip_legs(con, config, terminal_legs="not_a_variant")
+
+
+def _tied_income_base_sql(con: duckdb.DuckDBPyConnection, n: int) -> str:
+    """``n`` respondents with a highly discretized income value (10
+    distinct deciles, like EMP 2019's `decile_rev_uc`) and varied
+    weights, plus two respondents with a missing value -- a tie-heavy
+    distribution where a naive ``ORDER BY`` cumulative cut would push
+    whole blocks of weight into one quintile (28 October 2026 decision:
+    equal-sized quintiles instead)."""
+    con.sql("CREATE TABLE _income_base (id VARCHAR, value DOUBLE, weight DOUBLE)")
+    rows = ", ".join(
+        f"('p{i}', {(i % 10) + 1}.0, {50.0 + (i % 7) * 10})" for i in range(n)
+    )
+    con.sql(f"INSERT INTO _income_base VALUES {rows}")
+    con.sql(
+        "INSERT INTO _income_base VALUES "
+        "('missing1', NULL, 100.0), ('missing2', NULL, 50.0)"
+    )
+    return "SELECT id, value, weight FROM _income_base"
+
+
+def test_build_income_quintile_table_is_close_to_equal_sized() -> None:
+    """A tied (10-distinct-value) income distribution still cuts into
+    close-to-20%-each quintiles by individual weight (28 October 2026
+    decision): the tie-straddling seeded random draw, not a
+    deterministic block move."""
+    con = duckdb.connect()
+    base_sql = _tied_income_base_sql(con, 2000)
+    trip_legs.build_income_quintile_table(
+        con, base_sql, id_col="id", value_col="value", weight_col="weight"
+    )
+    summary = trip_legs.income_quintile_summary(con)
+    for label in ("q1", "q2", "q3", "q4", "q5"):
+        assert summary.weight_share_by_label[label] == pytest.approx(0.2, abs=0.01)
+    assert summary.weight_share_by_label["unknown"] > 0
+    assert sum(summary.weight_share_by_label.values()) == pytest.approx(1.0)
+    assert summary.cut_points == sorted(summary.cut_points)
+    rows = con.sql(
+        "SELECT income_quintile, count(*) FROM respondent_income GROUP BY 1"
+    ).fetchall()
+    assert dict(rows)["unknown"] == 2
+
+
+def test_build_income_quintile_table_is_reproducible_with_same_seed() -> None:
+    """Two calls with the same (default) seed give the identical
+    respondent -> quintile assignment: `income_quintile_summary`'s
+    read-back must match what `trips_norm`'s own build actually used,
+    even though `build_trip_legs` (and so this function) can be called
+    more than once per connection (e.g. the F8 robustness sweep)."""
+    con = duckdb.connect()
+    base_sql = _tied_income_base_sql(con, 200)
+    trip_legs.build_income_quintile_table(
+        con, base_sql, id_col="id", value_col="value", weight_col="weight"
+    )
+    first = dict(
+        con.sql("SELECT id, income_quintile FROM respondent_income").fetchall()
+    )
+    trip_legs.build_income_quintile_table(
+        con, base_sql, id_col="id", value_col="value", weight_col="weight"
+    )
+    second = dict(
+        con.sql("SELECT id, income_quintile FROM respondent_income").fetchall()
+    )
+    assert first == second
+
+
+def test_build_income_quintile_table_different_seed_differs() -> None:
+    """A different seed gives a different (but still equal-sized)
+    tie-break realisation: the random draw actually depends on the
+    seed, not a fixed, silently-ignored one."""
+    con = duckdb.connect()
+    base_sql = _tied_income_base_sql(con, 200)
+    trip_legs.build_income_quintile_table(
+        con, base_sql, id_col="id", value_col="value", weight_col="weight", seed=1
+    )
+    first = dict(
+        con.sql("SELECT id, income_quintile FROM respondent_income").fetchall()
+    )
+    trip_legs.build_income_quintile_table(
+        con, base_sql, id_col="id", value_col="value", weight_col="weight", seed=2
+    )
+    second = dict(
+        con.sql("SELECT id, income_quintile FROM respondent_income").fetchall()
+    )
+    assert first != second

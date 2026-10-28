@@ -4,6 +4,37 @@ Notable changes to the `mobgrid.budget` step 11 re-estimation (section
 9.9). Not an exhaustive history; see `docs/progress.md` for the full
 decision log.
 
+## 2026-10-28 — equal-sized income quintiles, figure fixes (section 9.9)
+
+### Fixed
+
+- **Equal-sized income quintiles**: the weighted-quintile cut (both
+  surveys' income value is highly discretized -- EMP 2019's
+  `decile_rev_uc` has 10 distinct values, ENTD 2008's bracket-midpoint/
+  `NBUC` often repeats) moved a whole tied-value group across a cut
+  point at once, giving lumpy quintiles (e.g. EMP 2019's q1 at 31M of
+  day weight against q5's 87M). `trip_legs.build_income_quintile_table`
+  (replaces `weighted_quintile_view_sql`) now breaks ties with a seeded
+  random draw before the cut, splitting a straddling group between the
+  two quintiles in proportion to its weight.
+- **F10**: the per-person cross markers now draw their already-computed
+  95% CI (`PersonBudgetRow.budget_ci`), previously a bare point.
+- **`compare_time_by_category.png`**: reworked to three panels (all
+  days/weekday-only, day with trips; weekday-only per person), each
+  with mean + 95% CI (and a median marker on the first two), matching
+  `compare_energy_time`'s own energy panels.
+
+### Added
+
+- The report's "Quintile shares and cut points" section (both surveys):
+  n, individual-weight share and day-weight share by `q1`-`q5`/
+  `unknown`, and the 4 cut points -- the missing-income audit this
+  session's user request asked for (code reviewed: no bug found that
+  would drop a missing value; EMP 2019's `decile_rev_uc` is INSEE's own
+  already-imputed decile, so an empty `'unknown'` there is expected;
+  ENTD 2008's own missing-income rate is unverified in this sandbox and
+  left for the user's real-data run to show).
+
 ## 2026-10-27 — household income and time-figure parity (section 9.9)
 
 ### Added

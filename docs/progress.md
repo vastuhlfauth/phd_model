@@ -2,7 +2,72 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-27 by Copilot (branch `step/time-budget`: household income quintiles, time-figure parity, per-person budget folded into the permanent report; pushed)_
+_Last updated: 2026-10-28 by Copilot (branch `step/time-budget`: equal-sized income quintiles, income-missing audit, F10/compare figure fixes; pushed)_
+
+### Step 11: equal-sized income quintiles, missing-income audit, figure fixes (2026-10-28, branch `step/time-budget`, pushed, not merged)
+
+- **Equal-sized income quintiles** (user-reported bug: EMP 2019's q1
+  held 31M of day weight against q5's 87M; ENTD 2008's q1/q5 held 42M/
+  63M). Root cause: `weighted_quintile_view_sql`'s deterministic
+  `ORDER BY value_col` cumulative-weight cut moved a *whole* tied-value
+  group across a cut point at once, whichever side its last row landed
+  on -- lumpy, not 20% each, because both surveys' income value is
+  highly discretized (EMP 2019's `decile_rev_uc`: only 10 distinct
+  values; ENTD 2008's bracket-midpoint/`NBUC`: repeats whenever two
+  households share a bracket and consumption-unit count). Fixed with
+  `trip_legs.build_income_quintile_table` (replaces
+  `weighted_quintile_view_sql`): a seeded `numpy` random tie-break
+  (`np.random.default_rng(seed)`, default `seed=0`, reproducible across
+  repeated calls on the same connection, e.g. the F8 sweep) orders rows
+  *within* a tied value before the cumulative-weight cut, so a group
+  straddling a cut point is split between the two quintiles in
+  proportion to its weight, not moved as a block. Verified on a 2,000-
+  row synthetic check with a 10-distinct-value income variable: quintile
+  shares came out at 19.98-20.01% each (previously as lumpy as the
+  user's real-data report). `respondent_income` is now a `TABLE` (built
+  from a registered `pyarrow` table), not a `VIEW` (the cut is computed
+  in Python, not pure SQL); `income_quintile_summary`/
+  `income_quintile_cutpoints` are two small side tables
+  (`trip_legs.income_quintile_summary` reads them back) giving the
+  report its cut points (in `value_col`'s own unit: `decile_rev_uc`'s
+  1-10 rank for EMP 2019, euros per consumption unit per month for ENTD
+  2008) and each label's share of individual weight. New report section
+  "Quintile shares and cut points" (both surveys): n, individual-weight
+  share and day-weight share by label (`q1`-`q5`, `unknown`), plus the 4
+  cut points.
+- **Missing-income audit** (user-reported: `'unknown'` was empty in both
+  surveys' real-data reports). Code-reviewed the full path from raw CSV
+  to `income_quintile`: both surveys' `build_respondent_income` already
+  use the full `K_INDIVIDU` respondent roster (EMP 2019: `k_individu`
+  joined to `tcm_ind`/`tcm_men`, not restricted further; ENTD 2008:
+  `k_individu` directly, the 18,632-respondent universe), and a `NULL`
+  `value_col` is correctly labelled `'unknown'` (confirmed by this
+  session's synthetic tests, which do exercise a blank bracket/decile).
+  No code bug found that would silently drop a missing value. Two
+  different explanations likely apply per survey, now stated explicitly
+  in the report text rather than assumed: EMP 2019's `decile_rev_uc` is
+  INSEE's own, *already fully imputed* decile (so an empty `'unknown'`
+  row is the expected, correct consequence of that imputation, not
+  evidence of a bug); ENTD 2008's `TrancheRevenuMensuel`/`NBUC` are read
+  as published with no imputation on this project's side, so a non-zero
+  `'unknown'` row there would be a genuine non-response, and a 0-n row
+  would mean INSEE's own release already has none left -- *this specific
+  question needs the user's real-data run to answer*, not assumed empty
+  as a prior, uncommitted draft of this entry (28 October 2026,
+  corrected above) had stated without having actually measured it.
+- **F10 fixed**: the per-person cross markers (`PersonBudgetRow.budget_ci`)
+  were plotted as a bare point (`ax.plot`, no error bars), even though
+  the CI was already computed and shown in the report's own tables;
+  switched to `ax.errorbar` with the same CI.
+- **`compare_time_by_category.png` reworked** (user-reported: no CI, no
+  median, one panel): three panels, mean with 95% CI and a median
+  marker (panels A/B; no median for panel C, a per-person budget is a
+  product, not a quantile of a raw distribution) -- (A) all days, day
+  with trips (now with CI, via the new `population_time_stats`
+  `ScalarGroupStats`, since `GroupStats` itself has no time CI); (B)
+  weekday only, day with trips; (C) weekday only, per person (P(out) x
+  T(out), `person_budget_weekday_population`, already computed for the
+  text-only weekday comparison, now also plotted).
 
 ### Step 11: household income and time-parity figures (2026-10-27, branch `step/time-budget`, pushed, not merged)
 
@@ -26,14 +91,20 @@ entd2008.md`):**
   count, verified identical formula to the spec's). Deliberately not
   the same as the table's own `REVUC`/`NIVIE`/`NIVIE10` ("simulated"
   income, checked to differ from bracket-midpoint/NBUC on 2,000 real
-  households, only 11.9% match to within 1 EUR).
-  `TrancheRevenuMensuel`/`NBUC` are both 100% filled in the real data,
-  so ENTD 2008's `'unknown'` income class is also empty there; the code
-  still handles a missing bracket/zero `NBUC` robustly.
+  households, only 11.9% match to within 1 EUR). Whether
+  `TrancheRevenuMensuel`/`NBUC` are themselves ever missing in the real
+  release was not independently verified in this session (28 October
+  2026's audit added the report's own n/share-by-quintile table,
+  `'unknown'` included, so the real run itself now answers this; see
+  below).
 - Quintiles (`'q1'` poorest to `'q5'` richest, `'unknown'` for missing)
   computed per survey with individual weights
-  (`trip_legs.weighted_quintile_view_sql`, a weighted-cumulative-share
-  cut at 20/40/60/80% over the whole respondent roster, not per trip).
+  (`trip_legs.build_income_quintile_table`, a weighted-cumulative-share
+  cut at 20/40/60/80% over the whole respondent roster, not per trip;
+  28 October 2026: a seeded random tie-break now splits a value
+  straddling a cut point between the two quintiles in proportion,
+  replacing a deterministic `ORDER BY` cut that pushed whole blocks of
+  weight into one quintile when `value_col` repeats, see below).
   New `trips_norm`/`trip_legs`/`day_summary` column `income_quintile`.
 
 **New engines (`daily_energy.py`):**

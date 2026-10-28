@@ -228,15 +228,37 @@ def income_bracket_midpoint_eur(label: str | None) -> float | None:
 
 
 def build_respondent_income(con: duckdb.DuckDBPyConnection) -> None:
-    """Create the ``respondent_income`` view (``ident_ind`` ->
+    """Create the ``respondent_income`` table (``ident_ind`` ->
     ``income_quintile``): household income per consumption unit, from
     `TrancheRevenuMensuel`'s bracket midpoint (``income_bracket_midpoint_eur``,
     registered here as a DuckDB scalar function) divided by `NBUC` (the
     household's own modified-OECD consumption-unit count, already
     matching this project's formula exactly, `docs/data/entd2008.md`'s
     "Income variables"), re-cut into quintiles by
-    ``trip_legs.weighted_quintile_view_sql``.
+    ``trip_legs.build_income_quintile_table`` (28 October 2026 decision:
+    equal-sized quintiles). The universe is every ``K_INDIVIDU``
+    respondent with ``PONDKI`` (the "persons actually analysed", 18,632
+    rows in the real release -- not a trip-day-filtered subset).
     """
+    _register_income_bracket_udf(con)
+    base_sql = """
+        SELECT i.IDENT_IND AS ident_ind,
+            income_bracket_midpoint_eur(m.TrancheRevenuMensuel)
+                / nullif(m.NBUC, 0) AS income_value,
+            i.PONDKI AS weight
+        FROM k_individu i
+        LEFT JOIN q_tcm_menage m ON m.IDENT_MEN = i.idENT_MEN
+    """
+    trip_legs.build_income_quintile_table(con, base_sql)
+
+
+def _register_income_bracket_udf(con: duckdb.DuckDBPyConnection) -> None:
+    """Register ``income_bracket_midpoint_eur`` as a DuckDB scalar
+    function, idempotently: DuckDB has no "CREATE OR REPLACE FUNCTION",
+    so a second registration on the same connection (`build_trip_legs`/
+    `build_respondent_income`/`missing_income_breakdown` can each be
+    called more than once per connection, e.g. the F8 robustness sweep)
+    is a harmless no-op here, not an error."""
     try:
         con.create_function(
             "income_bracket_midpoint_eur",
@@ -246,24 +268,46 @@ def build_respondent_income(con: duckdb.DuckDBPyConnection) -> None:
             null_handling="special",
         )
     except duckdb.NotImplementedException:
-        # Already registered on this connection (`build_trip_legs`/
-        # `build_respondent_income` can be called more than once per
-        # connection, e.g. the F8 robustness sweep): DuckDB has no
-        # "CREATE OR REPLACE FUNCTION", so a second registration is a
-        # harmless no-op here, not an error.
         pass
-    base_sql = """
-        SELECT i.IDENT_IND AS ident_ind,
-            income_bracket_midpoint_eur(m.TrancheRevenuMensuel)
-                / nullif(m.NBUC, 0) AS income_value,
-            i.PONDKI AS weight
+
+
+def missing_income_breakdown(con: duckdb.DuckDBPyConnection) -> dict:
+    """28 October 2026's missing-income audit (section 9.9's income
+    update, point 2: "check whether income is truly never missing, was
+    imputed by the producer, or is being dropped by our code"): counts
+    *why* a respondent's ``income_value`` is ``NULL`` (if any are), each
+    a separate failure mode along `build_respondent_income`'s own join/
+    parse/divide chain -- a producer-side gap (no `Q_TCM_MENAGE` row, or
+    a blank bracket) is not the same thing as this project's own
+    `income_bracket_midpoint_eur` failing to parse a non-blank label, or
+    a zero/missing `NBUC` making the division ``NULL``."""
+    _register_income_bracket_udf(con)
+    row = con.sql("""
+        SELECT count(*) AS n_total,
+            count(*) FILTER (WHERE m.IDENT_MEN IS NULL) AS n_no_household_match,
+            count(*) FILTER (
+                WHERE m.IDENT_MEN IS NOT NULL
+                    AND (m.TrancheRevenuMensuel IS NULL OR m.TrancheRevenuMensuel = '')
+            ) AS n_null_bracket,
+            count(*) FILTER (
+                WHERE m.TrancheRevenuMensuel IS NOT NULL
+                    AND m.TrancheRevenuMensuel != ''
+                    AND income_bracket_midpoint_eur(m.TrancheRevenuMensuel) IS NULL
+            ) AS n_unparseable_bracket,
+            count(*) FILTER (
+                WHERE income_bracket_midpoint_eur(m.TrancheRevenuMensuel) IS NOT NULL
+                    AND (m.NBUC IS NULL OR m.NBUC = 0)
+            ) AS n_null_nbuc
         FROM k_individu i
         LEFT JOIN q_tcm_menage m ON m.IDENT_MEN = i.idENT_MEN
-    """
-    con.sql(
-        "CREATE OR REPLACE VIEW respondent_income AS "
-        + trip_legs.weighted_quintile_view_sql(base_sql)
-    )
+    """).fetchone()
+    return {
+        "n_total": row[0],
+        "n_no_household_match": row[1],
+        "n_null_bracket": row[2],
+        "n_unparseable_bracket": row[3],
+        "n_null_nbuc": row[4],
+    }
 
 
 def extract_tables(

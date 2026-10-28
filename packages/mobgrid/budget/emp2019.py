@@ -172,27 +172,55 @@ def register_views(con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]) -
 
 
 def build_respondent_income(con: duckdb.DuckDBPyConnection) -> None:
-    """Create the ``respondent_income`` view (``ident_ind`` ->
+    """Create the ``respondent_income`` table (``ident_ind`` ->
     ``income_quintile``): EMP 2019 publishes no raw income bracket, so
     ``TCM_MEN.decile_rev_uc`` (INSEE's own consolidated decile of
     household income per consumption unit) is used directly as the
-    continuous rank fed to ``trip_legs.weighted_quintile_view_sql``,
-    re-cut under this project's individual weighting
-    (``docs/data/entd2008.md``'s "Income variables").
+    continuous rank fed to ``trip_legs.build_income_quintile_table``
+    (28 October 2026 decision: equal-sized quintiles), re-cut under this
+    project's individual weighting (``docs/data/entd2008.md``'s "Income
+    variables"). The universe is every ``K_INDIVIDU`` respondent with
+    ``pond_indC`` (the "persons actually analysed": one row per
+    Kish-selected respondent); ``tcm_ind`` (the "every household
+    member" linkage table, not demographics) is joined only to look up
+    each respondent's ``ident_men`` for ``TCM_MEN``'s own decile
+    (``K_INDIVIDU``'s own documented columns have no household id).
     """
     base_sql = """
-        SELECT k.IDENT_IND AS ident_ind,
+        SELECT i.IDENT_IND AS ident_ind,
             m.decile_rev_uc AS income_value,
             i.pond_indC AS weight
-        FROM tcm_ind_kish k
-        JOIN k_individu i ON i.IDENT_IND = k.IDENT_IND
-        JOIN tcm_ind t ON t.ident_ind = k.IDENT_IND
+        FROM k_individu i
+        JOIN tcm_ind t ON t.ident_ind = i.IDENT_IND
         LEFT JOIN tcm_men m ON m.ident_men = t.ident_men
     """
-    con.sql(
-        "CREATE OR REPLACE VIEW respondent_income AS "
-        + trip_legs.weighted_quintile_view_sql(base_sql)
-    )
+    trip_legs.build_income_quintile_table(con, base_sql)
+
+
+def missing_income_breakdown(con: duckdb.DuckDBPyConnection) -> dict:
+    """28 October 2026's missing-income audit (section 9.9's income
+    update, point 2: "check whether income is truly never missing, was
+    imputed by the producer, or is being dropped by our code"): counts
+    *why* a respondent's ``income_value`` is ``NULL`` (if any are),
+    isolating each join/lookup step so a producer-side gap (no
+    `TCM_MEN` row at all for a respondent's household) cannot be
+    confused with this project's own code (there is none here: a plain
+    rank, no parsing/division step to fail, unlike ENTD 2008)."""
+    row = con.sql("""
+        SELECT count(*) AS n_total,
+            count(*) FILTER (WHERE m.ident_men IS NULL) AS n_no_household_match,
+            count(*) FILTER (
+                WHERE m.ident_men IS NOT NULL AND m.decile_rev_uc IS NULL
+            ) AS n_null_decile
+        FROM k_individu i
+        JOIN tcm_ind t ON t.ident_ind = i.IDENT_IND
+        LEFT JOIN tcm_men m ON m.ident_men = t.ident_men
+    """).fetchone()
+    return {
+        "n_total": row[0],
+        "n_no_household_match": row[1],
+        "n_null_decile": row[2],
+    }
 
 
 def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:

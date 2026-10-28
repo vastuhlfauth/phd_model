@@ -223,6 +223,40 @@ def _day_rows(con: duckdb.DuckDBPyConnection) -> dict:
     ).fetchnumpy()
 
 
+def _income_quintile_report(
+    con: duckdb.DuckDBPyConnection, days: dict, survey
+) -> dict:
+    """Section 9.9's 28 October 2026 decision: equal-sized income
+    quintiles. ``trip_legs.income_quintile_summary`` gives the cut
+    points and each label's share of *individual* weight (the
+    respondent roster the quintiles are cut on); this adds the share of
+    *day* weight (``days``, the same needs-only ``day_summary`` rows
+    every other table in this report reads) -- the two bases should
+    agree closely if the quintile cut and the day sample have a similar
+    income composition, a check on the quintiling itself, not just a
+    duplicate of it -- and ``survey.missing_income_breakdown``'s own
+    counts (point 2's audit: is a missing value a producer-side gap, or
+    this project's own code?).
+    """
+    respondent_summary = trip_legs.income_quintile_summary(con)
+    total_day_weight = float(days["pond_jour"].sum())
+    day_weight_share_by_label = {}
+    for label in trip_legs.INCOME_QUINTILE_LABELS:
+        mask = days["income_quintile"] == label
+        day_weight_share_by_label[label] = (
+            float(days["pond_jour"][mask].sum()) / total_day_weight
+            if total_day_weight
+            else 0.0
+        )
+    return {
+        "cut_points": respondent_summary.cut_points,
+        "n_by_label": respondent_summary.n_by_label,
+        "individual_weight_share_by_label": respondent_summary.weight_share_by_label,
+        "day_weight_share_by_label": day_weight_share_by_label,
+        "missing_breakdown": survey.missing_income_breakdown(con),
+    }
+
+
 def _group_stats(
     days: dict, group_column: str, *, n_reps: int, seed: int
 ) -> list[daily_energy.GroupStats]:
@@ -471,6 +505,7 @@ def run(
     )
     days = _day_rows(con)
     n_days_within_scope = con.sql("SELECT count(*) FROM day_summary").fetchone()[0]
+    income_quintile_report = _income_quintile_report(con, days, survey)
 
     # Children as car drivers (round 4's point 4): the mtp code (already
     # harmonised to EMP 2019's, `trips_norm`) behind every
@@ -905,6 +940,31 @@ def run(
         for day_type, weight in traveler_day_type_weight.items()
     }
 
+    # Daily time by population category, with the same mean+CI+median
+    # treatment energy already has (`compare_time_by_category`'s figure,
+    # section 9.9's income update): all days, and weekday-only (the one
+    # scope comparable across both surveys).
+    population_time_stats = _scalar_by_group(
+        days, "population_category", days["total_time_min"], n_reps=n_reps, seed=seed
+    )
+    weekday_days = {
+        key: days[key][days["typejour"] == 1]
+        for key in (
+            "ident_men",
+            "pond_jour",
+            "total_time_min",
+            "population_category",
+            "trips_per_day",
+        )
+    }
+    population_time_stats_weekday = _scalar_by_group(
+        weekday_days,
+        "population_category",
+        weekday_days["total_time_min"],
+        n_reps=n_reps,
+        seed=seed,
+    )
+
     return {
         "config": config,
         "survey_name": survey.SURVEY_NAME,
@@ -912,12 +972,15 @@ def run(
         "n_days": len(days["day_mode_group"]),
         "mode_stats": mode_stats,
         "population_stats": population_stats,
+        "population_time_stats": population_time_stats,
+        "population_time_stats_weekday": population_time_stats_weekday,
         "density_stats": density_stats,
         "category_density_stats": category_density_stats,
         "density_constancy_summary": density_constancy_summary,
         "income_stats": income_stats,
         "category_income_stats": category_income_stats,
         "income_constancy_summary": income_constancy_summary,
+        "income_quintile_report": income_quintile_report,
         "category_density_time_ci": category_density_time_ci,
         "category_income_time_ci": category_income_time_ci,
         "trips_by_income": trips_by_income,
@@ -988,11 +1051,7 @@ def run(
         # `bootstrap_diff_ci` (ENTD 2008 describes only one weekday per
         # respondent; EMP 2019's `typejour` marks the same reference
         # weekday).
-        "weekday_days": {
-            key: days[key][days["typejour"] == 1]
-            for key in ("ident_men", "pond_jour", "total_time_min",
-                        "population_category", "trips_per_day")
-        },
+        "weekday_days": weekday_days,
         "figures": figures,
     }
 
@@ -2230,19 +2289,27 @@ def _figure_f10_constancy(
                 capsize=3,
                 label=f"day with trips ({label})" if ax is axes.flat[0] else None,
             )
-            person_means = []
+            person_means, person_lowers, person_uppers = [], [], []
             for key in key_order:
                 row = person_store.get((category, key))
-                person_means.append(
-                    row.budget if row is not None and row.n >= MIN_CELL_N else np.nan
-                )
-            ax.plot(
+                if row is None or row.n < MIN_CELL_N:
+                    person_means.append(np.nan)
+                    person_lowers.append(0.0)
+                    person_uppers.append(0.0)
+                    continue
+                person_means.append(row.budget)
+                lower, upper = row.budget_ci
+                person_lowers.append(max(row.budget - lower, 0.0))
+                person_uppers.append(max(upper - row.budget, 0.0))
+            ax.errorbar(
                 x,
                 person_means,
-                marker="x",
-                linestyle="none",
+                yerr=[person_lowers, person_uppers],
+                fmt="x",
                 color=color,
+                capsize=3,
                 markersize=8,
+                linestyle="none",
                 label=f"per person ({label})" if ax is axes.flat[0] else None,
             )
         ax.set_xticks(all_xticks)
@@ -2255,7 +2322,7 @@ def _figure_f10_constancy(
     fig.suptitle(
         "F10. Constancy: mean daily time by density class and income "
         "quintile, within each population category (circles = day with "
-        "trips with 95% CI; crosses = per person, point estimate; "
+        "trips with 95% CI; crosses = per person, with 95% CI; "
         "section 9.9)"
     )
     fig.tight_layout()
@@ -2547,6 +2614,57 @@ def _format_constancy_summary_table(
         mm = "-" if np.isnan(max_min) else f"{max_min:.2f}"
         cvs = "-" if np.isnan(cv) else f"{cv:.2f}"
         lines.append(f"| {category} | {nr} | {mm} | {cvs} |")
+    return lines
+
+
+def _format_income_quintile_report(report: dict) -> list[str]:
+    """Section 9.9's 28 October 2026 "equal-sized quintiles" decision:
+    each quintile's unweighted n and share of individual weight (the
+    cut basis, so each of q1-q5 should read close to 20%) and of day
+    weight (`day_summary`, an independent check), the 4 cut points
+    (euros per consumption unit per month for ENTD 2008; EMP 2019's
+    `decile_rev_uc` 1-10 decile rank has no euro equivalent), and the
+    missing-income audit's own breakdown (point 2: *why*, not just
+    *how many*)."""
+    lines = [
+        "| Quintile | n | Share of individual weight | Share of day weight |",
+        "|---|---|---|---|",
+    ]
+    for label in trip_legs.INCOME_QUINTILE_LABELS:
+        n = report["n_by_label"].get(label, 0)
+        ind_share = report["individual_weight_share_by_label"].get(label, 0.0)
+        day_share = report["day_weight_share_by_label"].get(label, 0.0)
+        lines.append(f"| {label} | {n} | {ind_share:.1%} | {day_share:.1%} |")
+    cut_points = ", ".join(f"{v:.1f}" for v in report["cut_points"])
+    lines.append("")
+    lines.append(f"Cut points (q1/q2, q2/q3, q3/q4, q4/q5): {cut_points}.")
+    lines.append("")
+    missing = report["missing_breakdown"]
+    n_total = missing["n_total"]
+
+    def _share(n: int) -> str:
+        return f"{n} ({n / n_total:.1%})" if n_total else f"{n}"
+
+    lines.append(
+        f"Missing-income breakdown, of {n_total} respondents: "
+        f"{_share(missing['n_no_household_match'])} with no matching "
+        "household income record at all (a producer-side gap, not this "
+        "project's code)"
+        + (
+            f"; {_share(missing['n_null_decile'])} with a matched "
+            "household but a blank `decile_rev_uc`."
+            if "n_null_decile" in missing
+            else f"; {_share(missing['n_null_bracket'])} with a matched "
+            "household but a blank `TrancheRevenuMensuel` (both "
+            "producer-side); "
+            f"{_share(missing['n_unparseable_bracket'])} with a bracket "
+            "label this project's own `income_bracket_midpoint_eur` "
+            "could not parse; "
+            f"{_share(missing['n_null_nbuc'])} with a parsed bracket but "
+            "a missing/zero `NBUC` (this project's own division, not the "
+            "producer's)."
+        )
+    )
     return lines
 
 
@@ -2948,6 +3066,33 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         *_format_constancy_summary_table(
             results["income_constancy_summary"], named_label="q5/q1"
         ),
+        "",
+        "### Quintile shares and cut points",
+        "",
+        "Quintiles are cut to hold equal shares of individual weight "
+        "(28 October 2026 decision): a tied income value (common -- EMP "
+        "2019's `decile_rev_uc` has only 10 distinct values, and ENTD "
+        "2008's bracket-midpoint/`NBUC` often repeats) straddling a cut "
+        "point is split between the two quintiles in proportion, by a "
+        "seeded random draw (`trip_legs.build_income_quintile_table`). "
+        "`'unknown'` (missing/refused income) is its own row, excluded "
+        "from the 20/40/60/80% cut, with its own breakdown below of "
+        + (
+            "*why* a value is missing (`emp2019.missing_income_breakdown`): "
+            "a producer-side gap (no `TCM_MEN` match at all for the "
+            "respondent's household, or a matched household with a blank "
+            "`decile_rev_uc`) -- this project's own code does nothing "
+            "beyond the plain lookup, so there is no code-side failure "
+            "mode to report here."
+            if is_emp2019
+            else "*why* a value is missing (`entd2008.missing_income_breakdown`): "
+            "a producer-side gap (no `Q_TCM_MENAGE` match, or a blank "
+            "`TrancheRevenuMensuel`) versus this project's own code (a "
+            "bracket label `income_bracket_midpoint_eur` could not parse, "
+            "or a missing/zero `NBUC` making the division `NULL`)."
+        ),
+        "",
+        *_format_income_quintile_report(results["income_quintile_report"]),
         "",
         "## Trips per day and minutes per trip, by category, density and "
         "income quintile (section 9.9 point 2: daily time = trips/day x "
@@ -3782,8 +3927,12 @@ def run_compare(
         out_path,
     )
     time_by_category_path = _figure_compare_time_by_category(
-        results_2008["population_stats"],
-        results_2019_proxy["population_stats"],
+        results_2008["population_time_stats"],
+        results_2019_proxy["population_time_stats"],
+        results_2008["population_time_stats_weekday"],
+        results_2019_proxy["population_time_stats_weekday"],
+        results_2008["person_budget_weekday_population"],
+        results_2019_proxy["person_budget_weekday_population"],
         out_path,
     )
     lines += [
@@ -3914,50 +4063,140 @@ def _figure_compare_energy_time(
 
 
 def _figure_compare_time_by_category(
-    stats_2008: list[daily_energy.GroupStats],
-    stats_2019: list[daily_energy.GroupStats],
+    stats_2008: list[daily_energy.ScalarGroupStats],
+    stats_2019: list[daily_energy.ScalarGroupStats],
+    stats_2008_weekday: list[daily_energy.ScalarGroupStats],
+    stats_2019_weekday: list[daily_energy.ScalarGroupStats],
+    budgets_2008_weekday: dict[str, daily_energy.PersonBudgetRow],
+    budgets_2019_weekday: dict[str, daily_energy.PersonBudgetRow],
     out_dir: Path,
 ) -> Path:
-    """Time by population category, 2008 vs 2019 (section 9.9, 27
-    October 2026 decision: the time budget's own b_k, one value per
-    category, is now the reference constant). Day with trips, needs
-    scope, density proxy in both years."""
-    by_2008 = {s.group: s for s in stats_2008}
-    by_2019 = {s.group: s for s in stats_2019}
-    categories = [
-        c for c in daily_energy.POPULATION_CATEGORIES if c in by_2008 or c in by_2019
-    ]
+    """Daily travel time by population category, 2008 vs 2019 (section
+    9.9, 27 October 2026 decision: the time budget's own b_k is now the
+    reference constant): mean with 95% CI and a median marker, the same
+    treatment `compare_energy_time`'s energy panels already give energy
+    (section 9.9's income update). Three panels, left to right: (A) all
+    days, day with trips, needs scope; (B) weekday only, day with
+    trips; (C) weekday only, per person (days without trips included,
+    P(out) x T(out|out) -- no median marker, a per-person budget is a
+    product, not a quantile of a raw distribution). (B)/(C) share the
+    one scope both surveys' per-person budgets are directly comparable
+    on (ENTD 2008 describes only the reference weekday)."""
+    categories = list(daily_energy.POPULATION_CATEGORIES)
     x = np.arange(len(categories))
     width = 0.35
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    for offset, by_year, label in (
-        (-width / 2, by_2008, "2008"),
-        (width / 2, by_2019, "2019"),
-    ):
-        means = [
-            by_year[c].mean_time_min if c in by_year else np.nan for c in categories
-        ]
-        ns = [by_year[c].n if c in by_year else 0 for c in categories]
-        bars = ax.bar(x + offset, means, width, label=label)
-        for bar, n in zip(bars, ns, strict=False):
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height(),
-                f"n={n}",
-                ha="center",
-                va="bottom",
-                fontsize=6,
+    def _scalar_panel(ax, by_2008, by_2019, title):
+        for offset, by_year, label, color in (
+            (-width / 2, by_2008, "2008", "tab:blue"),
+            (width / 2, by_2019, "2019", "tab:orange"),
+        ):
+            means, lowers, uppers, medians, ns = [], [], [], [], []
+            for category in categories:
+                stat = by_year.get(category)
+                if stat is None or stat.n < MIN_CELL_N:
+                    means.append(np.nan)
+                    lowers.append(0.0)
+                    uppers.append(0.0)
+                    medians.append(np.nan)
+                    ns.append(0)
+                    continue
+                means.append(stat.mean)
+                lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
+                uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+                medians.append(stat.median)
+                ns.append(stat.n)
+            ax.bar(
+                x + offset,
+                means,
+                width,
+                yerr=[lowers, uppers],
+                label=label,
+                color=color,
+                capsize=2,
             )
-    ax.set_xticks(x)
-    ax.set_xticklabels(categories, rotation=30, ha="right")
-    ax.set_ylabel("Mean daily travel time, minutes")
-    ax.set_title(
-        "Daily travel time by population category, 2008 vs 2019\n"
-        "(day with trips, needs scope, density proxy in both, section 9.9)",
-        fontsize=10,
+            ax.scatter(
+                x + offset,
+                medians,
+                marker="D",
+                color="black",
+                s=14,
+                zorder=3,
+                label=f"{label} median",
+            )
+            for xi, mean, n in zip(x + offset, means, ns, strict=True):
+                if not np.isnan(mean):
+                    ax.text(
+                        xi,
+                        mean,
+                        f"{mean:.0f}\nn={n}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=6,
+                    )
+        ax.set_xticks(x)
+        ax.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
+        ax.set_ylabel("Mean daily time, minutes")
+        ax.set_title(title, fontsize=9)
+        ax.legend(fontsize=6)
+
+    fig, (ax_all, ax_weekday, ax_person) = plt.subplots(1, 3, figsize=(19, 6))
+    _scalar_panel(
+        ax_all,
+        {s.group: s for s in stats_2008},
+        {s.group: s for s in stats_2019},
+        "(A) All days, day with trips",
     )
-    ax.legend()
+    _scalar_panel(
+        ax_weekday,
+        {s.group: s for s in stats_2008_weekday},
+        {s.group: s for s in stats_2019_weekday},
+        "(B) Weekday only, day with trips",
+    )
+    for offset, budgets, label, color in (
+        (-width / 2, budgets_2008_weekday, "2008", "tab:blue"),
+        (width / 2, budgets_2019_weekday, "2019", "tab:orange"),
+    ):
+        means, lowers, uppers, ns = [], [], [], []
+        for category in categories:
+            row = budgets.get(category)
+            if row is None or row.n < MIN_CELL_N:
+                means.append(np.nan)
+                lowers.append(0.0)
+                uppers.append(0.0)
+                ns.append(0)
+                continue
+            means.append(row.budget)
+            lower, upper = row.budget_ci
+            lowers.append(max(row.budget - lower, 0.0))
+            uppers.append(max(upper - row.budget, 0.0))
+            ns.append(row.n)
+        ax_person.bar(
+            x + offset,
+            means,
+            width,
+            yerr=[lowers, uppers],
+            label=label,
+            color=color,
+            capsize=2,
+        )
+        for xi, mean, n in zip(x + offset, means, ns, strict=True):
+            if not np.isnan(mean):
+                ax_person.text(
+                    xi, mean, f"{mean:.0f}\nn={n}", ha="center", va="bottom",
+                    fontsize=6,
+                )
+    ax_person.set_xticks(x)
+    ax_person.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
+    ax_person.set_ylabel("Mean daily time, minutes")
+    ax_person.set_title("(C) Weekday only, per person (P(out) x T(out))", fontsize=9)
+    ax_person.legend(fontsize=6)
+
+    fig.suptitle(
+        "Daily travel time by population category, 2008 vs 2019 (density "
+        "proxy in both, section 9.9); mean with 95% CI, diamond = median "
+        "(panels A/B only, no median for a per-person budget)"
+    )
     fig.tight_layout()
     path = out_dir / "compare_time_by_category.png"
     fig.savefig(path, dpi=110)

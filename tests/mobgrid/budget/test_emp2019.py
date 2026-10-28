@@ -82,7 +82,7 @@ def test_income_quintile_is_ordered_by_decile_rev_uc(
 ) -> None:
     """EMP 2019 publishes no raw income bracket: `TCM_MEN.decile_rev_uc`
     is used directly as the continuous rank fed to
-    `trip_legs.weighted_quintile_view_sql` (section 9.9's "Income
+    `trip_legs.build_income_quintile_table` (section 9.9's "Income
     variables"). The synthetic fixture's `decile_rev_uc` runs 1..10
     across its 13 households (`conftest.py`): the lowest decile
     (ident_ind 1, M1) must rank at or below a higher decile (ident_ind
@@ -98,6 +98,33 @@ def test_income_quintile_is_ordered_by_decile_rev_uc(
     assert rows[1] in order
     assert rows[8] in order
     assert order[rows[1]] <= order[rows[8]]
+
+
+def test_missing_income_breakdown_distinguishes_no_match_from_null_decile() -> None:
+    """28 October 2026's missing-income audit: a respondent whose
+    household has no `TCM_MEN` row at all is a different failure mode
+    (`n_no_household_match`) from one whose household is matched but
+    has a blank `decile_rev_uc` (`n_null_decile`) -- this project's code
+    does nothing beyond the plain lookup, so there is no third,
+    code-side failure mode for EMP 2019."""
+    con = duckdb.connect()
+    con.sql("CREATE TABLE k_individu (IDENT_IND VARCHAR, pond_indC DOUBLE)")
+    con.sql(
+        "INSERT INTO k_individu VALUES "
+        "('1', 100.0), ('2', 100.0), ('3', 100.0)"
+    )
+    con.sql("CREATE TABLE tcm_ind (ident_ind VARCHAR, ident_men VARCHAR)")
+    con.sql(
+        "INSERT INTO tcm_ind VALUES ('1', 'M1'), ('2', 'M2'), ('3', 'M3')"
+    )
+    con.sql("CREATE TABLE tcm_men (ident_men VARCHAR, decile_rev_uc INTEGER)")
+    # M1: normal; M2: present but blank decile; M3: no row at all.
+    con.sql("INSERT INTO tcm_men VALUES ('M1', 5), ('M2', NULL)")
+
+    breakdown = emp2019.missing_income_breakdown(con)
+    assert breakdown["n_total"] == 3
+    assert breakdown["n_no_household_match"] == 1
+    assert breakdown["n_null_decile"] == 1
 
 
 def test_walking_and_cycling_calibrate_v0_and_p0(
