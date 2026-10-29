@@ -2,7 +2,41 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-28 by Copilot (branch `step/time-budget`: equal-sized income quintiles, income-missing audit, F10/compare figure fixes; pushed)_
+_Last updated: 2026-10-29 by Copilot (branch `step/time-budget`: regenerated reports committed, pause handoff and bundle; push blocked by authentication)_
+
+### Pause handoff (2026-10-29)
+
+- **State:** branch `step/time-budget`, not merged. Last report commit: `93350305b36352af353248c953b0d4250cda88f5`; the subsequent handoff commit is the commit containing this note (`git log -1 -- docs/progress.md`), avoiding a self-referential hash. Not pushed: both push attempts failed because noninteractive GitHub authentication is unavailable. `uv` is unavailable in this session; checks used the existing `.venv` Python instead. Pytest: incomplete, stopped at the 110-second safety limit; final passed/failed counts unavailable (collection: 431 selected, 2 pilot tests deselected). Ruff: passed, 0 violations. The repository moved to `C:\work\phd_model` after the Windows account change; `C:\codes` is a read-only copy owned by the old account.
+- **Decided:** the daily travel time budget per population category is the reference constant (27 October); terminal legs from declared walking and waiting times; energy computed in parallel; residence density from the household table; income quintiles of income per consumption unit, equal-sized within each survey.
+- **To review before merging:** the regenerated reports (quintile sizes, the income gradient for retired and employed people, figure f10 and compare_time_by_category).
+- **Decisions pending:** (a) income levels in the budget, for all categories or only employed and retired people; (b) the budget fixed at its 2019 level, or following the observed rise (about +6 min a day on weekdays between 2008 and 2019); (c) the tolerance for calling the budget constant (for example, a CV below 0.10 within a category).
+- **Open points:** recalibrate the car walk defaults in config.car from the calibration table of spec 9.6; P_0 under declared legs against the 34.8 W in the config; a duration plausibility check for every mode; EMP 2019 short-walk distances (MDISTTOT_fin); ENTD 2008 weekend-day eligibility; the pre-existing calibration_pilot test failure; the matplotlib "no artists with labels" warnings in the test figures. The written report and the article must be revised: the main result changed from energy constant across modes to time constant within population categories.
+- **Resume commands** (own terminal, from `C:\work\phd_model`): `uv run pytest -q -m "not pilot"`; `uv run ruff check .`; authenticate GitHub, then `git push origin step/time-budget`. Export: `C:\work\step11_bundle_v5.zip` (three reports, all their figure-directory files, and this progress file). No computation or report regeneration was started during this wrap-up.
+
+### Step 11: regenerated report measurements (2026-10-29, section 9.9)
+
+Sources: [EMP 2019 report](data/step11_budget.md), [ENTD 2008 report](data/step11_budget_entd2008.md), and [comparison](data/step11_compare.md). Reported shares are rounded to one decimal place, not claims of exact unrounded equality.
+
+| Survey | q1 individual weight | q2 | q3 | q4 | q5 | Unknown income |
+|---|---|---|---|---|---|---|
+| EMP 2019 | 20.0% | 20.0% | 20.0% | 20.0% | 20.0% | 0 of 13,825 respondents; 0.0% individual weight; 0.0% day weight |
+| ENTD 2008 | 20.0% | 20.0% | 20.0% | 20.0% | 20.0% | 0 of 18,632 respondents; 0.0% individual weight; 0.0% day weight |
+
+ENTD 2008's missing-income audit reports zero missing household matches, zero blank income brackets, zero unparsed brackets and zero missing/zero consumption-unit counts. This resolves the earlier open question about the real release: the regenerated report finds no unknown-income respondents; no project-side imputation was added.
+
+Income constancy of mean daily time **per day with trips**, within each population category (the reports' income constancy summary, not the separate weekday per-person budget). CV is across the included income classes; `-` means the report does not give a q5/q1 ratio, not a zero.
+
+| Category | ENTD 2008 q5/q1 | ENTD 2008 CV | EMP 2019 q5/q1 | EMP 2019 CV |
+|---|---|---|---|---|
+| children_6_17 | 0.98 | 0.05 | 1.01 | 0.01 |
+| employed | 1.28 | 0.09 | 1.20 | 0.07 |
+| unemployed | 1.22 | 0.12 | - | 0.22 |
+| retired | 1.40 | 0.11 | 1.27 | 0.09 |
+| other_inactive | 1.09 | 0.04 | 0.92 | 0.11 |
+
+P_0 calibrated with declared terminal legs (falling back to the spec defaults where missing): **ENTD 2008: 26.7 W**, implied flat speed 11.84 km/h, n=2,146; **EMP 2019: 28.4 W**, implied flat speed 12.23 km/h, n=727. Both are below the configured 34.8 W; configuration is unchanged. The comparison's weekday daily-time mean on days with trips rises from 68.6 to 74.7 minutes (+6.1 minutes, 95% CI [+3.5, +8.2]).
+
+Wrap-up checks: all 38 Markdown figure references resolve; the three figure directories contain 42 files in total. No `spec_update_*.diff` files were present in this working repository's root, so none were deleted or committed. The initial worktree contained only the requested report/figure changes. Commits use the Copilot bot identity because this account has no configured Git author identity.
 
 ### Step 11: equal-sized income quintiles, missing-income audit, figure fixes (2026-10-28, branch `step/time-budget`, pushed, not merged)
 
