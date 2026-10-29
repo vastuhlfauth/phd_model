@@ -69,46 +69,63 @@ Household income per consumption unit (modified OECD scale), in quintiles comput
 
 | Category | Income quintile | n | mean time (min) | 95% CI | median time (min) |
 |---|---|---|---|---|---|
-| children_6_17 | q1 | 180 | 50.1 | [43.2, 57.8] | 40.0 |
-| children_6_17 | q2 | 259 | 58.0 | [50.2, 68.7] | 40.0 |
-| children_6_17 | q3 | 204 | 49.7 | [45.3, 56.3] | 40.0 |
-| children_6_17 | q4 | 219 | 56.2 | [47.2, 68.4] | 37.0 |
-| children_6_17 | q5 | 198 | 52.1 | [46.0, 60.0] | 40.0 |
+| children_6_17 | q1 | 290 | 53.7 | [47.8, 60.8] | 40.0 |
+| children_6_17 | q2 | 244 | 53.0 | [45.4, 64.3] | 40.0 |
+| children_6_17 | q3 | 189 | 54.5 | [46.8, 65.7] | 40.0 |
+| children_6_17 | q4 | 203 | 52.7 | [45.6, 62.2] | 35.0 |
+| children_6_17 | q5 | 134 | 54.1 | [46.0, 63.9] | 41.0 |
 | children_6_17 | unknown | 0 | - | - | - |
-| employed | q1 | 211 | 77.3 | [66.3, 92.7] | 50.0 |
-| employed | q2 | 683 | 74.5 | [67.8, 79.5] | 60.0 |
-| employed | q3 | 1008 | 87.3 | [79.8, 96.4] | 65.0 |
-| employed | q4 | 1488 | 82.2 | [78.2, 86.2] | 65.0 |
-| employed | q5 | 1917 | 89.1 | [85.3, 93.0] | 70.0 |
+| employed | q1 | 503 | 76.0 | [68.5, 83.1] | 60.0 |
+| employed | q2 | 834 | 79.3 | [73.5, 84.1] | 60.0 |
+| employed | q3 | 1128 | 86.4 | [80.3, 94.3] | 65.0 |
+| employed | q4 | 1314 | 81.4 | [77.4, 85.8] | 65.0 |
+| employed | q5 | 1528 | 91.5 | [87.1, 95.4] | 72.0 |
 | employed | unknown | 0 | - | - | - |
-| unemployed | q1 | 259 | 67.9 | [58.7, 78.1] | 50.0 |
-| unemployed | q2 | 177 | 79.5 | [66.3, 95.4] | 65.0 |
-| unemployed | q3 | 88 | 110.4 | [70.9, 163.9] | 60.0 |
-| unemployed | q4 | 72 | 81.4 | [64.8, 101.2] | 75.0 |
-| unemployed | q5 | 51 | 84.0 | [54.7, 108.5] | 60.0 |
+| unemployed | q1 | 361 | 72.9 | [63.5, 83.8] | 60.0 |
+| unemployed | q2 | 123 | 77.6 | [62.3, 93.0] | 60.0 |
+| unemployed | q3 | 76 | 120.8 | [74.5, 176.3] | 80.0 |
+| unemployed | q4 | 54 | 79.6 | [57.5, 102.7] | 60.0 |
+| unemployed | q5 | 33 | - | - | - |
 | unemployed | unknown | 0 | - | - | - |
-| retired | q1 | 183 | 50.2 | [43.8, 58.1] | 35.0 |
-| retired | q2 | 705 | 54.7 | [49.9, 60.8] | 40.0 |
-| retired | q3 | 802 | 58.1 | [53.4, 63.6] | 40.0 |
-| retired | q4 | 1080 | 59.0 | [53.9, 66.5] | 40.0 |
-| retired | q5 | 1182 | 67.7 | [62.8, 72.2] | 45.0 |
+| retired | q1 | 471 | 53.8 | [47.8, 61.6] | 38.0 |
+| retired | q2 | 822 | 55.2 | [50.5, 60.0] | 40.0 |
+| retired | q3 | 827 | 58.0 | [53.0, 62.5] | 40.0 |
+| retired | q4 | 908 | 62.1 | [55.9, 70.5] | 40.0 |
+| retired | q5 | 924 | 68.3 | [63.2, 74.1] | 50.0 |
 | retired | unknown | 0 | - | - | - |
-| other_inactive | q1 | 295 | 70.3 | [62.0, 79.6] | 60.0 |
-| other_inactive | q2 | 313 | 81.9 | [65.3, 109.8] | 60.0 |
-| other_inactive | q3 | 157 | 70.6 | [58.1, 83.2] | 60.0 |
-| other_inactive | q4 | 127 | 87.5 | [72.1, 104.1] | 62.0 |
-| other_inactive | q5 | 105 | 73.6 | [60.1, 88.5] | 65.0 |
+| other_inactive | q1 | 459 | 80.1 | [66.1, 96.9] | 60.0 |
+| other_inactive | q2 | 230 | 64.1 | [55.0, 72.4] | 60.0 |
+| other_inactive | q3 | 136 | 80.6 | [68.8, 95.4] | 60.0 |
+| other_inactive | q4 | 86 | 89.7 | [73.2, 110.4] | 60.0 |
+| other_inactive | q5 | 86 | 73.3 | [57.7, 90.5] | 65.0 |
 | other_inactive | unknown | 0 | - | - | - |
 
 ### Constancy summary
 
 | Category | q5/q1 | max/min | CV across classes |
 |---|---|---|---|
-| children_6_17 | 1.04 | 1.17 | 0.06 |
-| employed | 1.15 | 1.20 | 0.07 |
-| unemployed | 1.24 | 1.63 | 0.17 |
-| retired | 1.35 | 1.35 | 0.10 |
-| other_inactive | 1.05 | 1.25 | 0.09 |
+| children_6_17 | 1.01 | 1.03 | 0.01 |
+| employed | 1.20 | 1.20 | 0.07 |
+| unemployed | - | 1.66 | 0.22 |
+| retired | 1.27 | 1.27 | 0.09 |
+| other_inactive | 0.92 | 1.40 | 0.11 |
+
+### Quintile shares and cut points
+
+Quintiles are cut to hold equal shares of individual weight (28 October 2026 decision): a tied income value (common -- EMP 2019's `decile_rev_uc` has only 10 distinct values, and ENTD 2008's bracket-midpoint/`NBUC` often repeats) straddling a cut point is split between the two quintiles in proportion, by a seeded random draw (`trip_legs.build_income_quintile_table`). `'unknown'` (missing/refused income) is its own row, excluded from the 20/40/60/80% cut, with its own breakdown below of *why* a value is missing (`emp2019.missing_income_breakdown`): a producer-side gap (no `TCM_MEN` match at all for the respondent's household, or a matched household with a blank `decile_rev_uc`) -- this project's own code does nothing beyond the plain lookup, so there is no code-side failure mode to report here.
+
+| Quintile | n | Share of individual weight | Share of day weight |
+|---|---|---|---|
+| q1 | 2504 | 20.0% | 18.5% |
+| q2 | 2662 | 20.0% | 19.5% |
+| q3 | 2742 | 20.0% | 19.6% |
+| q4 | 2885 | 20.0% | 21.0% |
+| q5 | 3032 | 20.0% | 21.3% |
+| unknown | 0 | 0.0% | 0.0% |
+
+Cut points (q1/q2, q2/q3, q3/q4, q4/q5): 2.0, 4.0, 6.0, 8.0.
+
+Missing-income breakdown, of 13825 respondents: 0 (0.0%) with no matching household income record at all (a producer-side gap, not this project's code); 0 (0.0%) with a matched household but a blank `decile_rev_uc`.
 
 ## Trips per day and minutes per trip, by category, density and income quintile (section 9.9 point 2: daily time = trips/day x minutes/trip)
 
@@ -143,35 +160,35 @@ Household income per consumption unit (modified OECD scale), in quintiles comput
 
 | Category | Income quintile | n | mean trips/day | 95% CI | median trips/day |
 |---|---|---|---|---|---|
-| children_6_17 | q1 | 180 | 2.96 | [2.73, 3.20] | 2.00 |
-| children_6_17 | q2 | 259 | 3.10 | [2.84, 3.45] | 2.00 |
-| children_6_17 | q3 | 204 | 2.75 | [2.54, 3.00] | 2.00 |
-| children_6_17 | q4 | 219 | 2.86 | [2.70, 3.04] | 2.00 |
-| children_6_17 | q5 | 198 | 3.02 | [2.81, 3.22] | 2.00 |
+| children_6_17 | q1 | 290 | 2.98 | [2.80, 3.17] | 2.00 |
+| children_6_17 | q2 | 244 | 3.03 | [2.76, 3.37] | 2.00 |
+| children_6_17 | q3 | 189 | 2.75 | [2.58, 2.96] | 2.00 |
+| children_6_17 | q4 | 203 | 2.89 | [2.72, 3.10] | 2.00 |
+| children_6_17 | q5 | 134 | 3.03 | [2.76, 3.29] | 2.00 |
 | children_6_17 | unknown | 0 | - | - | - |
-| employed | q1 | 211 | 3.55 | [3.27, 3.94] | 3.00 |
-| employed | q2 | 683 | 3.65 | [3.44, 3.85] | 3.00 |
-| employed | q3 | 1008 | 3.69 | [3.55, 3.84] | 3.00 |
-| employed | q4 | 1488 | 3.58 | [3.47, 3.70] | 3.00 |
-| employed | q5 | 1917 | 3.48 | [3.37, 3.58] | 3.00 |
+| employed | q1 | 503 | 3.49 | [3.29, 3.69] | 3.00 |
+| employed | q2 | 834 | 3.80 | [3.59, 4.01] | 3.00 |
+| employed | q3 | 1128 | 3.62 | [3.50, 3.79] | 3.00 |
+| employed | q4 | 1314 | 3.52 | [3.38, 3.66] | 3.00 |
+| employed | q5 | 1528 | 3.49 | [3.37, 3.61] | 3.00 |
 | employed | unknown | 0 | - | - | - |
-| unemployed | q1 | 259 | 3.50 | [3.15, 3.92] | 2.00 |
-| unemployed | q2 | 177 | 3.46 | [3.05, 3.86] | 3.00 |
-| unemployed | q3 | 88 | 3.53 | [3.05, 4.16] | 3.00 |
-| unemployed | q4 | 72 | 3.97 | [3.45, 4.55] | 4.00 |
-| unemployed | q5 | 51 | 3.25 | [2.69, 3.98] | 2.00 |
+| unemployed | q1 | 361 | 3.48 | [3.19, 3.84] | 2.00 |
+| unemployed | q2 | 123 | 3.59 | [3.13, 4.05] | 3.00 |
+| unemployed | q3 | 76 | 3.84 | [3.28, 4.40] | 4.00 |
+| unemployed | q4 | 54 | 3.63 | [3.16, 4.22] | 3.00 |
+| unemployed | q5 | 33 | - | - | - |
 | unemployed | unknown | 0 | - | - | - |
-| retired | q1 | 183 | 2.55 | [2.37, 2.74] | 2.00 |
-| retired | q2 | 705 | 2.77 | [2.66, 2.90] | 2.00 |
-| retired | q3 | 802 | 2.93 | [2.81, 3.04] | 2.00 |
-| retired | q4 | 1080 | 3.03 | [2.91, 3.16] | 2.00 |
-| retired | q5 | 1182 | 3.23 | [3.13, 3.34] | 3.00 |
+| retired | q1 | 471 | 2.68 | [2.53, 2.84] | 2.00 |
+| retired | q2 | 822 | 2.87 | [2.73, 2.98] | 2.00 |
+| retired | q3 | 827 | 2.97 | [2.85, 3.10] | 2.00 |
+| retired | q4 | 908 | 3.10 | [2.95, 3.22] | 2.00 |
+| retired | q5 | 924 | 3.24 | [3.12, 3.35] | 3.00 |
 | retired | unknown | 0 | - | - | - |
-| other_inactive | q1 | 295 | 3.06 | [2.83, 3.30] | 2.00 |
-| other_inactive | q2 | 313 | 3.30 | [3.03, 3.62] | 2.00 |
-| other_inactive | q3 | 157 | 3.36 | [2.94, 3.81] | 3.00 |
-| other_inactive | q4 | 127 | 3.28 | [2.89, 3.77] | 2.00 |
-| other_inactive | q5 | 105 | 3.38 | [3.00, 3.77] | 3.00 |
+| other_inactive | q1 | 459 | 3.14 | [2.93, 3.37] | 2.00 |
+| other_inactive | q2 | 230 | 3.43 | [3.07, 3.90] | 2.00 |
+| other_inactive | q3 | 136 | 3.16 | [2.91, 3.48] | 2.00 |
+| other_inactive | q4 | 86 | 3.33 | [2.81, 3.95] | 3.00 |
+| other_inactive | q5 | 86 | 3.43 | [3.01, 3.91] | 3.00 |
 | other_inactive | unknown | 0 | - | - | - |
 
 ### Minutes per trip
@@ -205,35 +222,35 @@ Household income per consumption unit (modified OECD scale), in quintiles comput
 
 | Category | Income quintile | n | mean min/trip | 95% CI | median min/trip |
 |---|---|---|---|---|---|
-| children_6_17 | q1 | 180 | 20.07 | [16.58, 24.48] | 12.50 |
-| children_6_17 | q2 | 259 | 19.89 | [17.42, 22.50] | 15.00 |
-| children_6_17 | q3 | 204 | 19.65 | [17.66, 22.39] | 15.00 |
-| children_6_17 | q4 | 219 | 20.58 | [17.69, 24.57] | 15.00 |
-| children_6_17 | q5 | 198 | 18.77 | [15.97, 22.19] | 15.00 |
+| children_6_17 | q1 | 290 | 20.37 | [17.70, 23.35] | 15.00 |
+| children_6_17 | q2 | 244 | 18.55 | [16.09, 20.79] | 15.00 |
+| children_6_17 | q3 | 189 | 21.37 | [18.63, 24.97] | 15.00 |
+| children_6_17 | q4 | 203 | 19.51 | [16.62, 23.07] | 15.00 |
+| children_6_17 | q5 | 134 | 19.16 | [15.88, 22.89] | 13.75 |
 | children_6_17 | unknown | 0 | - | - | - |
-| employed | q1 | 211 | 24.61 | [19.94, 30.46] | 15.00 |
-| employed | q2 | 683 | 23.61 | [21.37, 25.29] | 17.50 |
-| employed | q3 | 1008 | 28.11 | [25.44, 31.57] | 18.00 |
-| employed | q4 | 1488 | 26.53 | [25.28, 28.15] | 20.00 |
-| employed | q5 | 1917 | 30.41 | [28.80, 32.55] | 20.00 |
+| employed | q1 | 503 | 24.70 | [21.90, 27.84] | 17.50 |
+| employed | q2 | 834 | 24.59 | [22.39, 26.47] | 17.50 |
+| employed | q3 | 1128 | 27.83 | [25.68, 30.56] | 18.75 |
+| employed | q4 | 1314 | 26.81 | [24.97, 28.72] | 20.00 |
+| employed | q5 | 1528 | 31.41 | [29.48, 33.71] | 21.00 |
 | employed | unknown | 0 | - | - | - |
-| unemployed | q1 | 259 | 21.78 | [18.65, 25.49] | 15.00 |
-| unemployed | q2 | 177 | 26.67 | [21.41, 33.39] | 16.83 |
-| unemployed | q3 | 88 | 58.82 | [22.06, 109.93] | 16.00 |
-| unemployed | q4 | 72 | 22.36 | [17.31, 27.84] | 16.67 |
-| unemployed | q5 | 51 | 30.67 | [19.99, 41.97] | 19.17 |
+| unemployed | q1 | 361 | 23.85 | [20.13, 28.38] | 15.00 |
+| unemployed | q2 | 123 | 25.87 | [20.28, 33.06] | 17.14 |
+| unemployed | q3 | 76 | 63.31 | [19.40, 125.45] | 18.86 |
+| unemployed | q4 | 54 | 23.20 | [17.32, 29.21] | 15.00 |
+| unemployed | q5 | 33 | - | - | - |
 | unemployed | unknown | 0 | - | - | - |
-| retired | q1 | 183 | 21.10 | [17.28, 25.25] | 15.00 |
-| retired | q2 | 705 | 20.99 | [19.01, 23.35] | 15.00 |
-| retired | q3 | 802 | 21.66 | [19.42, 24.60] | 15.00 |
-| retired | q4 | 1080 | 20.51 | [18.55, 22.83] | 15.00 |
-| retired | q5 | 1182 | 23.95 | [21.60, 27.10] | 15.00 |
+| retired | q1 | 471 | 21.81 | [19.25, 25.42] | 15.00 |
+| retired | q2 | 822 | 20.71 | [18.57, 23.21] | 15.00 |
+| retired | q3 | 827 | 20.52 | [18.73, 22.18] | 15.00 |
+| retired | q4 | 908 | 21.44 | [19.02, 24.03] | 15.00 |
+| retired | q5 | 924 | 24.66 | [21.73, 28.52] | 15.00 |
 | retired | unknown | 0 | - | - | - |
-| other_inactive | q1 | 295 | 26.50 | [22.61, 30.81] | 20.00 |
-| other_inactive | q2 | 313 | 28.07 | [22.33, 35.64] | 20.00 |
-| other_inactive | q3 | 157 | 24.26 | [20.02, 30.08] | 16.00 |
-| other_inactive | q4 | 127 | 28.03 | [23.60, 33.06] | 23.33 |
-| other_inactive | q5 | 105 | 23.85 | [18.52, 28.50] | 17.50 |
+| other_inactive | q1 | 459 | 28.91 | [23.95, 34.26] | 20.00 |
+| other_inactive | q2 | 230 | 21.43 | [18.11, 24.76] | 16.00 |
+| other_inactive | q3 | 136 | 27.84 | [22.55, 33.85] | 20.00 |
+| other_inactive | q4 | 86 | 29.37 | [24.67, 36.40] | 22.00 |
+| other_inactive | q5 | 86 | 23.11 | [17.80, 28.24] | 20.00 |
 | other_inactive | unknown | 0 | - | - | - |
 
 #### By density class and by income quintile (marginals)
@@ -247,11 +264,11 @@ Household income per consumption unit (modified OECD scale), in quintiles comput
 
 | Group | n | weighted n | mean trips/day | 95% CI | median trips/day |
 |---|---|---|---|---|---|
-| q5 | 3454 | 86,830,242 | 3.36 | [3.29, 3.44] | 3.00 |
-| q4 | 2990 | 76,184,515 | 3.34 | [3.26, 3.43] | 3.00 |
-| q3 | 2259 | 61,051,836 | 3.33 | [3.23, 3.42] | 2.00 |
-| q2 | 2139 | 57,526,924 | 3.30 | [3.19, 3.40] | 2.00 |
-| q1 | 1132 | 30,932,533 | 3.17 | [3.05, 3.31] | 2.00 |
+| q5 | 2705 | 66,638,221 | 3.38 | [3.30, 3.45] | 3.00 |
+| q4 | 2570 | 65,745,215 | 3.32 | [3.25, 3.40] | 3.00 |
+| q3 | 2356 | 61,136,054 | 3.32 | [3.24, 3.42] | 3.00 |
+| q2 | 2254 | 61,052,878 | 3.38 | [3.26, 3.51] | 2.00 |
+| q1 | 2089 | 57,953,682 | 3.19 | [3.10, 3.30] | 2.00 |
 
 | Group | n | weighted n | mean min/trip | 95% CI | median min/trip |
 |---|---|---|---|---|---|
@@ -270,11 +287,11 @@ Household income per consumption unit (modified OECD scale), in quintiles comput
 
 | Group | n | weighted n | mean min/trip | 95% CI | median min/trip |
 |---|---|---|---|---|---|
-| q5 | 3454 | 86,830,242 | 27.40 | [26.12, 29.09] | 18.00 |
-| q4 | 2990 | 76,184,515 | 24.18 | [23.17, 25.25] | 16.67 |
-| q3 | 2259 | 61,051,836 | 26.18 | [23.80, 28.76] | 16.00 |
-| q2 | 2139 | 57,526,924 | 23.16 | [21.85, 24.75] | 15.71 |
-| q1 | 1132 | 30,932,533 | 22.82 | [21.05, 25.15] | 15.00 |
+| q5 | 2705 | 66,638,221 | 28.36 | [26.78, 30.34] | 18.33 |
+| q4 | 2570 | 65,745,215 | 24.50 | [23.32, 25.67] | 17.00 |
+| q3 | 2356 | 61,136,054 | 26.40 | [24.35, 29.39] | 16.75 |
+| q2 | 2254 | 61,052,878 | 22.22 | [20.81, 23.37] | 15.00 |
+| q1 | 2089 | 57,953,682 | 23.92 | [22.59, 25.51] | 15.00 |
 
 ## Per-person budget, days without trips included (section 9.9 point 2b)
 
@@ -333,31 +350,31 @@ P(out on the weekday) x T(weekday|out), weekday only (comparable with ENTD 2008'
 
 | Category | Income quintile | n | P(out) | T\|out (min) | budget (min) | 95% CI |
 |---|---|---|---|---|---|---|
-| children_6_17 | q1 | 141 | 0.875 | 52.3 | 45.7 | [39.0, 53.6] |
-| children_6_17 | q2 | 206 | 0.907 | 53.5 | 48.5 | [43.1, 54.3] |
-| children_6_17 | q3 | 163 | 0.925 | 53.4 | 49.4 | [44.5, 56.2] |
-| children_6_17 | q4 | 180 | 0.914 | 58.4 | 53.3 | [40.5, 65.5] |
-| children_6_17 | q5 | 170 | 0.942 | 49.2 | 46.3 | [40.3, 52.4] |
-| employed | q1 | 168 | 0.914 | 76.3 | 69.8 | [58.2, 84.1] |
-| employed | q2 | 534 | 0.931 | 77.2 | 71.9 | [66.7, 78.1] |
-| employed | q3 | 805 | 0.944 | 92.3 | 87.2 | [78.0, 97.8] |
-| employed | q4 | 1176 | 0.950 | 84.5 | 80.3 | [76.3, 84.8] |
-| employed | q5 | 1516 | 0.957 | 93.1 | 89.0 | [85.1, 93.3] |
-| unemployed | q1 | 200 | 0.782 | 73.2 | 57.3 | [49.5, 66.2] |
-| unemployed | q2 | 138 | 0.810 | 79.4 | 64.3 | [50.5, 85.1] |
-| unemployed | q3 | 71 | 0.833 | 91.8 | 76.5 | [50.9, 114.0] |
-| unemployed | q4 | 63 | 0.891 | 83.1 | 74.1 | [57.4, 89.2] |
+| children_6_17 | q1 | 233 | 0.892 | 55.4 | 49.4 | [43.1, 55.1] |
+| children_6_17 | q2 | 190 | 0.903 | 49.5 | 44.7 | [39.8, 49.6] |
+| children_6_17 | q3 | 154 | 0.925 | 56.0 | 51.8 | [43.1, 63.0] |
+| children_6_17 | q4 | 168 | 0.922 | 54.8 | 50.5 | [41.3, 61.1] |
+| children_6_17 | q5 | 115 | 0.948 | 49.8 | 47.2 | [41.1, 54.3] |
+| employed | q1 | 396 | 0.924 | 78.9 | 72.9 | [64.0, 81.0] |
+| employed | q2 | 670 | 0.937 | 81.9 | 76.7 | [70.2, 83.9] |
+| employed | q3 | 884 | 0.944 | 90.2 | 85.2 | [78.4, 93.2] |
+| employed | q4 | 1030 | 0.951 | 84.9 | 80.7 | [76.4, 84.8] |
+| employed | q5 | 1219 | 0.960 | 94.8 | 91.0 | [86.2, 95.5] |
+| unemployed | q1 | 283 | 0.801 | 75.5 | 60.4 | [51.6, 72.0] |
+| unemployed | q2 | 90 | 0.790 | 77.7 | 61.4 | [48.5, 79.0] |
+| unemployed | q3 | 67 | 0.871 | 105.2 | 91.7 | [63.5, 126.6] |
+| unemployed | q4 | 0 | - | - | - | - |
 | unemployed | q5 | 0 | - | - | - | - |
-| retired | q1 | 126 | 0.611 | 51.2 | 31.3 | [25.9, 38.9] |
-| retired | q2 | 562 | 0.651 | 55.7 | 36.3 | [32.4, 40.7] |
-| retired | q3 | 649 | 0.699 | 58.5 | 40.9 | [37.2, 44.4] |
-| retired | q4 | 818 | 0.751 | 58.6 | 44.0 | [40.6, 47.5] |
-| retired | q5 | 922 | 0.799 | 68.4 | 54.6 | [49.5, 59.3] |
-| other_inactive | q1 | 232 | 0.796 | 64.8 | 51.6 | [45.3, 59.5] |
-| other_inactive | q2 | 257 | 0.808 | 72.4 | 58.5 | [52.0, 66.2] |
-| other_inactive | q3 | 130 | 0.843 | 76.1 | 64.1 | [54.9, 75.8] |
-| other_inactive | q4 | 100 | 0.812 | 88.8 | 72.1 | [55.2, 88.0] |
-| other_inactive | q5 | 69 | 0.833 | 81.0 | 67.5 | [52.4, 84.5] |
+| retired | q1 | 352 | 0.619 | 54.6 | 33.8 | [29.3, 38.8] |
+| retired | q2 | 671 | 0.687 | 55.5 | 38.2 | [34.9, 41.8] |
+| retired | q3 | 633 | 0.710 | 59.6 | 42.3 | [38.6, 46.4] |
+| retired | q4 | 704 | 0.778 | 60.2 | 46.8 | [43.7, 50.9] |
+| retired | q5 | 717 | 0.802 | 70.1 | 56.2 | [51.8, 61.5] |
+| other_inactive | q1 | 368 | 0.797 | 68.0 | 54.1 | [48.9, 60.7] |
+| other_inactive | q2 | 192 | 0.834 | 71.3 | 59.5 | [52.7, 66.7] |
+| other_inactive | q3 | 105 | 0.807 | 80.1 | 64.6 | [51.5, 76.0] |
+| other_inactive | q4 | 68 | 0.847 | 94.7 | 80.2 | [60.0, 103.7] |
+| other_inactive | q5 | 55 | 0.826 | 81.3 | 67.2 | [48.7, 91.9] |
 
 ## Mean daily energy and time by main-mode group (point 3)
 
