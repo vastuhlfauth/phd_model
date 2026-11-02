@@ -185,7 +185,10 @@ def test_cli_compare_writes_report_and_figure(
             "--config",
             str(CONFIG_PATH),
             "--bootstrap-reps",
-            "10",
+            # 3 replicates (step 12: "tests must be fast"): the compare
+            # CLI runs the full pipeline three times (2008, 2019 grid,
+            # 2019 proxy), so it dominates the suite's runtime.
+            "3",
         ]
     )
     assert exit_code == 0

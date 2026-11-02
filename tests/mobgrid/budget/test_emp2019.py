@@ -90,8 +90,7 @@ def test_income_quintile_is_ordered_by_decile_rev_uc(
     trip at all, so no `trip_legs` row to query)."""
     rows = dict(
         trip_legs.sql(
-            "SELECT ident_ind, income_quintile FROM trip_legs "
-            "WHERE ident_ind IN (1, 8)"
+            "SELECT ident_ind, income_quintile FROM trip_legs WHERE ident_ind IN (1, 8)"
         ).fetchall()
     )
     order = {"q1": 1, "q2": 2, "q3": 3, "q4": 4, "q5": 5}
@@ -109,14 +108,9 @@ def test_missing_income_breakdown_distinguishes_no_match_from_null_decile() -> N
     code-side failure mode for EMP 2019."""
     con = duckdb.connect()
     con.sql("CREATE TABLE k_individu (IDENT_IND VARCHAR, pond_indC DOUBLE)")
-    con.sql(
-        "INSERT INTO k_individu VALUES "
-        "('1', 100.0), ('2', 100.0), ('3', 100.0)"
-    )
+    con.sql("INSERT INTO k_individu VALUES ('1', 100.0), ('2', 100.0), ('3', 100.0)")
     con.sql("CREATE TABLE tcm_ind (ident_ind VARCHAR, ident_men VARCHAR)")
-    con.sql(
-        "INSERT INTO tcm_ind VALUES ('1', 'M1'), ('2', 'M2'), ('3', 'M3')"
-    )
+    con.sql("INSERT INTO tcm_ind VALUES ('1', 'M1'), ('2', 'M2'), ('3', 'M3')")
     con.sql("CREATE TABLE tcm_men (ident_men VARCHAR, decile_rev_uc INTEGER)")
     # M1: normal; M2: present but blank decile; M3: no row at all.
     con.sql("INSERT INTO tcm_men VALUES ('M1', 5), ('M2', NULL)")

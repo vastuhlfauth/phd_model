@@ -217,8 +217,9 @@ def test_respondent_income_quintiles_every_household_with_a_bracket(
     `'unknown'`; the other six, quintiled by `NBUC`-adjusted income, get
     one of `'q1'`..`'q5'` (section 9.9's "Income variables")."""
     rows = dict(
-        trips_norm.sql("SELECT ident_ind, income_quintile FROM respondent_income")
-        .fetchall()
+        trips_norm.sql(
+            "SELECT ident_ind, income_quintile FROM respondent_income"
+        ).fetchall()
     )
     assert rows["7"] == "unknown"
     for ident_ind in ("1", "2", "3", "4", "5", "6", "8"):
@@ -252,8 +253,7 @@ def test_missing_income_breakdown_distinguishes_every_failure_mode() -> None:
     label, or a missing/zero `NBUC` making the division `NULL`)."""
     con = duckdb.connect()
     con.sql(
-        "CREATE TABLE k_individu "
-        "(IDENT_IND VARCHAR, idENT_MEN VARCHAR, PONDKI DOUBLE)"
+        "CREATE TABLE k_individu (IDENT_IND VARCHAR, idENT_MEN VARCHAR, PONDKI DOUBLE)"
     )
     con.sql(
         "INSERT INTO k_individu VALUES "

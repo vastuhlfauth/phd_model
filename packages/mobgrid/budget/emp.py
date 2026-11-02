@@ -465,9 +465,16 @@ def run(
     seed: int = 0,
     density_source: str | None = None,
     variation_config_path: Path = DEFAULT_VARIATION_CONFIG_PATH,
+    make_figures: bool = True,
 ) -> dict:
     """Run the full re-estimation; return every computed statistic and
     figure path, used by ``write_markdown`` and the test suite.
+
+    ``make_figures=False`` skips every single-survey figure (``figures``
+    is empty and ``f4_panels`` is ``None``): used by ``run_compare``,
+    whose three sub-runs' figures were always discarded with their
+    temporary directory -- skipping them changes no output and removes
+    most of the sub-runs' cost.
 
     Survey-agnostic (``survey`` is ``mobgrid.budget.emp2019`` or
     ``mobgrid.budget.entd2008``, both exposing the same
@@ -822,53 +829,61 @@ def run(
 
     cycle_decomposition = _compute_cycle_decomposition(con, config)
 
-    f4_paths, f4_panels = _figure_f4_mean_by_mode(
-        con, out_dir, n_reps=n_reps, seed=seed
+    f4_paths, f4_panels = (
+        _figure_f4_mean_by_mode(con, out_dir, n_reps=n_reps, seed=seed)
+        if make_figures
+        else ([], None)
     )
-    figures = [
-        _figure_f1_trips_per_day(
-            days,
-            trips_mean,
-            trips_by_population,
-            trips_by_density,
-            motive_by_population,
-            motive_by_density,
-            out_dir,
-        ),
-        _figure_scalar_by_category_key(
-            trips_by_category_density,
-            trips_by_category_income,
-            title="F1b. Trips per day by population category x density "
-            "class / income quintile (95% CI, section 9.9 point 2)",
-            ylabel="Mean trips per day",
-            filename="f01b_trips_per_day_by_category.png",
-            out_dir=out_dir,
-        ),
-        _figure_scalar_by_category_key(
-            minutes_per_trip_by_category_density,
-            minutes_per_trip_by_category_income,
-            title="F1c. Minutes per trip by population category x density "
-            "class / income quintile (95% CI, section 9.9 point 2)",
-            ylabel="Mean minutes per trip",
-            filename="f01c_minutes_per_trip_by_category.png",
-            out_dir=out_dir,
-        ),
-        *_figure_f2_time_density_by_category(con, out_dir),
-        *_figure_f3_energy_density(con, out_dir),
-        *f4_paths,
-        _figure_f5_heatmaps(con, out_dir),
-        _figure_f5_time_heatmaps(con, out_dir),
-        _figure_f6_v0_p0(v0_by_age_band, p0_by_age_band, config, out_dir),
-        _figure_f7_passengers(passenger_trip_stats, walk_trips_by_day_group, out_dir),
-        _figure_f8_robustness(robustness_ci, out_dir),
-        _figure_f10_constancy(
-            category_density_time_ci,
-            category_income_time_ci,
-            person_budget_weekday_category_density,
-            person_budget_weekday_category_income,
-            out_dir,
-        ),
-    ]
+    figures = (
+        [
+            _figure_f1_trips_per_day(
+                days,
+                trips_mean,
+                trips_by_population,
+                trips_by_density,
+                motive_by_population,
+                motive_by_density,
+                out_dir,
+            ),
+            _figure_scalar_by_category_key(
+                trips_by_category_density,
+                trips_by_category_income,
+                title="F1b. Trips per day by population category x density "
+                "class / income quintile (95% CI, section 9.9 point 2)",
+                ylabel="Mean trips per day",
+                filename="f01b_trips_per_day_by_category.png",
+                out_dir=out_dir,
+            ),
+            _figure_scalar_by_category_key(
+                minutes_per_trip_by_category_density,
+                minutes_per_trip_by_category_income,
+                title="F1c. Minutes per trip by population category x density "
+                "class / income quintile (95% CI, section 9.9 point 2)",
+                ylabel="Mean minutes per trip",
+                filename="f01c_minutes_per_trip_by_category.png",
+                out_dir=out_dir,
+            ),
+            *_figure_f2_time_density_by_category(con, out_dir),
+            *_figure_f3_energy_density(con, out_dir),
+            *f4_paths,
+            _figure_f5_heatmaps(con, out_dir),
+            _figure_f5_time_heatmaps(con, out_dir),
+            _figure_f6_v0_p0(v0_by_age_band, p0_by_age_band, config, out_dir),
+            _figure_f7_passengers(
+                passenger_trip_stats, walk_trips_by_day_group, out_dir
+            ),
+            _figure_f8_robustness(robustness_ci, out_dir),
+            _figure_f10_constancy(
+                category_density_time_ci,
+                category_income_time_ci,
+                person_budget_weekday_category_density,
+                person_budget_weekday_category_income,
+                out_dir,
+            ),
+        ]
+        if make_figures
+        else []
+    )
 
     # ---- Diagnostics: full, unfiltered-by-motive dataset -- the
     # evidence behind the needs-only scope above, plus checks that must
@@ -914,9 +929,10 @@ def run(
     motive_matrix_after = _compute_motive_energy_matrix(
         con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL
     )
-    figures.append(
-        _figure_f9_motive_energy(motive_matrix_before, motive_matrix_after, out_dir)
-    )
+    if make_figures:
+        figures.append(
+            _figure_f9_motive_energy(motive_matrix_before, motive_matrix_after, out_dir)
+        )
 
     # Point 2: data-quality correction counts (upper-bound speed flags,
     # corrected by mode's median speed, not dropped).
@@ -4129,6 +4145,7 @@ def run_compare(
             seed=seed,
             density_source="proxy",
             variation_config_path=variation_config_path,
+            make_figures=False,
         )
         results_2019_grid = run(
             Path(tmp) / "emp2019_grid",
@@ -4139,6 +4156,7 @@ def run_compare(
             seed=seed,
             density_source="grid",
             variation_config_path=variation_config_path,
+            make_figures=False,
         )
         results_2008 = run(
             Path(tmp) / "entd2008_proxy",
@@ -4149,6 +4167,7 @@ def run_compare(
             seed=seed,
             density_source="proxy",
             variation_config_path=variation_config_path,
+            make_figures=False,
         )
 
     lines = [

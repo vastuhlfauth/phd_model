@@ -386,8 +386,7 @@ def build_income_quintile_table(
     income_table = pa.table({id_col: all_ids, "income_quintile": all_labels})
     con.register("_income_quintile_table", income_table)
     con.sql(
-        f"CREATE OR REPLACE TABLE {view_name} AS "
-        "SELECT * FROM _income_quintile_table"
+        f"CREATE OR REPLACE TABLE {view_name} AS SELECT * FROM _income_quintile_table"
     )
     con.unregister("_income_quintile_table")
 
@@ -401,13 +400,15 @@ def build_income_quintile_table(
             float(all_weights[mask].sum()) / total_weight if total_weight else 0.0
         )
 
-    summary_table = pa.table({
-        "income_quintile": list(INCOME_QUINTILE_LABELS),
-        "n": [n_by_label[label] for label in INCOME_QUINTILE_LABELS],
-        "weight_share": [
-            weight_share_by_label[label] for label in INCOME_QUINTILE_LABELS
-        ],
-    })
+    summary_table = pa.table(
+        {
+            "income_quintile": list(INCOME_QUINTILE_LABELS),
+            "n": [n_by_label[label] for label in INCOME_QUINTILE_LABELS],
+            "weight_share": [
+                weight_share_by_label[label] for label in INCOME_QUINTILE_LABELS
+            ],
+        }
+    )
     con.register("_income_quintile_summary_table", summary_table)
     con.sql(
         "CREATE OR REPLACE TABLE income_quintile_summary AS "
@@ -415,10 +416,12 @@ def build_income_quintile_table(
     )
     con.unregister("_income_quintile_summary_table")
 
-    cutpoints_table = pa.table({
-        "idx": [1, 2, 3, 4],
-        "value": cut_points,
-    })
+    cutpoints_table = pa.table(
+        {
+            "idx": [1, 2, 3, 4],
+            "value": cut_points,
+        }
+    )
     con.register("_income_quintile_cutpoints_table", cutpoints_table)
     con.sql(
         "CREATE OR REPLACE TABLE income_quintile_cutpoints AS "

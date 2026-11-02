@@ -577,4 +577,3 @@ def person_day_type_rows(con: duckdb.DuckDBPyConnection) -> list[tuple]:
                 )
             out.append((ident_ind, ident_men, float(pond_ind), day_type, immobile))
     return out
-

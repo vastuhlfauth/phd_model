@@ -215,3 +215,348 @@ def _has_positive_weighted_metrics(days: PersonDays) -> bool:
         and float(np.sum(weight * days.distance_km)) > 0
         and float(np.sum(weight * days.time_min)) > 0
     )
+
+
+# ---------------------------------------------------------------------------
+# Step-12 Part B primitives (shift-share, composition, tails), all pure
+# numpy so the household bootstrap can rerun them on resampled weights.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TripGroups:
+    """Trip-level rows of one group of person-days: one entry per trip,
+    with its day weight (minutes and km per trip are weighted by it)."""
+
+    weight: np.ndarray  # day weight repeated on each trip
+    minutes: np.ndarray
+    km: np.ndarray
+    group: np.ndarray  # mode / motive / distance-band label per trip
+    #: weighted count of person-days (denominator of trips per day);
+    #: scalar because the trip rows alone cannot recover it.
+    day_weight_total: float
+
+
+@dataclass(frozen=True)
+class ShiftShareTerm:
+    """One group's shift-share contribution, minutes per day (B3/B4)."""
+
+    group: str
+    share_a: float
+    share_b: float
+    minutes_per_trip_a: float
+    minutes_per_trip_b: float
+    mix_min: float
+    within_min: float
+    interaction_min: float
+    #: `within_min` split into km-per-trip and speed parts (B3's "within
+    #: each mode, split the minutes per trip into km per trip and speed,
+    #: as in B2"); NaN when the group is absent from either side.
+    within_km_min: float
+    within_speed_min: float
+
+
+@dataclass(frozen=True)
+class ShiftShare:
+    """B3/B4 shift-share of the change in daily time, minutes per day.
+
+    ``delta_min = volume_min + sum(mix + within + interaction)`` exactly:
+    ``ΔT = (N_B - N_A)·M_A + N_B·(M_B - M_A)`` with ``M_B - M_A`` split
+    group by group (mix, within, interaction).
+    """
+
+    time_a_min: float
+    time_b_min: float
+    delta_min: float
+    trips_a: float
+    trips_b: float
+    minutes_per_trip_a: float
+    minutes_per_trip_b: float
+    volume_min: float
+    terms: tuple[ShiftShareTerm, ...]
+
+    @property
+    def mix_min(self) -> float:
+        return float(sum(t.mix_min for t in self.terms))
+
+    @property
+    def within_min(self) -> float:
+        return float(sum(t.within_min for t in self.terms))
+
+    @property
+    def interaction_min(self) -> float:
+        return float(sum(t.interaction_min for t in self.terms))
+
+
+def _group_trip_stats(
+    trips: TripGroups, groups: list[str]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-group (share of trips, minutes per trip, km per trip),
+    weighted; share 0 and NaN minutes/km for an absent group."""
+    shares = np.zeros(len(groups))
+    minutes = np.full(len(groups), np.nan)
+    km = np.full(len(groups), np.nan)
+    total_w = float(trips.weight.sum())
+    for i, group in enumerate(groups):
+        mask = trips.group == group
+        w = float(trips.weight[mask].sum())
+        if w > 0 and total_w > 0:
+            shares[i] = w / total_w
+            minutes[i] = float(np.sum(trips.weight[mask] * trips.minutes[mask])) / w
+            km[i] = float(np.sum(trips.weight[mask] * trips.km[mask])) / w
+    return shares, minutes, km
+
+
+def shift_share(a: TripGroups, b: TripGroups) -> ShiftShare:
+    """B3/B4 shift-share of the daily-time change between two groups of
+    person-days, by trip group (mode, motive or distance band), minutes.
+
+    Ratios of weighted totals throughout: N = weighted trips per day,
+    M = weighted minutes per trip, s_m/m_m per group. A group absent
+    from one side takes that side's overall M as its ``m`` (its share is
+    0 there, so the identity is unchanged; the convention only affects
+    how its minutes split between mix and interaction).
+    """
+    groups = sorted(set(a.group) | set(b.group))
+    s_a, m_a, km_a = _group_trip_stats(a, groups)
+    s_b, m_b, km_b = _group_trip_stats(b, groups)
+    n_a = float(a.weight.sum()) / a.day_weight_total
+    n_b = float(b.weight.sum()) / b.day_weight_total
+    big_m_a = float(np.sum(a.weight * a.minutes)) / float(a.weight.sum())
+    big_m_b = float(np.sum(b.weight * b.minutes)) / float(b.weight.sum())
+    time_a = n_a * big_m_a
+    time_b = n_b * big_m_b
+    m_a_filled = np.where(np.isnan(m_a), big_m_a, m_a)
+    m_b_filled = np.where(np.isnan(m_b), big_m_b, m_b)
+
+    terms = []
+    for i, group in enumerate(groups):
+        mix = (s_b[i] - s_a[i]) * m_a_filled[i] * n_b
+        within = s_a[i] * (m_b_filled[i] - m_a_filled[i]) * n_b
+        interaction = (s_b[i] - s_a[i]) * (m_b_filled[i] - m_a_filled[i]) * n_b
+        # B2-style log split of the within-group minutes-per-trip change
+        # into km per trip and speed: m = L / v, so
+        # Δln m = Δln L - Δln v, scaled to the group's within minutes.
+        within_km = within_speed = float("nan")
+        if (
+            np.isfinite(m_a[i])
+            and np.isfinite(m_b[i])
+            and min(m_a[i], m_b[i]) > 0
+            and np.isfinite(km_a[i])
+            and np.isfinite(km_b[i])
+            and min(km_a[i], km_b[i]) > 0
+        ):
+            log_m = float(np.log(m_b[i] / m_a[i]))
+            log_km = float(np.log(km_b[i] / km_a[i]))
+            log_speed = log_km - log_m  # v = L/m
+            log_mean = (
+                (m_b[i] - m_a[i]) / log_m
+                if not np.isclose(log_m, 0.0, atol=1e-14)
+                else float(m_a[i])
+            )
+            within_km = s_a[i] * n_b * log_mean * log_km
+            within_speed = -s_a[i] * n_b * log_mean * log_speed
+        terms.append(
+            ShiftShareTerm(
+                group=group,
+                share_a=float(s_a[i]),
+                share_b=float(s_b[i]),
+                minutes_per_trip_a=float(m_a[i]),
+                minutes_per_trip_b=float(m_b[i]),
+                mix_min=float(mix),
+                within_min=float(within),
+                interaction_min=float(interaction),
+                within_km_min=within_km,
+                within_speed_min=within_speed,
+            )
+        )
+    return ShiftShare(
+        time_a_min=time_a,
+        time_b_min=time_b,
+        delta_min=time_b - time_a,
+        trips_a=n_a,
+        trips_b=n_b,
+        minutes_per_trip_a=big_m_a,
+        minutes_per_trip_b=big_m_b,
+        volume_min=(n_b - n_a) * big_m_a,
+        terms=tuple(terms),
+    )
+
+
+@dataclass(frozen=True)
+class Composition:
+    """B1 composition/behaviour split of the daily-time change, minutes."""
+
+    mean_a_min: float
+    mean_b_min: float
+    counterfactual_a_min: float
+    composition_min: float
+    behaviour_min: float
+    n_cells: int
+    #: share of group B's weight in cells with no group-A observation,
+    #: renormalised away before the counterfactual is taken.
+    unmatched_b_weight_share: float
+
+
+def composition_reweight(
+    cell_a: np.ndarray,
+    weight_a: np.ndarray,
+    time_a: np.ndarray,
+    cell_b: np.ndarray,
+    weight_b: np.ndarray,
+    time_b: np.ndarray,
+) -> Composition:
+    """Re-weight group A to group B's population structure, cell by cell
+    (B1): counterfactual mean of A = Σ_c share_B(c) · mean_A(c), over the
+    cells present in both groups (share_B renormalised over them).
+
+    - composition effect = counterfactual mean of A − mean of A;
+    - behaviour effect = mean of B − counterfactual mean of A.
+    """
+    if len(cell_a) == 0 or len(cell_b) == 0:
+        raise ValueError("both groups need at least one person-day")
+    mean_a = float(np.sum(weight_a * time_a) / np.sum(weight_a))
+    mean_b = float(np.sum(weight_b * time_b) / np.sum(weight_b))
+    cells_a: dict[str, float] = {}
+    sums_a: dict[str, float] = {}
+    for cell, w, t in zip(cell_a, weight_a, time_a, strict=True):
+        cells_a[cell] = cells_a.get(cell, 0.0) + float(w)
+        sums_a[cell] = sums_a.get(cell, 0.0) + float(w) * float(t)
+    weights_b: dict[str, float] = {}
+    for cell, w in zip(cell_b, weight_b, strict=True):
+        weights_b[cell] = weights_b.get(cell, 0.0) + float(w)
+    total_b = sum(weights_b.values())
+    matched = {c: w for c, w in weights_b.items() if cells_a.get(c, 0.0) > 0}
+    matched_total = sum(matched.values())
+    if matched_total <= 0:
+        raise ValueError("no population cell is present in both groups")
+    counterfactual = sum(
+        (w / matched_total) * (sums_a[c] / cells_a[c]) for c, w in matched.items()
+    )
+    return Composition(
+        mean_a_min=mean_a,
+        mean_b_min=mean_b,
+        counterfactual_a_min=float(counterfactual),
+        composition_min=float(counterfactual) - mean_a,
+        behaviour_min=mean_b - float(counterfactual),
+        n_cells=len(matched),
+        unmatched_b_weight_share=1.0 - matched_total / total_b if total_b else 0.0,
+    )
+
+
+def merge_age_bands(
+    age_idx_a: np.ndarray,
+    stratum_a: np.ndarray,
+    age_idx_b: np.ndarray,
+    stratum_b: np.ndarray,
+    *,
+    n_bands: int,
+    min_n: int = 30,
+) -> dict[tuple[str, int], int]:
+    """Merge neighbouring age bands within each stratum until every
+    (stratum, merged band) cell has at least ``min_n`` respondents in
+    *both* groups (B1: "when a cell has fewer than 30 respondents in
+    either group, merge it with the neighbouring age band").
+
+    Scans bands in ascending order, accumulating a run of bands until
+    both groups reach ``min_n``; a trailing short run merges backward
+    into the previous merged cell. Returns a mapping
+    ``(stratum, age band index) -> merged band index`` (the first band
+    of the run), identical for both groups.
+    """
+    strata = sorted(set(stratum_a) | set(stratum_b))
+    counts_a = {(s, i): 0 for s in strata for i in range(n_bands)}
+    counts_b = dict(counts_a)
+    for idx, stratum in zip(age_idx_a, stratum_a, strict=True):
+        counts_a[(stratum, int(idx))] += 1
+    for idx, stratum in zip(age_idx_b, stratum_b, strict=True):
+        counts_b[(stratum, int(idx))] += 1
+    mapping: dict[tuple[str, int], int] = {}
+    for stratum in strata:
+        run_start = 0
+        run_a = run_b = 0
+        starts: list[int] = []
+        for i in range(n_bands):
+            run_a += counts_a[(stratum, i)]
+            run_b += counts_b[(stratum, i)]
+            mapping[(stratum, i)] = run_start
+            if run_a >= min_n and run_b >= min_n:
+                starts.append(run_start)
+                run_start = i + 1
+                run_a = run_b = 0
+        if run_start < n_bands and (run_a > 0 or run_b > 0):
+            # Trailing short run: fold into the previous merged cell.
+            target = starts[-1] if starts else 0
+            for i in range(run_start, n_bands):
+                mapping[(stratum, i)] = target
+    return mapping
+
+
+def weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+    """Weighted median: the first value whose cumulative weight reaches
+    half the total."""
+    order = np.argsort(values, kind="stable")
+    cumulative = np.cumsum(weights[order])
+    cutoff = 0.5 * cumulative[-1]
+    return float(values[order][np.searchsorted(cumulative, cutoff)])
+
+
+def trimmed_mean(values: np.ndarray, weights: np.ndarray, top_share: float) -> float:
+    """Weighted mean after removing the top ``top_share`` of weight by
+    value (B5's trimmed means)."""
+    order = np.argsort(values, kind="stable")
+    v, w = values[order], weights[order].astype(float)
+    cumulative = np.cumsum(w)
+    total = cumulative[-1]
+    keep = total * (1.0 - top_share)
+    w_kept = np.where(cumulative <= keep, w, np.maximum(0.0, keep - (cumulative - w)))
+    return float(np.sum(w_kept * v) / np.sum(w_kept))
+
+
+def mean_above_threshold(
+    values: np.ndarray, weights: np.ndarray, threshold: float
+) -> float:
+    """Weighted mean, per unit of weight, of the part of ``values``
+    above ``threshold`` cases: Σ w·v·1(v > t) / Σ w (B5's "contribution
+    of person-days above 180 min" -- their minutes per person-day)."""
+    mask = values > threshold
+    return float(np.sum(weights[mask] * values[mask]) / np.sum(weights))
+
+
+def weighted_mean_ci(
+    values: np.ndarray,
+    weights: np.ndarray,
+    households: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> tuple[float, tuple[float, float]]:
+    """Weighted mean with a percentile 95% household-bootstrap CI."""
+    mean = float(np.sum(weights * values) / np.sum(weights))
+    unique, codes = np.unique(households, return_inverse=True)
+    rng = np.random.default_rng(seed)
+    reps = np.empty(n_reps)
+    for rep in range(n_reps):
+        multiplicity = np.bincount(
+            rng.integers(0, len(unique), size=len(unique)), minlength=len(unique)
+        )
+        w = weights * multiplicity[codes]
+        total = w.sum()
+        reps[rep] = np.sum(w * values) / total if total > 0 else np.nan
+    valid = reps[np.isfinite(reps)]
+    if len(valid) == 0:
+        return mean, (float("nan"), float("nan"))
+    low, high = np.percentile(valid, [2.5, 97.5])
+    return mean, (float(low), float(high))
+
+
+def household_multipliers(
+    households: np.ndarray, rng: np.random.Generator
+) -> np.ndarray:
+    """One bootstrap multiplicity per row, resampling households with
+    replacement (shared helper for the Part B bootstrap loops)."""
+    unique, codes = np.unique(households, return_inverse=True)
+    multiplicity = np.bincount(
+        rng.integers(0, len(unique), size=len(unique)), minlength=len(unique)
+    )
+    return multiplicity[codes]
