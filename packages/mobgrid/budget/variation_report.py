@@ -25,6 +25,7 @@ import duckdb
 import numpy as np
 
 from mobgrid.budget import (
+    daily_energy,
     emp2019,
     entd2008,
     trip_legs,
@@ -1143,6 +1144,117 @@ def run(
     return results
 
 
+# ---------------------------------------------------------------------------
+# Part B helpers: frames -> variation primitives
+# ---------------------------------------------------------------------------
+
+
+def person_days_from_frames(
+    frames: SurveyFrames, mask: np.ndarray | None = None
+) -> variation.PersonDays:
+    """``variation.PersonDays`` of (a mask of) one survey's person-days."""
+    days = frames.days
+    sel = np.ones(len(days["pond_jour"]), dtype=bool) if mask is None else mask
+    return variation.PersonDays(
+        weight=days["pond_jour"][sel].astype(float),
+        trips=days["trips_per_day"][sel].astype(float),
+        distance_km=days["total_distance_km"][sel].astype(float),
+        time_min=days["total_time_min"][sel].astype(float),
+        household=days["ident_men"][sel],
+    )
+
+
+@dataclass(frozen=True)
+class B2Row:
+    """One B2 row: the trips x km x speed split of the daily-time change
+    for one group of person-days (overall or one category)."""
+
+    group: str
+    n_a: int
+    n_b: int
+    result: variation.TripTimeDecompositionBootstrap | None
+
+
+def b2_decompositions(
+    frames_a: SurveyFrames,
+    frames_b: SurveyFrames,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[B2Row]:
+    """B2 (``T = N . L / v``) overall and by population category, with
+    independent household-bootstrap CIs; a degenerate group (no days or
+    zero totals on either side) yields ``result=None``."""
+    rows = []
+    categories = [None, *daily_energy.POPULATION_CATEGORIES]
+    for category in categories:
+        if category is None:
+            mask_a = np.ones(len(frames_a.days["pond_jour"]), dtype=bool)
+            mask_b = np.ones(len(frames_b.days["pond_jour"]), dtype=bool)
+            label = "overall"
+        else:
+            mask_a = frames_a.days["population_category"] == category
+            mask_b = frames_b.days["population_category"] == category
+            label = category
+        result = None
+        if mask_a.any() and mask_b.any():
+            try:
+                result = variation.bootstrap_decompose(
+                    person_days_from_frames(frames_a, mask_a),
+                    person_days_from_frames(frames_b, mask_b),
+                    n_reps=n_reps,
+                    seed=seed,
+                )
+            except ValueError:
+                result = None
+        rows.append(
+            B2Row(
+                group=label,
+                n_a=int(mask_a.sum()),
+                n_b=int(mask_b.sum()),
+                result=result,
+            )
+        )
+    return rows
+
+
+def _ci_cell(value: float, ci: tuple[float, float], decimals: int = 1) -> str:
+    return f"{_num(value, decimals)} [{_num(ci[0], decimals)}, {_num(ci[1], decimals)}]"
+
+
+def _format_b2(rows: list[B2Row], label_a: str, label_b: str) -> list[str]:
+    lines = [
+        f"## B2. Trips x distance x speed, {label_a} -> {label_b}",
+        "",
+        "T = N . L / v (trips per day, km per trip, km per minute), "
+        "ratios of weighted totals; Δln T = Δln N + Δln L - Δln v, each "
+        "term expressed in minutes as ΔT x (term / Δln T). Distances are "
+        "step 11's corrected distances. Household-bootstrap 95% CIs, "
+        "surveys resampled independently.",
+        "",
+        f"| Group | n {label_a} | n {label_b} | T {label_a} | T {label_b} "
+        "| Δ (min) [CI] | trips (min) [CI] | km/trip (min) [CI] | "
+        "speed (min) [CI] |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for row in rows:
+        if row.result is None or min(row.n_a, row.n_b) < MIN_CELL_N:
+            lines.append(
+                f"| {row.group} | {row.n_a} | {row.n_b} | - | - | - | - | - | - |"
+            )
+            continue
+        point = row.result.point
+        lines.append(
+            f"| {row.group} | {row.n_a} | {row.n_b} | "
+            f"{_num(point.time_a_min)} | {_num(point.time_b_min)} | "
+            f"{_ci_cell(point.delta_min, row.result.delta_ci)} | "
+            f"{_ci_cell(point.trips_min, row.result.trips_ci)} | "
+            f"{_ci_cell(point.distance_min, row.result.distance_ci)} | "
+            f"{_ci_cell(point.speed_min, row.result.speed_ci)} |"
+        )
+    return lines
+
+
 def _run_part_b(
     results: dict,
     frames_2008: SurveyFrames,
@@ -1155,6 +1267,10 @@ def _run_part_b(
 ) -> None:
     """Part B decompositions and figures; extended one item at a time
     (B2, B3, B1, B4, B5, B6, B7)."""
+    results["b2_rows"] = b2_decompositions(
+        frames_2008, frames_2019, n_reps=n_reps, seed=seed
+    )
+    results["extra_sections"].append(_format_b2(results["b2_rows"], "2008", "2019"))
 
 
 def main(argv: list[str] | None = None) -> int:

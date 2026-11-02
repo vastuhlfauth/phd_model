@@ -119,6 +119,45 @@ def test_motive_crosswalk_flags_merged_and_one_survey_codes() -> None:
     assert any(row.emp_code == "9999" for row in only_2019)
 
 
+def _b2_frames(scale: float, category: str = "employed") -> SurveyFrames:
+    n = 60  # above the 50-respondent suppression threshold
+    days = {
+        "pond_jour": [1.0] * n,
+        "trips_per_day": [2.0 * scale] * n,
+        "total_distance_km": [6.0 * scale] * n,
+        "total_time_min": [30.0 * scale + (i % 3) for i in range(n)],
+        "population_category": [category] * n,
+        "ident_men": [f"M{i // 2}" for i in range(n)],
+    }
+    return _frames(days, {})
+
+
+def test_b2_decompositions_cover_overall_and_categories() -> None:
+    frames_a = _b2_frames(1.0)
+    frames_b = _b2_frames(1.2)
+
+    rows = variation_report.b2_decompositions(frames_a, frames_b, n_reps=N_REPS, seed=0)
+
+    by_group = {row.group: row for row in rows}
+    overall = by_group["overall"].result
+    assert overall is not None
+    point = overall.point
+    assert point.delta_min == pytest.approx(
+        point.trips_min + point.distance_min + point.speed_min
+    )
+    assert by_group["employed"].n_a == 60
+    assert by_group["employed"].result is not None
+    # A category absent from both surveys has no decomposition.
+    assert by_group["retired"].result is None
+
+    lines = variation_report._format_b2(rows, "2008", "2019")
+    text = "\n".join(lines)
+    assert "B2. Trips x distance x speed" in text
+    assert "| overall | 60 | 60 |" in text
+    # Absent categories keep their true n with dashes.
+    assert "| retired | 0 | 0 | - | - | - | - | - | - |" in text
+
+
 def test_distance_band_table_shares_sum_to_one() -> None:
     frames = _frames(
         {},
