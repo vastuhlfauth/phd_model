@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from mobgrid.budget import emp, emp2019
+from mobgrid.budget import daily_energy, emp, emp2019
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config" / "energy.yaml"
@@ -67,6 +67,8 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "no code-side failure mode to report here" in report
     assert "Trips per day and minutes per trip" in report
     assert "Per-person budget, days without trips included" in report
+    assert "Equivalent at ±15%" in report
+    assert "Equivalent at ±10%" in report
 
 
 #: The EMP 2019 base-case group table on the synthetic fixture (section
@@ -199,6 +201,27 @@ def test_cli_compare_writes_report_and_figure(
     assert "Time budget: by population category" in report
     assert "Weekday-only comparison, 2008 vs 2019" in report
     assert "per person (days without trips included)" in report
+    assert "Temporal equivalence, 2008 to 2019" in report
+    assert "Ratio 2019/2008" in report
+    assert "Within-survey equivalence: density proxy" in report
+    assert "Within-survey equivalence: income quintile" in report
+
+
+def test_suppressed_person_budget_cell_keeps_true_n() -> None:
+    rows = {
+        ("unemployed", "q4"): daily_energy.PersonBudgetRow(
+            group="unemployed||q4",
+            p_out=float("nan"),
+            value_given_out=float("nan"),
+            n=12,
+            budget=float("nan"),
+            budget_ci=(float("nan"), float("nan")),
+        )
+    }
+
+    lines = emp._format_person_budget_key_table(rows, ("q4",), "Income quintile")
+
+    assert "| unemployed | q4 | 12 | - | - | - | - |" in lines
 
 
 @pytest.mark.skipif(

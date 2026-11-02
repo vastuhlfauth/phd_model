@@ -241,8 +241,27 @@ def test_person_budget_by_group_cell_below_min_n_is_blank() -> None:
         n_reps=10,
         seed=0,
     )
-    assert results["a"].n == 0
+    assert results["a"].n == 1
     assert np.isnan(results["a"].budget)
+
+
+def test_bootstrap_person_budget_replicates_match_ratio_of_weighted_totals() -> None:
+    point, reps = daily_energy.bootstrap_person_budget_replicates(
+        np.array([1, 2, 3, 4]),
+        np.ones(4),
+        np.array([0.0, 1.0, 0.0, 1.0]),
+        np.array([1, 3]),
+        np.ones(2),
+        np.array([60.0, 60.0]),
+        n_reps=20,
+        seed=2,
+    )
+
+    assert point == pytest.approx(30.0)
+    assert len(reps) == 20
+    finite_reps = reps[np.isfinite(reps)]
+    assert len(finite_reps) > 0
+    assert np.all(finite_reps >= 0)
 
 
 def test_person_budget_by_group_all_week_sums_with_day_type_weight() -> None:
@@ -305,11 +324,63 @@ def test_bootstrap_diff_ci_matches_direct_difference() -> None:
     weight_b = np.ones(2)
     value_b = np.array([30.0, 40.0])
     diff, ci = daily_energy.bootstrap_diff_ci(
-        household_a, weight_a, value_a, household_b, weight_b, value_b,
-        n_reps=50, seed=3,
+        household_a,
+        weight_a,
+        value_a,
+        household_b,
+        weight_b,
+        value_b,
+        n_reps=50,
+        seed=3,
     )
     assert diff == pytest.approx(35.0 - 15.0)
     assert ci[0] <= diff <= ci[1]
+
+
+def test_bootstrap_ratio_ci_pairs_independent_household_bootstraps() -> None:
+    household_a = np.array([1, 2, 3, 4])
+    weight_a = np.ones(4)
+    value_a = np.array([10.0, 10.0, 10.0, 10.0])
+    household_b = np.array([5, 6, 7, 8])
+    weight_b = np.ones(4)
+    value_b = np.array([12.0, 12.0, 12.0, 12.0])
+
+    ratio, ci = daily_energy.bootstrap_ratio_ci(
+        household_a,
+        weight_a,
+        value_a,
+        household_b,
+        weight_b,
+        value_b,
+        n_reps=200,
+        seed=3,
+    )
+
+    assert ratio == pytest.approx(1.2)
+    assert ci == pytest.approx((1.2, 1.2))
+
+
+def test_bootstrap_equivalence_ci_compares_group_to_its_category_mean() -> None:
+    result = daily_energy.bootstrap_equivalence_by_group(
+        np.array(["q1", "q1", "q2", "q2"]),
+        np.array(["employed"] * 4),
+        np.array([1, 2, 3, 4]),
+        np.ones(4),
+        np.array([100.0, 100.0, 100.0, 100.0]),
+        n_reps=200,
+        seed=4,
+        margin=0.15,
+        secondary_margin=0.10,
+        min_cell_n=1,
+    )
+
+    assert [(row.category, row.group) for row in result] == [
+        ("employed", "q1"),
+        ("employed", "q2"),
+    ]
+    assert all(row.ratio == pytest.approx(1.0) for row in result)
+    assert all(row.ci90 == pytest.approx((1.0, 1.0)) for row in result)
+    assert all(row.equivalent_15 and row.equivalent_10 for row in result)
 
 
 def test_weighted_gaussian_kde_integrates_to_one() -> None:

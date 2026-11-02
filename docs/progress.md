@@ -2,7 +2,32 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-29 by Copilot (branch `step/time-budget`: regenerated reports committed, pause handoff and bundle; push blocked by authentication)_
+_Last updated: 2026-10-29 by Copilot (branch `step/variation`: step-12 handoff; Parts A/B and EMC²/EGT inventory incomplete)_
+
+### Step 12: travel-time variation handoff (2026-10-29, branch `step/variation`)
+
+- Implemented Part C equivalence summaries and true-n suppression fixes
+  in the step-11 report path. Added the generic weighted log
+  decomposition and independent household-bootstrap intervals for B2;
+  that helper is not yet wired into category/overall report tables.
+- Parts A and the remaining B analyses/figures are not implemented.
+  `docs/data/step12_variation.md` records this explicitly; no
+  full real-data reports were run.
+- Part D is blocked: `data/raw/` has no EMC² or EGT directories. The
+  raw root remains ignored by Git. See `docs/data/emc2_inventory.md`;
+  no source files were changed or downloaded.
+- ENTD documentation review found that the 2010 redressement note does
+  not document household-income imputation or an imputation flag. The
+  released household header has no identified flag; the report's
+  20,178 matched households have no blank bracket/`NBUC`, which does not
+  prove whether any values were imputed upstream. See
+  `docs/data/entd2008.md`.
+- Validation: 31 focused tests passed in 66.18 s; Ruff check and format
+  checks passed. The synthetic 2008-2019 CLI comparison exceeded the
+  two-minute limit and was stopped; the full suite was not run under the
+  long-job rule. Six existing Matplotlib legend warnings remain.
+- Next: implement A and the remaining B analyses and connect B2 to its
+  report; provide the EMC²/EGT source locations to complete Part D.
 
 ### Pause handoff (2026-10-29)
 

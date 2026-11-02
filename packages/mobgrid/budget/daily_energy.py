@@ -283,6 +283,210 @@ class ScalarGroupStats:
     median: float
 
 
+@dataclass(frozen=True)
+class EquivalenceStats:
+    """Ratio of a subgroup's weighted mean to its category mean, with a
+    percentile 90% household-bootstrap interval and TOST verdicts."""
+
+    category: str
+    group: str
+    n: int
+    ratio: float
+    ci90: tuple[float, float]
+    equivalent_15: bool | None
+    equivalent_10: bool | None
+
+
+def _weighted_mean_bootstrap_replicates(
+    household: np.ndarray,
+    weight: np.ndarray,
+    value: np.ndarray,
+    *,
+    n_reps: int,
+    rng: np.random.Generator,
+) -> tuple[float, np.ndarray]:
+    """Point estimate and household-bootstrap replicates of a weighted
+    ratio of totals."""
+    if not (len(household) == len(weight) == len(value)) or len(weight) == 0:
+        raise ValueError("bootstrap inputs must have equal, non-zero lengths")
+    if not np.isfinite(weight).all() or np.any(weight < 0) or weight.sum() <= 0:
+        raise ValueError("bootstrap weights must be finite, non-negative, and non-zero")
+    if not np.isfinite(value).all():
+        raise ValueError("bootstrap values must be finite")
+    households, household_codes = np.unique(household, return_inverse=True)
+    if len(households) == 0:
+        raise ValueError("bootstrap requires at least one household")
+    point = float(np.sum(weight * value) / weight.sum())
+    reps = np.empty(n_reps, dtype=float)
+    for rep in range(n_reps):
+        multiplicity = np.bincount(
+            rng.integers(0, len(households), size=len(households)),
+            minlength=len(households),
+        )
+        rep_weight = weight * multiplicity[household_codes]
+        reps[rep] = (
+            float(np.sum(rep_weight * value) / rep_weight.sum())
+            if rep_weight.sum() > 0
+            else np.nan
+        )
+    return point, reps
+
+
+def bootstrap_replicate_ratio_ci(
+    point_a: float,
+    reps_a: np.ndarray,
+    point_b: float,
+    reps_b: np.ndarray,
+) -> tuple[float, tuple[float, float]]:
+    """Ratio B/A and its paired percentile 90% interval from two already
+    bootstrapped samples; replicate ``b`` is paired only after each
+    sample has been resampled independently."""
+    if len(reps_a) == 0 or len(reps_a) != len(reps_b):
+        raise ValueError("ratio bootstrap samples must have equal, non-zero lengths")
+    if point_a <= 0 or point_b <= 0:
+        raise ValueError("ratio point estimates must be positive")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratios = np.asarray(reps_b, dtype=float) / np.asarray(reps_a, dtype=float)
+    ratios = ratios[np.isfinite(ratios)]
+    if len(ratios) == 0:
+        raise ValueError("ratio bootstrap has no finite paired replicates")
+    ci = np.nanpercentile(ratios, [5.0, 95.0])
+    return point_b / point_a, (float(ci[0]), float(ci[1]))
+
+
+def bootstrap_ratio_ci(
+    household_a: np.ndarray,
+    weight_a: np.ndarray,
+    value_a: np.ndarray,
+    household_b: np.ndarray,
+    weight_b: np.ndarray,
+    value_b: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> tuple[float, tuple[float, float]]:
+    """Ratio of weighted means B/A with independent household bootstrap
+    samples, paired replicate by replicate for the percentile 90% CI."""
+    if n_reps <= 0:
+        raise ValueError("n_reps must be positive")
+    seed_a, seed_b = np.random.SeedSequence(seed).spawn(2)
+    point_a, reps_a = _weighted_mean_bootstrap_replicates(
+        household_a,
+        weight_a,
+        value_a,
+        n_reps=n_reps,
+        rng=np.random.default_rng(seed_a),
+    )
+    point_b, reps_b = _weighted_mean_bootstrap_replicates(
+        household_b,
+        weight_b,
+        value_b,
+        n_reps=n_reps,
+        rng=np.random.default_rng(seed_b),
+    )
+    return bootstrap_replicate_ratio_ci(point_a, reps_a, point_b, reps_b)
+
+
+def bootstrap_equivalence_by_group(
+    group: np.ndarray,
+    category: np.ndarray,
+    household: np.ndarray,
+    weight: np.ndarray,
+    value: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+    margin: float,
+    secondary_margin: float,
+    min_cell_n: int = 50,
+) -> list[EquivalenceStats]:
+    """Compare each subgroup's mean with its category mean (section 9.9).
+
+    Each replicate resamples households once, preserving the covariance
+    between subgroup and category means. Intervals are percentile 90%
+    intervals of their ratio, which gives the TOST equivalence decision.
+    """
+    arrays = (group, category, household, weight, value)
+    if len({len(array) for array in arrays}) != 1 or len(weight) == 0:
+        raise ValueError("equivalence inputs must have equal, non-zero lengths")
+    if n_reps <= 0 or min_cell_n < 1:
+        raise ValueError("n_reps and min_cell_n must be positive")
+    for candidate in (margin, secondary_margin):
+        if not 0 < candidate < 1:
+            raise ValueError("equivalence margins must be between zero and one")
+    if not np.isfinite(weight).all() or np.any(weight < 0) or weight.sum() <= 0:
+        raise ValueError(
+            "equivalence weights must be finite, non-negative, and non-zero"
+        )
+    if not np.isfinite(value).all():
+        raise ValueError("equivalence values must be finite")
+
+    group = np.asarray(group, dtype=str)
+    category = np.asarray(category, dtype=str)
+    household = np.asarray(household)
+    weight = np.asarray(weight, dtype=float)
+    value = np.asarray(value, dtype=float)
+    categories, category_codes = np.unique(category, return_inverse=True)
+    pair_labels = np.char.add(
+        np.char.add(category, "\x1f"),
+        group,
+    )
+    pairs, pair_codes = np.unique(pair_labels, return_inverse=True)
+    pair_categories = np.array([label.split("\x1f", 1)[0] for label in pairs])
+    category_index = {label: i for i, label in enumerate(categories)}
+    pair_category_codes = np.array([category_index[label] for label in pair_categories])
+    households, household_codes = np.unique(household, return_inverse=True)
+
+    point_category = _weighted_group_means(
+        category_codes, len(categories), weight, value
+    )
+    point_pair = _weighted_group_means(pair_codes, len(pairs), weight, value)
+    point_ratios = point_pair / point_category[pair_category_codes]
+    rep_ratios = np.full((n_reps, len(pairs)), np.nan, dtype=float)
+    rng = np.random.default_rng(seed)
+    for rep in range(n_reps):
+        multiplicity = np.bincount(
+            rng.integers(0, len(households), size=len(households)),
+            minlength=len(households),
+        )
+        rep_weight = weight * multiplicity[household_codes]
+        category_means = _weighted_group_means(
+            category_codes, len(categories), rep_weight, value
+        )
+        pair_means = _weighted_group_means(pair_codes, len(pairs), rep_weight, value)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rep_ratios[rep] = pair_means / category_means[pair_category_codes]
+
+    counts = np.bincount(pair_codes, minlength=len(pairs))
+    result = []
+    for index, label in enumerate(pairs):
+        cat, key = label.split("\x1f", 1)
+        if counts[index] < min_cell_n or not np.isfinite(point_ratios[index]):
+            ci = (float("nan"), float("nan"))
+            verdict_15 = verdict_10 = None
+        else:
+            finite = rep_ratios[:, index]
+            finite = finite[np.isfinite(finite)]
+            if len(finite) == 0:
+                raise ValueError(f"no finite bootstrap ratios for {cat!r} / {key!r}")
+            bounds = np.nanpercentile(finite, [5.0, 95.0])
+            ci = (float(bounds[0]), float(bounds[1]))
+            verdict_15 = ci[0] >= 1 - margin and ci[1] <= 1 + margin
+            verdict_10 = ci[0] >= 1 - secondary_margin and ci[1] <= 1 + secondary_margin
+        result.append(
+            EquivalenceStats(
+                category=cat,
+                group=key,
+                n=int(counts[index]),
+                ratio=float(point_ratios[index]),
+                ci90=ci,
+                equivalent_15=verdict_15,
+                equivalent_10=verdict_10,
+            )
+        )
+    return result
+
+
 def bootstrap_scalar_group_stats(
     group: np.ndarray,
     household: np.ndarray,
@@ -717,11 +921,13 @@ def person_budget_by_group(
 
         point_budget = 0.0
         min_n = None
+        observed_min_n = None
         first_p_out = first_t_out = float("nan")
         for day_type in day_types:
             mp = mask_p_all & (p_day_type == day_type)
             mt = mask_t_all & (t_day_type == day_type)
             n = int(mt.sum())
+            observed_min_n = n if observed_min_n is None else min(observed_min_n, n)
             if n < min_cell_n or mp.sum() == 0:
                 continue
             p_out = _weighted_ratio(p_weight[mp] * (1 - p_immobile[mp]), p_weight[mp])
@@ -736,7 +942,7 @@ def person_budget_by_group(
                 group=label,
                 p_out=float("nan"),
                 value_given_out=float("nan"),
-                n=0,
+                n=int(observed_min_n or 0),
                 budget=float("nan"),
                 budget_ci=(float("nan"), float("nan")),
             )
@@ -812,3 +1018,50 @@ def _bootstrap_budget_reps(
     return reps
 
 
+def bootstrap_person_budget_replicates(
+    household_p: np.ndarray,
+    weight_p: np.ndarray,
+    immobile_p: np.ndarray,
+    household_t: np.ndarray,
+    weight_t: np.ndarray,
+    value_t: np.ndarray,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> tuple[float, np.ndarray]:
+    """Per-person budget in minutes and its household-bootstrap
+    replicates (section 9.9: P(out) × T(weekday|out))."""
+    if not (len(household_p) == len(weight_p) == len(immobile_p)):
+        raise ValueError("person-budget inputs must have equal lengths")
+    if not (len(household_t) == len(weight_t) == len(value_t)):
+        raise ValueError("trip-day inputs must have equal lengths")
+    if len(weight_p) == 0 or len(weight_t) == 0 or n_reps <= 0:
+        raise ValueError("person-budget bootstrap requires non-empty samples")
+    if (
+        not np.isfinite(weight_p).all()
+        or not np.isfinite(weight_t).all()
+        or np.any(weight_p < 0)
+        or np.any(weight_t < 0)
+        or weight_p.sum() <= 0
+        or weight_t.sum() <= 0
+    ):
+        raise ValueError("person-budget weights must be finite and non-zero")
+    if not np.isfinite(immobile_p).all() or not np.isfinite(value_t).all():
+        raise ValueError("person-budget values must be finite")
+    if np.any((immobile_p < 0) | (immobile_p > 1)):
+        raise ValueError("immobility indicators must be between zero and one")
+    if np.any(value_t < 0):
+        raise ValueError("day time values must be non-negative")
+    p_out = float(np.sum(weight_p * (1 - immobile_p)) / weight_p.sum())
+    time_out = float(np.sum(weight_t * value_t) / weight_t.sum())
+    reps = _bootstrap_budget_reps(
+        household_p,
+        weight_p,
+        weight_p * (1 - immobile_p),
+        household_t,
+        weight_t,
+        weight_t * value_t,
+        n_reps=n_reps,
+        seed=seed,
+    )
+    return p_out * time_out, reps

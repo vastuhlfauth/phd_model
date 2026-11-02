@@ -28,7 +28,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mobgrid.budget import daily_energy, emp2019, entd2008, trip_legs
+from mobgrid.budget import daily_energy, emp2019, entd2008, trip_legs, variation
 from mobgrid.energy.rates import (
     MET_MINUTE_KJ_PER_KG,
     EnergyConfig,
@@ -38,6 +38,7 @@ from mobgrid.energy.rates import (
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONFIG_PATH = ROOT / "config" / "energy.yaml"
+DEFAULT_VARIATION_CONFIG_PATH = ROOT / "config" / "variation.yaml"
 DEFAULT_OUT_DIR = ROOT / "docs" / "data" / "step11_budget"
 
 #: `typejour`/`V2_TYPJOUR` day-type codes, both surveys (`docs/data/
@@ -223,9 +224,7 @@ def _day_rows(con: duckdb.DuckDBPyConnection) -> dict:
     ).fetchnumpy()
 
 
-def _income_quintile_report(
-    con: duckdb.DuckDBPyConnection, days: dict, survey
-) -> dict:
+def _income_quintile_report(con: duckdb.DuckDBPyConnection, days: dict, survey) -> dict:
     """Section 9.9's 28 October 2026 decision: equal-sized income
     quintiles. ``trip_legs.income_quintile_summary`` gives the cut
     points and each label's share of *individual* weight (the
@@ -278,9 +277,7 @@ def _category_density_stats(
     """Population category x density class, combined into one group key
     for `bootstrap_group_stats` (section 9.9, point 2a); keyed back out
     to ``(category, density)`` tuples."""
-    return _category_by_key_stats(
-        days, "home_density", n_reps=n_reps, seed=seed
-    )
+    return _category_by_key_stats(days, "home_density", n_reps=n_reps, seed=seed)
 
 
 def _category_by_key_stats(
@@ -391,6 +388,33 @@ def _scalar_by_group(
     )
 
 
+def _equivalence_stats(
+    days: dict,
+    group_column: str,
+    *,
+    margin: float,
+    secondary_margin: float,
+    n_reps: int,
+    seed: int,
+) -> list[daily_energy.EquivalenceStats]:
+    """90% household-bootstrap equivalence summaries (section 9.9)."""
+    mask = (days["population_category"] != "unknown") & (
+        days[group_column] != "unknown"
+    )
+    return daily_energy.bootstrap_equivalence_by_group(
+        days[group_column][mask],
+        days["population_category"][mask],
+        days["ident_men"][mask],
+        days["pond_jour"][mask],
+        days["total_time_min"][mask],
+        n_reps=n_reps,
+        seed=seed,
+        margin=margin,
+        secondary_margin=secondary_margin,
+        min_cell_n=MIN_CELL_N,
+    )
+
+
 def _scalar_by_combined_key(
     days: dict, key_column: str, value: np.ndarray, *, n_reps: int, seed: int
 ) -> dict[tuple[str, str], daily_energy.ScalarGroupStats]:
@@ -440,6 +464,7 @@ def run(
     n_reps: int = 200,
     seed: int = 0,
     density_source: str | None = None,
+    variation_config_path: Path = DEFAULT_VARIATION_CONFIG_PATH,
 ) -> dict:
     """Run the full re-estimation; return every computed statistic and
     figure path, used by ``write_markdown`` and the test suite.
@@ -471,6 +496,7 @@ def run(
     data-quality corrections, children-as-car-drivers).
     """
     config = load_energy_config(config_path)
+    variation_config = variation.load_variation_config(variation_config_path)
     out_dir.mkdir(parents=True, exist_ok=True)
     data_path = data_path or survey.DEFAULT_DATA_PATH
     density_source = density_source or survey.DEFAULT_DENSITY_SOURCE
@@ -567,6 +593,22 @@ def run(
         days, "income_quintile", n_reps=n_reps, seed=seed
     )
     income_constancy_summary = _income_constancy_summary(category_income_stats)
+    density_equivalence = _equivalence_stats(
+        days,
+        "home_density",
+        margin=variation_config.equivalence_margin,
+        secondary_margin=variation_config.secondary_equivalence_margin,
+        n_reps=n_reps,
+        seed=seed,
+    )
+    income_equivalence = _equivalence_stats(
+        days,
+        "income_quintile",
+        margin=variation_config.equivalence_margin,
+        secondary_margin=variation_config.secondary_equivalence_margin,
+        n_reps=n_reps,
+        seed=seed,
+    )
     category_density_time_ci = _scalar_by_combined_key(
         days, "home_density", days["total_time_min"], n_reps=n_reps, seed=seed
     )
@@ -954,6 +996,7 @@ def run(
             "pond_jour",
             "total_time_min",
             "population_category",
+            "home_density",
             "trips_per_day",
         )
     }
@@ -964,9 +1007,17 @@ def run(
         n_reps=n_reps,
         seed=seed,
     )
+    weekday_person_mask = person["day_type"] == "weekday"
+    weekday_person_rows = {
+        "category": person["category"][weekday_person_mask],
+        "household": person["ident_men"][weekday_person_mask],
+        "weight": person["weight"][weekday_person_mask],
+        "immobile": person["immobile"][weekday_person_mask],
+    }
 
     return {
         "config": config,
+        "variation_config": variation_config,
         "survey_name": survey.SURVEY_NAME,
         "density_source": density_source,
         "n_days": len(days["day_mode_group"]),
@@ -980,6 +1031,8 @@ def run(
         "income_stats": income_stats,
         "category_income_stats": category_income_stats,
         "income_constancy_summary": income_constancy_summary,
+        "density_equivalence": density_equivalence,
+        "income_equivalence": income_equivalence,
         "income_quintile_report": income_quintile_report,
         "category_density_time_ci": category_density_time_ci,
         "category_income_time_ci": category_income_time_ci,
@@ -1006,6 +1059,8 @@ def run(
         "person_budget_all_week_category_income": (
             person_budget_all_week_category_income
         ),
+        "_weekday_days": weekday_days,
+        "_weekday_person_rows": weekday_person_rows,
         "mean_kh": mean_kh,
         "mean_cp": mean_cp,
         "mean_time_min": mean_time_min,
@@ -1252,9 +1307,7 @@ def _person_universe(
         "weight": np.array([r[2] for r in rows], dtype=float),
         "day_type": np.array([r[3] for r in rows]),
         "immobile": np.array([r[4] for r in rows], dtype=float),
-        "category": np.array(
-            [category_by_ident.get(i, "unknown") for i in ident_ind]
-        ),
+        "category": np.array([category_by_ident.get(i, "unknown") for i in ident_ind]),
         "density": np.array(
             [density_by_ident.get(i, "intermediate") for i in ident_ind]
         ),
@@ -2195,9 +2248,7 @@ def _draw_heatmap_panel(fig, ax, matrix, n_matrix, row_values, col_values, title
                     color="white",
                 )
     ax.set_title(title, fontsize=9)
-    fig.colorbar(
-        image, ax=ax, label="Mean daily travel time, minutes", fraction=0.046
-    )
+    fig.colorbar(image, ax=ax, label="Mean daily travel time, minutes", fraction=0.046)
 
 
 def _figure_f5_time_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
@@ -2213,14 +2264,34 @@ def _figure_f5_time_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> P
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
     panels = (
-        ("day_mode_group", groups, "population_category", categories,
-         "(A) mode x population category"),
-        ("day_mode_group", groups, "home_density", densities,
-         "(B) mode x density class"),
-        ("population_category", categories, "home_density", densities,
-         "(C) category x density class"),
-        ("population_category", categories, "income_quintile", incomes,
-         "(D) category x income quintile"),
+        (
+            "day_mode_group",
+            groups,
+            "population_category",
+            categories,
+            "(A) mode x population category",
+        ),
+        (
+            "day_mode_group",
+            groups,
+            "home_density",
+            densities,
+            "(B) mode x density class",
+        ),
+        (
+            "population_category",
+            categories,
+            "home_density",
+            densities,
+            "(C) category x density class",
+        ),
+        (
+            "population_category",
+            categories,
+            "income_quintile",
+            incomes,
+            "(D) category x income quintile",
+        ),
     )
     for ax, (row_col, row_values, col_col, col_values, title) in zip(
         axes.flat, panels, strict=True
@@ -2260,10 +2331,20 @@ def _figure_f10_constancy(
         all_xticks, all_xlabels = [], []
         x_start = 0
         for key_order, store, person_store, color, label in (
-            (densities, category_density_time_ci, person_budget_category_density,
-             "tab:blue", "density"),
-            (incomes, category_income_time_ci, person_budget_category_income,
-             "tab:orange", "income"),
+            (
+                densities,
+                category_density_time_ci,
+                person_budget_category_density,
+                "tab:blue",
+                "density",
+            ),
+            (
+                incomes,
+                category_income_time_ci,
+                person_budget_category_income,
+                "tab:orange",
+                "income",
+            ),
         ):
             x = x_start + np.arange(len(key_order))
             all_xticks.extend(x.tolist())
@@ -2617,6 +2698,72 @@ def _format_constancy_summary_table(
     return lines
 
 
+def _format_equivalence_table(
+    rows: list[daily_energy.EquivalenceStats],
+    *,
+    margin: float,
+    secondary_margin: float,
+) -> list[str]:
+    lines = [
+        "| Category | Group | n | Ratio to category mean | 90% CI | "
+        f"Equivalent at ±{margin:.0%} | Equivalent at ±{secondary_margin:.0%} |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for row in rows:
+        if row.equivalent_15 is None:
+            lines.append(f"| {row.category} | {row.group} | {row.n} | - | - | - | - |")
+            continue
+        verdict_15 = "yes" if row.equivalent_15 else "no"
+        verdict_10 = "yes" if row.equivalent_10 else "no"
+        lines.append(
+            f"| {row.category} | {row.group} | {row.n} | {row.ratio:.3f} | "
+            f"[{row.ci90[0]:.3f}, {row.ci90[1]:.3f}] | "
+            f"{verdict_15} | {verdict_10} |"
+        )
+    return lines
+
+
+def _format_equivalence_side_by_side(
+    rows_2008: list[daily_energy.EquivalenceStats],
+    rows_2019: list[daily_energy.EquivalenceStats],
+    *,
+    margin: float,
+    secondary_margin: float,
+) -> list[str]:
+    by_2008 = {(row.category, row.group): row for row in rows_2008}
+    by_2019 = {(row.category, row.group): row for row in rows_2019}
+    keys = sorted(set(by_2008) | set(by_2019))
+    lines = [
+        "| Category | Group | n 2008 | Ratio 2008 | 90% CI 2008 | "
+        f"±{margin:.0%} 2008 | ±{secondary_margin:.0%} 2008 | n 2019 | "
+        f"Ratio 2019 | 90% CI 2019 | ±{margin:.0%} 2019 | "
+        f"±{secondary_margin:.0%} 2019 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for category, group in keys:
+        cells = []
+        for rows_by_year in (by_2008, by_2019):
+            row = rows_by_year.get((category, group))
+            if row is None:
+                cells.extend(["0", "-", "-", "-", "-"])
+            elif row.equivalent_15 is None:
+                cells.extend([str(row.n), "-", "-", "-", "-"])
+            else:
+                verdict_15 = "yes" if row.equivalent_15 else "no"
+                verdict_10 = "yes" if row.equivalent_10 else "no"
+                cells.extend(
+                    [
+                        str(row.n),
+                        f"{row.ratio:.3f}",
+                        f"[{row.ci90[0]:.3f}, {row.ci90[1]:.3f}]",
+                        verdict_15,
+                        verdict_10,
+                    ]
+                )
+        lines.append(f"| {category} | {group} | " + " | ".join(cells) + " |")
+    return lines
+
+
 def _format_income_quintile_report(report: dict) -> list[str]:
     """Section 9.9's 28 October 2026 "equal-sized quintiles" decision:
     each quintile's unweighted n and share of individual weight (the
@@ -2708,6 +2855,9 @@ def _format_person_budget_table(
         if row is None or row.n == 0:
             lines.append(f"| {category} | 0 | - | - | - | - |")
             continue
+        if row.n < MIN_CELL_N or np.isnan(row.budget):
+            lines.append(f"| {category} | {row.n} | - | - | - | - |")
+            continue
         ci = (
             f"[{row.budget_ci[0]:.1f}, {row.budget_ci[1]:.1f}]"
             if not np.isnan(row.budget_ci[0])
@@ -2738,6 +2888,9 @@ def _format_person_budget_key_table(
             row = rows.get((category, key))
             if row is None or row.n == 0:
                 lines.append(f"| {category} | {key} | 0 | - | - | - | - |")
+                continue
+            if row.n < MIN_CELL_N or np.isnan(row.budget):
+                lines.append(f"| {category} | {key} | {row.n} | - | - | - | - |")
                 continue
             ci = (
                 f"[{row.budget_ci[0]:.1f}, {row.budget_ci[1]:.1f}]"
@@ -2946,7 +3099,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         variables_used_line,
         "",
-        '**Sample flow** (persons and days kept apart, section 9.9\'s '
+        "**Sample flow** (persons and days kept apart, section 9.9's "
         '"Change between 2008 and 2019"; one described day per respondent '
         "in EMP 2019, up to three in ENTD 2008, weekday/Saturday/Sunday):",
         "",
@@ -3042,12 +3195,25 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         *_format_constancy_summary_table(results["density_constancy_summary"]),
         "",
+        "### Equivalence to the category mean (TOST)",
+        "",
+        "Ratio of each density-class mean to its population-category mean; "
+        "90% household-bootstrap CI. A `yes` means the whole interval lies "
+        "within the configured margin; `no` means equivalence was not "
+        "established. Cells under 50 respondents are suppressed.",
+        "",
+        *_format_equivalence_table(
+            results["density_equivalence"],
+            margin=results["variation_config"].equivalence_margin,
+            secondary_margin=(results["variation_config"].secondary_equivalence_margin),
+        ),
+        "",
         "## Time budget: constancy across income quintiles (section 9.9's "
         "income update)",
         "",
         "Household income per consumption unit (modified OECD scale), in "
         "quintiles computed within this survey with individual weights "
-        "(`docs/data/entd2008.md`'s \"Income variables\"): is mean daily "
+        '(`docs/data/entd2008.md`\'s "Income variables"): is mean daily '
         "travel time the same across income quintiles, within each "
         "population category, as income is treated as density is? Day "
         "with trips, needs scope. `'unknown'` (missing/refused income) "
@@ -3065,6 +3231,19 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         *_format_constancy_summary_table(
             results["income_constancy_summary"], named_label="q5/q1"
+        ),
+        "",
+        "### Equivalence to the category mean (TOST)",
+        "",
+        "Ratio of each income-quintile mean to its population-category "
+        "mean; 90% household-bootstrap CI. A `yes` means the whole interval "
+        "lies within the configured margin; `no` means equivalence was not "
+        "established. Cells under 50 respondents are suppressed.",
+        "",
+        *_format_equivalence_table(
+            results["income_equivalence"],
+            margin=results["variation_config"].equivalence_margin,
+            secondary_margin=(results["variation_config"].secondary_equivalence_margin),
         ),
         "",
         "### Quintile shares and cut points",
@@ -3158,8 +3337,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             results["minutes_per_trip_by_income"], label="min/trip"
         ),
         "",
-        "## Per-person budget, days without trips included (section 9.9 "
-        "point 2b)",
+        "## Per-person budget, days without trips included (section 9.9 point 2b)",
         "",
         "P(out on the weekday) x T(weekday|out), weekday only (comparable "
         "with ENTD 2008's own, unverified-weekend-eligibility budget); "
@@ -3384,7 +3562,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "Unweighted trip-level means. Since the 27 October 2026 decision, "
         "the declared value *is* the model's terminal-leg walk/wait by "
         "default (`terminal_legs='declared'`, falling back to the "
-        "modelled default where missing): \"modelled\" below is the "
+        'modelled default where missing): "modelled" below is the '
         "section 9.4-9.7 default this report no longer uses by default, "
         "kept as the comparison point.",
         "",
@@ -3644,15 +3822,13 @@ def _format_weekday_comparison(
             continue
         mean_2008 = float(
             np.sum(
-                wd_2008["pond_jour"][mask_2008]
-                * wd_2008["total_time_min"][mask_2008]
+                wd_2008["pond_jour"][mask_2008] * wd_2008["total_time_min"][mask_2008]
             )
             / wd_2008["pond_jour"][mask_2008].sum()
         )
         mean_2019 = float(
             np.sum(
-                wd_2019["pond_jour"][mask_2019]
-                * wd_2019["total_time_min"][mask_2019]
+                wd_2019["pond_jour"][mask_2019] * wd_2019["total_time_min"][mask_2019]
             )
             / wd_2019["pond_jour"][mask_2019].sum()
         )
@@ -3708,6 +3884,221 @@ def _format_weekday_comparison(
     return lines
 
 
+def _temporal_day_ratio_rows(
+    results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
+) -> list[tuple[str, str, int, int, float | None, tuple[float, float] | None]]:
+    days_2008 = results_2008["_weekday_days"]
+    days_2019 = results_2019["_weekday_days"]
+    rows = []
+    for index, category in enumerate((*daily_energy.POPULATION_CATEGORIES, "overall")):
+        mask_2008 = (
+            np.ones(len(days_2008["pond_jour"]), dtype=bool)
+            if category == "overall"
+            else days_2008["population_category"] == category
+        )
+        mask_2019 = (
+            np.ones(len(days_2019["pond_jour"]), dtype=bool)
+            if category == "overall"
+            else days_2019["population_category"] == category
+        )
+        n_2008, n_2019 = int(mask_2008.sum()), int(mask_2019.sum())
+        if min(n_2008, n_2019) < MIN_CELL_N:
+            rows.append((category, "-", n_2008, n_2019, None, None))
+            continue
+        ratio, ci = daily_energy.bootstrap_ratio_ci(
+            days_2008["ident_men"][mask_2008],
+            days_2008["pond_jour"][mask_2008],
+            days_2008["total_time_min"][mask_2008],
+            days_2019["ident_men"][mask_2019],
+            days_2019["pond_jour"][mask_2019],
+            days_2019["total_time_min"][mask_2019],
+            n_reps=n_reps,
+            seed=seed + index,
+        )
+        rows.append((category, "-", n_2008, n_2019, ratio, ci))
+    return rows
+
+
+def _temporal_person_budget_rows(
+    results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
+) -> list[tuple[str, str, int, int, float | None, tuple[float, float] | None]]:
+    rows = []
+    for index, category in enumerate((*daily_energy.POPULATION_CATEGORIES, "overall")):
+        year_data = []
+        for results in (results_2008, results_2019):
+            days = results["_weekday_days"]
+            persons = results["_weekday_person_rows"]
+            day_mask = (
+                np.ones(len(days["pond_jour"]), dtype=bool)
+                if category == "overall"
+                else days["population_category"] == category
+            )
+            person_mask = (
+                np.ones(len(persons["weight"]), dtype=bool)
+                if category == "overall"
+                else persons["category"] == category
+            )
+            year_data.append((days, persons, day_mask, person_mask))
+        (days_2008, persons_2008, day_mask_2008, person_mask_2008) = year_data[0]
+        (days_2019, persons_2019, day_mask_2019, person_mask_2019) = year_data[1]
+        n_2008, n_2019 = int(day_mask_2008.sum()), int(day_mask_2019.sum())
+        if min(n_2008, n_2019) < MIN_CELL_N:
+            rows.append((category, "-", n_2008, n_2019, None, None))
+            continue
+        seed_2008, seed_2019 = np.random.SeedSequence(seed + index).spawn(2)
+        point_2008, reps_2008 = daily_energy.bootstrap_person_budget_replicates(
+            persons_2008["household"][person_mask_2008],
+            persons_2008["weight"][person_mask_2008],
+            persons_2008["immobile"][person_mask_2008],
+            days_2008["ident_men"][day_mask_2008],
+            days_2008["pond_jour"][day_mask_2008],
+            days_2008["total_time_min"][day_mask_2008],
+            n_reps=n_reps,
+            seed=int(seed_2008.generate_state(1)[0]),
+        )
+        point_2019, reps_2019 = daily_energy.bootstrap_person_budget_replicates(
+            persons_2019["household"][person_mask_2019],
+            persons_2019["weight"][person_mask_2019],
+            persons_2019["immobile"][person_mask_2019],
+            days_2019["ident_men"][day_mask_2019],
+            days_2019["pond_jour"][day_mask_2019],
+            days_2019["total_time_min"][day_mask_2019],
+            n_reps=n_reps,
+            seed=int(seed_2019.generate_state(1)[0]),
+        )
+        ratio, ci = daily_energy.bootstrap_replicate_ratio_ci(
+            point_2008, reps_2008, point_2019, reps_2019
+        )
+        rows.append((category, "-", n_2008, n_2019, ratio, ci))
+    return rows
+
+
+def _temporal_density_ratio_rows(
+    results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
+) -> list[tuple[str, str, int, int, float | None, tuple[float, float] | None]]:
+    days_2008 = results_2008["_weekday_days"]
+    days_2019 = results_2019["_weekday_days"]
+    rows = []
+    index = 0
+    for category in daily_energy.POPULATION_CATEGORIES:
+        for density in trip_legs.DENSITY_LABELS:
+            mask_2008 = (days_2008["population_category"] == category) & (
+                days_2008["home_density"] == density
+            )
+            mask_2019 = (days_2019["population_category"] == category) & (
+                days_2019["home_density"] == density
+            )
+            n_2008, n_2019 = int(mask_2008.sum()), int(mask_2019.sum())
+            if min(n_2008, n_2019) < MIN_CELL_N:
+                rows.append((category, density, n_2008, n_2019, None, None))
+            else:
+                ratio, ci = daily_energy.bootstrap_ratio_ci(
+                    days_2008["ident_men"][mask_2008],
+                    days_2008["pond_jour"][mask_2008],
+                    days_2008["total_time_min"][mask_2008],
+                    days_2019["ident_men"][mask_2019],
+                    days_2019["pond_jour"][mask_2019],
+                    days_2019["total_time_min"][mask_2019],
+                    n_reps=n_reps,
+                    seed=seed + index,
+                )
+                rows.append((category, density, n_2008, n_2019, ratio, ci))
+            index += 1
+    return rows
+
+
+def _format_temporal_ratio_table(
+    rows: list[tuple[str, str, int, int, float | None, tuple[float, float] | None]],
+    *,
+    margin: float,
+    secondary_margin: float,
+    with_group: bool,
+) -> list[str]:
+    group_header = " | Group" if with_group else ""
+    group_separator = "|---" if with_group else ""
+    lines = [
+        "| Category"
+        + group_header
+        + " | n 2008 | n 2019 | Ratio 2019/2008 | 90% CI | "
+        + f"Equivalent at ±{margin:.0%} | Equivalent at ±{secondary_margin:.0%} |",
+        "|---" + group_separator + "|---|---|---|---|---|---|",
+    ]
+    for category, group, n_2008, n_2019, ratio, ci in rows:
+        group_cell = f" | {group}" if with_group else ""
+        if ratio is None or ci is None:
+            lines.append(
+                f"| {category}{group_cell} | {n_2008} | {n_2019} | - | - | - | - |"
+            )
+            continue
+        equivalent_margin = ci[0] >= 1 - margin and ci[1] <= 1 + margin
+        equivalent_secondary = (
+            ci[0] >= 1 - secondary_margin and ci[1] <= 1 + secondary_margin
+        )
+        verdict_margin = "yes" if equivalent_margin else "no"
+        verdict_secondary = "yes" if equivalent_secondary else "no"
+        lines.append(
+            f"| {category}{group_cell} | {n_2008} | {n_2019} | {ratio:.3f} | "
+            f"[{ci[0]:.3f}, {ci[1]:.3f}] | {verdict_margin} | "
+            f"{verdict_secondary} |"
+        )
+    return lines
+
+
+def _format_temporal_equivalence(
+    results_2008: dict,
+    results_2019: dict,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    margin = results_2008["variation_config"].equivalence_margin
+    secondary_margin = results_2008["variation_config"].secondary_equivalence_margin
+    lines = [
+        "## Temporal equivalence, 2008 to 2019",
+        "",
+        f"Ratios are 2019/2008; the 90% CI pairs replicate b from two "
+        f"independent {n_reps}-replicate household bootstraps. `yes` means "
+        "the full interval is within the margin; `no` means equivalence "
+        "was not established. Cells with fewer than 50 weekday respondents "
+        "in either year are suppressed.",
+        "",
+        "### Daily time, weekday days with trips (needs scope)",
+        "",
+        *_format_temporal_ratio_table(
+            _temporal_day_ratio_rows(
+                results_2008, results_2019, n_reps=n_reps, seed=seed
+            ),
+            margin=margin,
+            secondary_margin=secondary_margin,
+            with_group=False,
+        ),
+        "",
+        "### Daily time, weekday per-person budgets",
+        "",
+        *_format_temporal_ratio_table(
+            _temporal_person_budget_rows(
+                results_2008, results_2019, n_reps=n_reps, seed=seed
+            ),
+            margin=margin,
+            secondary_margin=secondary_margin,
+            with_group=False,
+        ),
+        "",
+        "### Daily time, weekday days with trips by category × density proxy",
+        "",
+        *_format_temporal_ratio_table(
+            _temporal_density_ratio_rows(
+                results_2008, results_2019, n_reps=n_reps, seed=seed
+            ),
+            margin=margin,
+            secondary_margin=secondary_margin,
+            with_group=True,
+        ),
+        "",
+    ]
+    return lines
+
+
 def run_compare(
     out_path: Path,
     config_path: Path = DEFAULT_CONFIG_PATH,
@@ -3716,6 +4107,7 @@ def run_compare(
     seed: int = 0,
     emp2019_data_path: Path | None = None,
     entd2008_data_path: Path | None = None,
+    variation_config_path: Path = DEFAULT_VARIATION_CONFIG_PATH,
 ) -> Path:
     """Section 9.9's "Change between 2008 and 2019": runs EMP 2019 (grid
     and proxy density) and ENTD 2008 (proxy, its only option), then
@@ -3736,6 +4128,7 @@ def run_compare(
             n_reps=n_reps,
             seed=seed,
             density_source="proxy",
+            variation_config_path=variation_config_path,
         )
         results_2019_grid = run(
             Path(tmp) / "emp2019_grid",
@@ -3745,6 +4138,7 @@ def run_compare(
             n_reps=n_reps,
             seed=seed,
             density_source="grid",
+            variation_config_path=variation_config_path,
         )
         results_2008 = run(
             Path(tmp) / "entd2008_proxy",
@@ -3754,6 +4148,7 @@ def run_compare(
             n_reps=n_reps,
             seed=seed,
             density_source="proxy",
+            variation_config_path=variation_config_path,
         )
 
     lines = [
@@ -3804,6 +4199,28 @@ def run_compare(
             f"{_fmt_constancy(c8, 3)} | {_fmt_constancy(c9, 3)} |"
         )
     lines += [
+        "",
+        "### Within-survey equivalence: density proxy",
+        "",
+        *_format_equivalence_side_by_side(
+            results_2008["density_equivalence"],
+            results_2019_proxy["density_equivalence"],
+            margin=results_2008["variation_config"].equivalence_margin,
+            secondary_margin=(
+                results_2008["variation_config"].secondary_equivalence_margin
+            ),
+        ),
+        "",
+        "### Within-survey equivalence: income quintile",
+        "",
+        *_format_equivalence_side_by_side(
+            results_2008["income_equivalence"],
+            results_2019_proxy["income_equivalence"],
+            margin=results_2008["variation_config"].equivalence_margin,
+            secondary_margin=(
+                results_2008["variation_config"].secondary_equivalence_margin
+            ),
+        ),
         "",
         "## EMP 2019: density grid vs proxy, same groups",
         "",
@@ -3915,6 +4332,13 @@ def run_compare(
         "",
         *_format_weekday_comparison(
             results_2008, results_2019_proxy, n_reps=n_reps, seed=seed
+        ),
+        "",
+        *_format_temporal_equivalence(
+            results_2008,
+            results_2019_proxy,
+            n_reps=n_reps,
+            seed=seed,
         ),
     ]
 
@@ -4183,7 +4607,11 @@ def _figure_compare_time_by_category(
         for xi, mean, n in zip(x + offset, means, ns, strict=True):
             if not np.isnan(mean):
                 ax_person.text(
-                    xi, mean, f"{mean:.0f}\nn={n}", ha="center", va="bottom",
+                    xi,
+                    mean,
+                    f"{mean:.0f}\nn={n}",
+                    ha="center",
+                    va="bottom",
                     fontsize=6,
                 )
     ax_person.set_xticks(x)
@@ -4217,6 +4645,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--data-path", type=Path, default=None)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    parser.add_argument(
+        "--variation-config",
+        type=Path,
+        default=DEFAULT_VARIATION_CONFIG_PATH,
+    )
     parser.add_argument("--bootstrap-reps", type=int, default=200)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
@@ -4256,6 +4689,7 @@ def main(argv: list[str] | None = None) -> int:
             seed=args.seed,
             emp2019_data_path=args.emp2019_data_path,
             entd2008_data_path=args.entd2008_data_path,
+            variation_config_path=args.variation_config,
         )
         print(f"Wrote {md_path}")
         return 0
@@ -4269,6 +4703,7 @@ def main(argv: list[str] | None = None) -> int:
         n_reps=args.bootstrap_reps,
         seed=args.seed,
         density_source=args.density,
+        variation_config_path=args.variation_config,
     )
     md_path = args.out.with_suffix(".md")
     write_markdown(md_path, args.out, results)
