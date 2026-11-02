@@ -290,6 +290,29 @@ def test_shift_share_identity_and_report_section() -> None:
     assert "| walk | 60 | 60 |" in text
 
 
+def test_b4_distance_band_shift_share_uses_band_labels() -> None:
+    frames_a = _trip_frames({"walk": 10.0, "car_driver": 30.0}, km_per_min=0.3)
+    frames_b = _trip_frames({"walk": 12.0, "car_driver": 36.0}, km_per_min=0.35)
+
+    result = variation_report.shift_share_by(
+        frames_a, frames_b, "distance_band", n_reps=N_REPS, seed=0
+    )
+
+    point = result.point
+    assert point.delta_min == pytest.approx(
+        point.volume_min + point.mix_min + point.within_min + point.interaction_min
+    )
+    groups = {term.group for term in point.terms}
+    assert groups <= set(variation_report.DISTANCE_BAND_LABELS)
+
+
+def test_motive_group_label_maps_codes_and_unknown() -> None:
+    assert variation_report.motive_group_label("2") == "shopping"
+    assert variation_report.motive_group_label("9") == "professional"
+    assert variation_report.motive_group_label("unknown") == "unknown"
+    assert variation_report.motive_group_label(None) == "unknown"
+
+
 def test_distance_band_table_shares_sum_to_one() -> None:
     frames = _frames(
         {},

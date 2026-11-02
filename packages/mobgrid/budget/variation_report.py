@@ -1299,6 +1299,8 @@ def shift_share_by(
             return np.asarray(DISTANCE_BAND_LABELS)[
                 distance_band_index(frames.trips["distance_km"].astype(float))
             ]
+        if column == "motive_group":
+            return np.array([motive_group_label(code) for code in frames.trips[column]])
         return frames.trips[column].astype(str)
 
     return variation.bootstrap_shift_share(
@@ -1309,6 +1311,15 @@ def shift_share_by(
     )
 
 
+def motive_group_label(code) -> str:
+    """Name of a harmonised top-level motive group code ('1'-'9'), or
+    'unknown' for a missing/unparsed motive."""
+    try:
+        return MOTIVE_GROUP_LABELS.get(int(str(code)), "unknown")
+    except (TypeError, ValueError):
+        return "unknown"
+
+
 def _group_counts(
     frames: SurveyFrames, column: str, trip_mask: np.ndarray | None = None
 ) -> dict[str, int]:
@@ -1316,6 +1327,8 @@ def _group_counts(
         labels = np.asarray(DISTANCE_BAND_LABELS)[
             distance_band_index(frames.trips["distance_km"].astype(float))
         ]
+    elif column == "motive_group":
+        labels = np.array([motive_group_label(code) for code in frames.trips[column]])
     else:
         labels = frames.trips[column].astype(str)
     if trip_mask is not None:
@@ -1613,6 +1626,13 @@ def _run_part_b(
     results["b3_mode"] = shift_share_by(
         frames_2008, frames_2019, "mode7", n_reps=n_reps, seed=seed
     )
+    results["b4_motive"] = shift_share_by(
+        frames_2008, frames_2019, "motive_group", n_reps=n_reps, seed=seed
+    )
+    results["b4_distance"] = shift_share_by(
+        frames_2008, frames_2019, "distance_band", n_reps=n_reps, seed=seed
+    )
+    motive_order = tuple([*MOTIVE_GROUP_LABELS.values(), "unknown"])
     results["extra_sections"] += [
         _format_b1(results["b1_rows"], "2008", "2019"),
         _format_b2(results["b2_rows"], "2008", "2019"),
@@ -1625,6 +1645,33 @@ def _run_part_b(
             label_a="2008",
             label_b="2019",
             group_order=MODE7_LABELS,
+        ),
+        _format_shift_share(
+            results["b4_motive"],
+            _group_counts(frames_2008, "motive_group"),
+            _group_counts(frames_2019, "motive_group"),
+            title="## B4a. Motive shift-share, 2008 -> 2019",
+            group_name="motive",
+            label_a="2008",
+            label_b="2019",
+            group_order=motive_order,
+        ),
+        _format_shift_share(
+            results["b4_distance"],
+            _group_counts(frames_2008, "distance_band"),
+            _group_counts(frames_2019, "distance_band"),
+            title="## B4b. Distance-band shift-share, 2008 -> 2019",
+            group_name="band",
+            label_a="2008",
+            label_b="2019",
+            group_order=DISTANCE_BAND_LABELS,
+            within_label="within bands (a speed effect)",
+            intro=(
+                "Same shift-share by trip distance band (A3's bands). "
+                "Within a distance band, km per trip is nearly fixed, so "
+                "the within-band term is a speed effect. "
+                "Household-bootstrap 95% CIs."
+            ),
         ),
     ]
 
