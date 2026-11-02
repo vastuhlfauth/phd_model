@@ -1398,6 +1398,181 @@ def _format_shift_share(
     return lines
 
 
+def age_band_index(age: np.ndarray) -> np.ndarray:
+    """B1 age-band index (into ``AGE_BAND_LABELS``) of each age."""
+    return np.clip(
+        np.searchsorted(np.asarray(AGE_BAND_LOWER[1:]), age, side="right"),
+        0,
+        len(AGE_BAND_LABELS) - 1,
+    )
+
+
+#: B1's composition variants: the stratum parts crossed with the age
+#: bands. 'residence' is home_density x Île-de-France (the caller picks
+#: proxy- or grid-density frames); 'cars' is the household 0/1/2+ band.
+B1_VARIANTS = {
+    "V1": ("sex", "category"),
+    "V2": ("sex", "category", "residence"),
+    "V3": ("sex", "category", "residence", "cars"),
+}
+
+
+def _b1_strata(frames: SurveyFrames, parts: tuple[str, ...]) -> np.ndarray:
+    days = frames.days
+    columns = []
+    for part in parts:
+        if part == "sex":
+            sex = days["sex"].astype(float)
+            columns.append(np.where(np.isfinite(sex), sex.astype(int).astype(str), "u"))
+        elif part == "category":
+            columns.append(days["population_category"].astype(str))
+        elif part == "residence":
+            idf = np.where(days["is_idf"].astype(bool), "idf", "rest")
+            columns.append(
+                np.char.add(np.char.add(days["home_density"].astype(str), "|"), idf)
+            )
+        elif part == "cars":
+            columns.append(days["cars_band"].astype(str))
+        else:  # pragma: no cover - fixed variant definitions
+            raise ValueError(f"unknown B1 part: {part}")
+    out = columns[0]
+    for column in columns[1:]:
+        out = np.char.add(np.char.add(out, "||"), column)
+    return out
+
+
+def composition_pair_cells(
+    frames_a: SurveyFrames,
+    frames_b: SurveyFrames,
+    variant: str,
+    *,
+    min_n: int = 30,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Cell labels of B1's ``variant`` for both groups: stratum x age
+    band, with neighbouring age bands merged (jointly for both groups)
+    wherever a cell has fewer than ``min_n`` respondents in either."""
+    parts = B1_VARIANTS[variant]
+    strata_a = _b1_strata(frames_a, parts)
+    strata_b = _b1_strata(frames_b, parts)
+    age_a = age_band_index(frames_a.days["age"].astype(float))
+    age_b = age_band_index(frames_b.days["age"].astype(float))
+    mapping = variation.merge_age_bands(
+        age_a, strata_a, age_b, strata_b, n_bands=len(AGE_BAND_LABELS), min_n=min_n
+    )
+    cells_a = np.array(
+        [
+            f"{stratum}||age{mapping[(stratum, int(idx))]}"
+            for stratum, idx in zip(strata_a, age_a, strict=True)
+        ]
+    )
+    cells_b = np.array(
+        [
+            f"{stratum}||age{mapping[(stratum, int(idx))]}"
+            for stratum, idx in zip(strata_b, age_b, strict=True)
+        ]
+    )
+    return cells_a, cells_b
+
+
+@dataclass(frozen=True)
+class B1Row:
+    """One B1 variant's composition/behaviour split with household-
+    bootstrap 95% CIs."""
+
+    variant: str
+    point: variation.Composition
+    composition_ci: tuple[float, float]
+    behaviour_ci: tuple[float, float]
+    note: str = ""
+
+
+def bootstrap_composition(
+    frames_a: SurveyFrames,
+    frames_b: SurveyFrames,
+    variant: str,
+    *,
+    n_reps: int,
+    seed: int,
+    note: str = "",
+    label: str | None = None,
+) -> B1Row:
+    """B1's re-weighting for one variant: the point split and household-
+    bootstrap CIs (cells fixed at the point sample's merged definition).
+    ``label`` renames the reported variant (the 2008 -> 2019 pair's V3
+    falls back to V2's cells but is still reported as V3)."""
+    cells_a, cells_b = composition_pair_cells(frames_a, frames_b, variant)
+    weight_a = frames_a.days["pond_jour"].astype(float)
+    weight_b = frames_b.days["pond_jour"].astype(float)
+    time_a = frames_a.days["total_time_min"].astype(float)
+    time_b = frames_b.days["total_time_min"].astype(float)
+    point = variation.composition_reweight(
+        cells_a, weight_a, time_a, cells_b, weight_b, time_b
+    )
+    seed_a, seed_b = np.random.SeedSequence(seed).spawn(2)
+    rng_a, rng_b = np.random.default_rng(seed_a), np.random.default_rng(seed_b)
+    reps = np.full((len(range(n_reps)), 2), np.nan)
+    for rep in range(n_reps):
+        w_a = weight_a * variation.household_multipliers(
+            frames_a.days["ident_men"], rng_a
+        )
+        w_b = weight_b * variation.household_multipliers(
+            frames_b.days["ident_men"], rng_b
+        )
+        if w_a.sum() <= 0 or w_b.sum() <= 0:
+            continue
+        try:
+            result = variation.composition_reweight(
+                cells_a, w_a, time_a, cells_b, w_b, time_b
+            )
+        except ValueError:
+            continue
+        reps[rep] = (result.composition_min, result.behaviour_min)
+    valid = reps[np.isfinite(reps).all(axis=1)]
+    if len(valid) == 0:
+        raise ValueError("household bootstrap produced no valid replicates")
+    intervals = np.percentile(valid, [2.5, 97.5], axis=0)
+    return B1Row(
+        variant=label or variant,
+        point=point,
+        composition_ci=(float(intervals[0, 0]), float(intervals[1, 0])),
+        behaviour_ci=(float(intervals[0, 1]), float(intervals[1, 1])),
+        note=note,
+    )
+
+
+def _format_b1(rows: list[B1Row], label_a: str, label_b: str) -> list[str]:
+    lines = [
+        f"## B1. Composition, {label_a} -> {label_b}",
+        "",
+        f"Group {label_a} re-weighted to group {label_b}'s population "
+        "structure, cell by cell. V1: age band x sex x category; V2: V1 x "
+        "residence (density x Île-de-France vs other regions); V3: V2 x "
+        "household cars (0/1/2+). Age bands with fewer than 30 "
+        "respondents in either group are merged with the neighbouring "
+        "band. Composition = counterfactual mean of A - mean of A; "
+        "behaviour = mean of B - counterfactual. Household-bootstrap 95% "
+        "CIs; the composition + behaviour identity holds exactly for "
+        "each variant.",
+        "",
+        f"| Variant | Cells | Unmatched {label_b} weight | Mean {label_a} | "
+        f"Counterfactual {label_a} | Mean {label_b} | Composition (min) "
+        "[CI] | Behaviour (min) [CI] | Note |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for row in rows:
+        point = row.point
+        lines.append(
+            f"| {row.variant} | {point.n_cells} | "
+            f"{_pct(point.unmatched_b_weight_share)} | "
+            f"{_num(point.mean_a_min)} | {_num(point.counterfactual_a_min)} | "
+            f"{_num(point.mean_b_min)} | "
+            f"{_ci_cell(point.composition_min, row.composition_ci)} | "
+            f"{_ci_cell(point.behaviour_min, row.behaviour_ci)} | "
+            f"{row.note} |"
+        )
+    return lines
+
+
 def _run_part_b(
     results: dict,
     frames_2008: SurveyFrames,
@@ -1409,15 +1584,38 @@ def _run_part_b(
     seed: int,
 ) -> None:
     """Part B decompositions and figures; extended one item at a time
-    (B2, B3, B1, B4, B5, B6, B7)."""
+    (B2, B3, B1, B4, B5, B6, B7). Sections are appended in report order
+    (B1 first), whatever the implementation order."""
+    results["b1_rows"] = [
+        bootstrap_composition(frames_2008, frames_2019, "V1", n_reps=n_reps, seed=seed),
+        bootstrap_composition(
+            frames_2008,
+            frames_2019,
+            "V2",
+            n_reps=n_reps,
+            seed=seed,
+            note="density proxy x Île-de-France",
+        ),
+        bootstrap_composition(
+            frames_2008,
+            frames_2019,
+            "V2",
+            n_reps=n_reps,
+            seed=seed,
+            label="V3",
+            note="falls back to V2: no household-car count in ENTD "
+            "2008's step-11 tables (see Choices made)",
+        ),
+    ]
     results["b2_rows"] = b2_decompositions(
         frames_2008, frames_2019, n_reps=n_reps, seed=seed
     )
-    results["extra_sections"].append(_format_b2(results["b2_rows"], "2008", "2019"))
     results["b3_mode"] = shift_share_by(
         frames_2008, frames_2019, "mode7", n_reps=n_reps, seed=seed
     )
-    results["extra_sections"].append(
+    results["extra_sections"] += [
+        _format_b1(results["b1_rows"], "2008", "2019"),
+        _format_b2(results["b2_rows"], "2008", "2019"),
         _format_shift_share(
             results["b3_mode"],
             _group_counts(frames_2008, "mode7"),
@@ -1427,8 +1625,8 @@ def _run_part_b(
             label_a="2008",
             label_b="2019",
             group_order=MODE7_LABELS,
-        )
-    )
+        ),
+    ]
 
 
 def main(argv: list[str] | None = None) -> int:

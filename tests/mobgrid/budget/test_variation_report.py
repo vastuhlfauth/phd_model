@@ -158,6 +158,70 @@ def test_b2_decompositions_cover_overall_and_categories() -> None:
     assert "| retired | 0 | 0 | - | - | - | - | - | - |" in text
 
 
+def _b1_frames(
+    time_by_category: dict[str, float], shares: dict[str, int]
+) -> SurveyFrames:
+    categories = [c for c, n in shares.items() for _ in range(n)]
+    days = {
+        "pond_jour": [1.0] * len(categories),
+        "population_category": categories,
+        "total_time_min": [time_by_category[c] for c in categories],
+        "age": [40.0] * len(categories),
+        "sex": [1.0 if i % 2 else 2.0 for i in range(len(categories))],
+        "home_density": ["dense"] * len(categories),
+        "is_idf": [False] * len(categories),
+        "cars_band": ["1"] * len(categories),
+        "ident_men": [f"M{i // 2}" for i in range(len(categories))],
+    }
+    return _frames(days, {})
+
+
+def test_b1_composition_identity_and_pure_composition_change() -> None:
+    # Same behaviour per category in both groups; only the category mix
+    # changes: the composition effect should carry the whole change.
+    times = {"employed": 60.0, "retired": 30.0}
+    frames_a = _b1_frames(times, {"employed": 40, "retired": 80})
+    frames_b = _b1_frames(times, {"employed": 80, "retired": 40})
+
+    row = variation_report.bootstrap_composition(
+        frames_a, frames_b, "V1", n_reps=N_REPS, seed=0
+    )
+
+    point = row.point
+    assert point.composition_min + point.behaviour_min == pytest.approx(
+        point.mean_b_min - point.mean_a_min
+    )
+    assert point.behaviour_min == pytest.approx(0.0, abs=1e-9)
+    assert point.composition_min == pytest.approx(point.mean_b_min - point.mean_a_min)
+    assert np.isfinite(row.composition_ci).all()
+
+    lines = variation_report._format_b1([row], "A", "B")
+    assert any("| V1 |" in line for line in lines)
+
+
+def test_composition_cells_merge_small_age_bands() -> None:
+    n = 40
+    days = {
+        "pond_jour": [1.0] * n,
+        "population_category": ["employed"] * n,
+        "total_time_min": [30.0] * n,
+        # Ages span two neighbouring bands: 25-34 has n=35, 35-44 n=5
+        # (under the 30 threshold): the two bands must merge.
+        "age": [30.0] * 35 + [40.0] * 5,
+        "sex": [1.0] * n,
+        "home_density": ["dense"] * n,
+        "is_idf": [False] * n,
+        "cars_band": ["1"] * n,
+        "ident_men": [f"M{i}" for i in range(n)],
+    }
+    frames = _frames(days, {})
+
+    cells_a, cells_b = variation_report.composition_pair_cells(frames, frames, "V1")
+
+    assert len(set(cells_a)) == 1  # one merged cell, not two
+    assert (cells_a == cells_b).all()
+
+
 def _trip_frames(
     minutes_by_mode: dict[str, float],
     *,
