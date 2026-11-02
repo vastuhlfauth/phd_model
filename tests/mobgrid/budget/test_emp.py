@@ -41,9 +41,16 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
 
     assert exit_code == 0
     png_files = sorted(out_dir.glob("*.png"))
-    # F1, F3 x4 (incl. KH appendix), F4a/b, F5, F6, F7, F8, F9 (motive).
-    assert len(png_files) == 12
+    # F1, F1b, F1c, F2a, F2b, F3 x4 (incl. KH appendix), F4a/b, F5, F5b,
+    # F6, F7, F8, F9 (motive), F10.
+    assert len(png_files) == 18
     assert any("f09_motive_energy" in p.name for p in png_files)
+    assert any("f01b_trips_per_day_by_category" in p.name for p in png_files)
+    assert any("f01c_minutes_per_trip_by_category" in p.name for p in png_files)
+    assert any("f02a_time_density_overall" in p.name for p in png_files)
+    assert any("f02b_time_density_by_category" in p.name for p in png_files)
+    assert any("f05b_time_heatmaps" in p.name for p in png_files)
+    assert any("f10_constancy" in p.name for p in png_files)
 
     md_path = out_dir.with_suffix(".md")
     assert md_path.is_file()
@@ -53,6 +60,13 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "car_passenger_household" in report
     assert "F8 robustness" in report
     assert "Density classes" in report
+    assert "Time budget: constancy across density classes" in report
+    assert "Time budget: constancy across income quintiles" in report
+    assert "Quintile shares and cut points" in report
+    assert "Missing-income breakdown" in report
+    assert "no code-side failure mode to report here" in report
+    assert "Trips per day and minutes per trip" in report
+    assert "Per-person budget, days without trips included" in report
 
 
 #: The EMP 2019 base-case group table on the synthetic fixture (section
@@ -66,14 +80,20 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
 #: P0 flat speed, not the trip's own ride speed): only ``cycle``'s own
 #: mean/median energy (and so the all-groups ``mean_kh``/``mean_cp``
 #: below) changed, from 189.156/189.3728 kJ to 184.0764/184.2932 kJ.
+#: Re-pinned 27 October 2026 for section 9.9's declared-legs decision:
+#: ``trip_legs.build_trip_legs``'s default ``terminal_legs`` changed from
+#: the section 9.4-9.7 defaults to ``'declared'`` (every fixture trip's
+#: own `MTEMPSMAP`/`MTPSATTENT`, 5/2 min, both well below the former
+#: density-class defaults), so every mode but ``walking_only`` (no
+#: terminal legs of its own) shows a real, intentional drop.
 _EXPECTED_BASE_CASE_GROUP_TABLE = {
-    "car_driver": (1, 100.0, 25.0, 227.04, 208.68, 227.04, 208.68),
-    "car_passenger_carpool": (1, 100.0, 25.0, 203.4, 163.1937, 203.4, 163.1937),
-    "car_passenger_household": (1, 100.0, 25.0, 183.84, 148.0118, 183.84, 148.0118),
-    "cycle": (1, 100.0, 15.0, 184.0764, 184.2932, 184.0764, 184.2932),
-    "multimodal": (1, 100.0, 50.0, 437.7562, 371.7277, 437.7562, 371.7277),
-    "train": (2, 200.0, 60.0, 316.5711, 264.4647, 228.7158, 187.1174),
-    "urban_pt": (1, 100.0, 30.0, 231.7162, 190.1317, 231.7162, 190.1317),
+    "car_driver": (1, 100.0, 25.0, 172.8, 176.12, 172.8, 176.12),
+    "car_passenger_carpool": (1, 100.0, 25.0, 122.1, 103.5349, 122.1, 103.5349),
+    "car_passenger_household": (1, 100.0, 25.0, 118.8, 100.2848, 118.8, 100.2848),
+    "cycle": (1, 100.0, 15.0, 149.526, 150.068, 149.526, 150.068),
+    "multimodal": (1, 100.0, 50.0, 308.3889, 285.0515, 308.3889, 285.0515),
+    "train": (2, 200.0, 60.0, 193.4735, 172.6743, 147.3205, 126.5213),
+    "urban_pt": (1, 100.0, 30.0, 156.5889, 136.0155, 156.5889, 136.0155),
     "walking_only": (1, 100.0, 20.0, 333.0, 254.19, 333.0, 254.19),
 }
 
@@ -108,8 +128,8 @@ def test_refactor_preserves_emp2019_base_case_group_table(
     }
     assert actual == _EXPECTED_BASE_CASE_GROUP_TABLE
     assert results["n_days"] == 9
-    assert round(results["mean_kh"], 4) == 270.4412
-    assert round(results["mean_cp"], 4) == 227.6842
+    assert round(results["mean_kh"], 4) == 194.239
+    assert round(results["mean_cp"], 4) == 172.2904
 
 
 def test_cli_entd2008_survey_writes_report(
@@ -138,6 +158,9 @@ def test_cli_entd2008_survey_writes_report(
     assert "ENTD 2008 re-estimation" in report
     assert "proxy" in report
     assert "`distcor`/`v2_mduree` fill rate" in report
+    assert "Quintile shares and cut points" in report
+    assert "Missing-income breakdown" in report
+    assert "income_bracket_midpoint_eur` could not parse" in report
 
 
 def test_cli_compare_writes_report_and_figure(
@@ -172,6 +195,10 @@ def test_cli_compare_writes_report_and_figure(
     assert "Robustness" in report
     assert "Weekday share of persons without trips" in report
     assert (out_path / "compare_energy_time.png").is_file()
+    assert (out_path / "compare_time_by_category.png").is_file()
+    assert "Time budget: by population category" in report
+    assert "Weekday-only comparison, 2008 vs 2019" in report
+    assert "per person (days without trips included)" in report
 
 
 @pytest.mark.skipif(

@@ -15,7 +15,7 @@ This folder is the Markdown version of the proposal (version 10, 16 October 2026
 | `06_origins.md` | 6 | Population and households at 200 m, car ownership |
 | `07_opportunities.md` | 7 | Jobs, services (BPE groups), nature, social, destination flags |
 | `08_networks.md` | 8 | OSM edge table, bike infrastructure, walk, bike, car, trunk, PT |
-| `09_trip_legs_energy.md` | 9 | Time and energy of every trip leg, reference rates, monetary cost, daily budget |
+| `09_trip_legs_energy.md` | 9 | Time and energy of every trip leg, reference rates, monetary cost, daily travel time budget |
 | `10_od_accessibility.md` | 10 | Searches by mode, the three products, storage, performance |
 | `11_scenario_engine.md` | 11 | Timeline, triage, edit catalogue, bounds, checks |
 | `12_congestion.md` | 12 | Congestion loop and Google data |

@@ -183,6 +183,144 @@ def test_density_proxy_assigns_very_sparse_for_rural_trip_ends(
     assert density_ori == "very_sparse"
 
 
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        (None, None),
+        ("", None),
+        ("Moins de 400 € (moins de 2 600 F)", 200.0),
+        ("De 400 € à moins de 600 € (de 2 600 F à moins de 3 900 F)", 500.0),
+        (
+            "De 1 200 € à moins de 1 500 € (de 7 900 F à moins de 9 800 F)",
+            1350.0,
+        ),
+        ("10 000 € ou plus (65 600 F ou plus)", 15000.0),
+    ],
+)
+def test_income_bracket_midpoint_eur(label: str | None, expected: float | None) -> None:
+    """`TrancheRevenuMensuel`'s bracket midpoint (section 9.9's "Income
+    variables"): interior brackets average their two bounds, the bottom
+    open bracket is half its upper bound, the top open bracket is 1.5
+    times its lower bound."""
+    result = entd2008.income_bracket_midpoint_eur(label)
+    if expected is None:
+        assert result is None
+    else:
+        assert result == pytest.approx(expected)
+
+
+def test_respondent_income_quintiles_every_household_with_a_bracket(
+    trips_norm: duckdb.DuckDBPyConnection,
+) -> None:
+    """Every household of the synthetic fixture has a `TrancheRevenuMensuel`
+    bracket except M7 (blank, the non-traveller): its respondent gets
+    `'unknown'`; the other six, quintiled by `NBUC`-adjusted income, get
+    one of `'q1'`..`'q5'` (section 9.9's "Income variables")."""
+    rows = dict(
+        trips_norm.sql("SELECT ident_ind, income_quintile FROM respondent_income")
+        .fetchall()
+    )
+    assert rows["7"] == "unknown"
+    for ident_ind in ("1", "2", "3", "4", "5", "6", "8"):
+        assert rows[ident_ind] in ("q1", "q2", "q3", "q4", "q5")
+    # M1 (the smallest bracket, "Moins de 400") must rank at or below M8
+    # (the top bracket, "10 000 ou plus"): quintile labels are ordered.
+    order = {"q1": 1, "q2": 2, "q3": 3, "q4": 4, "q5": 5}
+    assert order[rows["1"]] <= order[rows["8"]]
+
+
+def test_income_quintile_column_on_trip_legs(
+    trips_norm: duckdb.DuckDBPyConnection,
+) -> None:
+    config = load_energy_config(CONFIG_PATH)
+    trip_legs.build_trip_legs(trips_norm, config, density_source="proxy")
+    income_quintile = trips_norm.sql(
+        "SELECT income_quintile FROM trip_legs WHERE ident_ind = '7'"
+    ).fetchone()
+    # Respondent 7 has no trip (the non-traveller), so no trip_legs row.
+    assert income_quintile is None
+    income_quintile = trips_norm.sql(
+        "SELECT income_quintile FROM trip_legs WHERE ident_ind = '1'"
+    ).fetchone()[0]
+    assert income_quintile in trip_legs.INCOME_QUINTILE_LABELS
+
+
+def test_missing_income_breakdown_distinguishes_every_failure_mode() -> None:
+    """28 October 2026's missing-income audit: a producer-side gap (no
+    `Q_TCM_MENAGE` row at all, or a blank bracket) is a different
+    failure mode from this project's own code (an unparseable bracket
+    label, or a missing/zero `NBUC` making the division `NULL`)."""
+    con = duckdb.connect()
+    con.sql(
+        "CREATE TABLE k_individu "
+        "(IDENT_IND VARCHAR, idENT_MEN VARCHAR, PONDKI DOUBLE)"
+    )
+    con.sql(
+        "INSERT INTO k_individu VALUES "
+        "('1', 'M1', 100.0), ('2', 'M2', 100.0), ('3', 'M3', 100.0), "
+        "('4', 'M4', 100.0), ('5', 'M5', 100.0)"
+    )
+    con.sql(
+        "CREATE TABLE q_tcm_menage "
+        "(IDENT_MEN VARCHAR, TrancheRevenuMensuel VARCHAR, NBUC DOUBLE)"
+    )
+    con.sql("""
+        INSERT INTO q_tcm_menage VALUES
+            ('M1', 'De 1 200 € à moins de 1 500 €', 2.0),
+            ('M2', NULL, 2.0),
+            ('M3', 'not a parseable label', 2.0),
+            ('M4', 'De 1 200 € à moins de 1 500 €', 0.0)
+    """)
+    # M5: no row in q_tcm_menage at all.
+
+    breakdown = entd2008.missing_income_breakdown(con)
+    assert breakdown["n_total"] == 5
+    assert breakdown["n_no_household_match"] == 1
+    assert breakdown["n_null_bracket"] == 1
+    assert breakdown["n_unparseable_bracket"] == 1
+    assert breakdown["n_null_nbuc"] == 1
+
+
+def test_population_category_by_ident_covers_non_traveller(
+    trips_norm: duckdb.DuckDBPyConnection,
+) -> None:
+    """Respondent 7 (`SITUA` 5, retired) has no trip at all, but must
+    still get a population category (section 9.9 point 2's per-person
+    budget groups non-travellers too)."""
+    result = entd2008.population_category_by_ident(trips_norm)
+    assert result["7"] == "retired"
+    assert result["1"] == "employed"
+
+
+def test_residence_density_by_ident_matches_proxy(
+    trips_norm: duckdb.DuckDBPyConnection,
+) -> None:
+    result = entd2008.residence_density_by_ident(trips_norm, "proxy")
+    # M5 (respondent 5): rural trip end and residence (commune rurale).
+    assert result["5"] == "very_sparse"
+    # M1 (respondent 1): city centre, large residence size (TU99 = 7).
+    assert result["1"] == "dense"
+
+
+def test_residence_density_by_ident_rejects_grid(
+    trips_norm: duckdb.DuckDBPyConnection,
+) -> None:
+    with pytest.raises(ValueError, match="no density grid"):
+        entd2008.residence_density_by_ident(trips_norm, "grid")
+
+
+def test_person_weekday_rows_flags_non_traveller_as_immobile(
+    trips_norm: duckdb.DuckDBPyConnection,
+) -> None:
+    weekday_rows = entd2008.person_weekday_rows(trips_norm)
+    rows = {
+        ident_ind: (day_type, immobile)
+        for ident_ind, _ident_men, _pond, day_type, immobile in weekday_rows
+    }
+    assert rows["7"] == ("weekday", 1.0)
+    assert rows["1"] == ("weekday", 0.0)
+
+
 def test_distcor_and_v2_mduree_fill_rates(
     trips_norm: duckdb.DuckDBPyConnection,
 ) -> None:

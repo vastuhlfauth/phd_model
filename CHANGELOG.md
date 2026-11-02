@@ -4,6 +4,136 @@ Notable changes to the `mobgrid.budget` step 11 re-estimation (section
 9.9). Not an exhaustive history; see `docs/progress.md` for the full
 decision log.
 
+## 2026-10-28 — equal-sized income quintiles, figure fixes (section 9.9)
+
+### Fixed
+
+- **Equal-sized income quintiles**: the weighted-quintile cut (both
+  surveys' income value is highly discretized -- EMP 2019's
+  `decile_rev_uc` has 10 distinct values, ENTD 2008's bracket-midpoint/
+  `NBUC` often repeats) moved a whole tied-value group across a cut
+  point at once, giving lumpy quintiles (e.g. EMP 2019's q1 at 31M of
+  day weight against q5's 87M). `trip_legs.build_income_quintile_table`
+  (replaces `weighted_quintile_view_sql`) now breaks ties with a seeded
+  random draw before the cut, splitting a straddling group between the
+  two quintiles in proportion to its weight.
+- **F10**: the per-person cross markers now draw their already-computed
+  95% CI (`PersonBudgetRow.budget_ci`), previously a bare point.
+- **`compare_time_by_category.png`**: reworked to three panels (all
+  days/weekday-only, day with trips; weekday-only per person), each
+  with mean + 95% CI (and a median marker on the first two), matching
+  `compare_energy_time`'s own energy panels.
+
+### Added
+
+- The report's "Quintile shares and cut points" section (both surveys):
+  n, individual-weight share and day-weight share by `q1`-`q5`/
+  `unknown`, and the 4 cut points -- the missing-income audit this
+  session's user request asked for (code reviewed: no bug found that
+  would drop a missing value; EMP 2019's `decile_rev_uc` is INSEE's own
+  already-imputed decile, so an empty `'unknown'` there is expected;
+  ENTD 2008's own missing-income rate is unverified in this sandbox and
+  left for the user's real-data run to show).
+
+## 2026-10-27 — household income and time-figure parity (section 9.9)
+
+### Added
+
+- **Household income per consumption unit, in quintiles** (modified
+  OECD scale), computed per survey with individual weights: EMP 2019
+  from `TCM_MEN.decile_rev_uc` (no raw bracket is published); ENTD 2008
+  from `Q_TCM_MENAGE.TrancheRevenuMensuel`'s bracket midpoint divided by
+  `NBUC`. New `income_quintile` column on `trips_norm`/`trip_legs`/
+  `day_summary`; documented in `docs/data/entd2008.md`/`emp2019.md`.
+- **Per-person budget** (P(out) x T(out), days without trips included),
+  folded into the permanent report for the first time: by population
+  category, and by category x density/income, weekday (both surveys)
+  and all-week (EMP 2019 only). Previously scratch-only.
+- **Trips per day and minutes per trip**, by category, density and
+  income quintile, with 95% CI (section 9.9 point 2's "daily time =
+  trips/day x minutes/trip").
+- **Time given the same mean/median/95% CI treatment as energy**:
+  `daily_energy.ScalarGroupStats`/`bootstrap_scalar_group_stats`, used
+  throughout (category x density/income tables, F04b, F05b, F10).
+- **`--compare` gained a weekday-only 2008-2019 comparison** (daily
+  time by category, per day with trips with a bootstrap difference
+  interval, and per person).
+- **New/reworked figures:** F01b (trips/day by category x density/
+  income), F01c (minutes/trip, same breakdowns), F02a/F02b (reworked,
+  mirroring F03a/F03b's stacked/normalised-by-mode layout), F04b
+  (reworked to F04a's mean+CI+median layout), F05b (4-panel time
+  heatmap: mode x category, mode x density, category x density,
+  category x income), F10 (constancy, one panel per category).
+
+### Changed
+
+- `_format_category_density_table`/`_format_constancy_summary_table`
+  generalised (`_format_category_key_table`/`_constancy_summary`) to
+  work for any ordered key (density or income), with an optional time
+  95% CI column.
+
+## 2026-10-27 — travel time budget as the reference (section 9.9)
+
+### Changed
+
+- **The reference constant is now the daily travel time budget** (one
+  `b_k` per population category, section 6.1), not Kolbl & Helbing's
+  (2003) daily energy budget: re-estimated with declared terminal legs,
+  energy is no longer stable across main-mode groups, density classes
+  or years the way the energy hypothesis held under the former,
+  ~4x-too-long default car terminal legs. Daily energy is still
+  computed, in parallel, and reported (F3/F4/F5, the group table).
+  Spec section 9.9 (and 00/01/02/05/06/13/14/15/README) rewritten
+  accordingly (`spec_update_2026-10-27_time_budget.diff`).
+- **`trip_legs.build_trip_legs`'s new `terminal_legs` parameter**
+  (`'declared'`, the new default; `'declared_plus1'`; `'defaults'`, the
+  former section 9.4-9.7 model): each trip's own declared walking
+  (`MTEMPSMAP`/`V2_MTEMPSMAP`) and waiting (`MTPSATTENT`/
+  `V2_MTPSATTENT`) minutes now replace the car/carpool/PT/bike
+  terminal-leg defaults by default, falling back to them where missing.
+  `terminal_scale`'s x0.5/x1/x1.5 sweep now only has an effect under
+  `terminal_legs='defaults'`.
+- **`home_density`** is now the residence commune's own density
+  (`trip_legs.residence_density`: EMP 2019 `TCM_MEN.DENSITECOM_RES`/
+  `STATUTCOM_UU_RES`, ENTD 2008 `Q_TCM_MENAGE.numcom_UUCat`/`TU99`), not
+  the density of the first trip departing from home -- defined for
+  every respondent, including those with no described day at all.
+- **F8 robustness** sweeps `terminal_legs` explicitly (declared base
+  case, declared + 1 min, former defaults x0.5/x1/x1.5), fixing a
+  latent bug: `terminal_scale` silently stopped affecting the x0.5/x1.5
+  rows the moment `terminal_legs` defaulted away from `'defaults'`.
+- **New figures:** F2 (daily time density by population category), F2b
+  (category x density heatmap of time, with n), and `--compare`'s
+  time-by-population-category, 2008-vs-2019 figure.
+
+| Metric | Before (former defaults) | After (declared legs) |
+|---|---|---|
+| EMP 2019 (grid) across-mode-group energy ratio (KH / CP) | 1.61 / 1.76 | 4.31 / 4.12 |
+| ENTD 2008 across-mode-group energy ratio (KH / CP) | 2.06 / 2.16 | ~4.1 / ~3.95 |
+| EMP 2019 (grid) `car_driver` mean energy (KH / CP) | 624.1 / 595.2 kJ | 391.8 / 447.6 kJ |
+| P0 (EMP 2019, configured 34.8 W) | 34.8 W (reference) | 28.4 W calibrated |
+| P0 (ENTD 2008) | 34.0 W calibrated (former model) | 26.7 W calibrated |
+
+Daily *time* (not energy) is comparatively stable: within each
+population category, the dense/very_sparse ratio of mean daily time is
+0.94-1.34 and the max/min across density classes 1.06-1.39 (both
+years); the overall 2008-2019 difference is 5.3 min (day with trips,
+needs scope) or 6.0 min (per-person weekday budget), both with a
+bootstrap interval excluding zero.
+
+### Not regenerated in this session
+
+`docs/data/step11_budget.md`, `step11_budget_entd2008.md` and
+`step11_compare.md` still show the former (section 9.4-9.7 defaults,
+energy-led) report: regenerating them is a multi-minute real-data run,
+reserved for the user's own terminal. Commands:
+
+```powershell
+uv run python -m mobgrid.budget.emp --out docs/data/step11_budget
+uv run python -m mobgrid.budget.emp --survey entd2008 --out docs/data/step11_budget_entd2008
+uv run python -m mobgrid.budget.emp --compare --out docs/data/step11_compare
+```
+
 ## 2026-10-22 — step 11 fixes
 
 ### Fixed

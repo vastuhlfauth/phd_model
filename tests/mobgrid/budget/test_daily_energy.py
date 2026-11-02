@@ -153,6 +153,139 @@ def test_bootstrap_group_stats_point_estimate_matches_direct_computation() -> No
     assert by_group["a"].mean_energy_kh_ci[1] >= by_group["a"].mean_energy_kh_kj
 
 
+def test_bootstrap_scalar_group_stats_matches_direct_weighted_mean() -> None:
+    group = np.array(["a", "a", "b", "b"])
+    household = np.array([1, 2, 3, 4])
+    weight = np.array([1.0, 1.0, 1.0, 1.0])
+    value = np.array([10.0, 20.0, 30.0, 40.0])
+
+    stats = daily_energy.bootstrap_scalar_group_stats(
+        group, household, weight, value, n_reps=50, seed=1
+    )
+    by_group = {s.group: s for s in stats}
+
+    assert by_group["a"].mean == pytest.approx(15.0)
+    assert by_group["b"].mean == pytest.approx(35.0)
+    assert by_group["a"].n == 2
+    assert by_group["a"].weighted_n == pytest.approx(2.0)
+    assert by_group["a"].median == pytest.approx(10.0)
+    assert by_group["a"].mean_ci[0] <= by_group["a"].mean <= by_group["a"].mean_ci[1]
+
+
+def test_person_budget_by_group_weekday_matches_direct_computation() -> None:
+    """A minimal, hand-computed weekday budget (section 9.9 point 2):
+    2 persons per group, half immobile, a day-summary value of 60 min
+    for every described day -> P(out) = 0.5, T|out = 60, budget = 30."""
+    p_group = np.array(["a", "a", "b", "b"])
+    p_day_type = np.array(["weekday"] * 4)
+    p_household = np.array([1, 2, 3, 4])
+    p_weight = np.ones(4)
+    p_immobile = np.array([0.0, 1.0, 0.0, 1.0])
+
+    t_group = np.array(["a", "b"])
+    t_day_type = np.array(["weekday", "weekday"])
+    t_household = np.array([1, 3])
+    t_weight = np.ones(2)
+    t_value = np.array([60.0, 60.0])
+
+    results = daily_energy.person_budget_by_group(
+        p_group,
+        p_day_type,
+        p_household,
+        p_weight,
+        p_immobile,
+        t_group,
+        t_day_type,
+        t_household,
+        t_weight,
+        t_value,
+        groups=["a", "b"],
+        min_cell_n=1,
+        n_reps=20,
+        seed=0,
+    )
+    assert results["a"].p_out == pytest.approx(0.5)
+    assert results["a"].value_given_out == pytest.approx(60.0)
+    assert results["a"].budget == pytest.approx(30.0)
+    assert results["a"].budget_ci[0] <= results["a"].budget
+    assert results["a"].budget_ci[1] >= results["a"].budget
+    assert results["overall"].p_out == pytest.approx(0.5)
+    assert results["overall"].budget == pytest.approx(30.0)
+
+
+def test_person_budget_by_group_cell_below_min_n_is_blank() -> None:
+    p_group = np.array(["a", "a"])
+    p_day_type = np.array(["weekday", "weekday"])
+    p_household = np.array([1, 2])
+    p_weight = np.ones(2)
+    p_immobile = np.array([0.0, 0.0])
+    t_group = np.array(["a"])
+    t_day_type = np.array(["weekday"])
+    t_household = np.array([1])
+    t_weight = np.ones(1)
+    t_value = np.array([60.0])
+
+    results = daily_energy.person_budget_by_group(
+        p_group,
+        p_day_type,
+        p_household,
+        p_weight,
+        p_immobile,
+        t_group,
+        t_day_type,
+        t_household,
+        t_weight,
+        t_value,
+        groups=["a"],
+        min_cell_n=50,
+        n_reps=10,
+        seed=0,
+    )
+    assert results["a"].n == 0
+    assert np.isnan(results["a"].budget)
+
+
+def test_person_budget_by_group_all_week_sums_with_day_type_weight() -> None:
+    """All-week budget: Sigma_d w_d . P(out) . T(out), no CI (point
+    estimate only, section 9.9 point 2)."""
+    p_group = np.array(["a", "a", "a", "a"])
+    p_day_type = np.array(["weekday", "saturday", "sunday", "weekday"])
+    p_household = np.array([1, 1, 1, 2])
+    p_weight = np.ones(4)
+    p_immobile = np.array([0.0, 0.0, 1.0, 0.0])
+    t_group = np.array(["a", "a", "a"])
+    t_day_type = np.array(["weekday", "saturday", "sunday"])
+    t_household = np.array([1, 1, 1])
+    t_weight = np.ones(3)
+    t_value = np.array([60.0, 90.0, 120.0])
+
+    results = daily_energy.person_budget_by_group(
+        p_group,
+        p_day_type,
+        p_household,
+        p_weight,
+        p_immobile,
+        t_group,
+        t_day_type,
+        t_household,
+        t_weight,
+        t_value,
+        groups=["a"],
+        day_types=("weekday", "saturday", "sunday"),
+        day_type_weight=daily_energy.DAY_TYPE_WEIGHT,
+        min_cell_n=1,
+        n_reps=5,
+        seed=0,
+    )
+    expected = (
+        daily_energy.DAY_TYPE_WEIGHT["weekday"] * 1.0 * 60.0
+        + daily_energy.DAY_TYPE_WEIGHT["saturday"] * 1.0 * 90.0
+        + daily_energy.DAY_TYPE_WEIGHT["sunday"] * 0.0 * 120.0
+    )
+    assert results["a"].budget == pytest.approx(expected)
+    assert np.isnan(results["a"].budget_ci[0])
+
+
 def test_bootstrap_mean_ci_matches_direct_weighted_mean() -> None:
     household = np.array([1, 2, 3, 4])
     weight = np.array([1.0, 1.0, 1.0, 1.0])
@@ -162,6 +295,21 @@ def test_bootstrap_mean_ci_matches_direct_weighted_mean() -> None:
     )
     assert mean == pytest.approx(5.0)
     assert ci[0] <= mean <= ci[1]
+
+
+def test_bootstrap_diff_ci_matches_direct_difference() -> None:
+    household_a = np.array([1, 2])
+    weight_a = np.ones(2)
+    value_a = np.array([10.0, 20.0])
+    household_b = np.array([3, 4])
+    weight_b = np.ones(2)
+    value_b = np.array([30.0, 40.0])
+    diff, ci = daily_energy.bootstrap_diff_ci(
+        household_a, weight_a, value_a, household_b, weight_b, value_b,
+        n_reps=50, seed=3,
+    )
+    assert diff == pytest.approx(35.0 - 15.0)
+    assert ci[0] <= diff <= ci[1]
 
 
 def test_weighted_gaussian_kde_integrates_to_one() -> None:
