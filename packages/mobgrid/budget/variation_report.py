@@ -806,6 +806,185 @@ def distance_band_table(frames: SurveyFrames) -> list[DistanceBandRow]:
 
 
 # ---------------------------------------------------------------------------
+# Part A4: duration rounding; Part A5: calendar
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RoundingRow:
+    """A4: weighted share of declared trip durations that are multiples
+    of 5/10/15/30 min, for one mode."""
+
+    mode: str
+    n_trips: int
+    share_mult_5: float
+    share_mult_10: float
+    share_mult_15: float
+    share_mult_30: float
+
+
+def duration_rounding_table(frames: SurveyFrames) -> list[RoundingRow]:
+    """A4's table: declared-duration rounding by mode (weekday trips,
+    needs scope, day weights), plus an all-modes row."""
+    trips = frames.trips
+    w = trips["pond_jour"].astype(float)
+    duration = trips["duration_min"].astype(float)
+    mode = trips["mode7"].astype(str)
+
+    def _row(label: str, mask: np.ndarray) -> RoundingRow:
+        weight = float(w[mask].sum())
+
+        def _share(multiple: float) -> float:
+            if weight == 0:
+                return float("nan")
+            hits = np.isclose(np.mod(duration[mask], multiple), 0.0) | np.isclose(
+                np.mod(duration[mask], multiple), multiple
+            )
+            return float(w[mask][hits].sum()) / weight
+
+        return RoundingRow(
+            label, int(mask.sum()), _share(5), _share(10), _share(15), _share(30)
+        )
+
+    rows = [_row(m, mode == m) for m in MODE7_LABELS]
+    rows.append(_row("all modes", np.ones(len(w), dtype=bool)))
+    return rows
+
+
+@dataclass(frozen=True)
+class CalendarMix:
+    """A5: weighted month/weekday mix of described days, and the
+    school-holiday share where flagged."""
+
+    month_share: dict[int, float]
+    weekday_share: dict[int, float]
+    holiday_share: float
+    n_unknown_month: int
+
+
+def calendar_mix(frames: SurveyFrames) -> CalendarMix:
+    """A5's calendar mix of weekday described days (day weights)."""
+    days = frames.days
+    w = days["pond_jour"].astype(float)
+    months = np.array(
+        [
+            _FRENCH_MONTH_NUM.get(str(name).strip().lower(), 0)
+            for name in days["described_month_name"]
+        ]
+    )
+    weekdays = np.array(
+        [
+            _FRENCH_WEEKDAY_NUM.get(str(name).strip().lower(), 0)
+            for name in days["described_weekday_name"]
+        ]
+    )
+    known_month_weight = float(w[months > 0].sum())
+    known_weekday_weight = float(w[weekdays > 0].sum())
+    month_share = {
+        month: float(w[months == month].sum()) / known_month_weight
+        if known_month_weight
+        else float("nan")
+        for month in range(1, 13)
+    }
+    weekday_share = {
+        weekday: float(w[weekdays == weekday].sum()) / known_weekday_weight
+        if known_weekday_weight
+        else float("nan")
+        for weekday in range(1, 6)
+    }
+    vac = days["vac_scol"].astype(float)
+    return CalendarMix(
+        month_share=month_share,
+        weekday_share=weekday_share,
+        holiday_share=float(np.sum(w * (vac == 1))) / float(w.sum()),
+        n_unknown_month=int((months == 0).sum()),
+    )
+
+
+MONTH_LABELS = {
+    1: "Jan",
+    2: "Feb",
+    3: "Mar",
+    4: "Apr",
+    5: "May",
+    6: "Jun",
+    7: "Jul",
+    8: "Aug",
+    9: "Sep",
+    10: "Oct",
+    11: "Nov",
+    12: "Dec",
+}
+
+
+def _format_a4(results: dict) -> list[str]:
+    lines = [
+        "## A4. Declared-duration rounding",
+        "",
+        "Weighted share of declared trip durations that are exact "
+        "multiples of 5, 10, 15 and 30 minutes, by year and trip mode "
+        "(weekday trips, needs scope).",
+        "",
+        "| Mode | n 2008 | x5 | x10 | x15 | x30 | n 2019 | x5 | x10 | x15 | x30 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    rows_2008 = {r.mode: r for r in results["rounding_2008"]}
+    rows_2019 = {r.mode: r for r in results["rounding_2019"]}
+    for mode in [*MODE7_LABELS, "all modes"]:
+        r8, r9 = rows_2008[mode], rows_2019[mode]
+
+        def _cells(row: RoundingRow) -> str:
+            if row.n_trips < MIN_CELL_N:
+                return f"{row.n_trips} | - | - | - | -"
+            return (
+                f"{row.n_trips} | {_pct(row.share_mult_5)} | "
+                f"{_pct(row.share_mult_10)} | {_pct(row.share_mult_15)} | "
+                f"{_pct(row.share_mult_30)}"
+            )
+
+        lines.append(f"| {mode} | {_cells(r8)} | {_cells(r9)} |")
+    return lines
+
+
+def _format_a5(results: dict) -> list[str]:
+    mix_2008: CalendarMix = results["calendar_2008"]
+    mix_2019: CalendarMix = results["calendar_2019"]
+    lines = [
+        "## A5. Calendar of described days",
+        "",
+        "Weighted month and weekday mix of the weekday described days "
+        "with trips, by year, and the school-holiday share (`V2_VAC_SCOL`"
+        " / `NEW_VAC_SCOL`).",
+        "",
+        "| Month | " + " | ".join(MONTH_LABELS.values()) + " |",
+        "|---" * 13 + "|",
+        "| 2008 | "
+        + " | ".join(_pct(mix_2008.month_share[m]) for m in range(1, 13))
+        + " |",
+        "| 2019 | "
+        + " | ".join(_pct(mix_2019.month_share[m]) for m in range(1, 13))
+        + " |",
+        "",
+        "| Weekday | Mon | Tue | Wed | Thu | Fri |",
+        "|---|---|---|---|---|---|",
+        "| 2008 | "
+        + " | ".join(_pct(mix_2008.weekday_share[d]) for d in range(1, 6))
+        + " |",
+        "| 2019 | "
+        + " | ".join(_pct(mix_2019.weekday_share[d]) for d in range(1, 6))
+        + " |",
+        "",
+        f"School-holiday share of described days: "
+        f"{_pct(mix_2008.holiday_share)} in 2008, "
+        f"{_pct(mix_2019.holiday_share)} in 2019 (days with at least one "
+        "trip flagged as school holiday). Days with an unknown described "
+        f"month: {mix_2008.n_unknown_month} in 2008, "
+        f"{mix_2019.n_unknown_month} in 2019.",
+    ]
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 
@@ -1034,6 +1213,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         *_format_a2(results),
         "",
         *_format_a3(results),
+        "",
+        *_format_a4(results),
+        "",
+        *_format_a5(results),
     ]
     for extra in results.get("extra_sections", []):
         lines += ["", *extra]
@@ -1129,6 +1312,11 @@ def run(
         "distance_doc_2019": frames_2019.aux["distance_doc"],
         "distance_bands_2008": distance_band_table(frames_2008),
         "distance_bands_2019": distance_band_table(frames_2019),
+        # A4 and A5
+        "rounding_2008": duration_rounding_table(frames_2008),
+        "rounding_2019": duration_rounding_table(frames_2019),
+        "calendar_2008": calendar_mix(frames_2008),
+        "calendar_2019": calendar_mix(frames_2019),
         "extra_sections": [],
         "figures": [],
     }

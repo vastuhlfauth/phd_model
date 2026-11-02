@@ -428,6 +428,46 @@ def test_pair4_tables_suppress_small_cells() -> None:
     assert "n=55:" in text
 
 
+def test_duration_rounding_table_counts_multiples() -> None:
+    trips = {
+        "pond_jour": [1.0] * 4,
+        "duration_min": [5.0, 10.0, 12.0, 30.0],
+        "mode7": ["walk"] * 4,
+        "distance_km": [1.0] * 4,
+    }
+    frames = _frames({}, trips)
+
+    rows = {r.mode: r for r in variation_report.duration_rounding_table(frames)}
+
+    walk = rows["walk"]
+    assert walk.n_trips == 4
+    assert walk.share_mult_5 == pytest.approx(0.75)
+    assert walk.share_mult_10 == pytest.approx(0.5)
+    assert walk.share_mult_15 == pytest.approx(0.25)  # only the 30-min trip
+    assert walk.share_mult_30 == pytest.approx(0.25)
+    assert rows["all modes"].n_trips == 4
+    assert rows["bike"].n_trips == 0
+
+
+def test_calendar_mix_reads_french_month_and_weekday_names() -> None:
+    days = {
+        "pond_jour": [1.0, 1.0, 2.0],
+        "described_month_name": ["janvier", "septembre", "septembre"],
+        "described_weekday_name": ["lundi", "vendredi", "lundi"],
+        "vac_scol": [0.0, 1.0, 0.0],
+    }
+    frames = _frames(days, {})
+
+    mix = variation_report.calendar_mix(frames)
+
+    assert mix.month_share[1] == pytest.approx(0.25)
+    assert mix.month_share[9] == pytest.approx(0.75)
+    assert mix.weekday_share[1] == pytest.approx(0.75)
+    assert mix.weekday_share[5] == pytest.approx(0.25)
+    assert mix.holiday_share == pytest.approx(0.25)
+    assert mix.n_unknown_month == 0
+
+
 def test_distance_band_table_shares_sum_to_one() -> None:
     frames = _frames(
         {},
