@@ -22,6 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 
 from mobgrid.budget import (
@@ -1220,6 +1224,15 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     ]
     for extra in results.get("extra_sections", []):
         lines += ["", *extra]
+    if results.get("figures"):
+        lines += ["", "## Figures", ""]
+        for path in results["figures"]:
+            try:
+                relative = path.relative_to(md_path.parent)
+            except ValueError:
+                relative = path
+            lines.append(f"![{path.stem}]({relative.as_posix()})")
+            lines.append("")
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1244,6 +1257,10 @@ BASE_CHOICES = [
     "(`trip_legs.distance_km`): the speed-plausibility correction "
     "replaces implausible declared distances, as in every step-11 "
     "table.",
+    "The waterfall figure shows B1 V2's composition effect, then the "
+    "behavioural remainder split in proportion to B2's trips / km per "
+    "trip / speed terms (the two decompositions share the same total "
+    "change but are not nested).",
 ]
 
 
@@ -2082,6 +2099,130 @@ def pair4_tables(
     return lines
 
 
+def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
+    """B7's waterfall of the 2008 -> 2019 change: composition (B1 V2),
+    then the behavioural remainder split in proportion to B2's trips /
+    km-per-trip / speed terms (which sum to the same ΔT), so the steps
+    close exactly on the 2019 mean."""
+    b2 = results["b2_rows"][0].result
+    b1_v2 = next((r for r in results["b1_rows"] if r.variant == "V2"), None)
+    if b2 is None or b1_v2 is None:
+        return None
+    point = b2.point
+    delta = point.delta_min
+    composition = b1_v2.point.composition_min
+    behaviour = delta - composition
+    b2_terms = np.array([point.trips_min, point.distance_min, point.speed_min])
+    scale = behaviour / delta if delta else 0.0
+    steps = [
+        ("composition (V2)", composition),
+        ("trips", float(b2_terms[0] * scale)),
+        ("km per trip", float(b2_terms[1] * scale)),
+        ("speed", float(b2_terms[2] * scale)),
+    ]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    level = point.time_a_min
+    positions = np.arange(len(steps) + 2)
+    ax.bar(0, point.time_a_min, color="0.6")
+    ax.text(0, point.time_a_min, f"{point.time_a_min:.1f}", ha="center", va="bottom")
+    for i, (label, value) in enumerate(steps, start=1):
+        color = "#2a9d8f" if value >= 0 else "#e76f51"
+        ax.bar(i, value, bottom=level, color=color)
+        ax.text(
+            i,
+            level + max(value, 0),
+            f"{value:+.1f}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+        level += value
+    ax.bar(len(steps) + 1, point.time_b_min, color="0.4")
+    ax.text(
+        len(steps) + 1,
+        point.time_b_min,
+        f"{point.time_b_min:.1f}",
+        ha="center",
+        va="bottom",
+    )
+    ax.set_xticks(positions)
+    ax.set_xticklabels(
+        ["2008", *[label for label, _ in steps], "2019"], fontsize=8, rotation=20
+    )
+    ax.set_ylabel("Daily time with trips (min)")
+    ax.set_title(
+        "B7a. 2008 -> 2019 daily-time change: composition, trips, km/trip, speed"
+    )
+    fig.tight_layout()
+    path = out_dir / "fig_b7a_waterfall.png"
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
+def _shift_share_panel(ax, result: variation.ShiftShareBootstrap, title: str) -> None:
+    terms = result.point.terms
+    groups = [t.group for t in terms]
+    x = np.arange(len(groups))
+    width = 0.27
+    ax.bar(x - width, [t.mix_min for t in terms], width, label="mix")
+    ax.bar(x, [t.within_min for t in terms], width, label="within")
+    ax.bar(x + width, [t.interaction_min for t in terms], width, label="interaction")
+    ax.axhline(0.0, color="0.5", linewidth=0.8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(groups, rotation=45, ha="right", fontsize=7)
+    ax.set_title(title, fontsize=9)
+    ax.tick_params(labelsize=7)
+
+
+def _figure_b7_shift_share(results: dict, out_dir: Path) -> Path:
+    """B7's shift-share bars by mode, motive and distance band (minutes
+    per day, 2008 -> 2019)."""
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4), sharey=True)
+    _shift_share_panel(axes[0], results["b3_mode"], "by mode")
+    _shift_share_panel(axes[1], results["b4_motive"], "by motive")
+    _shift_share_panel(axes[2], results["b4_distance"], "by distance band")
+    axes[0].set_ylabel("Minutes per day")
+    axes[0].legend(fontsize=8)
+    fig.suptitle("B7b. Shift-share of the 2008 -> 2019 daily-time change")
+    fig.tight_layout()
+    path = out_dir / "fig_b7b_shift_share.png"
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
+def _figure_b7_recall_lag(results: dict, out_dir: Path) -> Path:
+    """B7's recall-lag figure: time per day, trips per day and minutes
+    per trip by EMP 2019 recall lag, with the ENTD 2008 level as a
+    reference line."""
+    rows = [row for row in results["lag_table"] if row.label.isdigit()]
+    lags = [int(row.label) for row in rows]
+    entd = results["entd_overall"]
+    panels = (
+        ("time_per_day_min", "Time per day (min)"),
+        ("trips_per_day", "Trips per day"),
+        ("minutes_per_trip", "Minutes per trip"),
+    )
+    fig, axes = plt.subplots(1, 3, figsize=(12, 3.6))
+    for ax, (attr, label) in zip(axes, panels, strict=True):
+        values = [getattr(row, attr) for row in rows]
+        ax.plot(lags, values, marker="o", label="EMP 2019 by lag")
+        ax.axhline(
+            getattr(entd, attr), color="#e76f51", linestyle="--", label="ENTD 2008"
+        )
+        ax.set_xlabel("Recall lag (days)")
+        ax.set_title(label, fontsize=9)
+        ax.tick_params(labelsize=8)
+    axes[0].legend(fontsize=7)
+    fig.suptitle("B7c. EMP 2019 by recall lag vs ENTD 2008 (weekday days)")
+    fig.tight_layout()
+    path = out_dir / "fig_b7c_recall_lag.png"
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
 def _run_part_b(
     results: dict,
     frames_2008: SurveyFrames,
@@ -2257,6 +2398,16 @@ def _run_part_b(
             label_b="q5",
         ),
         results["pair4_lines"],
+    ]
+    waterfall = _figure_b7_waterfall(results, out_dir)
+    results["figures"] = [
+        path
+        for path in (
+            waterfall,
+            _figure_b7_shift_share(results, out_dir),
+            _figure_b7_recall_lag(results, out_dir),
+        )
+        if path is not None
     ]
 
 

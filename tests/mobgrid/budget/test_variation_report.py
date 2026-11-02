@@ -518,3 +518,7 @@ def test_cli_writes_report_on_synthetic_data(
     assert "A3. Distances" in report
     assert "ENTD 2008" in report and "EMP 2019, lag 1" in report
     assert "80-km check" in report
+    assert "B6.4. Density and income together" in report
+    assert "## Figures" in report
+    assert (out_dir / "fig_b7b_shift_share.png").is_file()
+    assert (out_dir / "fig_b7c_recall_lag.png").is_file()
