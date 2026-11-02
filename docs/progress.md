@@ -2,32 +2,53 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-10-29 by Copilot (branch `step/variation`: step-12 handoff; Parts A/B and EMC²/EGT inventory incomplete)_
+_Last updated: 2026-11-02 by Copilot (branch `step/variation`: step 12 complete — Parts A, B, C, D; real-data report not yet generated)_
 
-### Step 12: travel-time variation handoff (2026-10-29, branch `step/variation`)
+### Step 12: variation of daily travel time (2026-11-02, branch `step/variation`)
+
+- **Part D done.** The 13 EMC² surveys and the Île-de-France EGT
+  2018-2020 under `data/raw/emc2/` are inventoried in
+  `docs/data/emc2_inventory.md`: files/formats, counts, fieldwork dates
+  by COVID period (no described day under any lockdown/curfew),
+  sector-sequencing summary (sectors run in parallel), survey design,
+  variable availability, EGT/Cerema differences, step-11 mapping and
+  blockers (no income in EMC²; the V16 standard dictionary `.xls` is
+  unreadable with the current toolchain; EGT has crow-fly distances
+  only). `data/raw/` stays git-ignored; counts only, no processing.
+- **Parts A and B done** in `packages/mobgrid/budget/variation_report.py`
+  (new CLI `python -m mobgrid.budget.variation_report`) plus pure
+  primitives in `variation.py` (shift-share, composition reweighting
+  with 30-respondent age-band merging, tails, household-bootstrap
+  helpers). A1 recall lag (EMP `MDATE_delai`; ENTD lag =
+  `MDATENQ2V` − `V2_DATESEMREF`, mostly 1, 3 over weekends), A2 motive
+  crosswalk + needs-scope removal shares, A3 distance provenance and
+  bands + 80-km check, A4 duration rounding, A5 calendar; B1 V1-V3
+  (V3 falls back to V2 for 2008→2019: no car count in ENTD's four
+  public tables), B2 trips×km×speed by category, B3 mode shift-share
+  (within split into km/speed), B4 motive and distance-band
+  shift-shares, B5 tails, B6 pairs 1-4 (lag-1 variant; EMP dense vs
+  intermediate and q1 vs q5 within category; density×income and
+  IdF×income tables), B7 figures (waterfall, shift-share bars, recall
+  lag). Choices are listed in the report under "Choices made".
+- **Not run on real data** (step-12 rule): `docs/data/step12_variation.md`
+  is a placeholder with the generation command; a 2% household smoke run
+  (`--sample-households 2`) validated the whole pipeline (~1.5 min).
+- **Tests fast:** synthetic fixtures extended with the step-12 columns;
+  all new tests use 3 bootstrap replicates and run in seconds; the
+  synthetic `--compare` CLI test dropped from ~141 s to ~19 s
+  (replicates 10→3, and `emp.run(make_figures=False)` for
+  `run_compare`'s discarded sub-run figures — no output change).
+- Validation: 29 tests in the touched modules passed (full budget
+  package: 103 passed earlier in the session); Ruff check and format
+  clean. The user runs the full suite and the real-data report.
+- Next: run the real-data report, read the figures, then extend the
+  same tests to the EMC²/EGT surveys using the Part D mapping.
+
+### Step 12: travel-time variation handoff (2026-10-29, superseded)
 
 - Implemented Part C equivalence summaries and true-n suppression fixes
-  in the step-11 report path. Added the generic weighted log
-  decomposition and independent household-bootstrap intervals for B2;
-  that helper is not yet wired into category/overall report tables.
-- Parts A and the remaining B analyses/figures are not implemented.
-  `docs/data/step12_variation.md` records this explicitly; no
-  full real-data reports were run.
-- Part D is blocked: `data/raw/` has no EMC² or EGT directories. The
-  raw root remains ignored by Git. See `docs/data/emc2_inventory.md`;
-  no source files were changed or downloaded.
-- ENTD documentation review found that the 2010 redressement note does
-  not document household-income imputation or an imputation flag. The
-  released household header has no identified flag; the report's
-  20,178 matched households have no blank bracket/`NBUC`, which does not
-  prove whether any values were imputed upstream. See
-  `docs/data/entd2008.md`.
-- Validation: 31 focused tests passed in 66.18 s; Ruff check and format
-  checks passed. The synthetic 2008-2019 CLI comparison exceeded the
-  two-minute limit and was stopped; the full suite was not run under the
-  long-job rule. Six existing Matplotlib legend warnings remain.
-- Next: implement A and the remaining B analyses and connect B2 to its
-  report; provide the EMC²/EGT source locations to complete Part D.
+  in the step-11 report path (committed 2026-11-02). The remaining
+  parts were completed on 2026-11-02 (see above).
 
 ### Pause handoff (2026-10-29)
 
