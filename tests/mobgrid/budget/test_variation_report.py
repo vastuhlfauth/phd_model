@@ -342,6 +342,92 @@ def test_b5_tail_stats_median_trim_and_contributions() -> None:
     assert "| Median (min/day) | 40.0 | 40.0 | 0.0 |" in text
 
 
+def test_subset_frames_filters_days_and_trips() -> None:
+    frames = _trip_frames({"walk": 15.0, "car_driver": 25.0})
+    frames.days["income_quintile"] = np.array(
+        ["q1" if i % 2 else "q5" for i in range(len(frames.days["pond_jour"]))]
+    )
+    frames.trips["income_quintile"] = np.array(
+        ["q1" if (i // 2) % 2 else "q5" for i in range(len(frames.trips["pond_jour"]))]
+    )
+
+    subset = variation_report.subset_frames(frames, income_quintile="q1")
+
+    assert (subset.days["income_quintile"] == "q1").all()
+    assert (subset.trips["income_quintile"] == "q1").all()
+    assert len(subset.days["pond_jour"]) == 30
+
+
+def test_comparison_pair_runs_b2_b3_b1_between_two_groups() -> None:
+    frames_a = _b1_frames({"employed": 40.0}, {"employed": 60})
+    frames_a.days["trips_per_day"] = np.full(60, 2.0)
+    frames_a.days["total_distance_km"] = np.full(60, 8.0)
+    frames_a.trips = {
+        "pond_jour": np.ones(120),
+        "ident_men": np.repeat(frames_a.days["ident_men"], 2),
+        "duration_min": np.full(120, 20.0),
+        "distance_km": np.full(120, 4.0),
+        "mode7": np.array(["walk", "car_driver"] * 60),
+    }
+    frames_b = _b1_frames({"employed": 50.0}, {"employed": 60})
+    frames_b.days["trips_per_day"] = np.full(60, 2.0)
+    frames_b.days["total_distance_km"] = np.full(60, 9.0)
+    frames_b.trips = {
+        "pond_jour": np.ones(120),
+        "ident_men": np.repeat(frames_b.days["ident_men"], 2),
+        "duration_min": np.full(120, 25.0),
+        "distance_km": np.full(120, 4.5),
+        "mode7": np.array(["walk", "car_driver"] * 60),
+    }
+
+    pair = variation_report.comparison_pair(
+        "employed", frames_a, frames_b, variants=("V1",), n_reps=N_REPS, seed=0
+    )
+
+    assert pair.b2.result is not None
+    assert pair.b2.result.point.delta_min == pytest.approx(10.0)
+    assert pair.b3 is not None
+    assert pair.b3.point.delta_min == pytest.approx(10.0)
+    assert len(pair.b1) == 1
+
+    lines = variation_report._format_pair_results(
+        [pair],
+        title="## B6.2 test",
+        intro="intro",
+        label_a="A",
+        label_b="B",
+    )
+    text = "\n".join(lines)
+    assert "| employed | 60 | 60 |" in text
+    assert "Mode shift-share aggregates" in text
+
+
+def test_pair4_tables_suppress_small_cells() -> None:
+    n = 120
+    days = {
+        "pond_jour": [1.0] * n,
+        "population_category": ["employed"] * n,
+        "total_time_min": [60.0 + (i % 5) for i in range(n)],
+        "home_density": ["dense"] * (n // 2) + ["intermediate"] * (n // 2),
+        "income_quintile": ["q1" if i % 2 else "q5" for i in range(n)],
+        "is_idf": [i < 10 for i in range(n)],
+        "ident_men": [f"M{i}" for i in range(n)],
+    }
+    frames = _frames(days, {})
+    frames.name = "EMP 2019"
+
+    lines = variation_report.pair4_tables(frames, "employed", n_reps=N_REPS, seed=0)
+    text = "\n".join(lines)
+
+    assert "### EMP 2019, employed" in text
+    # 30 days per density x quintile cell: suppressed under 50.
+    assert "n=30: -" in text
+    # Île-de-France has only 10 employed days in total: suppressed.
+    assert "n=0: -" in text or "n=5: -" in text
+    # The other-regions q1/q5 cells have 55 each: shown.
+    assert "n=55:" in text
+
+
 def test_distance_band_table_shares_sum_to_one() -> None:
     frames = _frames(
         {},

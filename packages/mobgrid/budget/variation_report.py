@@ -1175,19 +1175,49 @@ class B2Row:
     result: variation.TripTimeDecompositionBootstrap | None
 
 
+def subset_frames(frames: SurveyFrames, **conditions: object) -> SurveyFrames:
+    """A new ``SurveyFrames`` restricted to the person-days (and their
+    trips) matching ``conditions`` on the shared day/trip columns, e.g.
+    ``population_category='employed'``, ``home_density='dense'``,
+    ``income_quintile='q1'``, ``is_idf=True`` or ``recall_lag=1``."""
+
+    def _mask(table: dict[str, np.ndarray]) -> np.ndarray:
+        mask = np.ones(len(table["pond_jour"]), dtype=bool)
+        for column, value in conditions.items():
+            if isinstance(value, bool):
+                mask &= table[column].astype(bool) == value
+            elif isinstance(value, (int, float)):
+                mask &= table[column].astype(float) == float(value)
+            else:
+                mask &= table[column].astype(str) == str(value)
+        return mask
+
+    day_mask = _mask(frames.days)
+    trip_mask = _mask(frames.trips)
+    return SurveyFrames(
+        name=frames.name,
+        days={k: v[day_mask] for k, v in frames.days.items()},
+        trips={k: v[trip_mask] for k, v in frames.trips.items()},
+        aux=frames.aux,
+    )
+
+
 def b2_decompositions(
     frames_a: SurveyFrames,
     frames_b: SurveyFrames,
     *,
     n_reps: int,
     seed: int,
+    categories: tuple[str, ...] | None = None,
 ) -> list[B2Row]:
     """B2 (``T = N . L / v``) overall and by population category, with
     independent household-bootstrap CIs; a degenerate group (no days or
-    zero totals on either side) yields ``result=None``."""
+    zero totals on either side) yields ``result=None``. ``categories=()``
+    keeps the overall row only."""
     rows = []
-    categories = [None, *daily_energy.POPULATION_CATEGORIES]
-    for category in categories:
+    if categories is None:
+        categories = daily_energy.POPULATION_CATEGORIES
+    for category in (None, *categories):
         if category is None:
             mask_a = np.ones(len(frames_a.days["pond_jour"]), dtype=bool)
             mask_b = np.ones(len(frames_b.days["pond_jour"]), dtype=bool)
@@ -1222,9 +1252,11 @@ def _ci_cell(value: float, ci: tuple[float, float], decimals: int = 1) -> str:
     return f"{_num(value, decimals)} [{_num(ci[0], decimals)}, {_num(ci[1], decimals)}]"
 
 
-def _format_b2(rows: list[B2Row], label_a: str, label_b: str) -> list[str]:
+def _format_b2(
+    rows: list[B2Row], label_a: str, label_b: str, title: str | None = None
+) -> list[str]:
     lines = [
-        f"## B2. Trips x distance x speed, {label_a} -> {label_b}",
+        title or f"## B2. Trips x distance x speed, {label_a} -> {label_b}",
         "",
         "T = N . L / v (trips per day, km per trip, km per minute), "
         "ratios of weighted totals; Δln T = Δln N + Δln L - Δln v, each "
@@ -1657,6 +1689,211 @@ def _format_b5(
     return lines
 
 
+@dataclass(frozen=True)
+class PairResult:
+    """One B6 sub-pair (one row of the pair tables): the B2 split, the
+    B3 aggregate terms and the B1 variants between groups A and B."""
+
+    label: str
+    n_a: int
+    n_b: int
+    b2: B2Row
+    b3: variation.ShiftShareBootstrap | None
+    b1: list[B1Row]
+
+
+def comparison_pair(
+    label: str,
+    frames_a: SurveyFrames,
+    frames_b: SurveyFrames,
+    *,
+    variants: tuple[str, ...] = ("V1", "V2", "V3"),
+    n_reps: int,
+    seed: int,
+) -> PairResult:
+    """Run B2, B3 (mode) and B1 (``variants``) between two groups of
+    person-days (B6's pairs 2 and 3); degenerate pieces are skipped."""
+    b2 = b2_decompositions(frames_a, frames_b, n_reps=n_reps, seed=seed, categories=())[
+        0
+    ]
+    try:
+        b3 = shift_share_by(frames_a, frames_b, "mode7", n_reps=n_reps, seed=seed)
+    except (ValueError, ZeroDivisionError):
+        b3 = None
+    b1 = []
+    for variant in variants:
+        try:
+            b1.append(
+                bootstrap_composition(
+                    frames_a, frames_b, variant, n_reps=n_reps, seed=seed
+                )
+            )
+        except (ValueError, ZeroDivisionError):
+            continue
+    return PairResult(
+        label=label,
+        n_a=len(frames_a.days["pond_jour"]),
+        n_b=len(frames_b.days["pond_jour"]),
+        b2=b2,
+        b3=b3,
+        b1=b1,
+    )
+
+
+def _format_pair_results(
+    pairs: list[PairResult],
+    *,
+    title: str,
+    intro: str,
+    label_a: str,
+    label_b: str,
+) -> list[str]:
+    lines = [
+        title,
+        "",
+        intro,
+        "",
+        "Decomposition (B2's trips x km x speed, minutes, "
+        "household-bootstrap 95% CIs):",
+        "",
+        f"| Group | n {label_a} | n {label_b} | T {label_a} | T {label_b} | "
+        "Δ (min) [CI] | trips [CI] | km/trip [CI] | speed [CI] |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for pair in pairs:
+        row = pair.b2
+        if row.result is None or min(pair.n_a, pair.n_b) < MIN_CELL_N:
+            lines.append(
+                f"| {pair.label} | {pair.n_a} | {pair.n_b} | - | - | - | - | - | - |"
+            )
+            continue
+        point = row.result.point
+        lines.append(
+            f"| {pair.label} | {pair.n_a} | {pair.n_b} | "
+            f"{_num(point.time_a_min)} | {_num(point.time_b_min)} | "
+            f"{_ci_cell(point.delta_min, row.result.delta_ci)} | "
+            f"{_ci_cell(point.trips_min, row.result.trips_ci)} | "
+            f"{_ci_cell(point.distance_min, row.result.distance_ci)} | "
+            f"{_ci_cell(point.speed_min, row.result.speed_ci)} |"
+        )
+    lines += [
+        "",
+        "Mode shift-share aggregates (B3, minutes):",
+        "",
+        "| Group | volume [CI] | mode mix [CI] | within modes [CI] | "
+        "interaction [CI] |",
+        "|---|---|---|---|---|",
+    ]
+    for pair in pairs:
+        if pair.b3 is None or min(pair.n_a, pair.n_b) < MIN_CELL_N:
+            lines.append(f"| {pair.label} | - | - | - | - |")
+            continue
+        point = pair.b3.point
+        lines.append(
+            f"| {pair.label} | {_ci_cell(point.volume_min, pair.b3.volume_ci)} | "
+            f"{_ci_cell(point.mix_min, pair.b3.mix_ci)} | "
+            f"{_ci_cell(point.within_min, pair.b3.within_ci)} | "
+            f"{_ci_cell(point.interaction_min, pair.b3.interaction_ci)} |"
+        )
+    lines += [
+        "",
+        "Composition (B1, minutes; residence uses the INSEE density grid "
+        "for within-EMP-2019 pairs):",
+        "",
+        "| Group | Variant | Cells | Composition [CI] | Behaviour [CI] |",
+        "|---|---|---|---|---|",
+    ]
+    for pair in pairs:
+        for row in pair.b1:
+            if min(pair.n_a, pair.n_b) < MIN_CELL_N:
+                lines.append(f"| {pair.label} | {row.variant} | - | - | - |")
+                continue
+            lines.append(
+                f"| {pair.label} | {row.variant} | {row.point.n_cells} | "
+                f"{_ci_cell(row.point.composition_min, row.composition_ci)} | "
+                f"{_ci_cell(row.point.behaviour_min, row.behaviour_ci)} |"
+            )
+    return lines
+
+
+def _cell_time_ci(
+    frames: SurveyFrames,
+    mask: np.ndarray,
+    *,
+    n_reps: int,
+    seed: int,
+) -> tuple[int, float, tuple[float, float]]:
+    n = int(mask.sum())
+    if n == 0:
+        return 0, float("nan"), (float("nan"), float("nan"))
+    mean, ci = variation.weighted_mean_ci(
+        frames.days["total_time_min"][mask].astype(float),
+        frames.days["pond_jour"][mask].astype(float),
+        frames.days["ident_men"][mask],
+        n_reps=n_reps,
+        seed=seed,
+    )
+    return n, mean, ci
+
+
+def pair4_tables(
+    frames: SurveyFrames,
+    category: str,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    """B6 pair 4: time per day with trips by density class x income
+    quintile (n, mean, 95% CI), and Île-de-France vs the other regions
+    by income quintile, for one survey and category."""
+    days = frames.days
+    base = days["population_category"].astype(str) == category
+    quintiles = ("q1", "q2", "q3", "q4", "q5")
+    densities = [
+        d for d in trip_legs.DENSITY_LABELS if (days["home_density"] == d).any()
+    ]
+    lines = [
+        f"### {frames.name}, {category}",
+        "",
+        "| Density \\ income | " + " | ".join(quintiles) + " |",
+        "|---" * (len(quintiles) + 1) + "|",
+    ]
+    for density in densities:
+        cells = []
+        for quintile in quintiles:
+            mask = (
+                base
+                & (days["home_density"].astype(str) == density)
+                & (days["income_quintile"].astype(str) == quintile)
+            )
+            n, mean, ci = _cell_time_ci(frames, mask, n_reps=n_reps, seed=seed)
+            if n < MIN_CELL_N:
+                cells.append(f"n={n}: -")
+            else:
+                cells.append(f"n={n}: {_num(mean)} [{_num(ci[0])}, {_num(ci[1])}]")
+        lines.append(f"| {density} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "| Île-de-France \\ income | " + " | ".join(quintiles) + " |",
+        "|---" * (len(quintiles) + 1) + "|",
+    ]
+    for is_idf, label in ((True, "Île-de-France"), (False, "other regions")):
+        cells = []
+        for quintile in quintiles:
+            mask = (
+                base
+                & (days["is_idf"].astype(bool) == is_idf)
+                & (days["income_quintile"].astype(str) == quintile)
+            )
+            n, mean, ci = _cell_time_ci(frames, mask, n_reps=n_reps, seed=seed)
+            if n < MIN_CELL_N:
+                cells.append(f"n={n}: -")
+            else:
+                cells.append(f"n={n}: {_num(mean)} [{_num(ci[0])}, {_num(ci[1])}]")
+        lines.append(f"| {label} | " + " | ".join(cells) + " |")
+    return lines
+
+
 def _run_part_b(
     results: dict,
     frames_2008: SurveyFrames,
@@ -1705,6 +1942,65 @@ def _run_part_b(
     )
     results["b5_2008"] = b5_tail_stats(frames_2008)
     results["b5_2019"] = b5_tail_stats(frames_2019)
+    # B6 pair 1 variant: EMP 2019 restricted to recall lag 1 (A1).
+    results["b2_rows_lag1"] = b2_decompositions(
+        frames_2008,
+        subset_frames(frames_2019, recall_lag=1),
+        n_reps=n_reps,
+        seed=seed,
+    )
+    # B6 pair 2: within EMP 2019 (INSEE density grid), dense vs
+    # intermediate, within category: A = intermediate, B = dense, so
+    # Δ = dense - intermediate.
+    results["pair2"] = [
+        comparison_pair(
+            category,
+            subset_frames(
+                frames_2019_grid,
+                population_category=category,
+                home_density="intermediate",
+            ),
+            subset_frames(
+                frames_2019_grid, population_category=category, home_density="dense"
+            ),
+            n_reps=n_reps,
+            seed=seed,
+        )
+        for category in ("employed", "retired", "children_6_17")
+    ]
+    # B6 pair 3: within EMP 2019, income q1 vs q5: A = q1, B = q5.
+    results["pair3"] = [
+        comparison_pair(
+            category,
+            subset_frames(
+                frames_2019_grid, population_category=category, income_quintile="q1"
+            ),
+            subset_frames(
+                frames_2019_grid, population_category=category, income_quintile="q5"
+            ),
+            n_reps=n_reps,
+            seed=seed,
+        )
+        for category in ("employed", "retired")
+    ]
+    # B6 pair 4: density x income tables, employed and retired, both
+    # surveys (ENTD 2008 with the density proxy, EMP 2019 with the grid).
+    pair4_lines = [
+        "## B6.4. Density and income together",
+        "",
+        "Time per day with trips (min) by density class x income "
+        "quintile, and Île-de-France vs the other regions by income "
+        "quintile (n, weighted mean, household-bootstrap 95% CI; cells "
+        f"under {MIN_CELL_N} respondents print n with `-`). The question "
+        "is whether the income gradient survives within density classes, "
+        "or is the density/Île-de-France gradient in disguise.",
+        "",
+    ]
+    for frames in (frames_2008, frames_2019_grid):
+        for category in ("employed", "retired"):
+            pair4_lines += pair4_tables(frames, category, n_reps=n_reps, seed=seed)
+            pair4_lines.append("")
+    results["pair4_lines"] = pair4_lines
     motive_order = tuple([*MOTIVE_GROUP_LABELS.values(), "unknown"])
     results["extra_sections"] += [
         _format_b1(results["b1_rows"], "2008", "2019"),
@@ -1747,6 +2043,32 @@ def _run_part_b(
             ),
         ),
         _format_b5(results["b5_2008"], results["b5_2019"], "2008", "2019"),
+        _format_b2(
+            results["b2_rows_lag1"],
+            "2008",
+            "2019 (lag 1)",
+            title="## B6.1. Pair 1 variant: 2008 -> 2019 with EMP 2019 "
+            "restricted to recall lag 1",
+        ),
+        _format_pair_results(
+            results["pair2"],
+            title="## B6.2. EMP 2019, dense vs intermediate, within category",
+            intro="A = intermediate density, B = dense (INSEE density "
+            "grid), so Δ = dense - intermediate, within each population "
+            "category.",
+            label_a="interm.",
+            label_b="dense",
+        ),
+        _format_pair_results(
+            results["pair3"],
+            title="## B6.3. EMP 2019, income q1 vs q5, within category",
+            intro="A = income quintile q1, B = q5, so Δ = q5 - q1, within "
+            "each population category (INSEE density grid for the "
+            "composition variants).",
+            label_a="q1",
+            label_b="q5",
+        ),
+        results["pair4_lines"],
     ]
 
 
