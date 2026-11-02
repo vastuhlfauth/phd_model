@@ -1255,6 +1255,149 @@ def _format_b2(rows: list[B2Row], label_a: str, label_b: str) -> list[str]:
     return lines
 
 
+def trip_sample_from_frames(
+    frames: SurveyFrames,
+    group_labels: np.ndarray,
+    day_mask: np.ndarray | None = None,
+    trip_mask: np.ndarray | None = None,
+) -> variation.TripSample:
+    """``variation.TripSample`` of (a mask of) one survey's person-days
+    and trips; ``group_labels`` is one label per (unmasked) trip row."""
+    days, trips = frames.days, frames.trips
+    dsel = np.ones(len(days["pond_jour"]), dtype=bool) if day_mask is None else day_mask
+    tsel = (
+        np.ones(len(trips["pond_jour"]), dtype=bool) if trip_mask is None else trip_mask
+    )
+    return variation.TripSample(
+        day_weight=days["pond_jour"][dsel].astype(float),
+        day_household=days["ident_men"][dsel],
+        trip_weight=trips["pond_jour"][tsel].astype(float),
+        trip_household=trips["ident_men"][tsel],
+        trip_minutes=trips["duration_min"][tsel].astype(float),
+        trip_km=trips["distance_km"][tsel].astype(float),
+        trip_group=np.asarray(group_labels)[tsel],
+    )
+
+
+def shift_share_by(
+    frames_a: SurveyFrames,
+    frames_b: SurveyFrames,
+    column: str,
+    *,
+    day_mask_a: np.ndarray | None = None,
+    trip_mask_a: np.ndarray | None = None,
+    day_mask_b: np.ndarray | None = None,
+    trip_mask_b: np.ndarray | None = None,
+    n_reps: int,
+    seed: int,
+) -> variation.ShiftShareBootstrap:
+    """B3/B4 shift-share between two surveys (or two groups) by a trip
+    grouping ``column`` ('mode7', 'motive_group' or 'distance_band')."""
+
+    def _labels(frames: SurveyFrames) -> np.ndarray:
+        if column == "distance_band":
+            return np.asarray(DISTANCE_BAND_LABELS)[
+                distance_band_index(frames.trips["distance_km"].astype(float))
+            ]
+        return frames.trips[column].astype(str)
+
+    return variation.bootstrap_shift_share(
+        trip_sample_from_frames(frames_a, _labels(frames_a), day_mask_a, trip_mask_a),
+        trip_sample_from_frames(frames_b, _labels(frames_b), day_mask_b, trip_mask_b),
+        n_reps=n_reps,
+        seed=seed,
+    )
+
+
+def _group_counts(
+    frames: SurveyFrames, column: str, trip_mask: np.ndarray | None = None
+) -> dict[str, int]:
+    if column == "distance_band":
+        labels = np.asarray(DISTANCE_BAND_LABELS)[
+            distance_band_index(frames.trips["distance_km"].astype(float))
+        ]
+    else:
+        labels = frames.trips[column].astype(str)
+    if trip_mask is not None:
+        labels = labels[trip_mask]
+    values, counts = np.unique(labels, return_counts=True)
+    return dict(zip(values.tolist(), counts.tolist(), strict=True))
+
+
+def _format_shift_share(
+    result: variation.ShiftShareBootstrap,
+    counts_a: dict[str, int],
+    counts_b: dict[str, int],
+    *,
+    title: str,
+    group_name: str,
+    label_a: str,
+    label_b: str,
+    group_order: tuple[str, ...] | None = None,
+    within_label: str = "within",
+    intro: str = "",
+) -> list[str]:
+    """One shift-share section: the aggregate identity with CIs, then the
+    per-group terms (suppressed below `MIN_CELL_N` trips)."""
+    point = result.point
+    lines = [
+        title,
+        "",
+        intro
+        or (
+            "ΔT = (N_B - N_A) . M_A + N_B . (M_B - M_A); the second term "
+            "splits into mode mix Σ (s_B - s_A) . m_A, within Σ s_A . "
+            "(m_B - m_A) and interaction Σ (s_B - s_A) . (m_B - m_A), all "
+            "scaled by N_B into minutes per day. Household-bootstrap 95% "
+            "CIs."
+        ),
+        "",
+        "| Term | Minutes/day | 95% CI |",
+        "|---|---|---|",
+        f"| ΔT | {_num(point.delta_min)} | "
+        f"[{_num(result.delta_ci[0])}, {_num(result.delta_ci[1])}] |",
+        f"| trips volume | {_num(point.volume_min)} | "
+        f"[{_num(result.volume_ci[0])}, {_num(result.volume_ci[1])}] |",
+        f"| {group_name} mix | {_num(point.mix_min)} | "
+        f"[{_num(result.mix_ci[0])}, {_num(result.mix_ci[1])}] |",
+        f"| {within_label} | {_num(point.within_min)} | "
+        f"[{_num(result.within_ci[0])}, {_num(result.within_ci[1])}] |",
+        f"| interaction | {_num(point.interaction_min)} | "
+        f"[{_num(result.interaction_ci[0])}, {_num(result.interaction_ci[1])}] |",
+        "",
+        f"Trips per day: {_num(point.trips_a, 2)} ({label_a}) -> "
+        f"{_num(point.trips_b, 2)} ({label_b}); minutes per trip: "
+        f"{_num(point.minutes_per_trip_a)} -> {_num(point.minutes_per_trip_b)}.",
+        "",
+        f"| {group_name} | n {label_a} | n {label_b} | share {label_a} | "
+        f"share {label_b} | min/trip {label_a} | min/trip {label_b} | "
+        "mix (min) | within (min) | of which km/trip | of which speed | "
+        "interaction (min) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    terms = {term.group: term for term in point.terms}
+    order = group_order or tuple(sorted(terms))
+    for group in order:
+        term = terms.get(group)
+        if term is None:
+            continue
+        n_a = counts_a.get(group, 0)
+        n_b = counts_b.get(group, 0)
+        if min(n_a, n_b) < MIN_CELL_N:
+            lines.append(
+                f"| {group} | {n_a} | {n_b} | - | - | - | - | - | - | - | - | - |"
+            )
+            continue
+        lines.append(
+            f"| {group} | {n_a} | {n_b} | {_pct(term.share_a)} | "
+            f"{_pct(term.share_b)} | {_num(term.minutes_per_trip_a)} | "
+            f"{_num(term.minutes_per_trip_b)} | {_num(term.mix_min, 2)} | "
+            f"{_num(term.within_min, 2)} | {_num(term.within_km_min, 2)} | "
+            f"{_num(term.within_speed_min, 2)} | {_num(term.interaction_min, 2)} |"
+        )
+    return lines
+
+
 def _run_part_b(
     results: dict,
     frames_2008: SurveyFrames,
@@ -1271,6 +1414,21 @@ def _run_part_b(
         frames_2008, frames_2019, n_reps=n_reps, seed=seed
     )
     results["extra_sections"].append(_format_b2(results["b2_rows"], "2008", "2019"))
+    results["b3_mode"] = shift_share_by(
+        frames_2008, frames_2019, "mode7", n_reps=n_reps, seed=seed
+    )
+    results["extra_sections"].append(
+        _format_shift_share(
+            results["b3_mode"],
+            _group_counts(frames_2008, "mode7"),
+            _group_counts(frames_2019, "mode7"),
+            title="## B3. Mode shift-share, 2008 -> 2019",
+            group_name="mode",
+            label_a="2008",
+            label_b="2019",
+            group_order=MODE7_LABELS,
+        )
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

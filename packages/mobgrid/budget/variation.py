@@ -560,3 +560,113 @@ def household_multipliers(
         rng.integers(0, len(unique), size=len(unique)), minlength=len(unique)
     )
     return multiplicity[codes]
+
+
+@dataclass(frozen=True)
+class TripSample:
+    """One group of person-days with their trips, for the household
+    bootstrap: day rows carry the day weights (the trips-per-day
+    denominator), trip rows the per-trip metrics."""
+
+    day_weight: np.ndarray
+    day_household: np.ndarray
+    trip_weight: np.ndarray
+    trip_household: np.ndarray
+    trip_minutes: np.ndarray
+    trip_km: np.ndarray
+    trip_group: np.ndarray
+
+    def to_groups(
+        self,
+        day_multiplier: np.ndarray | None = None,
+        trip_multiplier: np.ndarray | None = None,
+    ) -> TripGroups:
+        day_weight = (
+            self.day_weight
+            if day_multiplier is None
+            else self.day_weight * day_multiplier
+        )
+        trip_weight = (
+            self.trip_weight
+            if trip_multiplier is None
+            else self.trip_weight * trip_multiplier
+        )
+        return TripGroups(
+            weight=trip_weight,
+            minutes=self.trip_minutes,
+            km=self.trip_km,
+            group=self.trip_group,
+            day_weight_total=float(day_weight.sum()),
+        )
+
+
+@dataclass(frozen=True)
+class ShiftShareBootstrap:
+    """Point shift-share and percentile 95% household-bootstrap CIs on
+    its aggregate terms."""
+
+    point: ShiftShare
+    delta_ci: tuple[float, float]
+    volume_ci: tuple[float, float]
+    mix_ci: tuple[float, float]
+    within_ci: tuple[float, float]
+    interaction_ci: tuple[float, float]
+
+
+def bootstrap_shift_share(
+    a: TripSample,
+    b: TripSample,
+    *,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> ShiftShareBootstrap:
+    """``shift_share`` with independent household bootstraps of each
+    group (a household's multiplicity applies to its days and trips)."""
+    point = shift_share(a.to_groups(), b.to_groups())
+    seed_a, seed_b = np.random.SeedSequence(seed).spawn(2)
+    rng_a, rng_b = np.random.default_rng(seed_a), np.random.default_rng(seed_b)
+    components = np.full((n_reps, 5), np.nan)
+    for rep in range(n_reps):
+        resampled = []
+        for sample, rng in ((a, rng_a), (b, rng_b)):
+            unique, day_codes = np.unique(sample.day_household, return_inverse=True)
+            multiplicity = np.bincount(
+                rng.integers(0, len(unique), size=len(unique)),
+                minlength=len(unique),
+            )
+            trip_codes = np.searchsorted(unique, sample.trip_household)
+            resampled.append(
+                sample.to_groups(multiplicity[day_codes], multiplicity[trip_codes])
+            )
+        groups_a, groups_b = resampled
+        if (
+            groups_a.day_weight_total <= 0
+            or groups_b.day_weight_total <= 0
+            or groups_a.weight.sum() <= 0
+            or groups_b.weight.sum() <= 0
+        ):
+            continue
+        result = shift_share(groups_a, groups_b)
+        components[rep] = (
+            result.delta_min,
+            result.volume_min,
+            result.mix_min,
+            result.within_min,
+            result.interaction_min,
+        )
+    valid = components[np.isfinite(components).all(axis=1)]
+    if len(valid) == 0:
+        raise ValueError("household bootstrap produced no valid replicates")
+    intervals = np.percentile(valid, [2.5, 97.5], axis=0)
+
+    def _ci(column: int) -> tuple[float, float]:
+        return (float(intervals[0, column]), float(intervals[1, column]))
+
+    return ShiftShareBootstrap(
+        point=point,
+        delta_ci=_ci(0),
+        volume_ci=_ci(1),
+        mix_ci=_ci(2),
+        within_ci=_ci(3),
+        interaction_ci=_ci(4),
+    )

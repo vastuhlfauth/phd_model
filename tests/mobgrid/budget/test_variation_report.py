@@ -158,6 +158,74 @@ def test_b2_decompositions_cover_overall_and_categories() -> None:
     assert "| retired | 0 | 0 | - | - | - | - | - | - |" in text
 
 
+def _trip_frames(
+    minutes_by_mode: dict[str, float],
+    *,
+    trips_per_day: int = 2,
+    n_days: int = 60,
+    km_per_min: float = 0.3,
+) -> SurveyFrames:
+    modes = list(minutes_by_mode)
+    n_trips = n_days * trips_per_day
+    mode7 = [modes[i % len(modes)] for i in range(n_trips)]
+    duration = [minutes_by_mode[m] for m in mode7]
+    days = {
+        "pond_jour": [1.0] * n_days,
+        "trips_per_day": [float(trips_per_day)] * n_days,
+        "total_time_min": [sum(duration[:trips_per_day])] * n_days,
+        "total_distance_km": [km_per_min * sum(duration[:trips_per_day])] * n_days,
+        "population_category": ["employed"] * n_days,
+        "ident_men": [f"M{i // 2}" for i in range(n_days)],
+    }
+    trips = {
+        "pond_jour": [1.0] * n_trips,
+        "ident_men": [f"M{(i // trips_per_day) // 2}" for i in range(n_trips)],
+        "duration_min": duration,
+        "distance_km": [km_per_min * d for d in duration],
+        "mode7": mode7,
+    }
+    return _frames(days, trips)
+
+
+def test_shift_share_identity_and_report_section() -> None:
+    frames_a = _trip_frames({"walk": 15.0, "car_driver": 25.0})
+    frames_b = _trip_frames({"walk": 18.0, "car_driver": 32.0})
+
+    result = variation_report.shift_share_by(
+        frames_a, frames_b, "mode7", n_reps=N_REPS, seed=0
+    )
+
+    point = result.point
+    assert point.delta_min == pytest.approx(
+        point.volume_min + point.mix_min + point.within_min + point.interaction_min
+    )
+    # Equal mode shares on both sides: the change is all within modes.
+    assert point.mix_min == pytest.approx(0.0, abs=1e-9)
+    assert point.within_min == pytest.approx(point.delta_min, abs=1e-9)
+    by_mode = {term.group: term for term in point.terms}
+    assert by_mode["walk"].minutes_per_trip_a == pytest.approx(15.0)
+    assert by_mode["walk"].minutes_per_trip_b == pytest.approx(18.0)
+    # Within each mode, the km/trip + speed split recovers the within term.
+    for term in point.terms:
+        assert term.within_km_min + term.within_speed_min == pytest.approx(
+            term.within_min
+        )
+
+    lines = variation_report._format_shift_share(
+        result,
+        variation_report._group_counts(frames_a, "mode7"),
+        variation_report._group_counts(frames_b, "mode7"),
+        title="## B3. Mode shift-share, A -> B",
+        group_name="mode",
+        label_a="A",
+        label_b="B",
+        group_order=variation_report.MODE7_LABELS,
+    )
+    text = "\n".join(lines)
+    assert "mode mix" in text
+    assert "| walk | 60 | 60 |" in text
+
+
 def test_distance_band_table_shares_sum_to_one() -> None:
     frames = _frames(
         {},
