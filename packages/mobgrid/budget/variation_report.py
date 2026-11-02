@@ -1586,6 +1586,77 @@ def _format_b1(rows: list[B1Row], label_a: str, label_b: str) -> list[str]:
     return lines
 
 
+@dataclass(frozen=True)
+class B5Stats:
+    """One survey's B5 tail statistics (weighted, minutes per person-day
+    with trips)."""
+
+    mean_min: float
+    median_min: float
+    trimmed_1pct_min: float
+    trimmed_2_5pct_min: float
+    over_180_min: float
+    trips_over_20km_min: float
+    trips_over_40km_min: float
+
+
+def b5_tail_stats(frames: SurveyFrames) -> B5Stats:
+    """B5's tail statistics for one survey: the weighted median, the
+    top-1%/top-2.5%-trimmed means, the minutes per person-day held in
+    days above 180 min, and in trips above 20 and 40 km."""
+    days, trips = frames.days, frames.trips
+    w = days["pond_jour"].astype(float)
+    time = days["total_time_min"].astype(float)
+    tw = trips["pond_jour"].astype(float)
+    t_min = trips["duration_min"].astype(float)
+    t_km = trips["distance_km"].astype(float)
+    day_weight = float(w.sum())
+
+    def _trip_minutes_over(km: float) -> float:
+        mask = t_km > km
+        return float(np.sum(tw[mask] * t_min[mask])) / day_weight
+
+    return B5Stats(
+        mean_min=float(np.sum(w * time)) / day_weight,
+        median_min=variation.weighted_median(time, w),
+        trimmed_1pct_min=variation.trimmed_mean(time, w, 0.01),
+        trimmed_2_5pct_min=variation.trimmed_mean(time, w, 0.025),
+        over_180_min=variation.mean_above_threshold(time, w, 180.0),
+        trips_over_20km_min=_trip_minutes_over(20.0),
+        trips_over_40km_min=_trip_minutes_over(40.0),
+    )
+
+
+def _format_b5(
+    stats_a: B5Stats, stats_b: B5Stats, label_a: str, label_b: str
+) -> list[str]:
+    lines = [
+        f"## B5. Tails, {label_a} -> {label_b}",
+        "",
+        "Weighted statistics of daily time on days with trips: the "
+        "median, means trimmed of the top 1% / 2.5% of daily-time weight, "
+        "and the minutes per person-day held in days above 180 min and in "
+        "trips above 20 and 40 km (step-11 corrected distances).",
+        "",
+        f"| Statistic | {label_a} | {label_b} | Δ (min) |",
+        "|---|---|---|---|",
+    ]
+    rows = [
+        ("Mean (min/day)", "mean_min"),
+        ("Median (min/day)", "median_min"),
+        ("Trimmed mean, top 1% removed", "trimmed_1pct_min"),
+        ("Trimmed mean, top 2.5% removed", "trimmed_2_5pct_min"),
+        ("Minutes in days > 180 min", "over_180_min"),
+        ("Minutes in trips > 20 km", "trips_over_20km_min"),
+        ("Minutes in trips > 40 km", "trips_over_40km_min"),
+    ]
+    for label, attr in rows:
+        a = getattr(stats_a, attr)
+        b = getattr(stats_b, attr)
+        lines.append(f"| {label} | {_num(a)} | {_num(b)} | {_num(b - a)} |")
+    return lines
+
+
 def _run_part_b(
     results: dict,
     frames_2008: SurveyFrames,
@@ -1632,6 +1703,8 @@ def _run_part_b(
     results["b4_distance"] = shift_share_by(
         frames_2008, frames_2019, "distance_band", n_reps=n_reps, seed=seed
     )
+    results["b5_2008"] = b5_tail_stats(frames_2008)
+    results["b5_2019"] = b5_tail_stats(frames_2019)
     motive_order = tuple([*MOTIVE_GROUP_LABELS.values(), "unknown"])
     results["extra_sections"] += [
         _format_b1(results["b1_rows"], "2008", "2019"),
@@ -1673,6 +1746,7 @@ def _run_part_b(
                 "Household-bootstrap 95% CIs."
             ),
         ),
+        _format_b5(results["b5_2008"], results["b5_2019"], "2008", "2019"),
     ]
 
 

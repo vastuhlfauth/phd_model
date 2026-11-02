@@ -313,6 +313,35 @@ def test_motive_group_label_maps_codes_and_unknown() -> None:
     assert variation_report.motive_group_label(None) == "unknown"
 
 
+def test_b5_tail_stats_median_trim_and_contributions() -> None:
+    days = {
+        "pond_jour": [1.0, 1.0, 1.0, 1.0],
+        "total_time_min": [20.0, 40.0, 60.0, 200.0],
+    }
+    trips = {
+        "pond_jour": [1.0, 1.0, 1.0],
+        "duration_min": [30.0, 50.0, 120.0],
+        "distance_km": [5.0, 25.0, 45.0],
+    }
+    frames = _frames(days, trips)
+
+    stats = variation_report.b5_tail_stats(frames)
+
+    assert stats.mean_min == pytest.approx(80.0)
+    assert stats.median_min == pytest.approx(40.0)
+    # Top 2.5% of weight trims 0.1 units of the 200-min day:
+    # (20 + 40 + 60 + 0.9 x 200) / 3.9.
+    assert stats.trimmed_2_5pct_min == pytest.approx((120.0 + 180.0) / 3.9)
+    assert stats.over_180_min == pytest.approx(200.0 / 4.0)
+    assert stats.trips_over_20km_min == pytest.approx((50.0 + 120.0) / 4.0)
+    assert stats.trips_over_40km_min == pytest.approx(120.0 / 4.0)
+
+    lines = variation_report._format_b5(stats, stats, "A", "B")
+    text = "\n".join(lines)
+    assert "B5. Tails" in text
+    assert "| Median (min/day) | 40.0 | 40.0 | 0.0 |" in text
+
+
 def test_distance_band_table_shares_sum_to_one() -> None:
     frames = _frames(
         {},
