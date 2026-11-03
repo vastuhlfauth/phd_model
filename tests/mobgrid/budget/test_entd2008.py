@@ -302,11 +302,43 @@ def test_residence_density_by_ident_matches_proxy(
     assert result["1"] == "dense"
 
 
-def test_residence_density_by_ident_rejects_grid(
+def test_residence_density_by_ident_requires_zoning_views_for_grid(
     trips_norm: duckdb.DuckDBPyConnection,
 ) -> None:
-    with pytest.raises(ValueError, match="no density grid"):
+    with pytest.raises(ValueError, match="requires registered 2020-zoning"):
         entd2008.residence_density_by_ident(trips_norm, "grid")
+    with pytest.raises(ValueError, match="requires registered 2020-zoning"):
+        entd2008.build_trip_legs(
+            trips_norm, load_energy_config(CONFIG_PATH), density_source="grid"
+        )
+
+
+def test_entd2008_uses_registered_zoning_density_grid(
+    trips_norm: duckdb.DuckDBPyConnection,
+    synthetic_entd2008_zoning_dir: Path,
+    tmp_path: Path,
+) -> None:
+    zoning_paths = entd2008.extract_zoning_tables(
+        synthetic_entd2008_zoning_dir, tmp_path / "zon20_csv"
+    )
+    entd2008.register_zoning_views(trips_norm, zoning_paths)
+
+    residence_density = entd2008.residence_density_by_ident(trips_norm, "grid")
+    assert residence_density["1"] == "dense"
+    assert residence_density["5"] == "very_sparse"
+
+    config = load_energy_config(CONFIG_PATH)
+    entd2008.build_trip_legs(trips_norm, config, density_source="grid")
+    origin_density, destination_density, home_density = trips_norm.sql("""
+        SELECT density_ori, density_des, residence_density
+        FROM trip_legs
+        WHERE ident_dep = 'D1'
+    """).fetchone()
+    assert (origin_density, destination_density, home_density) == (
+        "dense",
+        "intermediate",
+        "dense",
+    )
 
 
 def test_person_weekday_rows_flags_non_traveller_as_immobile(

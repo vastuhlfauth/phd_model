@@ -157,6 +157,18 @@ def test_motive_column_reads_mot_seq_compl(
     assert motive == pytest.approx(7.6)
 
 
+def test_motive_source_can_apply_raw_return_home_reassignment(
+    trip_legs: duckdb.DuckDBPyConnection,
+) -> None:
+    config = load_energy_config(CONFIG_PATH)
+    emp2019.build_trip_legs(trip_legs, config, motive_source="raw_return_home")
+
+    motive = trip_legs.sql(
+        "SELECT motive FROM trip_legs WHERE ident_ind = 2"
+    ).fetchone()[0]
+    assert motive == pytest.approx(9.1)
+
+
 def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
     """A tiny, two-row k_deploc (so DuckDB's CSV type inference sees more
     than one value per column, avoiding single-row inference quirks

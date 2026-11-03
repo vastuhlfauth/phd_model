@@ -46,7 +46,7 @@ _UU = "C,C,5,2"  # STATUTCOM_UU_ORI, STATUTCOM_UU_DES, MTEMPSMAP, MTPSATTENT
 # producer-correction flag and the raw origin motive.
 _K_DEPLOC_ROWS = [
     f"D1,M1,1,1,100.0,1,1,1,20,1.5,NA,NA,1.1,1,1,7.7,7.7,{_UU},0,1.2,1.5,0,1.1,1.4",
-    f"D2,M2,2,1,100.0,1,1,1,15,3.0,NA,NA,2.1,1,1,1.1,7.6,{_UU},1,2.4,3.0,0,1.1,1.4",
+    f"D2,M2,2,1,100.0,1,1,1,15,3.0,NA,NA,2.1,1,1,1.1,7.6,{_UU},1,2.4,3.0,0,9.1,1.4",
     f"D3,M3,3,1,100.0,1,1,1,25,5.0,NA,NA,3.1,1,1,1.1,9.1,{_UU},0,4.0,5.0,0,1.1,1.4",
     # car_passenger_household
     f"D4,M4,4,1,100.0,1,1,1,25,5.0,2,0,3.2,1,1,1.1,9.1,{_UU},0,4.0,5.0,0,1.1,1.4",
@@ -287,3 +287,43 @@ def synthetic_entd2008_raw_dir(tmp_path: Path) -> Path:
     raw_dir = tmp_path / "entd2008_raw"
     write_synthetic_entd2008_csvs(raw_dir)
     return raw_dir
+
+
+def write_synthetic_entd2008_zoning_csvs(zoning_dir: Path) -> None:
+    """Write tiny SDES trip-end and residence density-grid tables."""
+    zoning_dir.mkdir(parents=True, exist_ok=True)
+    trip_rows = [
+        "IDENT_DEP;DENSITECOM_ORI;DENSITECOM_DES",
+        "D1;1;2",
+        "D2;1;1",
+        "D3;2;3",
+        "D4;1;2",
+        "D5;3;4",
+        "D6;4;4",
+        "D7;3;2",
+        "D8;2;1",
+    ]
+    residence_rows = [
+        "IDENT_MEN;DENSITECOM_RES",
+        "M1;1",
+        "M2;2",
+        "M3;3",
+        "M4;4",
+        "M5;4",
+        "M6;2",
+        "M7;4",
+        "M8;3",
+    ]
+    files = {
+        "K_DEPLOC_ENTD08_zon20_public.csv": trip_rows,
+        "Q_TCM_MEN_ENTD08_zon20_public.csv": residence_rows,
+    }
+    for name, rows in files.items():
+        (zoning_dir / name).write_text("\n".join(rows), encoding="cp1252")
+
+
+@pytest.fixture
+def synthetic_entd2008_zoning_dir(tmp_path: Path) -> Path:
+    zoning_dir = tmp_path / "entd2008_zon20"
+    write_synthetic_entd2008_zoning_csvs(zoning_dir)
+    return zoning_dir

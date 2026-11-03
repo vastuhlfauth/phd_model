@@ -164,7 +164,13 @@ def test_b2_decompositions_cover_overall_and_categories() -> None:
     frames_a = _b2_frames(1.0)
     frames_b = _b2_frames(1.2)
 
-    rows = variation_report.b2_decompositions(frames_a, frames_b, n_reps=N_REPS, seed=0)
+    rows = variation_report.b2_decompositions(
+        frames_a,
+        frames_b,
+        n_reps=N_REPS,
+        seed=0,
+        include_time_ratio=True,
+    )
 
     by_group = {row.group: row for row in rows}
     overall = by_group["overall"].result
@@ -175,15 +181,68 @@ def test_b2_decompositions_cover_overall_and_categories() -> None:
     )
     assert by_group["employed"].n_a == 60
     assert by_group["employed"].result is not None
+    assert by_group["overall"].time_ratio == pytest.approx(37.0 / 31.0)
+    assert by_group["overall"].time_ratio_ci90 is not None
     # A category absent from both surveys has no decomposition.
     assert by_group["retired"].result is None
 
-    lines = variation_report._format_b2(rows, "2008", "2019")
+    lines = variation_report._format_b2(
+        rows,
+        "2008",
+        "2019",
+        equivalence_margin=0.15,
+        secondary_equivalence_margin=0.10,
+    )
     text = "\n".join(lines)
     assert "B2. Trips x distance x speed" in text
+    assert "Time ratio 2019/2008" in text
+    assert "Equivalent at ±15%" in text
+    assert "Equivalent at ±10%" in text
     assert "| overall | 60 | 60 |" in text
     # Absent categories keep their true n with dashes.
     assert "| retired | 0 | 0 | - | - | - | - | - | - |" in text
+
+
+def test_density_grid_comparison_reports_temporal_equivalence() -> None:
+    def frames(scale: float) -> SurveyFrames:
+        n = 60
+        day_ids = np.array([f"d{i}" for i in range(n)])
+        days = {
+            "day_id": day_ids,
+            "pond_jour": np.ones(n),
+            "total_time_min": np.full(n, 30.0 * scale),
+            "population_category": np.full(n, "employed"),
+            "home_density": np.full(n, "dense"),
+            "ident_men": np.array([f"M{i // 2}" for i in range(n)]),
+        }
+        trips = {
+            "day_id": day_ids,
+            "pond_jour": np.ones(n),
+            "duration_min": np.full(n, 30.0 * scale),
+            "population_category": np.full(n, "employed"),
+            "home_density": np.full(n, "dense"),
+        }
+        return _frames(days, trips)
+
+    lines = variation_report._density_grid_comparison_lines(
+        frames(1.0),
+        frames(1.12),
+        n_reps=N_REPS,
+        seed=0,
+        equivalence_margin=0.15,
+        secondary_equivalence_margin=0.10,
+    )
+    text = "\n".join(lines)
+    assert "Time ratio 2019/2008" in text
+    assert "90% CI" in text
+    employed_time = next(
+        line
+        for line in lines
+        if line.startswith("| dense | employed | time/day (min) |")
+    )
+    assert employed_time.endswith("| 1.120 | [1.120, 1.120] | yes | no |"), (
+        employed_time
+    )
 
 
 def test_b2_and_pair1_keep_days_with_no_known_distance() -> None:
@@ -695,7 +754,10 @@ def test_distance_band_table_shares_sum_to_one() -> None:
 
 
 def test_cli_writes_report_on_synthetic_data(
-    tmp_path: Path, synthetic_emp_zip: Path, synthetic_entd2008_raw_dir: Path
+    tmp_path: Path,
+    synthetic_emp_zip: Path,
+    synthetic_entd2008_raw_dir: Path,
+    synthetic_entd2008_zoning_dir: Path,
 ) -> None:
     out_dir = tmp_path / "step12_variation"
     exit_code = variation_report.main(
@@ -706,6 +768,8 @@ def test_cli_writes_report_on_synthetic_data(
             str(synthetic_emp_zip),
             "--entd2008-data-path",
             str(synthetic_entd2008_raw_dir),
+            "--entd2008-zoning-data-path",
+            str(synthetic_entd2008_zoning_dir),
             "--config",
             str(CONFIG_PATH),
             "--bootstrap-reps",
@@ -728,15 +792,29 @@ def test_cli_writes_report_on_synthetic_data(
     assert "arrival minus departure" in report
     assert "distance-known trips" in report
     assert "median min/trip 2008" in report
+    assert "raw crow-fly distances (`V2_DVO_LOC` for ENTD 2008" in report
+    assert "B2 sensitivity: corrected distances" in report
+    assert "MDISTTOT_fin" in report
+    assert "Time ratio 2019/2008" in report
+    assert "Equivalent at ±15%" in report
+    assert "Equivalent at ±10%" in report
     assert "## C. Measurement checks" in report
     assert "C1. Rounding bounds" in report
     assert "20 draws" in report
     assert "Simulated 2008 share" in report
     assert "C2. Common distance measures" in report
-    assert "V2_MDISTTOT" in report and "MDISTTOT_decl" in report
     assert "No speed correction" in report
+    c2 = report.split("### C2. Common distance measures", 1)[1].split(
+        "### C3. Trips by motive", 1
+    )[0]
+    assert "dVO_ORIDES" in c2
+    assert "declared" not in c2
     assert "C3. Trips by motive" in report
+    assert "motive coding, not behaviour" in report
+    assert "C3 sensitivity: EMP 2019 producer sequence motive" in report
+    assert "MOT_SEQ_COMPL" in report
     assert "trips under 1 km (crow-fly)" in report
+    assert "B6.5. 2008 -> 2019 by INSEE density grid" in report
     assert (out_dir / "fig_b7a_waterfall.png").is_file()
     assert (out_dir / "fig_b7b_shift_share.png").is_file()
     assert (out_dir / "fig_b7c_recall_lag.png").is_file()

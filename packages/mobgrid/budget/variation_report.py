@@ -1,9 +1,11 @@
 """Step-12 travel-time variation report (Parts A, B and C).
 
-``python -m mobgrid.budget.variation_report --out docs/data/step12_variation``
-re-runs the step-11 loaders (``mobgrid.budget.emp2019``/``entd2008``,
-``trip_legs``) unchanged, extracts weekday person-days with trips in the
-needs scope with their day weights, and writes the step-12 report: the
+``python -m mobgrid.budget.variation_report --out docs/data/step12_variation
+--entd2008-zoning-data-path data/raw/entd2008/ENTD2008_avec_zonages_EMP``
+reuses the step-11 survey loaders and ``trip_legs`` reconstruction, with a
+harmonised return-home motive rule and optional ENTD 2008 zoning supplement,
+extracts weekday person-days with trips in the needs scope with their day
+weights, and writes the step-12 report: the
 survey-method checks of Part A (recall lag, motive crosswalk, distances,
 durations, calendar) and the decompositions of Part B (composition,
 trips x distance x speed, mode/motive/distance shift-shares, tails, the
@@ -448,11 +450,11 @@ def load_frames(
     config_path: Path = DEFAULT_CONFIG_PATH,
     *,
     density_source: str | None = None,
+    zoning_data_path: Path | None = None,
+    motive_source: emp2019.MotiveSource = "raw_return_home",
     sample_pct: float | None = None,
 ) -> SurveyFrames:
-    """Build one survey's step-12 frames, reusing the step-11 loaders
-    unchanged (``survey.extract_tables``/``register_views``/
-    ``build_trip_legs``)."""
+    """Build one survey's step-12 frames with explicit motive/density inputs."""
     config = config or load_energy_config(config_path)
     data_path = data_path or survey.DEFAULT_DATA_PATH
     density_source = density_source or survey.DEFAULT_DENSITY_SOURCE
@@ -465,7 +467,33 @@ def load_frames(
     try:
         csv_paths = survey.extract_tables(data_path, interim_dir)
         survey.register_views(con, csv_paths)
-        survey.build_trip_legs(con, config, density_source=density_source)
+        if zoning_data_path is not None:
+            if survey is not entd2008:
+                raise ValueError("zoning_data_path is only supported for ENTD 2008")
+            zoning_out_dir = (
+                interim_dir / "zon20"
+                if interim_dir is not None
+                else ROOT / "data" / "interim" / "entd2008" / "zon20"
+            )
+            zoning_csv_paths = survey.extract_zoning_tables(
+                zoning_data_path, zoning_out_dir
+            )
+            survey.register_zoning_views(con, zoning_csv_paths)
+        if survey is entd2008 and density_source == "grid":
+            if zoning_data_path is None:
+                raise ValueError(
+                    "ENTD 2008 density_source='grid' requires zoning_data_path"
+                )
+            survey.build_trip_legs(con, config, density_source=density_source)
+        elif survey is emp2019:
+            survey.build_trip_legs(
+                con,
+                config,
+                density_source=density_source,
+                motive_source=motive_source,
+            )
+        else:
+            survey.build_trip_legs(con, config, density_source=density_source)
         _PERSON_EXT_BY_SURVEY[survey.SURVEY_NAME](con)
         _create_frames_tables(con, sample_pct=sample_pct)
         days = con.sql("SELECT * FROM vr_days").fetchnumpy()
@@ -1372,9 +1400,19 @@ BASE_CHOICES = [
     "Household cars are not in ENTD 2008's four public step-11 tables: "
     "B1's V3 variant falls back to V2 for the 2008 -> 2019 pair and is "
     "computed fully within EMP 2019 pairs (`JNBVEH`).",
+    "The main 2008 -> 2019 comparison applies the raw return-home "
+    "reassignment to both surveys; EMP 2019's `MOT_SEQ_COMPL` is retained "
+    "as a C3 sensitivity check, with needs scope and groups using that "
+    "selected motive in each table.",
+    "Residence density uses the INSEE grid in both years (ENTD 2008's "
+    "2020-zoning SDES supplement, EMP 2019's published grid). The SDES "
+    "tables contain no commune codes, so C2 crow-fly distances are not "
+    "recomputed.",
     "The motive crosswalk reports raw code shares before the needs "
     "scope and before the return-trip motive reassignment, so both "
     "surveys' code inventories are visible.",
+    "EMP 2019 declared distances have unit/coding errors and are excluded "
+    "from the 2008 -> 2019 distance comparison.",
     "Distance bands use step 11's corrected distances "
     "(`trip_legs.distance_km`): the speed-plausibility correction "
     "replaces implausible declared distances, as in every step-11 "
@@ -1398,37 +1436,51 @@ def run(
     seed: int = 0,
     emp2019_data_path: Path | None = None,
     entd2008_data_path: Path | None = None,
+    entd2008_zoning_data_path: Path | None = None,
     sample_pct: float | None = None,
 ) -> dict:
     """Compute every step-12 statistic and figure; returns the results
     dict consumed by ``write_markdown`` and the tests."""
     out_dir.mkdir(parents=True, exist_ok=True)
     config = load_energy_config(config_path)
+    if entd2008_zoning_data_path is None:
+        raise ValueError(
+            "ENTD 2008's 2020-zoning data path is required for the grid comparison"
+        )
     frames_2008 = load_frames(
         entd2008,
         entd2008_data_path,
         config,
-        density_source="proxy",
+        density_source="grid",
+        zoning_data_path=entd2008_zoning_data_path,
         sample_pct=sample_pct,
     )
     frames_2019 = load_frames(
         emp2019,
         emp2019_data_path,
         config,
-        density_source="proxy",
+        density_source="grid",
+        motive_source="raw_return_home",
         sample_pct=sample_pct,
     )
-    frames_2019_grid = load_frames(
+    frames_2019_grid = frames_2019
+    frames_2019_producer = load_frames(
         emp2019,
         emp2019_data_path,
         config,
         density_source="grid",
+        motive_source="producer",
         sample_pct=sample_pct,
+    )
+    variation_config = variation.load_variation_config(
+        ROOT / "config" / "variation.yaml"
     )
     results: dict = {
         "n_reps": n_reps,
         "seed": seed,
         "sample_pct": sample_pct,
+        "equivalence_margin": variation_config.equivalence_margin,
+        "secondary_equivalence_margin": (variation_config.secondary_equivalence_margin),
         "choices": list(BASE_CHOICES),
         "n_days_2008": len(frames_2008.days["pond_jour"]),
         "n_trips_2008": len(frames_2008.trips["pond_jour"]),
@@ -1472,12 +1524,14 @@ def run(
         n_reps=n_reps,
         seed=seed,
     )
-    measurement = variation.load_variation_config(
-        ROOT / "config" / "variation.yaml"
-    ).measurement
     results["extra_sections"].append(
         measurement_checks(
-            frames_2008, frames_2019, config=measurement, n_reps=n_reps, seed=seed
+            frames_2008,
+            frames_2019,
+            config=variation_config.measurement,
+            n_reps=n_reps,
+            seed=seed,
+            b_producer=frames_2019_producer,
         )
     )
     return results
@@ -1515,6 +1569,8 @@ class B2Row:
     n_b: int
     result: variation.TripTimeDecompositionBootstrap | None
     unavailable_reason: str | None = None
+    time_ratio: float | None = None
+    time_ratio_ci90: tuple[float, float] | None = None
 
 
 def subset_frames(frames: SurveyFrames, **conditions: object) -> SurveyFrames:
@@ -1551,6 +1607,7 @@ def b2_decompositions(
     n_reps: int,
     seed: int,
     categories: tuple[str, ...] | None = None,
+    include_time_ratio: bool = False,
 ) -> list[B2Row]:
     """B2 (``T = N . L / v``) overall and by population category, with
     independent household-bootstrap CIs; a degenerate group (no days or
@@ -1580,6 +1637,23 @@ def b2_decompositions(
                 )
             except ValueError as exc:
                 unavailable_reason = str(exc)
+        time_ratio = None
+        time_ratio_ci90 = None
+        if (
+            include_time_ratio
+            and result is not None
+            and min(int(mask_a.sum()), int(mask_b.sum())) >= MIN_CELL_N
+        ):
+            ratio = _time_ratio_ci(
+                frames_a,
+                frames_b,
+                mask_a,
+                mask_b,
+                n_reps=n_reps,
+                seed=seed,
+            )
+            if ratio is not None:
+                time_ratio, time_ratio_ci90 = ratio
         rows.append(
             B2Row(
                 group=label,
@@ -1587,9 +1661,45 @@ def b2_decompositions(
                 n_b=int(mask_b.sum()),
                 result=result,
                 unavailable_reason=unavailable_reason if result is None else None,
+                time_ratio=time_ratio,
+                time_ratio_ci90=time_ratio_ci90,
             )
         )
     return rows
+
+
+def _time_ratio_ci(
+    frames_a: SurveyFrames,
+    frames_b: SurveyFrames,
+    mask_a: np.ndarray,
+    mask_b: np.ndarray,
+    *,
+    n_reps: int,
+    seed: int,
+) -> tuple[float, tuple[float, float]] | None:
+    """Return the 2019/2008 daily-time ratio and 90% household-bootstrap CI."""
+    days_a, days_b = frames_a.days, frames_b.days
+    if min(int(mask_a.sum()), int(mask_b.sum())) < MIN_CELL_N:
+        return None
+    weight_a = days_a["pond_jour"][mask_a].astype(float)
+    weight_b = days_b["pond_jour"][mask_b].astype(float)
+    time_a = days_a["total_time_min"][mask_a].astype(float)
+    time_b = days_b["total_time_min"][mask_b].astype(float)
+    if (
+        np.average(time_a, weights=weight_a) <= 0
+        or np.average(time_b, weights=weight_b) <= 0
+    ):
+        return None
+    return daily_energy.bootstrap_ratio_ci(
+        days_a["ident_men"][mask_a],
+        weight_a,
+        time_a,
+        days_b["ident_men"][mask_b],
+        weight_b,
+        time_b,
+        n_reps=n_reps,
+        seed=seed,
+    )
 
 
 def _ci_cell(value: float, ci: tuple[float, float], decimals: int = 1) -> str:
@@ -1603,7 +1713,12 @@ def _format_b2(
     title: str | None = None,
     *,
     distance_description: str = "step 11's corrected distances",
+    equivalence_margin: float | None = None,
+    secondary_equivalence_margin: float | None = None,
 ) -> list[str]:
+    equivalence_columns = equivalence_margin is not None
+    if equivalence_columns != (secondary_equivalence_margin is not None):
+        raise ValueError("both equivalence margins must be provided together")
     lines = [
         title or f"## B2. Trips x distance x speed, {label_a} -> {label_b}",
         "",
@@ -1621,16 +1736,52 @@ def _format_b2(
         "| Δ (min) [CI] | trips (min) [CI] | km/trip (min) [CI] | "
         "speed (min) [CI] | selection R (min) [CI] | "
         f"distance-known share {label_a} | distance-known share {label_b} |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
+    if equivalence_columns:
+        lines[2] += (
+            " Daily-time ratios are 2019/2008 with 90% household-bootstrap "
+            "CIs; equivalence requires the full interval inside the margin."
+        )
+        lines[4] = lines[4][:-1] + (
+            f" | Time ratio {label_b}/{label_a} | 90% CI | "
+            f"Equivalent at ±{equivalence_margin:.0%} | "
+            f"Equivalent at ±{secondary_equivalence_margin:.0%} |"
+        )
+    lines.append(
+        "|---|---|---|---|---|---|---|---|---|---|---|---|"
+        + ("---|---|---|---|" if equivalence_columns else "")
+    )
     for row in rows:
         if row.result is None or min(row.n_a, row.n_b) < MIN_CELL_N:
             lines.append(
                 f"| {row.group} | {row.n_a} | {row.n_b} | "
                 "- | - | - | - | - | - | - | - | - |"
+                + (" - | - | - | - |" if equivalence_columns else "")
             )
             continue
         point = row.result.point
+        equivalence_cells = ""
+        if equivalence_columns:
+            if row.time_ratio is None or row.time_ratio_ci90 is None:
+                equivalence_cells = " | - | - | - | -"
+            else:
+                ci = row.time_ratio_ci90
+                equivalent = (
+                    "yes"
+                    if ci[0] >= 1 - equivalence_margin
+                    and ci[1] <= 1 + equivalence_margin
+                    else "no"
+                )
+                equivalent_secondary = (
+                    "yes"
+                    if ci[0] >= 1 - secondary_equivalence_margin
+                    and ci[1] <= 1 + secondary_equivalence_margin
+                    else "no"
+                )
+                equivalence_cells = (
+                    f" | {row.time_ratio:.3f} | [{ci[0]:.3f}, {ci[1]:.3f}] | "
+                    f"{equivalent} | {equivalent_secondary}"
+                )
         lines.append(
             f"| {row.group} | {row.n_a} | {row.n_b} | "
             f"{_num(point.time_a_min)} | {_num(point.time_b_min)} | "
@@ -1640,6 +1791,7 @@ def _format_b2(
             f"{_ci_cell(point.speed_min, row.result.speed_ci)} | "
             f"{_ci_cell(point.selection_min, row.result.selection_ci)} | "
             f"{_pct(point.distance_share_a)} | {_pct(point.distance_share_b)} |"
+            + (f"{equivalence_cells}|" if equivalence_columns else "")
         )
     unavailable = [row for row in rows if row.result is None]
     if unavailable:
@@ -1824,8 +1976,8 @@ def age_band_index(age: np.ndarray) -> np.ndarray:
 
 
 #: B1's composition variants: the stratum parts crossed with the age
-#: bands. 'residence' is home_density x Île-de-France (the caller picks
-#: proxy- or grid-density frames); 'cars' is the household 0/1/2+ band.
+#: bands. 'residence' is home_density x Île-de-France; 'cars' is the
+#: household 0/1/2+ band.
 B1_VARIANTS = {
     "V1": ("sex", "category"),
     "V2": ("sex", "category", "residence"),
@@ -2159,7 +2311,7 @@ def _format_pair_results(
     lines += [
         "",
         "Composition (B1, minutes; residence uses the INSEE density grid "
-        "for within-EMP-2019 pairs):",
+        "in both surveys):",
         "",
         "| Group | Variant | Cells | Composition [CI] | Behaviour [CI] |",
         "|---|---|---|---|---|",
@@ -2312,7 +2464,8 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
     )
     ax.set_ylabel("Daily time with trips (min)")
     ax.set_title(
-        "B7a. 2008 -> 2019 daily-time change: composition, trips, km/trip, speed"
+        "B7a. 2008 -> 2019 daily-time change (crow-fly distances): "
+        "composition, trips, km/trip, speed"
     )
     fig.tight_layout()
     path = out_dir / "fig_b7a_waterfall.png"
@@ -2386,6 +2539,102 @@ def _figure_b7_recall_lag(results: dict, out_dir: Path) -> Path:
     return path
 
 
+def _density_grid_comparison_lines(
+    frames_2008: SurveyFrames,
+    frames_2019: SurveyFrames,
+    *,
+    n_reps: int,
+    seed: int,
+    equivalence_margin: float,
+    secondary_equivalence_margin: float,
+) -> list[str]:
+    """Compare trips/day and time/day within each shared residence grid class."""
+    lines = [
+        "## B6.5. 2008 -> 2019 by INSEE density grid",
+        "",
+        "Weekday person-days with needs-scope trips, by residence density grid "
+        "class and population category. Measures are trips/day and minutes/day; "
+        "n is the number of person-days. Differences use household-bootstrap "
+        "95% CIs; daily-time ratios use 90% CIs. Equivalence is established "
+        "only when the full ratio interval is within the margin. "
+        "Households are resampled independently. "
+        "ENTD 2008 classes come from the SDES 2020-zoning supplement.",
+        "",
+        "| Density grid class | Population category | Measure | n 2008 | "
+        "2008 [95% CI] | n 2019 | 2019 [95% CI] | Difference 2019 - "
+        "2008 [95% CI] | Time ratio 2019/2008 | 90% CI | "
+        f"Equivalent at ±{equivalence_margin:.0%} | "
+        f"Equivalent at ±{secondary_equivalence_margin:.0%} |",
+        "|---|---|---|---:|---|---:|---|---|---:|---|---|---|",
+    ]
+    for density in trip_legs.DENSITY_LABELS:
+        subset_2008 = subset_frames(frames_2008, home_density=density)
+        subset_2019 = subset_frames(frames_2019, home_density=density)
+        measures = {
+            "trips/day": (
+                np.ones(len(subset_2008.trips["pond_jour"])),
+                np.ones(len(subset_2019.trips["pond_jour"])),
+            ),
+            "time/day (min)": (
+                subset_2008.trips["duration_min"].astype(float),
+                subset_2019.trips["duration_min"].astype(float),
+            ),
+        }
+        rows = _daily_rate_rows(
+            subset_2008,
+            subset_2019,
+            measures,
+            n_reps=n_reps,
+            seed=seed,
+        )
+        for row in rows:
+            category = "all categories" if row.group == "overall" else row.group
+            delta_ci = _ci_cell(row.mean_b - row.mean_a, row.delta_ci, 2)
+            ratio_cell = ci_cell = verdict_cell = verdict_secondary_cell = "-"
+            if row.metric == "time/day (min)":
+                mask_a = np.ones(len(subset_2008.days["pond_jour"]), dtype=bool)
+                mask_b = np.ones(len(subset_2019.days["pond_jour"]), dtype=bool)
+                if row.group != "overall":
+                    mask_a &= subset_2008.days["population_category"] == row.group
+                    mask_b &= subset_2019.days["population_category"] == row.group
+                ratio = _time_ratio_ci(
+                    subset_2008,
+                    subset_2019,
+                    mask_a,
+                    mask_b,
+                    n_reps=n_reps,
+                    seed=seed,
+                )
+                if ratio is not None:
+                    ratio_value, ratio_ci = ratio
+                    ratio_cell = f"{ratio_value:.3f}"
+                    ci_cell = f"[{ratio_ci[0]:.3f}, {ratio_ci[1]:.3f}]"
+                    verdict_cell = (
+                        "yes"
+                        if ratio_ci[0] >= 1 - equivalence_margin
+                        and ratio_ci[1] <= 1 + equivalence_margin
+                        else "no"
+                    )
+                    verdict_secondary_cell = (
+                        "yes"
+                        if ratio_ci[0] >= 1 - secondary_equivalence_margin
+                        and ratio_ci[1] <= 1 + secondary_equivalence_margin
+                        else "no"
+                    )
+            lines.append(
+                f"| {density} | {category} | {row.metric} | {row.n_a} | "
+                f"{_suppress(row.n_a, _ci_cell(row.mean_a, row.ci_a, 2))} | "
+                f"{row.n_b} | "
+                f"{_suppress(row.n_b, _ci_cell(row.mean_b, row.ci_b, 2))} | "
+                f"{_suppress(min(row.n_a, row.n_b), delta_ci)} | "
+                f"{_suppress(min(row.n_a, row.n_b), ratio_cell)} | "
+                f"{_suppress(min(row.n_a, row.n_b), ci_cell)} | "
+                f"{_suppress(min(row.n_a, row.n_b), verdict_cell)} | "
+                f"{_suppress(min(row.n_a, row.n_b), verdict_secondary_cell)} |"
+            )
+    return lines
+
+
 def _run_part_b(
     results: dict,
     frames_2008: SurveyFrames,
@@ -2407,7 +2656,7 @@ def _run_part_b(
             "V2",
             n_reps=n_reps,
             seed=seed,
-            note="density proxy x Île-de-France",
+            note="INSEE density grid x Île-de-France",
         ),
         bootstrap_composition(
             frames_2008,
@@ -2420,8 +2669,21 @@ def _run_part_b(
             "2008's step-11 tables (see Choices made)",
         ),
     ]
+    frames_2008_crow = common_distance_frames(frames_2008, "crow_fly_km")
+    frames_2019_crow = common_distance_frames(frames_2019, "crow_fly_km")
     results["b2_rows"] = b2_decompositions(
-        frames_2008, frames_2019, n_reps=n_reps, seed=seed
+        frames_2008_crow,
+        frames_2019_crow,
+        n_reps=n_reps,
+        seed=seed,
+        include_time_ratio=True,
+    )
+    results["b2_rows_corrected"] = b2_decompositions(
+        frames_2008,
+        frames_2019,
+        n_reps=n_reps,
+        seed=seed,
+        include_time_ratio=True,
     )
     results["b3_mode"] = shift_share_by(
         frames_2008, frames_2019, "mode7", n_reps=n_reps, seed=seed
@@ -2436,10 +2698,11 @@ def _run_part_b(
     results["b5_2019"] = b5_tail_stats(frames_2019)
     # B6 pair 1 variant: EMP 2019 restricted to recall lag 1 (A1).
     results["b2_rows_lag1"] = b2_decompositions(
-        frames_2008,
-        subset_frames(frames_2019, recall_lag=1),
+        frames_2008_crow,
+        common_distance_frames(subset_frames(frames_2019, recall_lag=1), "crow_fly_km"),
         n_reps=n_reps,
         seed=seed,
+        include_time_ratio=True,
     )
     # B6 pair 2: within EMP 2019 (INSEE density grid), dense vs
     # intermediate, within category: A = intermediate, B = dense, so
@@ -2476,7 +2739,7 @@ def _run_part_b(
         for category in ("employed", "retired")
     ]
     # B6 pair 4: density x income tables, employed and retired, both
-    # surveys (ENTD 2008 with the density proxy, EMP 2019 with the grid).
+    # surveys, using the shared INSEE density grid.
     pair4_lines = [
         "## B6.4. Density and income together",
         "",
@@ -2485,18 +2748,51 @@ def _run_part_b(
         "quintile (n, weighted mean, household-bootstrap 95% CI; cells "
         f"under {MIN_CELL_N} respondents print n with `-`). The question "
         "is whether the income gradient survives within density classes, "
-        "or is the density/Île-de-France gradient in disguise.",
+        "or is the density/Île-de-France gradient in disguise. Both years "
+        "use the INSEE density grid.",
         "",
     ]
     for frames in (frames_2008, frames_2019_grid):
         for category in ("employed", "retired"):
             pair4_lines += pair4_tables(frames, category, n_reps=n_reps, seed=seed)
             pair4_lines.append("")
+    pair4_lines += _density_grid_comparison_lines(
+        frames_2008,
+        frames_2019_grid,
+        n_reps=n_reps,
+        seed=seed,
+        equivalence_margin=results["equivalence_margin"],
+        secondary_equivalence_margin=results["secondary_equivalence_margin"],
+    )
     results["pair4_lines"] = pair4_lines
     motive_order = tuple([*MOTIVE_GROUP_LABELS.values(), "unknown"])
     results["extra_sections"] += [
         _format_b1(results["b1_rows"], "2008", "2019"),
-        _format_b2(results["b2_rows"], "2008", "2019"),
+        _format_b2(
+            results["b2_rows"],
+            "2008",
+            "2019",
+            distance_description=(
+                "raw crow-fly distances (`V2_DVO_LOC` for ENTD 2008; "
+                "`dVO_ORIDES` for EMP 2019), with no speed correction"
+            ),
+            equivalence_margin=results["equivalence_margin"],
+            secondary_equivalence_margin=results["secondary_equivalence_margin"],
+        ),
+        _format_b2(
+            results["b2_rows_corrected"],
+            "2008",
+            "2019",
+            title="### B2 sensitivity: corrected distances",
+            distance_description=(
+                "ENTD 2008's step-11 corrected/fallback distance "
+                "(`distcor`, otherwise `V2_MDISTTOT`, with plausibility "
+                "correction) and EMP 2019's step-11 corrected distance "
+                "from `MDISTTOT_fin`"
+            ),
+            equivalence_margin=results["equivalence_margin"],
+            secondary_equivalence_margin=results["secondary_equivalence_margin"],
+        ),
         _format_shift_share(
             results["b3_mode"],
             _group_counts(frames_2008, "mode7"),
@@ -2542,6 +2838,12 @@ def _run_part_b(
             "2019 (lag 1)",
             title="## B6.1. Pair 1 variant: 2008 -> 2019 with EMP 2019 "
             "restricted to recall lag 1",
+            distance_description=(
+                "raw crow-fly distances (`V2_DVO_LOC` for ENTD 2008; "
+                "`dVO_ORIDES` for EMP 2019), with no speed correction"
+            ),
+            equivalence_margin=results["equivalence_margin"],
+            secondary_equivalence_margin=results["secondary_equivalence_margin"],
         ),
         _format_pair_results(
             results["pair2"],
@@ -2592,7 +2894,7 @@ def _trip_day_index(frames: SurveyFrames) -> np.ndarray:
 
 
 def common_distance_frames(frames: SurveyFrames, column: str) -> SurveyFrames:
-    """C2: reaggregate raw km, keeping all weekday days/trips (section 9.9).
+    """Reaggregate a raw distance column, keeping all weekday days/trips.
 
     Neither producer-corrected distances nor speed corrections are used.
     Missing/invalid raw distances stay unknown, never imputed.
@@ -2913,6 +3215,7 @@ def measurement_checks(
     config: variation.MeasurementConfig,
     n_reps: int,
     seed: int,
+    b_producer: SurveyFrames | None = None,
 ) -> list[str]:
     """Render section C, reusing B2/B4b and household bootstrap (section 9.9)."""
     rounding = rounding_checks(a, b, config=config, seed=seed)
@@ -2991,9 +3294,8 @@ def measurement_checks(
         "",
         "### C2. Common distance measures",
         "",
-        "No speed correction in either year. Declared uses ENTD `V2_MDISTTOT` "
-        "without `distcor` and EMP `MDISTTOT_decl`; crow-fly uses "
-        "`V2_DVO_LOC` and `dVO_ORIDES`. Neither falls back to another measure. "
+        "No speed correction in either year. Crow-fly uses `V2_DVO_LOC` "
+        "and `dVO_ORIDES`; neither falls back to another measure. "
         "Missing, non-finite or negative distances remain unknown. N and T "
         "retain all trips/days. Km/person-day sums known km over all days with "
         "trips (a lower bound when distances are missing); B2 coverage and "
@@ -3001,7 +3303,7 @@ def measurement_checks(
         "households independently in the two surveys.",
         "",
     ]
-    for column, label in (("declared_km", "declared"), ("crow_fly_km", "crow-fly")):
+    for column, label in (("crow_fly_km", "crow-fly"),):
         ca, cb = common_distance_frames(a, column), common_distance_frames(b, column)
         lines += _format_b2(
             b2_decompositions(ca, cb, n_reps=n_reps, seed=seed),
@@ -3049,22 +3351,44 @@ def measurement_checks(
         lines += ["", *durations]
     lines += [
         "",
-        "### C3. Trips by motive",
+        "### C3. Trips by motive: harmonised return-home rule",
         "",
-        "Trips per day with trips by harmonised motive group x population "
-        "category, using the existing return-home reassignment and needs scope. "
-        "Each category denominator includes days with zero trips for that "
-        "motive. n counts all category person-days, not just motive users. "
+        "EMP 2019's raw destination motive is replaced by its raw origin motive "
+        "for returns to home or a residence (codes 1.1-1.3), matching ENTD "
+        "2008's rule. This reassigned motive drives both needs scope and motive "
+        "groups. Each category denominator includes days with zero trips for "
+        "that motive. n counts all category person-days, not just motive users. "
         "Short-trip rows use strict < thresholds; missing crow-fly distances "
         "are not short trips. Thus short-distance rates are lower bounds if "
         "crow-fly distances are missing. Household-bootstrap 95% CIs for each "
         "year and the difference, with independent survey resamples.",
+        "Unemployed and other-inactive respondents' “professional” and "
+        "“home/study” changes reflect motive coding, not behaviour.",
         "",
         *_format_daily_rates(
             motive_rate_checks(a, b, config=config, n_reps=n_reps, seed=seed),
             "trips/day with trips",
         ),
     ]
+    if b_producer is not None:
+        lines += [
+            "",
+            "### C3 sensitivity: EMP 2019 producer sequence motive",
+            "",
+            "Same C3 measures and ENTD 2008 rule as above; EMP 2019 uses "
+            "`MOT_SEQ_COMPL` for both its needs scope and motive groups.",
+            "",
+            *_format_daily_rates(
+                motive_rate_checks(
+                    a,
+                    b_producer,
+                    config=config,
+                    n_reps=n_reps,
+                    seed=seed,
+                ),
+                "trips/day with trips",
+            ),
+        ]
     return lines
 
 
@@ -3078,6 +3402,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--emp2019-data-path", type=Path, default=None)
     parser.add_argument("--entd2008-data-path", type=Path, default=None)
+    parser.add_argument(
+        "--entd2008-zoning-data-path",
+        type=Path,
+        required=True,
+        help="SDES ENTD 2008 tables enriched with 2020 zoning variables",
+    )
     parser.add_argument(
         "--sample-households",
         type=float,
@@ -3093,6 +3423,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         emp2019_data_path=args.emp2019_data_path,
         entd2008_data_path=args.entd2008_data_path,
+        entd2008_zoning_data_path=args.entd2008_zoning_data_path,
         sample_pct=args.sample_households,
     )
     md_path = args.out.with_suffix(".md")

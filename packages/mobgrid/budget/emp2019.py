@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
+from typing import Literal
 
 import duckdb
 import numpy as np
@@ -41,6 +42,8 @@ from mobgrid.budget.trip_legs import (
     build_trip_legs as _shared_build_trip_legs,
 )
 from mobgrid.energy.rates import EnergyConfig
+
+MotiveSource = Literal["producer", "raw_return_home"]
 
 #: Repository root, three levels above this file (packages/mobgrid/budget).
 ROOT = Path(__file__).resolve().parents[3]
@@ -223,13 +226,42 @@ def missing_income_breakdown(con: duckdb.DuckDBPyConnection) -> dict:
     }
 
 
-def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
+def build_trips_norm(
+    con: duckdb.DuckDBPyConnection, *, motive_source: MotiveSource = "producer"
+) -> None:
     """Create the ``trips_norm`` view from EMP 2019's raw tables: the
     survey-specific half of the trip-leg reconstruction
     (``docs/data/entd2008.md``'s "Columns of the normalised trip view,
-    by survey"). ``mobgrid.budget.trip_legs.build_trip_legs`` reads this
-    view onward, shared with ENTD 2008.
+    by survey"). ``producer`` preserves ``MOT_SEQ_COMPL``; ``raw_return_home``
+    applies ENTD 2008's raw destination/origin reassignment. The latter is
+    used only for the step-12 harmonised comparison.
+    ``mobgrid.budget.trip_legs.build_trip_legs`` reads this view onward,
+    shared with ENTD 2008.
     """
+    if motive_source not in ("producer", "raw_return_home"):
+        raise ValueError(f"unknown motive_source: {motive_source!r}")
+
+    motive_sql = f"""
+        CASE WHEN d.MOT_SEQ_COMPL = {trip_legs._dbl(9999.0)} THEN NULL
+            ELSE d.MOT_SEQ_COMPL
+        END
+    """
+    if motive_source == "raw_return_home":
+        motive_sql = f"""
+            CASE
+                WHEN d.MMOTIFDES IN (
+                    {trip_legs._dbl(1.1)},
+                    {trip_legs._dbl(1.2)},
+                    {trip_legs._dbl(1.3)}
+                ) THEN CASE
+                    WHEN d.MOTPREC = {trip_legs._dbl(9999.0)} THEN NULL
+                    ELSE d.MOTPREC
+                END
+                WHEN d.MMOTIFDES = {trip_legs._dbl(9999.0)} THEN NULL
+                ELSE d.MMOTIFDES
+            END
+        """
+
     build_respondent_income(con)
     population_category_sql = trip_legs._case_sql(
         "k.SITUA",
@@ -302,14 +334,7 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
             -- code 7.8 ("go to a place for walking") has a destination
             -- and does not count.
             d.MMOTIFDES = {trip_legs._dbl(7.7)} AS is_loop_trip,
-            -- EMP's own "corrected, detailed motive of the sequence"
-            -- (MOT_SEQ_COMPL): unlike the raw, trip-level MMOTIFDES
-            -- used by `is_loop_trip` above, this is chain-level and
-            -- excludes "return home"/"return to residence" codes
-            -- (1.1-1.3).
-            CASE WHEN d.MOT_SEQ_COMPL = {trip_legs._dbl(9999.0)} THEN NULL
-                ELSE d.MOT_SEQ_COMPL
-            END AS motive,
+            ({motive_sql}) AS motive,
             ({uu_status_ori_sql}) AS uu_status_ori,
             ({uu_status_des_sql}) AS uu_status_des,
             ({uu_status_res_sql}) AS uu_status_res,
@@ -346,15 +371,18 @@ def build_trip_legs(
     bike_p0_override_w: float | None = None,
     density_source: str | None = None,
     terminal_legs: str = "declared",
+    motive_source: MotiveSource = "producer",
 ) -> None:
     """Build ``trips_norm`` from EMP 2019's raw tables, then ``trip_legs``
     from it (``trip_legs.build_trip_legs``, shared with ENTD 2008).
     ``density_source`` defaults to ``DEFAULT_DENSITY_SOURCE`` ('grid').
+    ``motive_source`` defaults to the producer's ``MOT_SEQ_COMPL``; the
+    step-12 comparison selects ``raw_return_home``.
     ``terminal_legs`` is ``trip_legs.build_trip_legs``'s own parameter
     (section 9.9's 27 October 2026 decision; see
     ``trip_legs.TERMINAL_LEGS_VARIANTS``), passed straight through.
     """
-    build_trips_norm(con)
+    build_trips_norm(con, motive_source=motive_source)
     _shared_build_trip_legs(
         con,
         config,

@@ -29,9 +29,8 @@ ROOT = Path(__file__).resolve().parents[3]
 #: Survey identity, used by `emp.py`'s CLI dispatch and report text.
 SURVEY_NAME = "ENTD 2008"
 
-#: ENTD 2008 has no density grid (section 9.9, "Quirks": "There is no
-#: density grid in ENTD 2008"): the urban-unit-status x residence-size
-#: proxy is the only option.
+#: Without the optional SDES 2020-zoning supplement, the urban-unit-status
+#: x residence-size proxy is the only density source available.
 DEFAULT_DENSITY_SOURCE = "proxy"
 
 #: Location of the four public ENTD 2008 CSVs (`docs/data/entd2008.md`).
@@ -47,6 +46,13 @@ RAW_FILES = {
     "k_individu.csv": "k_individu",
     "q_tcm_individu.csv": "q_tcm_individu",
     "q_tcm_menage.csv": "q_tcm_menage",
+}
+
+#: The SDES supplement has trip-end and residence density grids in separate
+#: tables; the remaining zoning columns are documented but unused here.
+ZONING_RAW_FILES = {
+    "K_DEPLOC_ENTD08_zon20_public.csv": "k_deploc_zon20.csv",
+    "Q_TCM_MEN_ENTD08_zon20_public.csv": "q_tcm_men_zon20.csv",
 }
 
 #: Code columns read as VARCHAR, by raw file (`docs/data/entd2008.md`'s
@@ -329,6 +335,19 @@ def extract_tables(
     return paths
 
 
+def extract_zoning_tables(zoning_dir: Path, out_dir: Path) -> dict[str, Path]:
+    """Re-encode the SDES 2020-zoning tables needed for density grids."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths: dict[str, Path] = {}
+    for source_name, dest_name in ZONING_RAW_FILES.items():
+        dest_path = out_dir / dest_name
+        if not dest_path.exists():
+            text = (zoning_dir / source_name).read_text(encoding="cp1252")
+            dest_path.write_text(text, encoding="utf-8")
+        paths[dest_name] = dest_path
+    return paths
+
+
 def register_views(con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]) -> None:
     """Register the four extracted CSVs as DuckDB views, `;`-delimited,
     with every code column forced to VARCHAR (`docs/data/entd2008.md`'s
@@ -345,18 +364,63 @@ def register_views(con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]) -
         )
 
 
-def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
+def register_zoning_views(
+    con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]
+) -> None:
+    """Register the SDES trip-end and residence zoning tables."""
+    for name, path in csv_paths.items():
+        view_name = name.removesuffix(".csv")
+        posix_path = path.as_posix()
+        identifier = "IDENT_DEP" if view_name == "k_deploc_zon20" else "IDENT_MEN"
+        con.sql(
+            f"CREATE OR REPLACE VIEW {view_name} AS SELECT * FROM read_csv("
+            f"'{posix_path}', delim=';', nullstr='', strict_mode=false, "
+            f"types={{'{identifier}': 'VARCHAR'}})"
+        )
+
+
+def _density_grid_sql(column: str) -> str:
+    mapping = {
+        str(code): label for code, label in enumerate(trip_legs.DENSITY_LABELS, start=1)
+    }
+    return trip_legs._case_sql(
+        f"CAST(TRY_CAST({column} AS INTEGER) AS VARCHAR)",
+        mapping,
+        default="NULL",
+        quote_values=True,
+    )
+
+
+def build_trips_norm(
+    con: duckdb.DuckDBPyConnection, density_source: str = "proxy"
+) -> None:
     """Create the ``trips_norm`` view from ENTD 2008's raw tables: the
     survey-specific half of the trip-leg reconstruction, converting mode
     and purpose codes to EMP 2019's (``docs/data/entd2008.md``'s
     "Columns of the normalised trip view, by survey").
     ``mobgrid.budget.trip_legs.build_trip_legs`` reads this view onward,
-    shared with EMP 2019.
+    shared with EMP 2019. The optional ``grid`` source requires the SDES
+    2020-zoning views to have been registered first.
 
     Keeps only rows with ``POIDS_JOUR > 0`` (the day weight; weekday
     trips outside the reference day are weighted 0 and dropped,
     `docs/data/entd2008.md`'s "Keys, days and weights").
     """
+    if density_source not in ("proxy", "grid"):
+        raise ValueError(f"unknown density_source: {density_source!r}")
+    if density_source == "grid":
+        registered_views = {
+            row[0]
+            for row in con.sql("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name IN ('k_deploc_zon20', 'q_tcm_men_zon20')
+            """).fetchall()
+        }
+        if registered_views != {"k_deploc_zon20", "q_tcm_men_zon20"}:
+            raise ValueError(
+                "ENTD 2008 density_source='grid' requires registered 2020-zoning tables"
+            )
+
     mtp_sql = trip_legs._case_sql("d.V2_MTP", _MODE_CONVERSION)
     motifdes_sql = trip_legs._case_sql("d.V2_MMOTIFDES", _PURPOSE_CONVERSION)
     motifori_sql = trip_legs._case_sql("d.V2_MMOTIFORI", _PURPOSE_CONVERSION)
@@ -372,6 +436,19 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
         quote_values=True,
     )
     build_respondent_income(con)
+    if density_source == "grid":
+        density_ori_grid_sql = _density_grid_sql("z.DENSITECOM_ORI")
+        density_des_grid_sql = _density_grid_sql("z.DENSITECOM_DES")
+        density_res_grid_sql = _density_grid_sql("mz.DENSITECOM_RES")
+        zoning_joins = """
+            LEFT JOIN k_deploc_zon20 z ON z.IDENT_DEP = d.IDENT_DEP
+            LEFT JOIN q_tcm_men_zon20 mz ON mz.IDENT_MEN = d.IDENT_MEN
+        """
+    else:
+        density_ori_grid_sql = "CAST(NULL AS VARCHAR)"
+        density_des_grid_sql = "CAST(NULL AS VARCHAR)"
+        density_res_grid_sql = "CAST(NULL AS VARCHAR)"
+        zoning_joins = ""
 
     con.sql(f"""
         CREATE OR REPLACE VIEW trips_norm AS
@@ -413,9 +490,9 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
             nullif(d.v2_mdescom_UU2010, '') AS uu_status_des,
             ({uu_status_res_sql}) AS uu_status_res,
             m.TU99 AS tuu_res,
-            CAST(NULL AS VARCHAR) AS density_ori_grid,
-            CAST(NULL AS VARCHAR) AS density_des_grid,
-            CAST(NULL AS VARCHAR) AS density_res_grid,
+            ({density_ori_grid_sql}) AS density_ori_grid,
+            ({density_des_grid_sql}) AS density_des_grid,
+            ({density_res_grid_sql}) AS density_res_grid,
             q.AGE AS age,
             q.AGE6 AS age_band,
             CASE
@@ -431,6 +508,7 @@ def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
         JOIN k_individu i ON i.IDENT_IND = d.IDENT_IND
         LEFT JOIN q_tcm_menage m ON m.IDENT_MEN = d.IDENT_MEN
         LEFT JOIN respondent_income ri ON ri.ident_ind = d.IDENT_IND
+        {zoning_joins}
         WHERE d.POIDS_JOUR > 0
     """)
 
@@ -447,18 +525,19 @@ def build_trip_legs(
     """Build ``trips_norm`` from ENTD 2008's raw tables, then
     ``trip_legs`` from it (``trip_legs.build_trip_legs``, shared with
     EMP 2019). ``density_source`` defaults to ``DEFAULT_DENSITY_SOURCE``
-    ('proxy'): ENTD 2008 has no density grid, so 'grid' always raises.
+    ('proxy'). 'grid' uses the optional SDES 2020-zoning supplement.
     ``terminal_legs`` is ``trip_legs.build_trip_legs``'s own parameter
     (section 9.9's 27 October 2026 decision; see
     ``trip_legs.TERMINAL_LEGS_VARIANTS``), passed straight through.
     """
-    build_trips_norm(con)
+    selected_density_source = density_source or DEFAULT_DENSITY_SOURCE
+    build_trips_norm(con, density_source=selected_density_source)
     trip_legs.build_trip_legs(
         con,
         config,
         terminal_scale=terminal_scale,
         bike_p0_override_w=bike_p0_override_w,
-        density_source=density_source or DEFAULT_DENSITY_SOURCE,
+        density_source=selected_density_source,
         terminal_legs=terminal_legs,
     )
 
@@ -559,11 +638,27 @@ def residence_density_by_ident(
     con: duckdb.DuckDBPyConnection, density_source: str
 ) -> dict:
     """Residence density for every ENTD 2008 respondent (`k_individu`
-    joined to `q_tcm_menage` through `IDENT_MEN`), proxy only (no density
-    grid in ENTD 2008, so ``density_source='grid'`` is not offered;
-    section 9.9 point 2's per-person budget)."""
+    joined to `q_tcm_menage` through `IDENT_MEN`), with the proxy or the
+    optional SDES 2020-zoning density grid (section 9.9 point 2)."""
+    if density_source == "grid":
+        registered = con.sql("""
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_name = 'q_tcm_men_zon20'
+        """).fetchone()[0]
+        if not registered:
+            raise ValueError(
+                "ENTD 2008 density_source='grid' requires registered 2020-zoning tables"
+            )
+        rows = con.sql(f"""
+            SELECT i.IDENT_IND,
+                coalesce(({_density_grid_sql("z.DENSITECOM_RES")}), 'intermediate')
+            FROM k_individu i
+            JOIN q_tcm_menage m ON m.IDENT_MEN = i.IDENT_MEN
+            LEFT JOIN q_tcm_men_zon20 z ON z.IDENT_MEN = m.IDENT_MEN
+        """).fetchall()
+        return dict(rows)
     if density_source != "proxy":
-        raise ValueError("ENTD 2008 has no density grid: use density_source='proxy'")
+        raise ValueError(f"unknown density_source: {density_source!r}")
     uu_status_res_sql = trip_legs._case_sql(
         "m.numcom_UUCat", _UU_STATUS_BY_UUCAT, quote_values=True
     )

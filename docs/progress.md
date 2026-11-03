@@ -2,7 +2,43 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-11-03 by Copilot (branch `step/variation`: step-12 measurement checks; real-data regeneration left to the user)_
+_Last updated: 2026-11-03 by Copilot (branch `step/variation`: step-12 comparison finalized; real-data regeneration left to the user)_
+
+### Step 12: final 2008 -> 2019 comparison (2026-11-03)
+
+- B2 and the B7a waterfall now use raw crow-fly distances for both surveys.
+  The B2 sensitivity table keeps step-11 corrected distances and identifies
+  the ENTD and EMP measures separately; within-EMP comparisons retain their
+  step-11 corrected distances.
+- C2 now compares only crow-fly distances. The Choices made section notes
+  EMP 2019 declared-distance unit/coding errors. C3 warns that the unemployed
+  and other-inactive professional/home-study shifts reflect motive coding.
+- Added 2019/2008 daily-time ratios, 90% household-bootstrap CIs, and the
+  configured ±15%/±10% equivalence verdicts to cross-year B2 rows and B6.5.
+- Validation: 36 passed in `test_variation_report.py`; Ruff check and format
+  checks passed. No other tests or real-data report runs were performed.
+- Regenerate the report in the user's terminal with:
+  `uv run python -m mobgrid.budget.variation_report --out docs\data\step12_variation --entd2008-zoning-data-path data\raw\entd2008\ENTD2008_avec_zonages_EMP`
+- Existing generated report/figure changes remain uncommitted and untouched.
+
+### Step 12: motive and density-grid consistency (2026-11-03)
+
+- The main comparison now applies ENTD 2008's raw return-home reassignment
+  (`MMOTIFDES`/`MOTPREC`) to EMP 2019 too. It drives both needs scope and
+  motive groups; EMP's `MOT_SEQ_COMPL` remains a separate C3 sensitivity table.
+- Added the SDES 2020-zoning joins for ENTD 2008. The zoning-variable
+  inventory is in `docs/data/entd2008.md`; the supplement has no commune-code
+  columns, so existing crow-fly distances are unchanged.
+- Residence density grids join for every household. Of 132,880 trip keys,
+  624 origin and 583 destination density codes are missing/invalid; the
+  shared trip-leg grid fallback remains `intermediate`.
+- Added B6.5: 2008 -> 2019 trips/day and minutes/day by residence density-grid
+  class and population category.
+- Validation: 71 passed in the three touched budget test modules; Ruff
+  check/format clean. No full test suite or real-data report run.
+- Regenerate the report with:
+  `uv run python -m mobgrid.budget.variation_report --out docs\data\step12_variation --entd2008-zoning-data-path data\raw\entd2008\ENTD2008_avec_zonages_EMP`
+- The pre-existing uncommitted report and figure changes are preserved.
 
 ### Step 12: C. Measurement checks (2026-11-03, branch `step/variation`)
 
