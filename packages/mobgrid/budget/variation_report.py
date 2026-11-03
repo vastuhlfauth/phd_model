@@ -10,7 +10,8 @@ survey-method checks of Part A (recall lag, motive crosswalk, distances,
 durations, calendar) and the decompositions of Part B (composition,
 trips x distance x speed, mode/motive/distance shift-shares, tails, the
 comparison pairs and their figures), and Part C measurement checks
-(rounding bounds, common distances and trips by motive).
+(rounding bounds, common distances, trips by motive, the measurement
+ledger and the official-scope replication).
 Step-11 outputs are not touched.
 
 Bootstrap intervals resample households within each survey,
@@ -629,9 +630,7 @@ def _official_scope_estimates(
     }
 
 
-def _format_official_scope(
-    results_2008: dict, results_2019: dict
-) -> list[str]:
+def _format_official_scope(results_2008: dict, results_2019: dict) -> list[str]:
     published = {
         "trips_per_person": (3.15, 3.04, "trips/person"),
         "minutes_per_trip": (17.9, 20.0, "min/trip"),
@@ -1301,9 +1300,7 @@ def _suppress(n: int, text: str) -> str:
     return text if n >= MIN_CELL_N else "-"
 
 
-def _equivalence_verdict(
-    ci: tuple[float, float], margin: float
-) -> str:
+def _equivalence_verdict(ci: tuple[float, float], margin: float) -> str:
     """Classify a 90% interval against a symmetric equivalence margin."""
     lower, upper = 1.0 - margin, 1.0 + margin
     if ci[0] >= lower and ci[1] <= upper:
@@ -1707,7 +1704,19 @@ def run(
             n_reps=n_reps,
             seed=seed,
             b_producer=frames_2019_producer,
+            results=results,
         )
+    )
+    results["measurement_ledger"] = measurement_ledger(
+        frames_2008,
+        frames_2019,
+        results,
+        config=variation_config.measurement,
+        n_reps=n_reps,
+        seed=seed,
+    )
+    results["extra_sections"].append(
+        _format_measurement_ledger(results["measurement_ledger"])
     )
     results["extra_sections"].append(
         _format_official_scope(
@@ -1882,7 +1891,9 @@ def _time_ratio_ci(
     )
 
 
-def _ci_cell(value: float, ci: tuple[float, float], decimals: int = 1) -> str:
+def _ci_cell(
+    value: float, ci: tuple[float, float] | np.ndarray, decimals: int = 1
+) -> str:
     return f"{_num(value, decimals)} [{_num(ci[0], decimals)}, {_num(ci[1], decimals)}]"
 
 
@@ -2227,13 +2238,16 @@ def composition_pair_cells(
 @dataclass(frozen=True)
 class B1Row:
     """One B1 variant's composition/behaviour split with household-
-    bootstrap 95% CIs."""
+    bootstrap 95% CIs; optional ledger vectors are minutes/day,
+    trips/day and minutes/trip effects and their 95% bounds."""
 
     variant: str
     point: variation.Composition
     composition_ci: tuple[float, float]
     behaviour_ci: tuple[float, float]
     note: str = ""
+    ledger_effect: np.ndarray | None = None
+    ledger_bounds: np.ndarray | None = None
 
 
 def bootstrap_composition(
@@ -2258,9 +2272,38 @@ def bootstrap_composition(
     point = variation.composition_reweight(
         cells_a, weight_a, time_a, cells_b, weight_b, time_b
     )
+    include_rates = (
+        variant == "V2"
+        and "trips_per_day" in frames_a.days
+        and "trips_per_day" in frames_b.days
+    )
+
+    def rate_effects(
+        time_split: variation.Composition, wa: np.ndarray, wb: np.ndarray
+    ) -> tuple[float, float]:
+        trips_split = variation.composition_reweight(
+            cells_a,
+            wa,
+            frames_a.days["trips_per_day"],
+            cells_b,
+            wb,
+            frames_b.days["trips_per_day"],
+        )
+        return (
+            trips_split.composition_min,
+            time_split.counterfactual_a_min / trips_split.counterfactual_a_min
+            - time_split.mean_a_min / trips_split.mean_a_min,
+        )
+
+    ledger_effect = (
+        np.array([point.composition_min, *rate_effects(point, weight_a, weight_b)])
+        if include_rates
+        else None
+    )
     seed_a, seed_b = np.random.SeedSequence(seed).spawn(2)
     rng_a, rng_b = np.random.default_rng(seed_a), np.random.default_rng(seed_b)
     reps = np.full((len(range(n_reps)), 2), np.nan)
+    rate_reps = np.full((n_reps, 2), np.nan)
     for rep in range(n_reps):
         w_a = weight_a * variation.household_multipliers(
             frames_a.days["ident_men"], rng_a
@@ -2277,6 +2320,8 @@ def bootstrap_composition(
         except ValueError:
             continue
         reps[rep] = (result.composition_min, result.behaviour_min)
+        if include_rates:
+            rate_reps[rep] = rate_effects(result, w_a, w_b)
     valid = reps[np.isfinite(reps).all(axis=1)]
     if len(valid) == 0:
         raise ValueError("household bootstrap produced no valid replicates")
@@ -2287,6 +2332,18 @@ def bootstrap_composition(
         composition_ci=(float(intervals[0, 0]), float(intervals[1, 0])),
         behaviour_ci=(float(intervals[0, 1]), float(intervals[1, 1])),
         note=note,
+        ledger_effect=ledger_effect,
+        ledger_bounds=(
+            np.vstack(
+                [
+                    intervals[:, 0],
+                    _ledger_interval(rate_reps[:, 0]),
+                    _ledger_interval(rate_reps[:, 1]),
+                ]
+            )
+            if include_rates
+            else None
+        ),
     )
 
 
@@ -3247,6 +3304,8 @@ class DailyRateRow:
     ci_a: tuple[float, float]
     ci_b: tuple[float, float]
     delta_ci: tuple[float, float]
+    replicates_a: np.ndarray | None = None
+    replicates_b: np.ndarray | None = None
 
 
 def _daily_rate_rows(
@@ -3323,6 +3382,8 @@ def _daily_rate_rows(
                     interval(replicates[0][:, i]),
                     interval(replicates[1][:, i]),
                     interval(replicates[1][:, i] - replicates[0][:, i]),
+                    replicates[0][:, i],
+                    replicates[1][:, i],
                 )
             )
     return rows
@@ -3358,6 +3419,23 @@ def motive_rate_checks(
         & (frames.trips["crow_fly_km"] < config.short_distance_km)
         for frames in (a, b)
     )
+    measures["intra-commune trips (crow-fly = 0)"] = tuple(
+        frames.trips["crow_fly_km"] == 0 for frames in (a, b)
+    )
+    measures["total trips"] = tuple(
+        np.ones(len(frames.trips["pond_jour"])) for frames in (a, b)
+    )
+    measures["total minutes"] = tuple(
+        frames.trips["duration_min"].astype(float) for frames in (a, b)
+    )
+    measures["short-trip minutes"] = tuple(
+        np.where(
+            frames.trips["duration_min"] < config.short_duration_min,
+            frames.trips["duration_min"],
+            0.0,
+        )
+        for frames in (a, b)
+    )
     return _daily_rate_rows(a, b, measures, n_reps=n_reps, seed=seed)
 
 
@@ -3386,9 +3464,21 @@ def measurement_checks(
     n_reps: int,
     seed: int,
     b_producer: SurveyFrames | None = None,
+    results: dict | None = None,
 ) -> list[str]:
     """Render section C, reusing B2/B4b and household bootstrap (section 9.9)."""
     rounding = rounding_checks(a, b, config=config, seed=seed)
+    rates = motive_rate_checks(a, b, config=config, n_reps=n_reps, seed=seed)
+    producer_rates = (
+        motive_rate_checks(a, b_producer, config=config, n_reps=n_reps, seed=seed)
+        if b_producer is not None
+        else None
+    )
+    if results is not None:
+        results["rounding_checks"] = rounding
+        results["motive_rates"] = rates
+        results["motive_rates_producer"] = producer_rates
+    hidden_rates = {"total trips", "total minutes", "short-trip minutes"}
     lines = [
         "## C. Measurement checks",
         "",
@@ -3476,7 +3566,9 @@ def measurement_checks(
     for column, label in (("crow_fly_km", "crow-fly"),):
         ca, cb = common_distance_frames(a, column), common_distance_frames(b, column)
         lines += _format_b2(
-            b2_decompositions(ca, cb, n_reps=n_reps, seed=seed),
+            results["b2_rows"]
+            if results is not None
+            else b2_decompositions(ca, cb, n_reps=n_reps, seed=seed),
             "2008",
             "2019",
             title=f"#### {label}: B2",
@@ -3536,11 +3628,11 @@ def measurement_checks(
         "“home/study” changes reflect motive coding, not behaviour.",
         "",
         *_format_daily_rates(
-            motive_rate_checks(a, b, config=config, n_reps=n_reps, seed=seed),
+            [row for row in rates if row.metric not in hidden_rates],
             "trips/day with trips",
         ),
     ]
-    if b_producer is not None:
+    if producer_rates is not None:
         lines += [
             "",
             "### C3 sensitivity: EMP 2019 producer sequence motive",
@@ -3549,16 +3641,488 @@ def measurement_checks(
             "`MOT_SEQ_COMPL` for both its needs scope and motive groups.",
             "",
             *_format_daily_rates(
-                motive_rate_checks(
-                    a,
-                    b_producer,
-                    config=config,
-                    n_reps=n_reps,
-                    seed=seed,
-                ),
+                [row for row in producer_rates if row.metric not in hidden_rates],
                 "trips/day with trips",
             ),
         ]
+    return lines
+
+
+@dataclass(frozen=True)
+class MeasurementLedgerRow:
+    """C4 effects on minutes/day, trips/day and minutes/trip (section 9.9)."""
+
+    key: str
+    label: str
+    effect: np.ndarray
+    bounds: np.ndarray
+    source: str
+    n: int
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class MeasurementLedger:
+    """C4 estimates and a sensitivity envelope, not a joint confidence interval."""
+
+    rows: tuple[MeasurementLedgerRow, ...]
+    observed: np.ndarray
+    residual_bounds: np.ndarray
+    n: int
+    diagnostics: tuple[str, ...]
+
+
+def _ledger_interval(values: np.ndarray) -> np.ndarray:
+    """Percentile 95% interval from existing finite household replicates."""
+    valid = values[np.isfinite(values)]
+    return np.percentile(valid, [2.5, 97.5]) if len(valid) else np.full(2, np.nan)
+
+
+def _ledger_metrics(
+    rates: list[DailyRateRow], side: str, summary: LagRow | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reuse C3 totals and their joint replicates; minutes/trip is T/N."""
+    overall = {row.metric: row for row in rates if row.group == "overall"}
+    time, trips = overall["total minutes"], overall["total trips"]
+    t, n = getattr(time, f"mean_{side}"), getattr(trips, f"mean_{side}")
+    rt = getattr(time, f"replicates_{side}")
+    rn = getattr(trips, f"replicates_{side}")
+    if rt is None or rn is None:
+        raise ValueError("C4 requires the cached C3 household replicates")
+    ratio = np.divide(rt, rn, out=np.full_like(rt, np.nan), where=rn > 0)
+    point = (
+        np.array(
+            [summary.time_per_day_min, summary.trips_per_day, summary.minutes_per_trip]
+        )
+        if summary is not None
+        else np.array([t, n, t / n])
+    )
+    return point, np.column_stack([rt, rn, ratio])
+
+
+def _calendar_cells(frames: SurveyFrames) -> np.ndarray:
+    """A5 weekday x month cells, retaining missing components explicitly."""
+    days = frames.days
+    weekdays = np.zeros(len(days["pond_jour"]), dtype=int)
+    months = np.zeros_like(weekdays)
+    weekday_names = np.char.lower(
+        np.char.strip(days["described_weekday_name"].astype(str))
+    )
+    month_names = np.char.lower(np.char.strip(days["described_month_name"].astype(str)))
+    for label, code in _FRENCH_WEEKDAY_NUM.items():
+        weekdays[weekday_names == label] = code
+    for label, code in _FRENCH_MONTH_NUM.items():
+        months[month_names == label] = code
+    return weekdays * (len(_FRENCH_MONTH_NUM) + 1) + months
+
+
+def _calendar_and_recall_effects(
+    a: SurveyFrames,
+    b: SurveyFrames,
+    results: dict,
+    b_reps: np.ndarray,
+    *,
+    n_reps: int,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str, int]:
+    """C4b/f: new paired contrasts on the existing household-bootstrap draws."""
+    if n_reps <= 0 or len(b_reps) != n_reps:
+        raise ValueError("C4 must use the same positive replicate count as C3")
+    lag_rows = results["lag_table"]
+    all_days = lag_rows[-1]
+    observed = np.array(
+        [
+            all_days.time_per_day_min,
+            all_days.trips_per_day,
+            all_days.minutes_per_trip,
+        ]
+    )
+    early = [row for row in lag_rows if row.label in ("1", "2", "3")]
+    early_n = sum(row.n_days for row in early)
+    known_early = [row for row in early if row.n_days > 0]
+    early_means = np.full(3, np.nan)
+    if known_early:
+        mix = np.array([row.weighted_share for row in known_early])
+        t = np.average([row.time_per_day_min for row in known_early], weights=mix)
+        n = np.average([row.trips_per_day for row in known_early], weights=mix)
+        early_means = np.array([t, n, t / n])
+    early_mask = np.isfinite(b.days["recall_lag"]) & (
+        (b.days["recall_lag"] >= 1) & (b.days["recall_lag"] <= 3)
+    )
+    codes_a, codes_b = _calendar_cells(a), _calendar_cells(b)
+    n_cells = (len(_FRENCH_WEEKDAY_NUM) + 1) * (len(_FRENCH_MONTH_NUM) + 1)
+    values = np.column_stack([b.days["total_time_min"], b.days["trips_per_day"]])
+    weight_a = a.days["pond_jour"].astype(float)
+    weight_b = b.days["pond_jour"].astype(float)
+
+    def calendar_means(wa: np.ndarray, wb: np.ndarray) -> np.ndarray:
+        target = np.bincount(codes_a, weights=wa, minlength=n_cells)
+        source = np.bincount(codes_b, weights=wb, minlength=n_cells)
+        if wa.sum() <= 0 or np.any((target > 0) & (source <= 0)):
+            return np.full(3, np.nan)
+        factors = np.divide(target, source, out=np.zeros(n_cells), where=source > 0)
+        weights = wb * factors[codes_b]
+        t, n = np.average(values, axis=0, weights=weights)
+        return np.array([t, n, t / n])
+
+    calendar = observed - calendar_means(weight_a, weight_b)
+    target = np.bincount(codes_a, weights=weight_a, minlength=n_cells)
+    source = np.bincount(codes_b, weights=weight_b, minlength=n_cells)
+    unmatched = float(target[source <= 0].sum() / target.sum())
+    note = (
+        "Observed minus EMP reweighted to the ENTD weekday x month mix. "
+        "Missing weekday/month components remain explicit cells. "
+        f"Unmatched target weight: {_pct(unmatched)}."
+    )
+    if unmatched > 0:
+        note += " Calendar effect unavailable; no pooling or renormalisation."
+    recall_reps = np.full_like(b_reps, np.nan)
+    calendar_reps = np.full_like(b_reps, np.nan)
+    seed_a, seed_b = np.random.SeedSequence(seed).spawn(2)
+    rng_a, rng_b = np.random.default_rng(seed_a), np.random.default_rng(seed_b)
+    for rep in range(n_reps):
+        wa = weight_a * variation.household_multipliers(a.days["ident_men"], rng_a)
+        wb = weight_b * variation.household_multipliers(b.days["ident_men"], rng_b)
+        if wb[early_mask].sum() > 0:
+            t, n = np.average(values[early_mask], axis=0, weights=wb[early_mask])
+            recall_reps[rep] = b_reps[rep] - np.array([t, n, t / n])
+        calendar_reps[rep] = b_reps[rep] - calendar_means(wa, wb)
+    if unmatched > 0:
+        calendar_reps[:] = np.nan
+    valid_calendar_reps = int(np.isfinite(calendar_reps).all(axis=1).sum())
+    note += f" Valid calendar replicates: {valid_calendar_reps}/{n_reps}."
+    return (
+        observed - early_means,
+        np.array([_ledger_interval(col) for col in recall_reps.T]),
+        calendar,
+        np.array([_ledger_interval(col) for col in calendar_reps.T]),
+        note,
+        early_n,
+    )
+
+
+def measurement_ledger(
+    a: SurveyFrames,
+    b: SurveyFrames,
+    results: dict,
+    *,
+    config: variation.MeasurementConfig,
+    n_reps: int,
+    seed: int,
+) -> MeasurementLedger:
+    """C4 measurement effects and extreme-bound residuals (section 9.9).
+
+    Existing C1/A1/B1/B2/C3 estimates are consumed, never rerun. Short-trip
+    restoration is negated to express measurement bias; calendar effects
+    likewise use observed minus reweighted EMP. Effects need not be additive.
+    """
+    rates = results["motive_rates"]
+    point_a, reps_a = _ledger_metrics(rates, "a", results["entd_overall"])
+    point_b, reps_b = _ledger_metrics(rates, "b", results["lag_table"][-1])
+    n = min(len(a.days["pond_jour"]), len(b.days["pond_jour"]))
+    observed = point_b - point_a
+    changes = results["rounding_checks"]["changes"]
+    draws = np.array([*changes["nearest"]["overall"], *changes["up"]["overall"]])
+    rounding_bounds = np.array(
+        [
+            [draws.min(), draws.max()],
+            [0.0, 0.0],
+            [draws.min() / point_a[1], draws.max() / point_a[1]],
+        ]
+    )
+    rows = [
+        MeasurementLedgerRow(
+            "a",
+            "Duration rounding",
+            np.array([draws.mean(), 0.0, draws.mean() / point_a[1]]),
+            rounding_bounds,
+            "C1",
+            n,
+            "Nearest and round-up draw extrema; minutes/trip divides by "
+            "2008 trips/day. Bounds, not a confidence interval.",
+        )
+    ]
+    recall, recall_bounds, calendar, calendar_bounds, calendar_note, early_n = (
+        _calendar_and_recall_effects(a, b, results, reps_b, n_reps=n_reps, seed=seed)
+    )
+    rows.append(
+        MeasurementLedgerRow(
+            "b",
+            "Recall lag",
+            recall,
+            recall_bounds,
+            "A1",
+            min(n, early_n),
+            "EMP all days minus lag 1-3 days; missing lag stays in all days. "
+            "Paired household-bootstrap 95% CIs."
+            + (" No lag 1-3 days: unavailable." if not early_n else ""),
+        )
+    )
+    producer_rates = results["motive_rates_producer"]
+    if producer_rates is None:
+        raise ValueError("C4 requires the C3 producer-motive sensitivity estimates")
+    producer, producer_reps = _ledger_metrics(producer_rates, "b")
+    motive_bounds = np.array(
+        [
+            _ledger_interval(p) - _ledger_interval(h)[::-1]
+            for p, h in zip(producer_reps.T, reps_b.T, strict=True)
+        ]
+    )
+    producer_n = next(row.n_b for row in producer_rates if row.group == "overall")
+    rows.append(
+        MeasurementLedgerRow(
+            "c",
+            "Motive processing",
+            producer - point_b,
+            motive_bounds,
+            "C3 sensitivity",
+            min(n, producer_n),
+            "Producer MOT_SEQ_COMPL minus harmonised change (2008 cancels). "
+            "Envelope of marginal 95% CIs, not a CI for the contrast.",
+        )
+    )
+    crow = results["b2_rows"][0].result
+    corrected = results["b2_rows_corrected"][0].result
+    distance_note = "Changes the decomposition only, not the totals."
+    if crow is None or corrected is None:
+        distance_note += " The km/trip-term contrast is unavailable."
+    else:
+        distance_bounds = (
+            np.asarray(corrected.distance_ci) - np.asarray(crow.distance_ci)[::-1]
+        )
+        distance_note += (
+            " Corrected minus crow-fly km/trip term: "
+            + _ci_cell(
+                corrected.point.distance_min - crow.point.distance_min,
+                distance_bounds,
+                2,
+            )
+            + " min/day (marginal-CI envelope, not a contrast CI)."
+        )
+    rows.append(
+        MeasurementLedgerRow(
+            "d",
+            "Distance measurement",
+            np.zeros(3),
+            np.zeros((3, 2)),
+            "B2 sensitivity / B2",
+            n,
+            distance_note,
+        )
+    )
+    overall = {row.metric: row for row in rates if row.group == "overall"}
+    short = overall[f"trips under {config.short_duration_min:g} min"]
+    short_time = overall["short-trip minutes"]
+    assert short.replicates_a is not None and short.replicates_b is not None
+    assert short_time.replicates_a is not None
+    deficit = short.mean_a - short.mean_b
+    mean_short = short_time.mean_a / short.mean_a if short.mean_a > 0 else np.nan
+    restored_time = deficit * mean_short if deficit != 0 else 0.0
+    restored_trips = point_b[1] + deficit
+    restoration = np.array(
+        [
+            restored_time,
+            deficit,
+            (point_b[0] + restored_time) / restored_trips - point_b[2]
+            if restored_trips > 0
+            else np.nan,
+        ]
+    )
+    deficit_reps = short.replicates_a - short.replicates_b
+    mean_short_reps = np.divide(
+        short_time.replicates_a,
+        short.replicates_a,
+        out=np.full(n_reps, np.nan),
+        where=short.replicates_a > 0,
+    )
+    added_time = np.where(deficit_reps != 0, deficit_reps * mean_short_reps, 0.0)
+    adjusted_ratio = np.divide(
+        reps_b[:, 0] + added_time,
+        reps_b[:, 1] + deficit_reps,
+        out=np.full(n_reps, np.nan),
+        where=reps_b[:, 1] + deficit_reps > 0,
+    )
+    short_effect_reps = -np.column_stack(
+        [added_time, deficit_reps, adjusted_ratio - reps_b[:, 2]]
+    )
+    short_bounds = np.array([_ledger_interval(col) for col in short_effect_reps.T])
+    short_days = np.bincount(
+        _trip_day_index(a),
+        weights=a.trips["duration_min"] < config.short_duration_min,
+        minlength=len(a.days["pond_jour"]),
+    )
+    short_n = (
+        min(n, int(np.sum(short_days > 0))) if short.mean_a > 0 or deficit != 0 else n
+    )
+    rows.append(
+        MeasurementLedgerRow(
+            "e",
+            "Short trips missing in 2019",
+            -restoration,
+            short_bounds,
+            "C3 / C4",
+            short_n,
+            "Bias = observed minus restored EMP; restoration adds the "
+            f"2008-minus-2019 rate of trips under {config.short_duration_min:g} "
+            "min at their 2008 mean duration. Household-bootstrap 95% CIs."
+            f" Restoration (adjusted minus observed): {restoration[0]:+.3f} "
+            f"min/day, {restoration[1]:+.3f} trips/day, "
+            f"{restoration[2]:+.3f} min/trip."
+            + (
+                " No 2008 short trips: time/mean-duration effects unavailable."
+                if short.mean_a <= 0 and deficit != 0
+                else ""
+            ),
+        )
+    )
+    rows.append(
+        MeasurementLedgerRow(
+            "f",
+            "Calendar",
+            calendar,
+            calendar_bounds,
+            "A5 / C4",
+            n,
+            calendar_note + " Household-bootstrap 95% CIs.",
+        )
+    )
+    composition = next(row for row in results["b1_rows"] if row.variant == "V2")
+    if composition.ledger_effect is None or composition.ledger_bounds is None:
+        raise ValueError("C4 requires B1 V2 time/trip composition estimates")
+    rows.append(
+        MeasurementLedgerRow(
+            "g",
+            "Composition (not a measurement effect)",
+            composition.ledger_effect,
+            composition.ledger_bounds,
+            "B1 V2",
+            n,
+            "2008 reweighted to 2019 structure using the existing V2 cells "
+            "and household draws. Household-bootstrap 95% CIs; excluded "
+            "from the residual.",
+        )
+    )
+    removable = [row.bounds for row in rows if row.key in "abcef"]
+    residual_bounds = observed[:, None] - np.sum(removable, axis=0)[:, ::-1]
+    diagnostics = []
+    delta_trips = observed[1]
+    delta_trip_reps = reps_b[:, 1] - reps_a[:, 1]
+    for metric in (
+        f"trips under {config.short_duration_min:g} min",
+        "intra-commune trips (crow-fly = 0)",
+    ):
+        rate = overall[metric]
+        assert rate.replicates_a is not None and rate.replicates_b is not None
+        delta_reps = rate.replicates_b - rate.replicates_a
+        share_reps = np.divide(
+            delta_reps,
+            delta_trip_reps,
+            out=np.full(n_reps, np.nan),
+            where=delta_trip_reps != 0,
+        )
+        share = (
+            _pct((rate.mean_b - rate.mean_a) / delta_trips)
+            if delta_trips != 0
+            else "undefined (zero total trip change)"
+        )
+        share_bounds = _ledger_interval(share_reps)
+        diagnostics.append(
+            f"{metric}: 2019 - 2008 = "
+            f"{_ci_cell(rate.mean_b - rate.mean_a, rate.delta_ci, 3)} trips/day; "
+            f"share of total trip change = {share} "
+            f"[{_pct(share_bounds[0])}, {_pct(share_bounds[1])}] (95% CIs)."
+        )
+    diagnostics += [
+        "Forgotten trips lower measured time "
+        "and raise mean duration when the missing trips are shorter. "
+        "The table reports the opposite signs (measurement bias).",
+        "Intra-commune is the zero-crow-fly convention, not a commune-code "
+        "join; missing/negative crow-fly distances do not count as zero. "
+        "The short-duration and intra-commune diagnostics overlap and are "
+        "not added together.",
+    ]
+    return MeasurementLedger(
+        tuple(rows), observed, residual_bounds, n, tuple(diagnostics)
+    )
+
+
+def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
+    """Render C4 with existing suppression and explicitly non-additive bounds."""
+    lines = [
+        "### C4. Measurement ledger",
+        "",
+        "Weekday person-days with needs-scope trips, day weights (section 9.9). "
+        "T = minutes/day, N = trips/day, M = weighted total minutes/trips "
+        "(not an average of person-day ratios). Brackets below are ordered "
+        "T; N; M. Unavailable estimates print `-`.",
+        "",
+        "| Difference | Effect on time change (min/day) | "
+        "Effect on trips/day change | Effect on min/trip change | "
+        "Interval or bounds (T; N; M) | Source section |",
+        "|---|---:|---:|---:|---|---|",
+    ]
+    for row in ledger.rows:
+        cells = [
+            _suppress(
+                row.n,
+                f"[{_num(low, 3)}, {_num(high, 3)}]"
+                if row.key == "a" and index != 1
+                else _num(value, 3),
+            )
+            for index, (value, (low, high)) in enumerate(
+                zip(row.effect, row.bounds, strict=True)
+            )
+        ]
+        bounds = "; ".join(
+            f"[{_num(low, 3)}, {_num(high, 3)}]" for low, high in row.bounds
+        )
+        lines.append(
+            f"| {row.key}. {row.label} | "
+            + " | ".join(cells)
+            + f" | {_suppress(row.n, bounds)} | {row.source} |"
+        )
+    lines += [
+        "",
+        "A positive effect means the difference raises the measured 2019 value "
+        "(and hence the 2008 -> 2019 change). Row e reports measurement bias, "
+        "not the opposite-signed restoration. Row f likewise reports observed "
+        "minus calendar-reweighted EMP, not the correction.",
+        "",
+    ]
+    for row in ledger.rows:
+        if row.n >= MIN_CELL_N:
+            lines.append(f"- {row.key}: {row.note}")
+        elif not np.isfinite(row.effect).all():
+            lines.append(
+                f"- {row.key}: unavailable (missing or suppressed reference sample)."
+            )
+    if ledger.n >= MIN_CELL_N:
+        lines += ["", *[f"- {note}" for note in ledger.diagnostics]]
+    residual_n = min(ledger.n, *(row.n for row in ledger.rows if row.key in "abcef"))
+    lines += [
+        "",
+        "#### Residual change",
+        "",
+        "| Quantity | Time (min/day) | Trips/day | Minutes/trip |",
+        "|---|---:|---:|---:|",
+        "| Observed change | "
+        + " | ".join(_suppress(ledger.n, _num(v, 3)) for v in ledger.observed)
+        + " |",
+        "| Residual range | "
+        + " | ".join(
+            _suppress(residual_n, f"[{_num(lo, 3)}, {_num(hi, 3)}]")
+            for lo, hi in ledger.residual_bounds
+        )
+        + " |",
+        "",
+        "Residual bounds = observed change minus the highest/lowest "
+        "combinations of bounds for a, b, c, e and f; equivalently add "
+        "the short-trip restoration while removing a, b, c and f. "
+        "These are sensitivity ranges, not a confidence interval: CIs "
+        "are not added across rows, and overlapping checks are not an "
+        "identified causal decomposition. Distance and composition are "
+        "excluded. Missing required effects make the residual unavailable.",
+    ]
     return lines
 
 

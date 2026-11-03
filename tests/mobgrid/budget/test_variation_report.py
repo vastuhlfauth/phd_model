@@ -259,9 +259,7 @@ def test_density_grid_comparison_reports_temporal_equivalence() -> None:
     )
     assert employed_time.endswith(
         "| 1.120 | [1.120, 1.120] | equivalent | different |"
-    ), (
-        employed_time
-    )
+    ), employed_time
 
 
 def test_b2_and_pair1_keep_days_with_no_known_distance() -> None:
@@ -846,6 +844,10 @@ def test_cli_writes_report_on_synthetic_data(
     assert "C3 sensitivity: EMP 2019 producer sequence motive" in report
     assert "MOT_SEQ_COMPL" in report
     assert "trips under 1 km (crow-fly)" in report
+    assert "C4. Measurement ledger" in report
+    assert "Residual change" in report
+    assert report.index("C3 sensitivity") < report.index("C4. Measurement ledger")
+    assert report.index("C4. Measurement ledger") < report.index("C5.")
     assert "C5. Official-scope replication" in report
     assert "IMMODEP_A`-`G" in report
     assert "SDES 2008" in report and "SDES 2019" in report
@@ -888,6 +890,330 @@ def _measurement_config() -> variation_report.variation.MeasurementConfig:
     return variation_report.variation.load_variation_config(
         ROOT / "config" / "variation.yaml"
     ).measurement
+
+
+def _ledger_frames(
+    specs: list[tuple[str, str, float, list[float]]],
+) -> SurveyFrames:
+    """Section 9.9: each household repeats the full calendar/lag design."""
+    days: dict[str, list] = {}
+    trips: dict[str, list] = {}
+    for household in range(60):
+        for day, (month, weekday, lag, durations) in enumerate(specs):
+            shared = {
+                "day_id": f"{household}-{day}",
+                "ident_men": f"h{household}",
+                "pond_jour": 1.0,
+                "population_category": "employed",
+                "age": 35.0,
+                "sex": 1.0,
+                "home_density": "dense",
+                "is_idf": False,
+                "cars_band": "1",
+                "described_month_name": month,
+                "described_weekday_name": weekday,
+                "recall_lag": lag,
+            }
+            for key, value in {
+                **shared,
+                "total_time_min": sum(durations),
+                "trips_per_day": len(durations),
+                "total_distance_km": len(durations) * 2.0,
+                "distance_trips": len(durations),
+                "distance_time_min": sum(durations),
+            }.items():
+                days.setdefault(key, []).append(value)
+            for duration in durations:
+                for key, value in {
+                    **shared,
+                    "duration_min": duration,
+                    "distance_km": 2.0,
+                    "crow_fly_km": 0.0 if duration < 5 else 1.0,
+                    "mode7": "walk",
+                    "motive_group": "2",
+                }.items():
+                    trips.setdefault(key, []).append(value)
+    return _frames(days, trips)
+
+
+def _ledger_inputs(*, trips_2019: int = 1) -> tuple[SurveyFrames, SurveyFrames, dict]:
+    a = _ledger_frames(
+        [("janvier", "lundi", 1.0, [2.0, 18.0])] * 3
+        + [("février", "vendredi", 1.0, [2.0, 18.0])]
+    )
+    specs = [
+        ("janvier", "lundi", 1.0, [20.0] * trips_2019),
+        ("janvier", "vendredi", 2.0, [30.0] * trips_2019),
+        ("février", "lundi", 4.0, [40.0] * trips_2019),
+        ("février", "vendredi", float("nan"), [50.0] * trips_2019),
+    ]
+    b = _ledger_frames(specs)
+    producer = _ledger_frames(
+        [
+            (month, day, lag, [value + 5.0 for value in values])
+            for month, day, lag, values in specs
+        ]
+    )
+    config = _measurement_config()
+    ca = variation_report.common_distance_frames(a, "crow_fly_km")
+    cb = variation_report.common_distance_frames(b, "crow_fly_km")
+    results = {
+        "lag_table": variation_report.recall_lag_table(b),
+        "entd_overall": variation_report.survey_overall_row(a, "ENTD 2008"),
+        "rounding_checks": {
+            "changes": {
+                "nearest": {"overall": [1.0, 2.0]},
+                "up": {"overall": [3.0, 4.0]},
+                "nearest_min5": {"overall": [999.0]},
+            }
+        },
+        "motive_rates": variation_report.motive_rate_checks(
+            a, b, config=config, n_reps=N_REPS, seed=0
+        ),
+        "motive_rates_producer": variation_report.motive_rate_checks(
+            a, producer, config=config, n_reps=N_REPS, seed=0
+        ),
+        "b2_rows": variation_report.b2_decompositions(
+            ca, cb, n_reps=N_REPS, seed=0, categories=()
+        ),
+        "b2_rows_corrected": variation_report.b2_decompositions(
+            a, b, n_reps=N_REPS, seed=0, categories=()
+        ),
+        "b1_rows": [
+            variation_report.bootstrap_composition(a, b, "V2", n_reps=N_REPS, seed=0)
+        ],
+    }
+    return a, b, results
+
+
+def test_measurement_ledger_reuses_results_and_preserves_effect_signs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C4: cached sections, ratio-of-totals, and signed short-trip restoration."""
+    a, b, results = _ledger_inputs()
+
+    def recomputation(*args, **kwargs):
+        pytest.fail("C4 must reuse the existing section estimates")
+
+    for name in (
+        "rounding_checks",
+        "recall_lag_table",
+        "survey_overall_row",
+        "motive_rate_checks",
+        "b2_decompositions",
+        "bootstrap_composition",
+    ):
+        monkeypatch.setattr(variation_report, name, recomputation)
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    rows = {row.key: row for row in ledger.rows}
+    assert tuple(rows) == tuple("abcdefg")
+    assert ledger.observed == pytest.approx([15.0, -1.0, 25.0])
+    np.testing.assert_allclose(rows["a"].bounds, [[1.0, 4.0], [0, 0], [0.5, 2.0]])
+    assert rows["b"].effect == pytest.approx([10.0, 0.0, 10.0])
+    assert rows["c"].effect == pytest.approx([5.0, 0.0, 5.0])
+    assert rows["d"].effect == pytest.approx([0.0, 0.0, 0.0])
+    assert "decomposition only" in rows["d"].note
+    assert rows["e"].effect == pytest.approx([-2.0, -1.0, 16.5])
+    assert rows["f"].effect == pytest.approx([7.5, 0.0, 7.5])
+    assert rows["g"].effect == pytest.approx([0.0, 0.0, 0.0], abs=1e-10)
+    np.testing.assert_allclose(
+        ledger.residual_bounds,
+        [[-9.5, -6.5], [0.0, 0.0], [-16.0, -14.5]],
+        atol=1e-10,
+    )
+    text = "\n".join(variation_report._format_measurement_ledger(ledger))
+    assert "### C4. Measurement ledger" in text
+    assert "Residual change" in text
+    assert "positive effect" in text
+    assert "restoration" in text
+    assert "100.0%" in text
+    assert "intra-commune" in text
+    assert "not a confidence interval" in text
+
+
+def test_measurement_ledger_calendar_requires_joint_cell_support() -> None:
+    """C4f: no pooling weekday/month margins or hiding unmatched target cells."""
+    a, b, results = _ledger_inputs()
+    a.days["described_month_name"][:] = "mars"
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    calendar = next(row for row in ledger.rows if row.key == "f")
+    assert np.isnan(calendar.effect).all()
+    assert "unmatched" in calendar.note.lower()
+    assert np.isnan(ledger.residual_bounds).all()
+    assert "unavailable" in "\n".join(
+        variation_report._format_measurement_ledger(ledger)
+    )
+
+
+def test_measurement_ledger_suppresses_small_cells() -> None:
+    a, b, results = _ledger_inputs()
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    from dataclasses import replace
+
+    small = replace(
+        ledger,
+        n=49,
+        rows=tuple(replace(row, n=49) for row in ledger.rows),
+    )
+    text = "\n".join(variation_report._format_measurement_ledger(small))
+    assert "| a. Duration rounding | - | - | - | - | C1 |" in text
+    assert "| Observed change | - | - | - |" in text
+    assert "100.0%" not in text
+
+
+def test_measurement_ledger_reports_zero_total_trip_change_share_as_undefined() -> None:
+    a, b, results = _ledger_inputs(trips_2019=2)
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    assert ledger.observed[1] == 0.0
+    assert "undefined (zero total trip change)" in "\n".join(ledger.diagnostics)
+
+
+def test_measurement_ledger_uses_joint_calendar_not_separate_margins() -> None:
+    a, b, results = _ledger_inputs()
+    # Both samples now have 50/50 weekday and month margins. Only the
+    # joint-cell mix differs: a has just Monday/Jan and Friday/Feb.
+    a.days["described_month_name"] = np.tile(
+        ["janvier", "janvier", "février", "février"], 60
+    )
+    a.days["described_weekday_name"] = np.tile(
+        ["lundi", "lundi", "vendredi", "vendredi"], 60
+    )
+    # Make the middle cells contribute a different mean from the diagonal.
+    b.days["total_time_min"] = np.tile([20.0, 100.0, 100.0, 50.0], 60)
+    b.trips["duration_min"] = b.days["total_time_min"].copy()
+    results["lag_table"] = variation_report.recall_lag_table(b)
+    results["motive_rates"] = variation_report.motive_rate_checks(
+        a, b, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    calendar = next(row for row in ledger.rows if row.key == "f")
+    assert calendar.effect == pytest.approx([32.5, 0.0, 32.5])
+    assert calendar.bounds[:, 0] == pytest.approx(calendar.effect)
+    assert calendar.bounds[:, 1] == pytest.approx(calendar.effect)
+
+
+def test_measurement_ledger_recall_uses_paired_household_draws() -> None:
+    a, b, results = _ledger_inputs()
+    b.days["recall_lag"][:] = 1.0
+    b.trips["recall_lag"][:] = 1.0
+    # Household-specific outcomes make unpaired resampling visibly incorrect.
+    b.days["total_time_min"] += np.repeat(np.arange(60), 4)
+    b.trips["duration_min"] = b.days["total_time_min"].copy()
+    results["lag_table"] = variation_report.recall_lag_table(b)
+    results["motive_rates"] = variation_report.motive_rate_checks(
+        a, b, config=_measurement_config(), n_reps=20, seed=0
+    )
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=20, seed=0
+    )
+    recall = next(row for row in ledger.rows if row.key == "b")
+    assert recall.effect == pytest.approx(np.zeros(3), abs=1e-10)
+    np.testing.assert_allclose(recall.bounds, np.zeros((3, 2)), atol=1e-10)
+
+
+def test_ledger_minutes_per_trip_is_ratio_of_weighted_totals() -> None:
+    frames = _ledger_frames(
+        [
+            ("janvier", "lundi", 1.0, [10.0]),
+            ("janvier", "mardi", 1.0, [20.0, 20.0, 20.0]),
+        ]
+    )
+    frames.days["pond_jour"][1::2] = 3.0
+    frames.trips["pond_jour"] = np.tile([1.0, 3.0, 3.0, 3.0], 60)
+    rates = variation_report.motive_rate_checks(
+        frames, frames, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    point, reps = variation_report._ledger_metrics(rates, "b")
+    assert point == pytest.approx([47.5, 2.5, 19.0])
+    assert reps[:, 2] == pytest.approx(np.full(N_REPS, 19.0))
+
+
+def test_b1_v2_collects_trip_effects_without_another_bootstrap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    a = _b1_frames({"employed": 60.0, "retired": 30.0}, {"employed": 40, "retired": 80})
+    b = _b1_frames({"employed": 60.0, "retired": 30.0}, {"employed": 80, "retired": 40})
+    for frames in (a, b):
+        frames.days["trips_per_day"] = np.where(
+            frames.days["population_category"] == "employed", 3.0, 1.0
+        )
+    draws = []
+    multipliers = variation_report.variation.household_multipliers
+
+    def counting_draws(households, rng):
+        draws.append(households)
+        return multipliers(households, rng)
+
+    monkeypatch.setattr(
+        variation_report.variation, "household_multipliers", counting_draws
+    )
+    result = variation_report.bootstrap_composition(a, b, "V2", n_reps=N_REPS, seed=0)
+    assert len(draws) == 2 * N_REPS
+    assert result.ledger_effect == pytest.approx([10.0, 2 / 3, 150 / 7 - 24])
+    assert result.ledger_bounds is not None
+    assert result.ledger_bounds[0] == pytest.approx(result.composition_ci)
+
+
+def test_measurement_ledger_does_not_invent_duration_when_no_2008_short_trips() -> None:
+    a, b, results = _ledger_inputs()
+    a.trips["duration_min"] = np.tile([5.0, 15.0], len(a.days["pond_jour"]))
+    b.trips["duration_min"][:] = 2.0
+    b.days["total_time_min"][:] = 2.0
+    results["lag_table"] = variation_report.recall_lag_table(b)
+    results["motive_rates"] = variation_report.motive_rate_checks(
+        a, b, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    short = next(row for row in ledger.rows if row.key == "e")
+    assert np.isnan(short.effect[0]) and np.isnan(short.effect[2])
+    assert "unavailable" in short.note
+    text = "\n".join(variation_report._format_measurement_ledger(ledger))
+    assert "| Residual range | - | - | - |" in text
+    assert "nan" not in text
+
+
+def test_measurement_ledger_no_short_trips_requires_no_restoration() -> None:
+    a, b, results = _ledger_inputs()
+    a.trips["duration_min"] = np.tile([5.0, 15.0], len(a.days["pond_jour"]))
+    results["motive_rates"] = variation_report.motive_rate_checks(
+        a, b, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    short = next(row for row in ledger.rows if row.key == "e")
+    assert short.effect == pytest.approx(np.zeros(3))
+    np.testing.assert_allclose(short.bounds, np.zeros((3, 2)))
+
+
+def test_measurement_ledger_does_not_leak_a_suppressed_recall_effect() -> None:
+    from dataclasses import replace
+
+    a, b, results = _ledger_inputs()
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    ledger = replace(
+        ledger,
+        rows=tuple(
+            replace(row, n=49) if row.key == "b" else row for row in ledger.rows
+        ),
+    )
+    text = "\n".join(variation_report._format_measurement_ledger(ledger))
+    assert "| b. Recall lag | - | - | - | - | A1 |" in text
+    assert "| Residual range | - | - | - |" in text
 
 
 @pytest.mark.parametrize(
