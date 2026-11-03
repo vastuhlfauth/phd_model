@@ -199,8 +199,25 @@ def test_b2_decompositions_cover_overall_and_categories() -> None:
     assert "Equivalent at ±15%" in text
     assert "Equivalent at ±10%" in text
     assert "| overall | 60 | 60 |" in text
+    employed_line = next(line for line in lines if line.startswith("| employed |"))
+    assert len(employed_line.strip("|").split("|")) == 16
+    assert "different" in employed_line
     # Absent categories keep their true n with dashes.
     assert "| retired | 0 | 0 | - | - | - | - | - | - |" in text
+
+
+@pytest.mark.parametrize(
+    ("ci", "expected"),
+    [
+        ((0.95, 1.05), "equivalent"),
+        ((1.16, 1.20), "different"),
+        ((1.05, 1.16), "inconclusive"),
+    ],
+)
+def test_equivalence_verdict_is_three_state(
+    ci: tuple[float, float], expected: str
+) -> None:
+    assert variation_report._equivalence_verdict(ci, 0.10) == expected
 
 
 def test_density_grid_comparison_reports_temporal_equivalence() -> None:
@@ -240,7 +257,9 @@ def test_density_grid_comparison_reports_temporal_equivalence() -> None:
         for line in lines
         if line.startswith("| dense | employed | time/day (min) |")
     )
-    assert employed_time.endswith("| 1.120 | [1.120, 1.120] | yes | no |"), (
+    assert employed_time.endswith(
+        "| 1.120 | [1.120, 1.120] | equivalent | different |"
+    ), (
         employed_time
     )
 
@@ -560,6 +579,19 @@ def test_waterfall_closes_with_zero_net_change(
     bars = figures[0].axes[0].patches
     assert bars[0].get_height() == pytest.approx(45.0)
     assert sum(bar.get_height() for bar in bars[1:-1]) == pytest.approx(0.0)
+    assert [bar.get_height() for bar in bars[2:6]] == pytest.approx(
+        [
+            b2[0].result.point.trips_min,
+            b2[0].result.point.distance_min,
+            b2[0].result.point.speed_min,
+            b2[0].result.point.selection_min,
+        ]
+    )
+    assert figures[0].axes[0].get_xticklabels()[1].get_text() == "composition (V2)"
+    assert figures[0].axes[0].get_xticklabels()[-2].get_text() == (
+        "non-additive residual"
+    )
+    assert "B7a" in figures[0].axes[0].get_title()
     assert bars[-2].get_y() + bars[-2].get_height() == pytest.approx(
         bars[-1].get_height()
     )
@@ -814,6 +846,9 @@ def test_cli_writes_report_on_synthetic_data(
     assert "C3 sensitivity: EMP 2019 producer sequence motive" in report
     assert "MOT_SEQ_COMPL" in report
     assert "trips under 1 km (crow-fly)" in report
+    assert "C5. Official-scope replication" in report
+    assert "IMMODEP_A`-`G" in report
+    assert "SDES 2008" in report and "SDES 2019" in report
     assert "B6.5. 2008 -> 2019 by INSEE density grid" in report
     assert (out_dir / "fig_b7a_waterfall.png").is_file()
     assert (out_dir / "fig_b7b_shift_share.png").is_file()

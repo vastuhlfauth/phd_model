@@ -183,7 +183,8 @@ def _create_person_ext_emp2019(con: duckdb.DuckDBPyConnection) -> None:
         SELECT IDENT_DEP AS ident_dep,
             TRY_CAST(MDISTTOT_decl AS DOUBLE) AS declared_km,
             TRY_CAST(dVO_ORIDES AS DOUBLE) AS crow_fly_km,
-            TRY_CAST(NEW_VAC_SCOL AS INTEGER) AS vac_scol
+            TRY_CAST(NEW_VAC_SCOL AS INTEGER) AS vac_scol,
+            TRY_CAST(mobloc AS INTEGER) = 1 AS is_local
         FROM k_deploc
     """)
 
@@ -240,7 +241,8 @@ def _create_person_ext_entd2008(con: duckdb.DuckDBPyConnection) -> None:
         SELECT IDENT_DEP AS ident_dep,
             TRY_CAST(V2_MDISTTOT AS DOUBLE) AS declared_km,
             TRY_CAST(V2_DVO_LOC AS DOUBLE) AS crow_fly_km,
-            TRY_CAST(V2_VAC_SCOL AS INTEGER) AS vac_scol
+            TRY_CAST(V2_VAC_SCOL AS INTEGER) AS vac_scol,
+            TRY_CAST(V2_DLOCAL AS INTEGER) <> 0 AS is_local
         FROM k_deploc
     """)
 
@@ -498,17 +500,172 @@ def load_frames(
         _create_frames_tables(con, sample_pct=sample_pct)
         days = con.sql("SELECT * FROM vr_days").fetchnumpy()
         trips = con.sql("SELECT * FROM vr_trips").fetchnumpy()
+        official_data = _official_scope_data(con, survey, sample_pct)
         motive_shares, distance_doc = _AUX_BY_SURVEY[survey.SURVEY_NAME]
         aux = {
             "needs_scope_removal": _needs_scope_removal(con),
             "raw_motive_shares": motive_shares(con),
             "distance_doc": distance_doc(con),
+            "official_scope_data": official_data,
         }
     finally:
         con.close()
     days = {k: _plain_array(v) for k, v in days.items()}
     trips = {k: _plain_array(v) for k, v in trips.items()}
     return SurveyFrames(name=survey.SURVEY_NAME, days=days, trips=trips, aux=aux)
+
+
+def _official_scope_data(
+    con: duckdb.DuckDBPyConnection, survey, sample_pct: float | None
+) -> dict[str, np.ndarray]:
+    """Extract age-6+ weekday local trips, all motives, and person out-days."""
+    if survey is emp2019:
+        person_rows = emp2019.person_day_type_rows(con)
+        age_rows = con.sql(
+            "SELECT IDENT_IND, TRY_CAST(AGE AS INTEGER) FROM tcm_ind_kish"
+        ).fetchall()
+        sampled = con.sql(f"""
+            SELECT i.IDENT_IND
+            FROM k_individu i
+            JOIN tcm_ind t ON t.ident_ind = i.IDENT_IND
+            WHERE {_sample_sql(sample_pct)}
+        """).fetchall()
+    else:
+        person_rows = entd2008.person_weekday_rows(con)
+        age_rows = con.sql(
+            "SELECT i.IDENT_IND, TRY_CAST(q.AGE AS INTEGER) "
+            "FROM k_individu i JOIN q_tcm_individu q ON q.IDENT_IND = i.IDENT_IND"
+        ).fetchall()
+        sampled = con.sql(
+            f"SELECT IDENT_IND FROM k_individu WHERE {_sample_sql(sample_pct)}"
+        ).fetchall()
+    ages = {str(person_id): age for person_id, age in age_rows}
+    sampled_ids = {str(row[0]) for row in sampled}
+    eligible_people = [
+        row
+        for row in person_rows
+        if row[3] == "weekday"
+        and str(row[0]) in sampled_ids
+        and ages.get(str(row[0])) is not None
+        and ages[str(row[0])] >= 6
+    ]
+    days = con.sql(f"""
+        SELECT t.ident_men, t.pond_jour, count(*) AS trips,
+            sum(t.duration_min) AS minutes
+        FROM trip_legs t
+        JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
+        WHERE t.typejour = 1 AND t.pond_jour > 0 AND t.age >= 6
+            AND e.is_local AND ({_sample_sql(sample_pct)})
+        GROUP BY t.day_id, t.ident_men, t.pond_jour
+    """).fetchall()
+    if not eligible_people or not days:
+        raise ValueError(
+            f"{survey.SURVEY_NAME} official-scope sample is empty "
+            f"(people={len(eligible_people)}, trip-days={len(days)})"
+        )
+    return {
+        "household_p": np.asarray([str(row[1]) for row in eligible_people]),
+        "weight_p": np.asarray([float(row[2]) for row in eligible_people]),
+        "immobile_p": np.asarray([float(row[4]) for row in eligible_people]),
+        "household_t": np.asarray([str(row[0]) for row in days]),
+        "weight_t": np.asarray([float(row[1]) for row in days]),
+        "trips": np.asarray([float(row[2]) for row in days]),
+        "minutes": np.asarray([float(row[3]) for row in days]),
+        "n_people": len({str(row[0]) for row in eligible_people}),
+    }
+
+
+def _official_scope_estimates(
+    frames: SurveyFrames, *, n_reps: int, seed: int
+) -> dict[str, dict]:
+    """C5 per-person indicators using the existing person-budget bootstrap."""
+    data = frames.aux["official_scope_data"]
+    trip_mean, trip_reps = daily_energy.bootstrap_person_budget_replicates(
+        data["household_p"],
+        data["weight_p"],
+        data["immobile_p"],
+        data["household_t"],
+        data["weight_t"],
+        data["trips"],
+        n_reps=n_reps,
+        seed=seed,
+    )
+    time_mean, time_reps = daily_energy.bootstrap_person_budget_replicates(
+        data["household_p"],
+        data["weight_p"],
+        data["immobile_p"],
+        data["household_t"],
+        data["weight_t"],
+        data["minutes"],
+        n_reps=n_reps,
+        seed=seed,
+    )
+
+    def interval(values: np.ndarray) -> tuple[float, float]:
+        low, high = np.percentile(values[np.isfinite(values)], [2.5, 97.5])
+        return float(low), float(high)
+
+    minutes_per_trip = time_mean / trip_mean
+    ratio_reps = np.divide(
+        time_reps,
+        trip_reps,
+        out=np.full_like(time_reps, np.nan),
+        where=trip_reps > 0,
+    )
+    return {
+        "trips_per_person": {
+            "estimate": trip_mean,
+            "ci": interval(trip_reps),
+        },
+        "minutes_per_trip": {
+            "estimate": minutes_per_trip,
+            "ci": interval(ratio_reps),
+        },
+        "minutes_per_person": {
+            "estimate": time_mean,
+            "ci": interval(time_reps),
+        },
+        "n": int(data["n_people"]),
+    }
+
+
+def _format_official_scope(
+    results_2008: dict, results_2019: dict
+) -> list[str]:
+    published = {
+        "trips_per_person": (3.15, 3.04, "trips/person"),
+        "minutes_per_trip": (17.9, 20.0, "min/trip"),
+        "minutes_per_person": (56.0, 62.0, "min/person"),
+    }
+    lines = [
+        "### C5. Official-scope replication",
+        "",
+        "Residents aged 6+, Monday-Friday local trips, all motives, per "
+        "person with non-travellers counted as zero. EMP 2019 uses the "
+        "weekday going-out share from `IMMODEP_A`-`G` times the weighted "
+        "value on days out; ENTD 2008 uses its reference-weekday "
+        "`V2_MOBILREF` indicator. Household-bootstrap 95% CIs.",
+        "",
+        "| Indicator | Unit | n 2008 | 2008 [95% CI] | SDES 2008 | "
+        "Gap 2008 | n 2019 | 2019 [95% CI] | SDES 2019 | Gap 2019 |",
+        "|---|---|---:|---|---:|---:|---:|---|---:|---:|",
+    ]
+    for metric, (reference_2008, reference_2019, unit) in published.items():
+        value_2008 = results_2008[metric]
+        value_2019 = results_2019[metric]
+        gap_2008 = 100.0 * (value_2008["estimate"] / reference_2008 - 1.0)
+        gap_2019 = 100.0 * (value_2019["estimate"] / reference_2019 - 1.0)
+        estimate_2008 = _ci_cell(value_2008["estimate"], value_2008["ci"])
+        estimate_2019 = _ci_cell(value_2019["estimate"], value_2019["ci"])
+        lines.append(
+            f"| {metric} | {unit} | {results_2008['n']} | "
+            f"{_suppress(results_2008['n'], estimate_2008)} | "
+            f"{reference_2008:g} | {_suppress(results_2008['n'], _num(gap_2008))}% | "
+            f"{results_2019['n']} | "
+            f"{_suppress(results_2019['n'], estimate_2019)} | "
+            f"{reference_2019:g} | {_suppress(results_2019['n'], _num(gap_2019))}% |"
+        )
+    return lines
 
 
 def _plain_array(column: np.ndarray) -> np.ndarray:
@@ -1144,6 +1301,18 @@ def _suppress(n: int, text: str) -> str:
     return text if n >= MIN_CELL_N else "-"
 
 
+def _equivalence_verdict(
+    ci: tuple[float, float], margin: float
+) -> str:
+    """Classify a 90% interval against a symmetric equivalence margin."""
+    lower, upper = 1.0 - margin, 1.0 + margin
+    if ci[0] >= lower and ci[1] <= upper:
+        return "equivalent"
+    if ci[1] < lower or ci[0] > upper:
+        return "different"
+    return "inconclusive"
+
+
 def _lag_row_cells(row: LagRow) -> str:
     n = row.n_days
     return (
@@ -1486,6 +1655,12 @@ def run(
         "n_trips_2008": len(frames_2008.trips["pond_jour"]),
         "n_days_2019": len(frames_2019.days["pond_jour"]),
         "n_trips_2019": len(frames_2019.trips["pond_jour"]),
+        "official_scope_2008": _official_scope_estimates(
+            frames_2008, n_reps=n_reps, seed=seed
+        ),
+        "official_scope_2019": _official_scope_estimates(
+            frames_2019, n_reps=n_reps, seed=seed
+        ),
         # A1
         "lag_table": recall_lag_table(frames_2019),
         "entd_overall": survey_overall_row(frames_2008, "ENTD 2008"),
@@ -1532,6 +1707,11 @@ def run(
             n_reps=n_reps,
             seed=seed,
             b_producer=frames_2019_producer,
+        )
+    )
+    results["extra_sections"].append(
+        _format_official_scope(
+            results["official_scope_2008"], results["official_scope_2019"]
         )
     )
     return results
@@ -1719,6 +1899,9 @@ def _format_b2(
     equivalence_columns = equivalence_margin is not None
     if equivalence_columns != (secondary_equivalence_margin is not None):
         raise ValueError("both equivalence margins must be provided together")
+    if equivalence_columns:
+        assert equivalence_margin is not None
+        assert secondary_equivalence_margin is not None
     lines = [
         title or f"## B2. Trips x distance x speed, {label_a} -> {label_b}",
         "",
@@ -1753,46 +1936,45 @@ def _format_b2(
     )
     for row in rows:
         if row.result is None or min(row.n_a, row.n_b) < MIN_CELL_N:
-            lines.append(
-                f"| {row.group} | {row.n_a} | {row.n_b} | "
-                "- | - | - | - | - | - | - | - | - |"
-                + (" - | - | - | - |" if equivalence_columns else "")
-            )
+            cells = [
+                row.group,
+                str(row.n_a),
+                str(row.n_b),
+                *("-" for _ in range(9)),
+            ]
+            if equivalence_columns:
+                cells.extend("-" for _ in range(4))
+            lines.append("| " + " | ".join(cells) + " |")
             continue
         point = row.result.point
-        equivalence_cells = ""
+        cells = [
+            row.group,
+            str(row.n_a),
+            str(row.n_b),
+            _num(point.time_a_min),
+            _num(point.time_b_min),
+            _ci_cell(point.delta_min, row.result.delta_ci),
+            _ci_cell(point.trips_min, row.result.trips_ci),
+            _ci_cell(point.distance_min, row.result.distance_ci),
+            _ci_cell(point.speed_min, row.result.speed_ci),
+            _ci_cell(point.selection_min, row.result.selection_ci),
+            _pct(point.distance_share_a),
+            _pct(point.distance_share_b),
+        ]
         if equivalence_columns:
             if row.time_ratio is None or row.time_ratio_ci90 is None:
-                equivalence_cells = " | - | - | - | -"
+                cells.extend(("-", "-", "-", "-"))
             else:
                 ci = row.time_ratio_ci90
-                equivalent = (
-                    "yes"
-                    if ci[0] >= 1 - equivalence_margin
-                    and ci[1] <= 1 + equivalence_margin
-                    else "no"
+                cells.extend(
+                    (
+                        f"{row.time_ratio:.3f}",
+                        f"[{ci[0]:.3f}, {ci[1]:.3f}]",
+                        _equivalence_verdict(ci, equivalence_margin),
+                        _equivalence_verdict(ci, secondary_equivalence_margin),
+                    )
                 )
-                equivalent_secondary = (
-                    "yes"
-                    if ci[0] >= 1 - secondary_equivalence_margin
-                    and ci[1] <= 1 + secondary_equivalence_margin
-                    else "no"
-                )
-                equivalence_cells = (
-                    f" | {row.time_ratio:.3f} | [{ci[0]:.3f}, {ci[1]:.3f}] | "
-                    f"{equivalent} | {equivalent_secondary}"
-                )
-        lines.append(
-            f"| {row.group} | {row.n_a} | {row.n_b} | "
-            f"{_num(point.time_a_min)} | {_num(point.time_b_min)} | "
-            f"{_ci_cell(point.delta_min, row.result.delta_ci)} | "
-            f"{_ci_cell(point.trips_min, row.result.trips_ci)} | "
-            f"{_ci_cell(point.distance_min, row.result.distance_ci)} | "
-            f"{_ci_cell(point.speed_min, row.result.speed_ci)} | "
-            f"{_ci_cell(point.selection_min, row.result.selection_ci)} | "
-            f"{_pct(point.distance_share_a)} | {_pct(point.distance_share_b)} |"
-            + (f"{equivalence_cells}|" if equivalence_columns else "")
-        )
+        lines.append("| " + " | ".join(cells) + " |")
     unavailable = [row for row in rows if row.result is None]
     if unavailable:
         lines += ["", "Unavailable decompositions (not zero effects):"]
@@ -2408,10 +2590,7 @@ def pair4_tables(
 
 
 def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
-    """B7's waterfall of the 2008 -> 2019 change: composition (B1 V2),
-    then the behavioural remainder split in proportion to B2's trips /
-    km-per-trip / speed / selection terms. At zero net change, keep B2's
-    terms and show an explicit allocation residual to close the plot."""
+    """B7's waterfall: composition (B1 V2), unscaled B2 terms, and residual."""
     b2 = results["b2_rows"][0].result
     b1_v2 = next((r for r in results["b1_rows"] if r.variant == "V2"), None)
     if b2 is None or b1_v2 is None:
@@ -2419,20 +2598,19 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
     point = b2.point
     delta = point.delta_min
     composition = b1_v2.point.composition_min
-    behaviour = delta - composition
     b2_terms = np.array(
         [point.trips_min, point.distance_min, point.speed_min, point.selection_min]
     )
-    scale = behaviour / delta if delta else 1.0
     steps = [
         ("composition (V2)", composition),
-        ("trips", float(b2_terms[0] * scale)),
-        ("km per trip", float(b2_terms[1] * scale)),
-        ("speed", float(b2_terms[2] * scale)),
-        ("distance selection", float(b2_terms[3] * scale)),
+        ("trips", float(b2_terms[0])),
+        ("km per trip", float(b2_terms[1])),
+        ("time per crow-fly km", float(b2_terms[2])),
+        ("distance selection", float(b2_terms[3])),
     ]
-    if not delta and composition:
-        steps.append(("allocation residual", -composition))
+    residual = delta - composition - float(b2_terms.sum())
+    if not np.isclose(residual, 0.0, atol=1e-10):
+        steps.append(("non-additive residual", residual))
     fig, ax = plt.subplots(figsize=(7, 4))
     level = point.time_a_min
     positions = np.arange(len(steps) + 2)
@@ -2465,9 +2643,9 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
     ax.set_ylabel("Daily time with trips (min)")
     ax.set_title(
         "B7a. 2008 -> 2019 daily-time change (crow-fly distances): "
-        "composition, trips, km/trip, speed"
+        "composition and unscaled B2 terms"
     )
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     path = out_dir / "fig_b7a_waterfall.png"
     fig.savefig(path, dpi=150)
     plt.close(fig)
@@ -2609,17 +2787,9 @@ def _density_grid_comparison_lines(
                     ratio_value, ratio_ci = ratio
                     ratio_cell = f"{ratio_value:.3f}"
                     ci_cell = f"[{ratio_ci[0]:.3f}, {ratio_ci[1]:.3f}]"
-                    verdict_cell = (
-                        "yes"
-                        if ratio_ci[0] >= 1 - equivalence_margin
-                        and ratio_ci[1] <= 1 + equivalence_margin
-                        else "no"
-                    )
-                    verdict_secondary_cell = (
-                        "yes"
-                        if ratio_ci[0] >= 1 - secondary_equivalence_margin
-                        and ratio_ci[1] <= 1 + secondary_equivalence_margin
-                        else "no"
+                    verdict_cell = _equivalence_verdict(ratio_ci, equivalence_margin)
+                    verdict_secondary_cell = _equivalence_verdict(
+                        ratio_ci, secondary_equivalence_margin
                     )
             lines.append(
                 f"| {density} | {category} | {row.metric} | {row.n_a} | "

@@ -4,6 +4,17 @@ Read this file at the start of every task and update it at the end.
 
 _Last updated: 2026-11-03 by Copilot (branch `step/variation`: step-12 comparison finalized; real-data regeneration left to the user)_
 
+### Step 12: final-prompt follow-up (2026-11-03)
+
+- Fixed B2 ratio-table column alignment and changed equivalence results to
+  equivalent/different/inconclusive; B7a now uses unscaled crow-fly B2 terms
+  and a non-additive residual.
+- Added C5 official-scope indicators from weekday local trips, age 6+, all
+  motives, using the existing person-budget household bootstrap.
+- Validation: 39 tests passed in `test_variation_report.py`; Ruff passed.
+- Outstanding: C4 measurement ledger and the ten article CSV exports are
+  not implemented. No real-data report or generated outputs were changed.
+
 ### Step 12: final 2008 -> 2019 comparison (2026-11-03)
 
 - B2 and the B7a waterfall now use raw crow-fly distances for both surveys.
