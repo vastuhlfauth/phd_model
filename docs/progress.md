@@ -2,7 +2,42 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-11-02 by Copilot (branch `step/variation`: step 12 complete — Parts A, B, C, D; real-data report not yet generated)_
+_Last updated: 2026-11-03 by Copilot (branch `step/variation`: step-12 report fixes; real-data regeneration left to the user)_
+
+### Step 12: report corrections (2026-11-03, branch `step/variation`)
+
+- Fixed B2/B6 and B3/B4 km/speed calculations: N and T retain all
+  trips; L and v use only finite-distance trips, with weighted coverage
+  per comparison group. Person-day aggregation carries known-distance
+  counts and minutes through the household bootstrap, including days
+  with no known distance. An explicit selection residual preserves
+  additive decompositions without mislabelling selection as speed.
+  Unavailable B2 decompositions now include their reason.
+- Missing distances have their own band instead of contaminating
+  >=80 km. Distance-band plots use numeric order. B4b adds weighted
+  median minutes per trip for each band and weighted duration quartiles
+  by mode within >=80 km, for both years; suppression is unchanged.
+- A1 now controls for the described day's weekday in both regressions
+  and bootstrap fits; unknown weekdays are excluded from regression only.
+- A4 names the exact loader fields: EMP `DUREE`; ENTD numeric
+  `v2_mduree`, falling back to `V2_DUREE`; neither loader recomputes
+  arrival minus departure. **Open point:** the checked producer variable
+  labels do not establish independently declared duration versus a
+  producer-side clock difference. The report explicitly marks this
+  unverified instead of inferring it from rounding or a few raw rows.
+- B7a is generated again with valid B2 data; its caption explains the
+  proportional allocation and the explicit allocation residual needed
+  when the net change is zero.
+- Validation: 33 passed, 0 failed in the two touched test modules;
+  Ruff check/format clean for the four changed Python files. Used the
+  existing `.venv` Python because `uv` is unavailable. The synthetic CLI
+  test verified report generation and all three B7 figures. No other
+  tests or real-data jobs ran; existing reports and step-11 outputs
+  were not opened or changed;
+  step-11 source inspection was limited to duration-field references.
+- Regenerate in the user's terminal:
+  `uv run python -m mobgrid.budget.variation_report --out docs\data\step12_variation`.
+  Existing uncommitted report/figure changes are left untouched.
 
 ### Step 12: variation of daily travel time (2026-11-02, branch `step/variation`)
 

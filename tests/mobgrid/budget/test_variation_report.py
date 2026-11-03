@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import duckdb
 import numpy as np
 import pytest
 from mobgrid.budget import variation_report
@@ -38,6 +39,7 @@ def _simple_frames(lags: list[float]) -> SurveyFrames:
         "population_category": ["employed"] * n,
         "home_density": ["dense"] * n,
         "ident_men": [f"M{i}" for i in range(n)],
+        "described_weekday_name": ["lundi"] * n,
     }
     trips = {
         "pond_jour": [1.0] * (2 * n),
@@ -84,6 +86,30 @@ def test_lag_regression_recovers_a_pure_lag_effect() -> None:
     assert by_lag[7].n_days == 0
 
 
+@pytest.mark.parametrize("outcome", ["total_time_min", "trips_per_day"])
+def test_lag_regression_controls_for_described_weekday(outcome: str) -> None:
+    frames = _simple_frames([1.0] * 4 + [2.0] * 4)
+    frames.days["described_weekday_name"] = np.array(
+        [
+            "lundi",
+            "lundi",
+            "lundi",
+            "vendredi",
+            "lundi",
+            "vendredi",
+            "vendredi",
+            "vendredi",
+        ]
+    )
+    frames.days[outcome] = np.where(
+        frames.days["described_weekday_name"] == "vendredi", 90.0, 30.0
+    ) + np.where(frames.days["recall_lag"] == 2, 10.0, 0.0)
+    coefficients = variation_report.lag_regression(
+        frames, outcome, n_reps=N_REPS, seed=0
+    )
+    assert coefficients[0].coefficient == pytest.approx(10.0)
+
+
 def test_motive_crosswalk_flags_merged_and_one_survey_codes() -> None:
     frames_2008 = _frames(
         {},
@@ -125,6 +151,8 @@ def _b2_frames(scale: float, category: str = "employed") -> SurveyFrames:
         "pond_jour": [1.0] * n,
         "trips_per_day": [2.0 * scale] * n,
         "total_distance_km": [6.0 * scale] * n,
+        "distance_trips": [2.0 * scale] * n,
+        "distance_time_min": [30.0 * scale + (i % 3) for i in range(n)],
         "total_time_min": [30.0 * scale + (i % 3) for i in range(n)],
         "population_category": [category] * n,
         "ident_men": [f"M{i // 2}" for i in range(n)],
@@ -156,6 +184,30 @@ def test_b2_decompositions_cover_overall_and_categories() -> None:
     assert "| overall | 60 | 60 |" in text
     # Absent categories keep their true n with dashes.
     assert "| retired | 0 | 0 | - | - | - | - | - | - |" in text
+
+
+def test_b2_and_pair1_keep_days_with_no_known_distance() -> None:
+    a, b = _b2_frames(1.0), _b2_frames(1.2)
+    a.days["total_distance_km"][::2] = 0.0
+    a.days["distance_trips"][::2] = 0.0
+    a.days["distance_time_min"][::2] = 0.0
+    b.days["recall_lag"] = np.ones(60)
+    b.trips["recall_lag"] = np.array([])
+    b.trips["pond_jour"] = np.array([])
+    lag1 = variation_report.subset_frames(b, recall_lag=1)
+    rows = variation_report.b2_decompositions(
+        a, lag1, n_reps=N_REPS, seed=0, categories=()
+    )
+    result = rows[0].result
+    assert result is not None
+    assert result.point.time_a_min == pytest.approx(31.0)
+    assert result.point.trips_a == pytest.approx(2.0)
+    assert result.point.distance_a_km == pytest.approx(3.0)
+    assert result.point.distance_share_a == pytest.approx(0.5)
+    assert np.isfinite(result.speed_ci).all()
+    assert "| overall | 60 | 60 | 31.0 |" in "\n".join(
+        variation_report._format_b2(rows, "2008", "2019 (lag 1)")
+    )
 
 
 def _b1_frames(
@@ -238,6 +290,8 @@ def _trip_frames(
         "trips_per_day": [float(trips_per_day)] * n_days,
         "total_time_min": [sum(duration[:trips_per_day])] * n_days,
         "total_distance_km": [km_per_min * sum(duration[:trips_per_day])] * n_days,
+        "distance_trips": [float(trips_per_day)] * n_days,
+        "distance_time_min": [sum(duration[:trips_per_day])] * n_days,
         "population_category": ["employed"] * n_days,
         "ident_men": [f"M{i // 2}" for i in range(n_days)],
     }
@@ -306,6 +360,151 @@ def test_b4_distance_band_shift_share_uses_band_labels() -> None:
     assert groups <= set(variation_report.DISTANCE_BAND_LABELS)
 
 
+def test_missing_distances_do_not_poison_mode_decomposition() -> None:
+    a = _trip_frames({"walk": 10.0, "car_driver": 30.0})
+    b = _trip_frames({"walk": 12.0, "car_driver": 36.0})
+    a.trips["distance_km"][::4] = np.nan
+    b.trips["distance_km"][::6] = np.nan
+    a.trips["duration_min"][0] = 70.0
+    result = variation_report.shift_share_by(a, b, "mode7", n_reps=N_REPS, seed=0)
+    for term in result.point.terms:
+        assert np.isfinite([term.within_km_min, term.within_speed_min]).all()
+        assert term.within_min == pytest.approx(
+            term.within_km_min + term.within_speed_min + term.within_selection_min
+        )
+    walk = next(t for t in result.point.terms if t.group == "walk")
+    assert walk.distance_share_a == pytest.approx(0.5)
+    assert walk.distance_share_b == pytest.approx(2 / 3)
+    assert walk.within_selection_min != pytest.approx(0.0)
+
+
+def test_distance_bands_separate_missing_and_sort_figure_numerically() -> None:
+    import matplotlib.pyplot as plt
+
+    frames = _trip_frames({"walk": 10.0, "car_driver": 30.0})
+    frames.trips["distance_km"][:5] = [np.nan, 0.5, 3.0, 15.0, 90.0]
+    counts = variation_report._group_counts(frames, "distance_band")
+    assert counts["unknown distance"] == 1
+    assert counts[">=80 km"] == 1
+    result = variation_report.shift_share_by(
+        frames, frames, "distance_band", n_reps=N_REPS, seed=0
+    )
+    fig, ax = plt.subplots()
+    variation_report._shift_share_panel(ax, result, "by distance band")
+    labels = [t.get_text() for t in ax.get_xticklabels()]
+    plt.close(fig)
+    order = variation_report.DISTANCE_BAND_LABELS
+    assert labels == [label for label in order if label in labels]
+
+
+def test_frame_aggregation_keeps_missing_distance_days(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Section 9.9: N/T include all trips, L/v only distance-known trips."""
+    monkeypatch.setattr(variation_report.trip_legs, "NEEDS_ONLY_WHERE_SQL", "TRUE")
+    with duckdb.connect() as con:
+        con.sql("""
+            CREATE TABLE trip_legs AS SELECT
+                day_id, ident_dep, distance_km, duration_min,
+                day_id AS ident_ind, day_id AS ident_men,
+                CASE WHEN day_id = 'a' THEN 1.0 ELSE 3.0 END AS pond_jour,
+                'employed' AS population_category, 'dense' AS residence_density,
+                'q1' AS income_quintile, 40 AS age, 'walk' AS mode_group,
+                2 AS motive, 1 AS typejour
+            FROM (VALUES ('a', 'd1', 6.0, 10.0), ('a', 'd2', NULL, 30.0),
+                         ('b', 'd3', NULL, 20.0))
+                v(day_id, ident_dep, distance_km, duration_min);
+            CREATE VIEW vr_person AS SELECT DISTINCT ident_ind, 1 AS sex,
+                1 AS recall_lag, 'lundi' AS described_weekday_name,
+                'janvier' AS described_month_name, FALSE AS is_idf,
+                '1' AS cars_band FROM trip_legs;
+            CREATE VIEW vr_trip_ext AS SELECT ident_dep,
+                NULL::DOUBLE AS crow_fly_km, 0 AS vac_scol FROM trip_legs;
+        """)
+        variation_report._create_frames_tables(con, sample_pct=None)
+        frames = SurveyFrames(
+            "synthetic",
+            {
+                k: variation_report._plain_array(v)
+                for k, v in con.sql("SELECT * FROM vr_days ORDER BY day_id")
+                .fetchnumpy()
+                .items()
+            },
+            {},
+            {},
+        )
+    days = variation_report.person_days_from_frames(frames)
+    assert days.trips == pytest.approx([2.0, 1.0])
+    assert days.time_min == pytest.approx([40.0, 20.0])
+    assert days.distance_km == pytest.approx([6.0, 0.0])
+    assert days.distance_trips == pytest.approx([1.0, 0.0])
+    assert days.distance_time_min == pytest.approx([10.0, 0.0])
+
+
+def test_b4_duration_tables_are_weighted_and_cover_both_years() -> None:
+    frames = _frames(
+        {},
+        {
+            "pond_jour": [1.0, 3.0, 1.0, 1.0],
+            "duration_min": [10.0, 20.0, 30.0, 80.0],
+            "distance_km": [90.0, 90.0, 90.0, np.nan],
+            "mode7": ["train", "train", "train", "train"],
+        },
+    )
+    rows = variation_report.distance_duration_table(frames)
+    band = next(r for r in rows if r.label == ">=80 km" and r.mode == "all modes")
+    assert band.n_trips == 3
+    assert band.quartiles == pytest.approx((20.0, 20.0, 20.0))
+    mode = next(r for r in rows if r.label == ">=80 km" and r.mode == "train")
+    assert mode.quartiles == band.quartiles
+    text = "\n".join(variation_report._format_b4_durations(frames, frames))
+    assert "median min/trip 2008" in text
+    assert "median min/trip 2019" in text
+    assert "Q1 2008" in text and "Q3 2019" in text
+    a = _frames({}, {k: np.tile(v, 60) for k, v in frames.trips.items()})
+    b = _frames({}, {k: v.copy() for k, v in a.trips.items()})
+    b.trips["duration_min"] += 10.0
+    text = "\n".join(variation_report._format_b4_durations(a, b))
+    assert "| >=80 km | 180 | 20.0 | 180 | 30.0 |" in text
+    assert "| train | 180 | 20.0 | 20.0 | 20.0 | 180 | 30.0 | 30.0 | 30.0 |" in text
+
+
+def test_waterfall_closes_with_zero_net_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from matplotlib.figure import Figure
+
+    a = _b1_frames({"employed": 60.0, "retired": 30.0}, {"employed": 60, "retired": 60})
+    b = _b1_frames({"employed": 50.0, "retired": 30.0}, {"employed": 90, "retired": 30})
+    for frames in (a, b):
+        frames.days["trips_per_day"] = np.full(120, 2.0)
+        frames.days["total_distance_km"] = np.full(120, 6.0)
+        frames.days["distance_trips"] = np.full(120, 2.0)
+        frames.days["distance_time_min"] = frames.days["total_time_min"].copy()
+    b2 = variation_report.b2_decompositions(a, b, n_reps=N_REPS, seed=0, categories=())
+    b1 = variation_report.bootstrap_composition(a, b, "V2", n_reps=N_REPS, seed=0)
+    assert b1.point.composition_min != 0
+    figures = []
+    savefig = Figure.savefig
+
+    def capture(fig, *args, **kwargs):
+        figures.append(fig)
+        return savefig(fig, *args, **kwargs)
+
+    monkeypatch.setattr(Figure, "savefig", capture)
+    path = variation_report._figure_b7_waterfall(
+        {"b2_rows": b2, "b1_rows": [b1]}, tmp_path
+    )
+    assert path is not None and path.is_file()
+    bars = figures[0].axes[0].patches
+    assert bars[0].get_height() == pytest.approx(45.0)
+    assert sum(bar.get_height() for bar in bars[1:-1]) == pytest.approx(0.0)
+    assert bars[-2].get_y() + bars[-2].get_height() == pytest.approx(
+        bars[-1].get_height()
+    )
+
+
 def test_motive_group_label_maps_codes_and_unknown() -> None:
     assert variation_report.motive_group_label("2") == "shopping"
     assert variation_report.motive_group_label("9") == "professional"
@@ -362,6 +561,8 @@ def test_comparison_pair_runs_b2_b3_b1_between_two_groups() -> None:
     frames_a = _b1_frames({"employed": 40.0}, {"employed": 60})
     frames_a.days["trips_per_day"] = np.full(60, 2.0)
     frames_a.days["total_distance_km"] = np.full(60, 8.0)
+    frames_a.days["distance_trips"] = np.full(60, 2.0)
+    frames_a.days["distance_time_min"] = np.full(60, 40.0)
     frames_a.trips = {
         "pond_jour": np.ones(120),
         "ident_men": np.repeat(frames_a.days["ident_men"], 2),
@@ -372,6 +573,8 @@ def test_comparison_pair_runs_b2_b3_b1_between_two_groups() -> None:
     frames_b = _b1_frames({"employed": 50.0}, {"employed": 60})
     frames_b.days["trips_per_day"] = np.full(60, 2.0)
     frames_b.days["total_distance_km"] = np.full(60, 9.0)
+    frames_b.days["distance_trips"] = np.full(60, 2.0)
+    frames_b.days["distance_time_min"] = np.full(60, 50.0)
     frames_b.trips = {
         "pond_jour": np.ones(120),
         "ident_men": np.repeat(frames_b.days["ident_men"], 2),
@@ -520,5 +723,10 @@ def test_cli_writes_report_on_synthetic_data(
     assert "80-km check" in report
     assert "B6.4. Density and income together" in report
     assert "## Figures" in report
+    assert "described-day weekday" in report
+    assert "arrival minus departure" in report
+    assert "distance-known trips" in report
+    assert "median min/trip 2008" in report
+    assert (out_dir / "fig_b7a_waterfall.png").is_file()
     assert (out_dir / "fig_b7b_shift_share.png").is_file()
     assert (out_dir / "fig_b7c_recall_lag.png").is_file()

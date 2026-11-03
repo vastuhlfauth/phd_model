@@ -28,19 +28,24 @@ def load_variation_config(path: str | Path) -> VariationConfig:
 
 @dataclass(frozen=True)
 class PersonDays:
-    """Weighted daily totals for a group of weekday person-days."""
+    """Daily totals (km, minutes) for section 9.9's weekday person-days.
+
+    Distance-known counts/time accompany the known distance sum (zero
+    on days without distances). Omit both only for complete-distance data.
+    """
 
     weight: np.ndarray
     trips: np.ndarray
     distance_km: np.ndarray
     time_min: np.ndarray
     household: np.ndarray | None = None
+    distance_trips: np.ndarray | None = None
+    distance_time_min: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
 class TripTimeDecomposition:
-    """Weighted daily time and its trips, distance, and speed components,
-    all in minutes."""
+    """Daily time/contributions in minutes, L in km, v in km/minute."""
 
     time_a_min: float
     time_b_min: float
@@ -54,6 +59,9 @@ class TripTimeDecomposition:
     trips_min: float
     distance_min: float
     speed_min: float
+    distance_share_a: float
+    distance_share_b: float
+    selection_min: float
 
 
 @dataclass(frozen=True)
@@ -65,17 +73,29 @@ class TripTimeDecompositionBootstrap:
     trips_ci: tuple[float, float]
     distance_ci: tuple[float, float]
     speed_ci: tuple[float, float]
+    selection_ci: tuple[float, float]
 
 
-def _weighted_metrics(days: PersonDays) -> tuple[float, float, float, float]:
-    arrays = (days.weight, days.trips, days.distance_km, days.time_min)
+def _weighted_metrics(days: PersonDays) -> tuple[float, float, float, float, float]:
+    distance_trips = days.trips if days.distance_trips is None else days.distance_trips
+    distance_time = (
+        days.time_min if days.distance_time_min is None else days.distance_time_min
+    )
+    arrays = (
+        days.weight,
+        days.trips,
+        days.distance_km,
+        days.time_min,
+        distance_trips,
+        distance_time,
+    )
     if len({len(array) for array in arrays}) != 1 or len(days.weight) == 0:
         raise ValueError("person-day arrays must have equal, non-zero lengths")
     weight = np.asarray(days.weight, dtype=float)
     trips = np.asarray(days.trips, dtype=float)
     distance = np.asarray(days.distance_km, dtype=float)
     time = np.asarray(days.time_min, dtype=float)
-    if not all(np.isfinite(array).all() for array in (weight, trips, distance, time)):
+    if not all(np.isfinite(array).all() for array in arrays):
         raise ValueError("person-day metrics must be finite")
     if np.any(weight < 0) or weight.sum() <= 0:
         raise ValueError("person-day weights must be non-negative and non-zero")
@@ -86,27 +106,43 @@ def _weighted_metrics(days: PersonDays) -> tuple[float, float, float, float]:
     weighted_trips = float(np.sum(weight * trips))
     weighted_distance = float(np.sum(weight * distance))
     weighted_time = float(np.sum(weight * time))
-    if min(weighted_trips, weighted_distance, weighted_time) <= 0:
+    if np.any(distance_trips < 0) or np.any(distance_time < 0):
+        raise ValueError("distance-known counts and times must be non-negative")
+    if np.any(distance_trips > trips) or np.any(distance_time > time):
+        raise ValueError(
+            "distance-known counts and times cannot exceed all-trip totals"
+        )
+    known_trips = float(np.sum(weight * distance_trips))
+    known_time = float(np.sum(weight * distance_time))
+    if (
+        min(weighted_trips, weighted_distance, weighted_time, known_trips, known_time)
+        <= 0
+    ):
         raise ValueError("groups must have positive weighted trips, distance, and time")
     total_weight = float(weight.sum())
     return (
         weighted_time / total_weight,
         weighted_trips / total_weight,
-        weighted_distance / weighted_trips,
-        weighted_distance / weighted_time,
+        weighted_distance / known_trips,
+        weighted_distance / known_time,
+        known_trips / weighted_trips,
     )
 
 
 def decompose(a: PersonDays, b: PersonDays) -> TripTimeDecomposition:
     """Decompose the change in weighted daily time into trips, distance,
-    and speed terms using ratios of weighted totals.
+    and speed terms using ratios of weighted totals (section 9.9).
+
+    N and T use all trips. L and v use only distance-known trips.
+    The selection factor R = (T/N)/(L/v) preserves T = N L/v R;
+    its separate contribution must not be attributed to speed.
 
     The minutes are ``ΔT × Δln(component) / Δln(T)``. When ``Δln(T)``
     is zero, the logarithmic-mean limit is used; the components still
     sum exactly to the zero change.
     """
-    time_a, trips_a, distance_a, speed_a = _weighted_metrics(a)
-    time_b, trips_b, distance_b, speed_b = _weighted_metrics(b)
+    time_a, trips_a, distance_a, speed_a, share_a = _weighted_metrics(a)
+    time_b, trips_b, distance_b, speed_b, share_b = _weighted_metrics(b)
     log_delta_time = float(np.log(time_b / time_a))
     log_delta_trips = float(np.log(trips_b / trips_a))
     log_delta_distance = float(np.log(distance_b / distance_a))
@@ -129,6 +165,10 @@ def decompose(a: PersonDays, b: PersonDays) -> TripTimeDecomposition:
         trips_min=log_mean_time * log_delta_trips,
         distance_min=log_mean_time * log_delta_distance,
         speed_min=-log_mean_time * log_delta_speed,
+        distance_share_a=share_a,
+        distance_share_b=share_b,
+        selection_min=log_mean_time
+        * (log_delta_time - log_delta_trips - log_delta_distance + log_delta_speed),
     )
 
 
@@ -160,7 +200,7 @@ def bootstrap_decompose(
     rng_a_seed, rng_b_seed = np.random.SeedSequence(seed).spawn(2)
     rng_a = np.random.default_rng(rng_a_seed)
     rng_b = np.random.default_rng(rng_b_seed)
-    components = np.full((n_reps, 4), np.nan, dtype=float)
+    components = np.full((n_reps, 5), np.nan, dtype=float)
     for rep in range(n_reps):
         multiplicity_a = np.bincount(
             rng_a.integers(0, len(households_a), size=len(households_a)),
@@ -175,12 +215,16 @@ def bootstrap_decompose(
             trips=a.trips,
             distance_km=a.distance_km,
             time_min=a.time_min,
+            distance_trips=a.distance_trips,
+            distance_time_min=a.distance_time_min,
         )
         resampled_b = PersonDays(
             weight=b.weight * multiplicity_b[codes_b],
             trips=b.trips,
             distance_km=b.distance_km,
             time_min=b.time_min,
+            distance_trips=b.distance_trips,
+            distance_time_min=b.distance_time_min,
         )
         if not _has_positive_weighted_metrics(resampled_a):
             continue
@@ -192,6 +236,7 @@ def bootstrap_decompose(
             result.trips_min,
             result.distance_min,
             result.speed_min,
+            result.selection_min,
         )
 
     valid = components[np.isfinite(components).all(axis=1)]
@@ -204,6 +249,7 @@ def bootstrap_decompose(
         trips_ci=(float(intervals[0, 1]), float(intervals[1, 1])),
         distance_ci=(float(intervals[0, 2]), float(intervals[1, 2])),
         speed_ci=(float(intervals[0, 3]), float(intervals[1, 3])),
+        selection_ci=(float(intervals[0, 4]), float(intervals[1, 4])),
     )
 
 
@@ -214,6 +260,14 @@ def _has_positive_weighted_metrics(days: PersonDays) -> bool:
         and float(np.sum(weight * days.trips)) > 0
         and float(np.sum(weight * days.distance_km)) > 0
         and float(np.sum(weight * days.time_min)) > 0
+        and (
+            days.distance_trips is None
+            or float(np.sum(weight * days.distance_trips)) > 0
+        )
+        and (
+            days.distance_time_min is None
+            or float(np.sum(weight * days.distance_time_min)) > 0
+        )
     )
 
 
@@ -254,6 +308,9 @@ class ShiftShareTerm:
     #: as in B2"); NaN when the group is absent from either side.
     within_km_min: float
     within_speed_min: float
+    distance_share_a: float
+    distance_share_b: float
+    within_selection_min: float
 
 
 @dataclass(frozen=True)
@@ -290,12 +347,14 @@ class ShiftShare:
 
 def _group_trip_stats(
     trips: TripGroups, groups: list[str]
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Per-group (share of trips, minutes per trip, km per trip),
     weighted; share 0 and NaN minutes/km for an absent group."""
     shares = np.zeros(len(groups))
     minutes = np.full(len(groups), np.nan)
     km = np.full(len(groups), np.nan)
+    speed = np.full(len(groups), np.nan)
+    coverage = np.zeros(len(groups))
     total_w = float(trips.weight.sum())
     for i, group in enumerate(groups):
         mask = trips.group == group
@@ -303,8 +362,16 @@ def _group_trip_stats(
         if w > 0 and total_w > 0:
             shares[i] = w / total_w
             minutes[i] = float(np.sum(trips.weight[mask] * trips.minutes[mask])) / w
-            km[i] = float(np.sum(trips.weight[mask] * trips.km[mask])) / w
-    return shares, minutes, km
+            known = mask & np.isfinite(trips.km)
+            known_w = float(trips.weight[known].sum())
+            coverage[i] = known_w / w
+            if known_w > 0:
+                distance = float(np.sum(trips.weight[known] * trips.km[known]))
+                time = float(np.sum(trips.weight[known] * trips.minutes[known]))
+                km[i] = distance / known_w
+                if time > 0:
+                    speed[i] = distance / time
+    return shares, minutes, km, speed, coverage
 
 
 def shift_share(a: TripGroups, b: TripGroups) -> ShiftShare:
@@ -318,8 +385,8 @@ def shift_share(a: TripGroups, b: TripGroups) -> ShiftShare:
     how its minutes split between mix and interaction).
     """
     groups = sorted(set(a.group) | set(b.group))
-    s_a, m_a, km_a = _group_trip_stats(a, groups)
-    s_b, m_b, km_b = _group_trip_stats(b, groups)
+    s_a, m_a, km_a, speed_a, coverage_a = _group_trip_stats(a, groups)
+    s_b, m_b, km_b, speed_b, coverage_b = _group_trip_stats(b, groups)
     n_a = float(a.weight.sum()) / a.day_weight_total
     n_b = float(b.weight.sum()) / b.day_weight_total
     big_m_a = float(np.sum(a.weight * a.minutes)) / float(a.weight.sum())
@@ -337,7 +404,7 @@ def shift_share(a: TripGroups, b: TripGroups) -> ShiftShare:
         # B2-style log split of the within-group minutes-per-trip change
         # into km per trip and speed: m = L / v, so
         # Δln m = Δln L - Δln v, scaled to the group's within minutes.
-        within_km = within_speed = float("nan")
+        within_km = within_speed = within_selection = float("nan")
         if (
             np.isfinite(m_a[i])
             and np.isfinite(m_b[i])
@@ -345,10 +412,13 @@ def shift_share(a: TripGroups, b: TripGroups) -> ShiftShare:
             and np.isfinite(km_a[i])
             and np.isfinite(km_b[i])
             and min(km_a[i], km_b[i]) > 0
+            and np.isfinite(speed_a[i])
+            and np.isfinite(speed_b[i])
+            and min(speed_a[i], speed_b[i]) > 0
         ):
             log_m = float(np.log(m_b[i] / m_a[i]))
             log_km = float(np.log(km_b[i] / km_a[i]))
-            log_speed = log_km - log_m  # v = L/m
+            log_speed = float(np.log(speed_b[i] / speed_a[i]))
             log_mean = (
                 (m_b[i] - m_a[i]) / log_m
                 if not np.isclose(log_m, 0.0, atol=1e-14)
@@ -356,6 +426,7 @@ def shift_share(a: TripGroups, b: TripGroups) -> ShiftShare:
             )
             within_km = s_a[i] * n_b * log_mean * log_km
             within_speed = -s_a[i] * n_b * log_mean * log_speed
+            within_selection = within - within_km - within_speed
         terms.append(
             ShiftShareTerm(
                 group=group,
@@ -368,6 +439,9 @@ def shift_share(a: TripGroups, b: TripGroups) -> ShiftShare:
                 interaction_min=float(interaction),
                 within_km_min=within_km,
                 within_speed_min=within_speed,
+                distance_share_a=float(coverage_a[i]),
+                distance_share_b=float(coverage_b[i]),
+                within_selection_min=within_selection,
             )
         )
     return ShiftShare(

@@ -115,6 +115,40 @@ def test_log_decomposition_bootstrap_requires_household_ids() -> None:
         bootstrap_decompose(group, group, n_reps=10)
 
 
+def test_distance_complete_metrics_keep_all_trip_time_and_bootstrap() -> None:
+    """Section 9.9: missing distances must not remove trips or their time."""
+    a = PersonDays(
+        weight=np.array([1.0, 3.0]),
+        trips=np.array([2.0, 2.0]),
+        distance_km=np.array([6.0, 0.0]),
+        time_min=np.array([40.0, 20.0]),
+        household=np.array(["a", "b"]),
+        distance_trips=np.array([1.0, 0.0]),
+        distance_time_min=np.array([10.0, 0.0]),
+    )
+    b = PersonDays(
+        weight=np.ones(2),
+        trips=np.full(2, 2.0),
+        distance_km=np.full(2, 12.0),
+        time_min=np.full(2, 60.0),
+        household=np.array(["c", "d"]),
+        distance_trips=np.ones(2),
+        distance_time_min=np.full(2, 20.0),
+    )
+    result = bootstrap_decompose(a, b, n_reps=12, seed=7)
+    point = result.point
+    assert point.time_a_min == pytest.approx(25.0)
+    assert point.trips_a == pytest.approx(2.0)
+    assert point.distance_a_km == pytest.approx(6.0)
+    assert point.speed_a_km_per_min == pytest.approx(0.6)
+    assert point.distance_share_a == pytest.approx(1 / 8)
+    assert point.distance_share_b == pytest.approx(0.5)
+    assert point.delta_min == pytest.approx(
+        point.trips_min + point.distance_min + point.speed_min + point.selection_min
+    )
+    assert np.isfinite(result.selection_ci).all()
+
+
 def test_variation_config_has_the_requested_equivalence_margins() -> None:
     config = load_variation_config(ROOT / "config" / "variation.yaml")
 

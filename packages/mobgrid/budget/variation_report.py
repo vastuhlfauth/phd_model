@@ -71,6 +71,7 @@ DISTANCE_BAND_LABELS = (
     "20-40 km",
     "40-80 km",
     ">=80 km",
+    "unknown distance",
 )
 
 #: B3's trip mode groups (step 11's trip-level mapping, with the two
@@ -299,7 +300,11 @@ def _create_frames_tables(
             max(coalesce(vac_scol, 0)) AS vac_scol,
             count(*) AS trips_per_day,
             sum(duration_min) AS total_time_min,
-            sum(distance_km) AS total_distance_km
+            coalesce(sum(distance_km) FILTER (
+                WHERE isfinite(distance_km)), 0) AS total_distance_km,
+            count(*) FILTER (WHERE isfinite(distance_km)) AS distance_trips,
+            coalesce(sum(duration_min) FILTER (
+                WHERE isfinite(distance_km)), 0) AS distance_time_min
         FROM vr_trips
         GROUP BY day_id
     """)
@@ -608,10 +613,18 @@ def lag_regression(
 ) -> list[LagCoefficient]:
     """A1's weighted regression of ``outcome`` (``'total_time_min'`` or
     ``'trips_per_day'``) on recall-lag dummies (reference lag 1) with
-    population-category x density-class fixed effects, weekday days."""
+    population-category x density-class and described-day weekday fixed
+    effects (section 9.9), weekday days."""
     days = frames.days
     lag = days["recall_lag"].astype(float)
-    keep = np.isfinite(lag) & (lag >= 1) & (lag <= 7)
+    weekday = days["described_weekday_name"].astype(str)
+    keep = (
+        np.isfinite(lag)
+        & (lag >= 1)
+        & (lag <= 7)
+        & np.isin(weekday, tuple(_FRENCH_WEEKDAY_NUM)[:5])
+    )
+    weekday = weekday[keep]
     lag = lag[keep].astype(int)
     y = days[outcome][keep].astype(float)
     w = days["pond_jour"][keep].astype(float)
@@ -629,11 +642,18 @@ def lag_regression(
 
     lag_levels = list(range(2, 8))
     stratum_levels = sorted(set(strata))[1:]  # first stratum absorbed
-    design = np.ones((len(y), 1 + len(lag_levels) + len(stratum_levels)))
+    weekday_levels = [
+        name for name in tuple(_FRENCH_WEEKDAY_NUM)[:5] if name in weekday
+    ][1:]
+    design = np.ones(
+        (len(y), 1 + len(lag_levels) + len(stratum_levels) + len(weekday_levels))
+    )
     for j, level in enumerate(lag_levels):
         design[:, 1 + j] = lag == level
     for j, level in enumerate(stratum_levels):
         design[:, 1 + len(lag_levels) + j] = strata == level
+    for j, level in enumerate(weekday_levels):
+        design[:, 1 + len(lag_levels) + len(stratum_levels) + j] = weekday == level
 
     def _fit(weights: np.ndarray) -> np.ndarray:
         sw = np.sqrt(weights)
@@ -768,10 +788,11 @@ def motive_crosswalk(
 
 
 def distance_band_index(distance_km: np.ndarray) -> np.ndarray:
-    """Band index (into ``DISTANCE_BAND_LABELS``) of each trip distance."""
-    return np.searchsorted(
+    """Band index, with non-finite distances separate (section 9.9)."""
+    band = np.searchsorted(
         np.asarray(DISTANCE_BAND_UPPER_KM[:-1]), distance_km, side="right"
     )
+    return np.where(np.isfinite(distance_km), band, len(DISTANCE_BAND_LABELS) - 1)
 
 
 @dataclass(frozen=True)
@@ -807,6 +828,80 @@ def distance_band_table(frames: SurveyFrames) -> list[DistanceBandRow]:
             )
         )
     return rows
+
+
+@dataclass(frozen=True)
+class DistanceDurationRow:
+    """Weighted duration quartiles in minutes (section 9.9)."""
+
+    label: str
+    mode: str
+    n_trips: int
+    quartiles: tuple[float, float, float]
+
+
+def distance_duration_table(frames: SurveyFrames) -> list[DistanceDurationRow]:
+    """B4b: duration by band, and by mode in >=80 km (section 9.9)."""
+    trips = frames.trips
+    bands = distance_band_index(trips["distance_km"].astype(float))
+    rows = []
+    for i, label in enumerate(DISTANCE_BAND_LABELS):
+        modes = ("all modes", *MODE7_LABELS) if label == ">=80 km" else ("all modes",)
+        for mode in modes:
+            mask = bands == i
+            if mode != "all modes":
+                mask &= trips["mode7"] == mode
+            time = trips["duration_min"][mask].astype(float)
+            weight = trips["pond_jour"][mask].astype(float)
+            quartiles = (float("nan"),) * 3
+            if len(time):
+                order = np.argsort(time, kind="stable")
+                cumulative = np.cumsum(weight[order])
+                indices = np.searchsorted(
+                    cumulative, cumulative[-1] * np.array([0.25, 0.5, 0.75])
+                )
+                q1, median, q3 = time[order][indices]
+                quartiles = (float(q1), float(median), float(q3))
+            rows.append(DistanceDurationRow(label, mode, int(mask.sum()), quartiles))
+    return rows
+
+
+def _format_b4_durations(a: SurveyFrames, b: SurveyFrames) -> list[str]:
+    rows_a = {(r.label, r.mode): r for r in distance_duration_table(a)}
+    rows_b = {(r.label, r.mode): r for r in distance_duration_table(b)}
+    lines = [
+        "### B4b. Trip-duration distributions",
+        "",
+        "Day-weighted quantiles: first duration reaching 25%, 50% or 75% "
+        "of cumulative trip weight; minutes. Unknown distances stay separate. "
+        f"Cells below {MIN_CELL_N} trips are suppressed.",
+        "",
+        "| Band | n 2008 | median min/trip 2008 | n 2019 | median min/trip 2019 |",
+        "|---|---|---|---|---|",
+    ]
+    for label in DISTANCE_BAND_LABELS:
+        ra, rb = rows_a[label, "all modes"], rows_b[label, "all modes"]
+        lines.append(
+            f"| {label} | {ra.n_trips} | "
+            f"{_suppress(ra.n_trips, _num(ra.quartiles[1]))} | "
+            f"{rb.n_trips} | {_suppress(rb.n_trips, _num(rb.quartiles[1]))} |"
+        )
+    lines += [
+        "",
+        "Duration quartiles by mode, >=80 km band:",
+        "",
+        "| Mode | n 2008 | Q1 2008 | Median 2008 | Q3 2008 | "
+        "n 2019 | Q1 2019 | Median 2019 | Q3 2019 |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for mode in MODE7_LABELS:
+        cells = []
+        for rows in (rows_a, rows_b):
+            row = rows[">=80 km", mode]
+            cells.append(str(row.n_trips))
+            cells.extend(_suppress(row.n_trips, _num(q)) for q in row.quartiles)
+        lines.append(f"| {mode} | " + " | ".join(cells) + " |")
+    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -923,9 +1018,19 @@ MONTH_LABELS = {
 
 def _format_a4(results: dict) -> list[str]:
     lines = [
-        "## A4. Declared-duration rounding",
+        "## A4. Survey-duration construction and rounding",
         "",
-        "Weighted share of declared trip durations that are exact "
+        "**EMP 2019:** the loader uses the published `K_DEPLOC.DUREE` "
+        "(minutes). **ENTD 2008:** it uses `v2_mduree` where numeric, "
+        "otherwise `V2_DUREE` (minutes). Neither loader recomputes "
+        "arrival minus departure time. The local dictionaries label "
+        "`DUREE`/`V2_DUREE` as trip duration but do not establish whether "
+        "the producer obtained it from an independent duration declaration "
+        "or from declared arrival/departure times. Producer-side construction "
+        "remains unverified; rounding here must not be interpreted as proof "
+        "of independently declared durations.",
+        "",
+        "Weighted share of published survey trip durations that are exact "
         "multiples of 5, 10, 15 and 30 minutes, by year and trip mode "
         "(weekday trips, needs scope).",
         "",
@@ -1060,7 +1165,9 @@ def _format_a1(results: dict) -> list[str]:
     lines += [
         "",
         "Weighted regression on lag dummies (reference lag 1), with "
-        "population-category x density-class controls, household-bootstrap "
+        "population-category x density-class controls and described-day weekday "
+        "dummies (first observed weekday as reference; unknown weekdays excluded), "
+        "household-bootstrap "
         "95% CIs:",
         "",
         "| Lag | Δ time/day (min) | 95% CI | Δ trips/day | 95% CI | n |",
@@ -1233,6 +1340,17 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
                 relative = path
             lines.append(f"![{path.stem}]({relative.as_posix()})")
             lines.append("")
+            if path.stem == "fig_b7a_waterfall":
+                lines += [
+                    "B7a allocates the behavioural remainder proportionally "
+                    "to B2's terms; it is not a sequential composition-adjusted "
+                    "decomposition. The distance-selection term keeps all-trip "
+                    "time separate from distance-known-trip time. At zero net "
+                    "change, proportional allocation is undefined: B2 terms "
+                    "are retained and an explicit allocation residual closes "
+                    "the composition offset.",
+                    "",
+                ]
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1257,10 +1375,14 @@ BASE_CHOICES = [
     "(`trip_legs.distance_km`): the speed-plausibility correction "
     "replaces implausible declared distances, as in every step-11 "
     "table.",
+    "Missing distances form a separate unknown-distance band. N and T "
+    "include all trips; L and v use distance-known trips. Coverage is "
+    "day-weighted at trip level, and the selection residual is explicit "
+    "rather than attributed to speed.",
     "The waterfall figure shows B1 V2's composition effect, then the "
     "behavioural remainder split in proportion to B2's trips / km per "
-    "trip / speed terms (the two decompositions share the same total "
-    "change but are not nested).",
+    "trip / speed / selection terms (the decompositions are not nested). "
+    "At zero total change, an explicit allocation residual closes the plot.",
 ]
 
 
@@ -1366,6 +1488,8 @@ def person_days_from_frames(
         distance_km=days["total_distance_km"][sel].astype(float),
         time_min=days["total_time_min"][sel].astype(float),
         household=days["ident_men"][sel],
+        distance_trips=days["distance_trips"][sel].astype(float),
+        distance_time_min=days["distance_time_min"][sel].astype(float),
     )
 
 
@@ -1378,6 +1502,7 @@ class B2Row:
     n_a: int
     n_b: int
     result: variation.TripTimeDecompositionBootstrap | None
+    unavailable_reason: str | None = None
 
 
 def subset_frames(frames: SurveyFrames, **conditions: object) -> SurveyFrames:
@@ -1432,6 +1557,7 @@ def b2_decompositions(
             mask_b = frames_b.days["population_category"] == category
             label = category
         result = None
+        unavailable_reason = "no person-days in one or both groups"
         if mask_a.any() and mask_b.any():
             try:
                 result = variation.bootstrap_decompose(
@@ -1440,14 +1566,15 @@ def b2_decompositions(
                     n_reps=n_reps,
                     seed=seed,
                 )
-            except ValueError:
-                result = None
+            except ValueError as exc:
+                unavailable_reason = str(exc)
         rows.append(
             B2Row(
                 group=label,
                 n_a=int(mask_a.sum()),
                 n_b=int(mask_b.sum()),
                 result=result,
+                unavailable_reason=unavailable_reason if result is None else None,
             )
         )
     return rows
@@ -1463,21 +1590,27 @@ def _format_b2(
     lines = [
         title or f"## B2. Trips x distance x speed, {label_a} -> {label_b}",
         "",
-        "T = N . L / v (trips per day, km per trip, km per minute), "
-        "ratios of weighted totals; Δln T = Δln N + Δln L - Δln v, each "
+        "N and T use all trips. L and v use distance-known trips only "
+        "(km per trip and km per minute, ratios of weighted totals); "
+        "coverage is their weighted share of all trips. "
+        "T = N . L / v . R, where R = (T/N)/(L/v) is the "
+        "all-trip/known-distance mean-duration ratio. "
+        "Δln T = Δln N + Δln L - Δln v + Δln R, each "
         "term expressed in minutes as ΔT x (term / Δln T). Distances are "
         "step 11's corrected distances. Household-bootstrap 95% CIs, "
         "surveys resampled independently.",
         "",
         f"| Group | n {label_a} | n {label_b} | T {label_a} | T {label_b} "
         "| Δ (min) [CI] | trips (min) [CI] | km/trip (min) [CI] | "
-        "speed (min) [CI] |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "speed (min) [CI] | selection R (min) [CI] | "
+        f"distance-known share {label_a} | distance-known share {label_b} |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         if row.result is None or min(row.n_a, row.n_b) < MIN_CELL_N:
             lines.append(
-                f"| {row.group} | {row.n_a} | {row.n_b} | - | - | - | - | - | - |"
+                f"| {row.group} | {row.n_a} | {row.n_b} | "
+                "- | - | - | - | - | - | - | - | - |"
             )
             continue
         point = row.result.point
@@ -1487,8 +1620,14 @@ def _format_b2(
             f"{_ci_cell(point.delta_min, row.result.delta_ci)} | "
             f"{_ci_cell(point.trips_min, row.result.trips_ci)} | "
             f"{_ci_cell(point.distance_min, row.result.distance_ci)} | "
-            f"{_ci_cell(point.speed_min, row.result.speed_ci)} |"
+            f"{_ci_cell(point.speed_min, row.result.speed_ci)} | "
+            f"{_ci_cell(point.selection_min, row.result.selection_ci)} | "
+            f"{_pct(point.distance_share_a)} | {_pct(point.distance_share_b)} |"
         )
+    unavailable = [row for row in rows if row.result is None]
+    if unavailable:
+        lines += ["", "Unavailable decompositions (not zero effects):"]
+        lines += [f"- {row.group}: {row.unavailable_reason}." for row in unavailable]
     return lines
 
 
@@ -1601,6 +1740,11 @@ def _format_shift_share(
             "scaled by N_B into minutes per day. Household-bootstrap 95% "
             "CIs."
         ),
+        "N, T and mean durations use all trips. Km/trip and speed use "
+        "distance-known trips only; their weighted shares are shown. "
+        "The within selection residual separates changes in the "
+        "all-trip/known-distance mean-duration ratio from speed. "
+        "A group with no usable distances has no km/speed split.",
         "",
         "| Term | Minutes/day | 95% CI |",
         "|---|---|---|",
@@ -1622,8 +1766,10 @@ def _format_shift_share(
         f"| {group_name} | n {label_a} | n {label_b} | share {label_a} | "
         f"share {label_b} | min/trip {label_a} | min/trip {label_b} | "
         "mix (min) | within (min) | of which km/trip | of which speed | "
-        "interaction (min) |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "interaction (min) | "
+        f"distance-known share {label_a} | distance-known share {label_b} | "
+        "within selection (min) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     terms = {term.group: term for term in point.terms}
     order = group_order or tuple(sorted(terms))
@@ -1635,7 +1781,8 @@ def _format_shift_share(
         n_b = counts_b.get(group, 0)
         if min(n_a, n_b) < MIN_CELL_N:
             lines.append(
-                f"| {group} | {n_a} | {n_b} | - | - | - | - | - | - | - | - | - |"
+                f"| {group} | {n_a} | {n_b} | "
+                "- | - | - | - | - | - | - | - | - | - | - | - |"
             )
             continue
         lines.append(
@@ -1643,7 +1790,9 @@ def _format_shift_share(
             f"{_pct(term.share_b)} | {_num(term.minutes_per_trip_a)} | "
             f"{_num(term.minutes_per_trip_b)} | {_num(term.mix_min, 2)} | "
             f"{_num(term.within_min, 2)} | {_num(term.within_km_min, 2)} | "
-            f"{_num(term.within_speed_min, 2)} | {_num(term.interaction_min, 2)} |"
+            f"{_num(term.within_speed_min, 2)} | {_num(term.interaction_min, 2)} | "
+            f"{_pct(term.distance_share_a)} | {_pct(term.distance_share_b)} | "
+            f"{_num(term.within_selection_min, 2)} |"
         )
     return lines
 
@@ -1958,29 +2107,19 @@ def _format_pair_results(
         "",
         intro,
         "",
-        "Decomposition (B2's trips x km x speed, minutes, "
-        "household-bootstrap 95% CIs):",
-        "",
-        f"| Group | n {label_a} | n {label_b} | T {label_a} | T {label_b} | "
-        "Δ (min) [CI] | trips [CI] | km/trip [CI] | speed [CI] |",
-        "|---|---|---|---|---|---|---|---|---|",
     ]
-    for pair in pairs:
-        row = pair.b2
-        if row.result is None or min(pair.n_a, pair.n_b) < MIN_CELL_N:
-            lines.append(
-                f"| {pair.label} | {pair.n_a} | {pair.n_b} | - | - | - | - | - | - |"
-            )
-            continue
-        point = row.result.point
-        lines.append(
-            f"| {pair.label} | {pair.n_a} | {pair.n_b} | "
-            f"{_num(point.time_a_min)} | {_num(point.time_b_min)} | "
-            f"{_ci_cell(point.delta_min, row.result.delta_ci)} | "
-            f"{_ci_cell(point.trips_min, row.result.trips_ci)} | "
-            f"{_ci_cell(point.distance_min, row.result.distance_ci)} | "
-            f"{_ci_cell(point.speed_min, row.result.speed_ci)} |"
+    rows = [
+        B2Row(
+            pair.label, pair.n_a, pair.n_b, pair.b2.result, pair.b2.unavailable_reason
         )
+        for pair in pairs
+    ]
+    lines += _format_b2(
+        rows,
+        label_a,
+        label_b,
+        title="Decomposition (B2, minutes, household-bootstrap 95% CIs):",
+    )
     lines += [
         "",
         "Mode shift-share aggregates (B3, minutes):",
@@ -2102,8 +2241,8 @@ def pair4_tables(
 def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
     """B7's waterfall of the 2008 -> 2019 change: composition (B1 V2),
     then the behavioural remainder split in proportion to B2's trips /
-    km-per-trip / speed terms (which sum to the same ΔT), so the steps
-    close exactly on the 2019 mean."""
+    km-per-trip / speed / selection terms. At zero net change, keep B2's
+    terms and show an explicit allocation residual to close the plot."""
     b2 = results["b2_rows"][0].result
     b1_v2 = next((r for r in results["b1_rows"] if r.variant == "V2"), None)
     if b2 is None or b1_v2 is None:
@@ -2112,14 +2251,19 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
     delta = point.delta_min
     composition = b1_v2.point.composition_min
     behaviour = delta - composition
-    b2_terms = np.array([point.trips_min, point.distance_min, point.speed_min])
-    scale = behaviour / delta if delta else 0.0
+    b2_terms = np.array(
+        [point.trips_min, point.distance_min, point.speed_min, point.selection_min]
+    )
+    scale = behaviour / delta if delta else 1.0
     steps = [
         ("composition (V2)", composition),
         ("trips", float(b2_terms[0] * scale)),
         ("km per trip", float(b2_terms[1] * scale)),
         ("speed", float(b2_terms[2] * scale)),
+        ("distance selection", float(b2_terms[3] * scale)),
     ]
+    if not delta and composition:
+        steps.append(("allocation residual", -composition))
     fig, ax = plt.subplots(figsize=(7, 4))
     level = point.time_a_min
     positions = np.arange(len(steps) + 2)
@@ -2162,6 +2306,8 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
 
 def _shift_share_panel(ax, result: variation.ShiftShareBootstrap, title: str) -> None:
     terms = result.point.terms
+    if all(t.group in DISTANCE_BAND_LABELS for t in terms):
+        terms = tuple(sorted(terms, key=lambda t: DISTANCE_BAND_LABELS.index(t.group)))
     groups = [t.group for t in terms]
     x = np.arange(len(groups))
     width = 0.27
@@ -2363,14 +2509,15 @@ def _run_part_b(
             label_a="2008",
             label_b="2019",
             group_order=DISTANCE_BAND_LABELS,
-            within_label="within bands (a speed effect)",
+            within_label="within bands",
             intro=(
                 "Same shift-share by trip distance band (A3's bands). "
-                "Within a distance band, km per trip is nearly fixed, so "
-                "the within-band term is a speed effect. "
+                "The within-band change can reflect both distance and speed, "
+                "especially in the open-ended >=80 km band. "
                 "Household-bootstrap 95% CIs."
             ),
         ),
+        _format_b4_durations(frames_2008, frames_2019),
         _format_b5(results["b5_2008"], results["b5_2019"], "2008", "2019"),
         _format_b2(
             results["b2_rows_lag1"],
