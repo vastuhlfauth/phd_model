@@ -1,3 +1,12 @@
 # Step-12 equivalence-test margins for the household-bootstrap report.
 equivalence_margin: 0.15
 secondary_equivalence_margin: 0.10
+
+# Section C measurement checks; durations in minutes, distances in km.
+measurement:
+  rounding_draws: 20
+  rounding_levels: [1, 5, 15, 30]
+  duration_upper_min: [5, 10, 15, 30, 60]
+  minimum_duration_min: 5
+  short_duration_min: 5
+  short_distance_km: 1

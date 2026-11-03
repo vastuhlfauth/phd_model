@@ -1,4 +1,4 @@
-"""Step-12 travel-time variation report (Parts A and B).
+"""Step-12 travel-time variation report (Parts A, B and C).
 
 ``python -m mobgrid.budget.variation_report --out docs/data/step12_variation``
 re-runs the step-11 loaders (``mobgrid.budget.emp2019``/``entd2008``,
@@ -7,7 +7,9 @@ needs scope with their day weights, and writes the step-12 report: the
 survey-method checks of Part A (recall lag, motive crosswalk, distances,
 durations, calendar) and the decompositions of Part B (composition,
 trips x distance x speed, mode/motive/distance shift-shares, tails, the
-comparison pairs and their figures). Step-11 outputs are not touched.
+comparison pairs and their figures), and Part C measurement checks
+(rounding bounds, common distances and trips by motive).
+Step-11 outputs are not touched.
 
 Bootstrap intervals resample households within each survey,
 independently (``--bootstrap-reps``, default 200). ``--sample-households
@@ -177,6 +179,7 @@ def _create_person_ext_emp2019(con: duckdb.DuckDBPyConnection) -> None:
     con.sql("""
         CREATE OR REPLACE VIEW vr_trip_ext AS
         SELECT IDENT_DEP AS ident_dep,
+            TRY_CAST(MDISTTOT_decl AS DOUBLE) AS declared_km,
             TRY_CAST(dVO_ORIDES AS DOUBLE) AS crow_fly_km,
             TRY_CAST(NEW_VAC_SCOL AS INTEGER) AS vac_scol
         FROM k_deploc
@@ -233,6 +236,7 @@ def _create_person_ext_entd2008(con: duckdb.DuckDBPyConnection) -> None:
     con.sql("""
         CREATE OR REPLACE VIEW vr_trip_ext AS
         SELECT IDENT_DEP AS ident_dep,
+            TRY_CAST(V2_MDISTTOT AS DOUBLE) AS declared_km,
             TRY_CAST(V2_DVO_LOC AS DOUBLE) AS crow_fly_km,
             TRY_CAST(V2_VAC_SCOL AS INTEGER) AS vac_scol
         FROM k_deploc
@@ -270,7 +274,7 @@ def _create_frames_tables(
             t.age, t.duration_min, t.distance_km,
             ({mode7_sql}) AS mode7,
             coalesce({motive_group_sql}, 'unknown') AS motive_group,
-            e.crow_fly_km, e.vac_scol,
+            e.declared_km, e.crow_fly_km, e.vac_scol,
             p.sex, p.recall_lag, p.described_weekday_name,
             p.described_month_name, p.is_idf, p.cars_band
         FROM trip_legs t
@@ -1468,6 +1472,14 @@ def run(
         n_reps=n_reps,
         seed=seed,
     )
+    measurement = variation.load_variation_config(
+        ROOT / "config" / "variation.yaml"
+    ).measurement
+    results["extra_sections"].append(
+        measurement_checks(
+            frames_2008, frames_2019, config=measurement, n_reps=n_reps, seed=seed
+        )
+    )
     return results
 
 
@@ -1585,7 +1597,12 @@ def _ci_cell(value: float, ci: tuple[float, float], decimals: int = 1) -> str:
 
 
 def _format_b2(
-    rows: list[B2Row], label_a: str, label_b: str, title: str | None = None
+    rows: list[B2Row],
+    label_a: str,
+    label_b: str,
+    title: str | None = None,
+    *,
+    distance_description: str = "step 11's corrected distances",
 ) -> list[str]:
     lines = [
         title or f"## B2. Trips x distance x speed, {label_a} -> {label_b}",
@@ -1597,7 +1614,7 @@ def _format_b2(
         "all-trip/known-distance mean-duration ratio. "
         "Δln T = Δln N + Δln L - Δln v + Δln R, each "
         "term expressed in minutes as ΔT x (term / Δln T). Distances are "
-        "step 11's corrected distances. Household-bootstrap 95% CIs, "
+        f"{distance_description}. Household-bootstrap 95% CIs, "
         "surveys resampled independently.",
         "",
         f"| Group | n {label_a} | n {label_b} | T {label_a} | T {label_b} "
@@ -2558,9 +2575,502 @@ def _run_part_b(
     ]
 
 
+def _trip_day_index(frames: SurveyFrames) -> np.ndarray:
+    """Map trip rows to their person-day rows (section 9.9)."""
+    days = frames.days["day_id"].astype(str)
+    if len(np.unique(days)) != len(days):
+        raise ValueError("measurement checks require unique person-day ids")
+    order = np.argsort(days)
+    trip_days = frames.trips["day_id"].astype(str)
+    positions = np.searchsorted(days[order], trip_days)
+    if np.any(positions >= len(days)):
+        raise ValueError("trip has no matching person-day")
+    indices = order[positions]
+    if np.any(days[indices] != trip_days):
+        raise ValueError("trip has no matching person-day")
+    return indices
+
+
+def common_distance_frames(frames: SurveyFrames, column: str) -> SurveyFrames:
+    """C2: reaggregate raw km, keeping all weekday days/trips (section 9.9).
+
+    Neither producer-corrected distances nor speed corrections are used.
+    Missing/invalid raw distances stay unknown, never imputed.
+    """
+    distance = frames.trips[column].astype(float)
+    known = np.isfinite(distance) & (distance >= 0)
+    distance = np.where(known, distance, np.nan)
+    indices = _trip_day_index(frames)
+    n = len(frames.days["pond_jour"])
+    days = dict(frames.days)
+    days["total_distance_km"] = np.bincount(
+        indices, weights=np.where(known, distance, 0), minlength=n
+    )
+    days["distance_trips"] = np.bincount(indices, weights=known, minlength=n)
+    days["distance_time_min"] = np.bincount(
+        indices,
+        weights=np.where(known, frames.trips["duration_min"], 0),
+        minlength=n,
+    )
+    return SurveyFrames(
+        frames.name, days, {**frames.trips, "distance_km": distance}, frames.aux
+    )
+
+
+def rounding_level(durations: np.ndarray, levels: tuple[int, ...]) -> np.ndarray:
+    """C1: largest rounding multiple in minutes, including zero (section 9.9)."""
+    if not np.isfinite(durations).all() or np.any(durations < 0):
+        raise ValueError("rounding requires finite, non-negative durations")
+    result = np.full(len(durations), levels[0], dtype=int)
+    for level in levels[1:]:
+        result[np.isclose(np.remainder(durations, level), 0, atol=1e-8)] = level
+    return result
+
+
+def _rounding_cells(
+    frames: SurveyFrames, config: variation.MeasurementConfig
+) -> tuple[np.ndarray, tuple[int, int, int]]:
+    classes = np.searchsorted(
+        config.duration_upper_min, frames.trips["duration_min"], side="right"
+    )
+    n_classes = len(config.duration_upper_min) + 1
+    modes = frames.trips["mode7"].astype(str)
+    codes = np.full(len(modes), -1, dtype=int)
+    for i, mode in enumerate(MODE7_LABELS):
+        codes[modes == mode] = i
+    if np.any(codes < 0):
+        raise ValueError("unrecognised mode in rounding cells")
+    return (
+        codes * n_classes + classes,
+        (len(MODE7_LABELS), n_classes, len(config.rounding_levels)),
+    )
+
+
+def _rounding_shares(
+    frames: SurveyFrames,
+    durations: np.ndarray,
+    config: variation.MeasurementConfig,
+) -> np.ndarray:
+    cells, shape = _rounding_cells(frames, config)
+    n_cells = shape[0] * shape[1]
+    weight = frames.trips["pond_jour"].astype(float)
+    totals = np.bincount(cells, weights=weight, minlength=n_cells)
+    levels = rounding_level(durations, config.rounding_levels)
+    shares = np.full((n_cells, shape[2]), np.nan)
+    for j, level in enumerate(config.rounding_levels):
+        numerator = np.bincount(
+            cells, weights=weight * (levels >= level), minlength=n_cells
+        )
+        np.divide(numerator, totals, out=shares[:, j], where=totals > 0)
+    return shares.reshape(shape)
+
+
+def simulate_rounding(
+    a: SurveyFrames,
+    b: SurveyFrames,
+    variant: str,
+    *,
+    config: variation.MeasurementConfig,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """C1: one coarsening draw on 2008 minutes, targeting 2019 (section 9.9).
+
+    Both surveys' cells use their original durations. At each increasing
+    level, p = (target - current share) / eligible share, clipped to [0, 1].
+    Existing coarser durations are never refined; ties round upward.
+    """
+    if variant not in ("nearest", "up", "nearest_min5"):
+        raise ValueError(f"unknown rounding variant: {variant}")
+    durations = a.trips["duration_min"].astype(float).copy()
+    levels = rounding_level(durations, config.rounding_levels)
+    cells, shape = _rounding_cells(a, config)
+    targets = _rounding_shares(
+        b, b.trips["duration_min"].astype(float), config
+    ).reshape(-1, shape[2])
+    weights = a.trips["pond_jour"].astype(float)
+    for cell in np.unique(cells):
+        indices = np.flatnonzero(cells == cell)
+        total = weights[indices].sum()
+        if total <= 0 or not np.isfinite(targets[cell]).all():
+            continue
+        for j, level in enumerate(config.rounding_levels[1:], start=1):
+            current = float(weights[indices][levels[indices] >= level].sum() / total)
+            gap = targets[cell, j] - current
+            if gap <= 0:
+                continue
+            eligible = indices[levels[indices] < level]
+            scaled = durations[eligible] / level
+            rounded = level * (
+                np.ceil(scaled) if variant == "up" else np.floor(scaled + 0.5)
+            )
+            if variant == "nearest_min5":
+                rounded = np.maximum(rounded, config.minimum_duration_min)
+            new_levels = rounding_level(rounded, config.rounding_levels)
+            can_coarsen = new_levels >= level
+            eligible = eligible[can_coarsen]
+            rounded = rounded[can_coarsen]
+            new_levels = new_levels[can_coarsen]
+            eligible_share = weights[eligible].sum() / total
+            if eligible_share <= 0:
+                continue
+            selected = rng.random(len(eligible)) < min(1.0, gap / eligible_share)
+            durations[eligible[selected]] = rounded[selected]
+            levels[eligible[selected]] = new_levels[selected]
+    return durations
+
+
+def rounding_checks(
+    a: SurveyFrames,
+    b: SurveyFrames,
+    *,
+    config: variation.MeasurementConfig,
+    seed: int,
+) -> dict:
+    """C1: draw distributions of change in minutes/day and cell shares."""
+    indices = _trip_day_index(a)
+    changes, shares = {}, {}
+    groups = ("overall", *daily_energy.POPULATION_CATEGORIES)
+    for variant in ("nearest", "up", "nearest_min5"):
+        changes[variant] = {group: [] for group in groups}
+        simulated_shares = []
+        rng = np.random.default_rng(seed)
+        for _ in range(config.rounding_draws):
+            durations = simulate_rounding(a, b, variant, config=config, rng=rng)
+            delta = np.bincount(
+                indices,
+                weights=durations - a.trips["duration_min"],
+                minlength=len(a.days["pond_jour"]),
+            )
+            simulated_shares.append(_rounding_shares(a, durations, config))
+            for group in groups:
+                mask = (
+                    np.ones(len(delta), dtype=bool)
+                    if group == "overall"
+                    else a.days["population_category"] == group
+                )
+                value = (
+                    float(np.average(delta[mask], weights=a.days["pond_jour"][mask]))
+                    if mask.any()
+                    else float("nan")
+                )
+                changes[variant][group].append(value)
+        shares[variant] = np.asarray(simulated_shares)
+    return {
+        "changes": changes,
+        "shares": shares,
+        "target": _rounding_shares(b, b.trips["duration_min"].astype(float), config),
+    }
+
+
+@dataclass(frozen=True)
+class DailyRateRow:
+    """C2/C3 means and independent-household 95% CIs, per day with trips."""
+
+    group: str
+    metric: str
+    n_a: int
+    n_b: int
+    mean_a: float
+    mean_b: float
+    ci_a: tuple[float, float]
+    ci_b: tuple[float, float]
+    delta_ci: tuple[float, float]
+
+
+def _daily_rate_rows(
+    a: SurveyFrames,
+    b: SurveyFrames,
+    measures: dict[str, tuple[np.ndarray, np.ndarray]],
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[DailyRateRow]:
+    """Aggregate trip quantities to days, retaining zeros (section 9.9)."""
+    if n_reps <= 0:
+        raise ValueError("n_reps must be positive")
+    matrices = []
+    for survey, frames in enumerate((a, b)):
+        indices = _trip_day_index(frames)
+        matrices.append(
+            np.column_stack(
+                [
+                    np.bincount(
+                        indices,
+                        weights=values[survey],
+                        minlength=len(frames.days["pond_jour"]),
+                    )
+                    for values in measures.values()
+                ]
+            )
+        )
+    rows = []
+    for group in ("overall", *daily_energy.POPULATION_CATEGORIES):
+        means, replicates, counts = [], [], []
+        for frames, matrix, rng_seed in zip(
+            (a, b), matrices, np.random.SeedSequence(seed).spawn(2), strict=True
+        ):
+            mask = (
+                np.ones(len(matrix), dtype=bool)
+                if group == "overall"
+                else frames.days["population_category"] == group
+            )
+            counts.append(int(mask.sum()))
+            weight = frames.days["pond_jour"][mask].astype(float)
+            values = matrix[mask]
+            means.append(
+                np.average(values, axis=0, weights=weight)
+                if mask.any()
+                else np.full(len(measures), np.nan)
+            )
+            reps = np.full((n_reps, len(measures)), np.nan)
+            if mask.any():
+                rng = np.random.default_rng(rng_seed)
+                for rep in range(n_reps):
+                    w = weight * variation.household_multipliers(
+                        frames.days["ident_men"][mask], rng
+                    )
+                    if w.sum() > 0:
+                        reps[rep] = np.average(values, axis=0, weights=w)
+            replicates.append(reps)
+
+        def interval(values: np.ndarray) -> tuple[float, float]:
+            valid = values[np.isfinite(values)]
+            if not len(valid):
+                return float("nan"), float("nan")
+            lo, hi = np.percentile(valid, [2.5, 97.5])
+            return float(lo), float(hi)
+
+        for i, metric in enumerate(measures):
+            rows.append(
+                DailyRateRow(
+                    group,
+                    metric,
+                    *counts,
+                    float(means[0][i]),
+                    float(means[1][i]),
+                    interval(replicates[0][:, i]),
+                    interval(replicates[1][:, i]),
+                    interval(replicates[1][:, i] - replicates[0][:, i]),
+                )
+            )
+    return rows
+
+
+def motive_rate_checks(
+    a: SurveyFrames,
+    b: SurveyFrames,
+    *,
+    config: variation.MeasurementConfig,
+    n_reps: int,
+    seed: int,
+) -> list[DailyRateRow]:
+    """C3: motive and short-trip counts per category-day (section 9.9)."""
+    measures = {
+        motive_group_label(code): (
+            a.trips["motive_group"].astype(str) == str(code),
+            b.trips["motive_group"].astype(str) == str(code),
+        )
+        for code in MOTIVE_GROUP_LABELS
+    }
+    known_codes = np.array([str(code) for code in MOTIVE_GROUP_LABELS])
+    measures["unknown motive"] = tuple(
+        ~np.isin(frames.trips["motive_group"].astype(str), known_codes)
+        for frames in (a, b)
+    )
+    measures[f"trips under {config.short_duration_min:g} min"] = tuple(
+        frames.trips["duration_min"] < config.short_duration_min for frames in (a, b)
+    )
+    measures[f"trips under {config.short_distance_km:g} km (crow-fly)"] = tuple(
+        np.isfinite(frames.trips["crow_fly_km"])
+        & (frames.trips["crow_fly_km"] >= 0)
+        & (frames.trips["crow_fly_km"] < config.short_distance_km)
+        for frames in (a, b)
+    )
+    return _daily_rate_rows(a, b, measures, n_reps=n_reps, seed=seed)
+
+
+def _format_daily_rates(rows: list[DailyRateRow], unit: str) -> list[str]:
+    lines = [
+        f"| Category | Measure ({unit}) | n 2008 | 2008 [95% CI] | "
+        "n 2019 | 2019 [95% CI] | Difference 2019 - 2008 [95% CI] |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for row in rows:
+        delta = row.mean_b - row.mean_a
+        lines.append(
+            f"| {row.group} | {row.metric} | {row.n_a} | "
+            f"{_suppress(row.n_a, _ci_cell(row.mean_a, row.ci_a, 2))} | "
+            f"{row.n_b} | {_suppress(row.n_b, _ci_cell(row.mean_b, row.ci_b, 2))} | "
+            f"{_suppress(min(row.n_a, row.n_b), _ci_cell(delta, row.delta_ci, 2))} |"
+        )
+    return lines
+
+
+def measurement_checks(
+    a: SurveyFrames,
+    b: SurveyFrames,
+    *,
+    config: variation.MeasurementConfig,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    """Render section C, reusing B2/B4b and household bootstrap (section 9.9)."""
+    rounding = rounding_checks(a, b, config=config, seed=seed)
+    lines = [
+        "## C. Measurement checks",
+        "",
+        "Weekday person-days with needs-scope trips, day weights; the same "
+        "denominator as B2. Section 9.9. Small-cell suppression is unchanged.",
+        "",
+        "### C1. Rounding bounds",
+        "",
+        f"{config.rounding_draws} draws per variant; change = simulated minus "
+        "observed ENTD 2008 minutes per day with trips. The mean and full "
+        "simulation range are sensitivity bounds, not confidence intervals. "
+        "Levels are 1, 5, 15 and 30 min, assigned by the largest multiple "
+        "each duration is (zero is a multiple of 30). Nearest ties round upward. "
+        "The minimum variant clips newly rounded values to 5 min; unchanged "
+        "short trips are not floored.",
+        "",
+        "Cells are mode x original duration class in each survey. The 2008 "
+        "classes remain fixed after rounding. At each level, finest first, "
+        "p = max(0, target share - current share) / eligible share, capped at 1. "
+        "Only trips that can attain that level are eligible; no duration is "
+        "made finer. Targets below existing shares do not undo rounding. "
+        "Empty 2019 cells leave 2008 unchanged (no pooled fallback). Achieved "
+        "shares can exceed targets or vary stochastically; they are shown below.",
+        "",
+        "| Variant | Category | n 2008 | Mean change min/day | Range |",
+        "|---|---|---|---|---|",
+    ]
+    for variant, groups in rounding["changes"].items():
+        for group, values in groups.items():
+            n = (
+                len(a.days["pond_jour"])
+                if group == "overall"
+                else int(np.sum(a.days["population_category"] == group))
+            )
+            lines.append(
+                f"| {variant} | {group} | {n} | "
+                f"{_suppress(n, _num(float(np.mean(values)), 2))} | "
+                f"{_suppress(n, f'[{_num(min(values), 2)}, {_num(max(values), 2)}]')} |"
+            )
+    lines += [
+        "",
+        "Cumulative day-weighted trip shares at or above each level. "
+        "Simulated shares are mean [min, max] across draws, within original "
+        "2008 cells; 2019 shares use original 2019 cells.",
+        "",
+        "| Variant | Mode | Original duration class | Level (min) | n 2008 | "
+        "Simulated 2008 share | n 2019 | 2019 share |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    codes_a, shape = _rounding_cells(a, config)
+    codes_b, _ = _rounding_cells(b, config)
+    counts_a = np.bincount(codes_a, minlength=shape[0] * shape[1]).reshape(shape[:2])
+    counts_b = np.bincount(codes_b, minlength=shape[0] * shape[1]).reshape(shape[:2])
+    class_labels = ("<5", "5-9", "10-14", "15-29", "30-59", "60+")
+    for variant, shares in rounding["shares"].items():
+        for i, mode in enumerate(MODE7_LABELS):
+            for j, label in enumerate(class_labels):
+                for k, level in enumerate(config.rounding_levels):
+                    values = shares[:, i, j, k]
+                    simulated = (
+                        f"{_pct(float(np.mean(values)))} "
+                        f"[{_pct(float(np.min(values)))}, "
+                        f"{_pct(float(np.max(values)))}]"
+                    )
+                    target = _pct(rounding["target"][i, j, k])
+                    lines.append(
+                        f"| {variant} | {mode} | {label} min | {level} | "
+                        f"{counts_a[i, j]} | {_suppress(counts_a[i, j], simulated)} | "
+                        f"{counts_b[i, j]} | "
+                        f"{_suppress(counts_b[i, j], target)} |"
+                    )
+    lines += [
+        "",
+        "### C2. Common distance measures",
+        "",
+        "No speed correction in either year. Declared uses ENTD `V2_MDISTTOT` "
+        "without `distcor` and EMP `MDISTTOT_decl`; crow-fly uses "
+        "`V2_DVO_LOC` and `dVO_ORIDES`. Neither falls back to another measure. "
+        "Missing, non-finite or negative distances remain unknown. N and T "
+        "retain all trips/days. Km/person-day sums known km over all days with "
+        "trips (a lower bound when distances are missing); B2 coverage and "
+        "the unknown-distance band expose this limitation. CIs resample "
+        "households independently in the two surveys.",
+        "",
+    ]
+    for column, label in (("declared_km", "declared"), ("crow_fly_km", "crow-fly")):
+        ca, cb = common_distance_frames(a, column), common_distance_frames(b, column)
+        lines += _format_b2(
+            b2_decompositions(ca, cb, n_reps=n_reps, seed=seed),
+            "2008",
+            "2019",
+            title=f"#### {label}: B2",
+            distance_description=f"raw {label} distances, no speed correction",
+        )
+        lines += [
+            "",
+            *_format_daily_rates(
+                _daily_rate_rows(
+                    ca,
+                    cb,
+                    {
+                        "km per person-day": (
+                            np.nan_to_num(ca.trips["distance_km"], nan=0.0),
+                            np.nan_to_num(cb.trips["distance_km"], nan=0.0),
+                        )
+                    },
+                    n_reps=n_reps,
+                    seed=seed,
+                ),
+                "km/day with trips",
+            ),
+        ]
+        lines += [
+            "",
+            *_format_shift_share(
+                shift_share_by(ca, cb, "distance_band", n_reps=n_reps, seed=seed),
+                _group_counts(ca, "distance_band"),
+                _group_counts(cb, "distance_band"),
+                title=f"#### {label}: B4b distance-band shift-share",
+                group_name="band",
+                label_a="2008",
+                label_b="2019",
+                group_order=DISTANCE_BAND_LABELS,
+                within_label="within bands",
+                intro=f"Raw {label} bands; no speed correction. "
+                "Household-bootstrap 95% CIs.",
+            ),
+        ]
+        durations = _format_b4_durations(ca, cb)
+        durations[0] = f"#### {label}: B4b trip-duration distributions"
+        lines += ["", *durations]
+    lines += [
+        "",
+        "### C3. Trips by motive",
+        "",
+        "Trips per day with trips by harmonised motive group x population "
+        "category, using the existing return-home reassignment and needs scope. "
+        "Each category denominator includes days with zero trips for that "
+        "motive. n counts all category person-days, not just motive users. "
+        "Short-trip rows use strict < thresholds; missing crow-fly distances "
+        "are not short trips. Thus short-distance rates are lower bounds if "
+        "crow-fly distances are missing. Household-bootstrap 95% CIs for each "
+        "year and the difference, with independent survey resamples.",
+        "",
+        *_format_daily_rates(
+            motive_rate_checks(a, b, config=config, n_reps=n_reps, seed=seed),
+            "trips/day with trips",
+        ),
+    ]
+    return lines
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Step-12 travel-time variation report (Parts A and B)."
+        description="Step-12 travel-time variation report (Parts A, B and C)."
     )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)

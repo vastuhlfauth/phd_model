@@ -11,13 +11,27 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class MeasurementConfig(BaseModel):
+    """Section 9.9 / C: rounding levels/classes and short-trip cutoffs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rounding_draws: Annotated[int, Field(gt=0)]
+    rounding_levels: tuple[int, int, int, int]
+    duration_upper_min: tuple[float, ...]
+    minimum_duration_min: Annotated[float, Field(gt=0)]
+    short_duration_min: Annotated[float, Field(gt=0)]
+    short_distance_km: Annotated[float, Field(gt=0)]
+
+
 class VariationConfig(BaseModel):
-    """Equivalence margins for the step-12 report."""
+    """Equivalence margins and measurement checks for the step-12 report."""
 
     model_config = ConfigDict(extra="forbid")
 
     equivalence_margin: Annotated[float, Field(gt=0, lt=1)]
     secondary_equivalence_margin: Annotated[float, Field(gt=0, lt=1)]
+    measurement: MeasurementConfig
 
 
 def load_variation_config(path: str | Path) -> VariationConfig:

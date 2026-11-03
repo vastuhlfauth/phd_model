@@ -2,7 +2,51 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-11-03 by Copilot (branch `step/variation`: step-12 report fixes; real-data regeneration left to the user)_
+_Last updated: 2026-11-03 by Copilot (branch `step/variation`: step-12 measurement checks; real-data regeneration left to the user)_
+
+### Step 12: C. Measurement checks (2026-11-03, branch `step/variation`)
+
+- Added section C to `mobgrid.budget.variation_report`, configured by
+  `config/variation.yaml` (pydantic-validated). A/B calculations and
+  step-11 outputs are unchanged.
+- C1 transfers EMP 2019's day-weighted cumulative rounding shares to
+  ENTD 2008 within mode x original duration class. Levels are 1, 5, 15
+  and 30 min, with sequential gap/eligible-share coarsening probabilities.
+  Twenty seeded draws of nearest, up and nearest-with-5-min-minimum
+  report mean/range of changes in minutes per day with trips, overall
+  and by category, plus achieved cell shares alongside 2019 targets.
+  Choices: nearest ties upward; cells never change after rounding;
+  no refinement or pooling of empty target cells; the minimum applies
+  to newly rounded values only. Zero, if produced, is a multiple of 30.
+  Existing shares above target cannot be reduced and are left as-is;
+  achieved shares expose overshoots and stochastic sampling variation.
+- C2 reruns B2 (the existing `decompose()` household bootstrap), B4b's
+  distance-band shift-share and duration distributions for raw declared
+  distances (`V2_MDISTTOT`, never `distcor`; `MDISTTOT_decl`) and computed
+  crow-fly distances (`V2_DVO_LOC`; `dVO_ORIDES`), without speed correction.
+  Added known km per person-day, overall/by category with 95% CIs.
+  All days/trips stay in N/T and the denominator; unknown distances
+  remain unknown, with coverage/selection and an unknown-distance band.
+  Known-km totals are explicitly lower bounds when distances are missing.
+- C3 reports motive-group x category trip rates (zero-motive days kept),
+  plus trips strictly under 5 min and under 1 km crow-fly per day, in
+  each year and their difference, all with independent household-bootstrap
+  95% CIs. Missing crow-fly distances never count as short; no imputation.
+  This uses the existing needs scope and return-home motive reassignment.
+- Validation: 43 passed, 0 failed in the two touched test modules only;
+  Ruff check/format clean for the four changed Python files; Pylance
+  syntax/diagnostics clean and all six `_format_b2` callers compatible.
+  The synthetic CLI test checks that section C and the existing B7
+  figures are generated. Additional tests cover fixed cells, class
+  boundaries, weighted rounding probabilities, all variants, 20-draw
+  ranges/target convergence/reproducibility, exact raw-field provenance,
+  missing-distance aggregation and zero-inclusive household-bootstrap CIs.
+  Used `.venv\Scripts\python.exe` because `uv` is unavailable.
+- No other reports were opened; no real-data job was run. The existing
+  uncommitted `docs/data/step12_variation.md` and figure directory are
+  preserved and excluded from this task's commit. Regeneration is still
+  needed to populate section C with real-data results:
+  `uv run python -m mobgrid.budget.variation_report --out docs\data\step12_variation`.
 
 ### Step 12: report corrections (2026-11-03, branch `step/variation`)
 

@@ -419,7 +419,8 @@ def test_frame_aggregation_keeps_missing_distance_days(
                 'janvier' AS described_month_name, FALSE AS is_idf,
                 '1' AS cars_band FROM trip_legs;
             CREATE VIEW vr_trip_ext AS SELECT ident_dep,
-                NULL::DOUBLE AS crow_fly_km, 0 AS vac_scol FROM trip_legs;
+                NULL::DOUBLE AS crow_fly_km, NULL::DOUBLE AS declared_km,
+                0 AS vac_scol FROM trip_legs;
         """)
         variation_report._create_frames_tables(con, sample_pct=None)
         frames = SurveyFrames(
@@ -727,6 +728,238 @@ def test_cli_writes_report_on_synthetic_data(
     assert "arrival minus departure" in report
     assert "distance-known trips" in report
     assert "median min/trip 2008" in report
+    assert "## C. Measurement checks" in report
+    assert "C1. Rounding bounds" in report
+    assert "20 draws" in report
+    assert "Simulated 2008 share" in report
+    assert "C2. Common distance measures" in report
+    assert "V2_MDISTTOT" in report and "MDISTTOT_decl" in report
+    assert "No speed correction" in report
+    assert "C3. Trips by motive" in report
+    assert "trips under 1 km (crow-fly)" in report
     assert (out_dir / "fig_b7a_waterfall.png").is_file()
     assert (out_dir / "fig_b7b_shift_share.png").is_file()
     assert (out_dir / "fig_b7c_recall_lag.png").is_file()
+
+
+def _measurement_frames(durations: list[float]) -> SurveyFrames:
+    n = len(durations)
+    return _frames(
+        {
+            "day_id": [f"d{i}" for i in range(n)],
+            "ident_men": [f"h{i // 2}" for i in range(n)],
+            "pond_jour": [1.0] * n,
+            "population_category": ["employed"] * n,
+            "trips_per_day": [1.0] * n,
+            "total_time_min": durations,
+            "total_distance_km": [99.0] * n,
+            "distance_trips": [1.0] * n,
+            "distance_time_min": durations,
+        },
+        {
+            "day_id": [f"d{i}" for i in range(n)],
+            "ident_men": [f"h{i // 2}" for i in range(n)],
+            "pond_jour": [1.0] * n,
+            "population_category": ["employed"] * n,
+            "duration_min": durations,
+            "distance_km": [99.0] * n,
+            "declared_km": [2.0] * n,
+            "crow_fly_km": [0.5] * n,
+            "mode7": ["walk"] * n,
+            "motive_group": ["2"] * n,
+        },
+    )
+
+
+def _measurement_config() -> variation_report.variation.MeasurementConfig:
+    return variation_report.variation.load_variation_config(
+        ROOT / "config" / "variation.yaml"
+    ).measurement
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"), [("nearest", 0.0), ("up", 5.0), ("nearest_min5", 5.0)]
+)
+def test_rounding_variants_keep_original_classes_and_never_refine(
+    variant: str, expected: float
+) -> None:
+    """Section 9.9 / C1: fixed cells, increasing cumulative rounding levels."""
+    config = _measurement_config()
+    a = _measurement_frames([2.0, 3.0, 5.0, 30.0])
+    b = _measurement_frames([5.0, 5.0, 5.0, 30.0])
+    # Put 2-min and 5-min durations in the same class to exercise the floor.
+    config = config.model_copy(update={"duration_upper_min": (10.0, 15.0, 30.0, 60.0)})
+    result = variation_report.simulate_rounding(
+        a, b, variant, config=config, rng=np.random.default_rng(7)
+    )
+    assert result[0] == expected
+    assert result[2:] == pytest.approx([5.0, 30.0])
+    assert np.all(
+        variation_report.rounding_level(result, config.rounding_levels)
+        >= variation_report.rounding_level(
+            a.trips["duration_min"], config.rounding_levels
+        )
+    )
+    assert a.trips["duration_min"] == pytest.approx([2.0, 3.0, 5.0, 30.0])
+
+
+def test_rounding_uses_weighted_cumulative_gap_probability() -> None:
+    config = _measurement_config()
+    a = _measurement_frames([11.0, 12.0, 13.0, 10.0])
+    b = _measurement_frames([10.0, 10.0, 11.0, 12.0])
+    a.trips["pond_jour"] = np.array([1.0, 1.0, 2.0, 4.0])
+
+    class FixedDraws:
+        def random(self, size):
+            return np.full(size, 0.1)
+
+    # Weighted current share 1/2 already equals the target: no coarsening.
+    result = variation_report.simulate_rounding(
+        a, b, "nearest", config=config, rng=FixedDraws()
+    )
+    assert result == pytest.approx([11.0, 12.0, 13.0, 10.0])
+    a.trips["pond_jour"] = np.ones(4)
+    # p = (.5 - .25) / .75 = 1/3, hence all fixed .1 draws coarsen.
+    result = variation_report.simulate_rounding(
+        a, b, "nearest", config=config, rng=FixedDraws()
+    )
+    assert result == pytest.approx([10.0, 10.0, 15.0, 10.0])
+
+
+def test_rounding_draws_report_daily_changes_and_achieved_shares() -> None:
+    a = _measurement_frames([11.0] * 60)
+    b = _measurement_frames([10.0] * 60)
+    result = variation_report.rounding_checks(
+        a, b, config=_measurement_config(), seed=4
+    )
+    nearest = result["changes"]["nearest"]["overall"]
+    assert len(nearest) == 20
+    assert nearest == pytest.approx([-1.0] * 20)
+    assert result["changes"]["up"]["employed"] == pytest.approx([4.0] * 20)
+    assert result["changes"]["nearest_min5"]["employed"] == pytest.approx([-1.0] * 20)
+    assert result["shares"]["nearest"].shape == (20, 7, 6, 4)
+    assert result["shares"]["nearest"][:, 0, 2, 1] == pytest.approx(np.ones(20))
+    assert np.isnan(result["target"][1]).all()  # no bike cell: no fallback
+
+
+def test_rounding_keeps_modes_and_original_duration_classes_separate() -> None:
+    config = _measurement_config()
+    a = _measurement_frames([11.0, 21.0, 31.0, 61.0, 11.0, 31.0])
+    b = _measurement_frames([10.0, 20.0, 30.0, 60.0, 11.0])
+    a.trips["mode7"] = np.array(["walk"] * 4 + ["bike", "car_driver"])
+    b.trips["mode7"][-1] = "bike"
+    result = variation_report.simulate_rounding(
+        a, b, "nearest", config=config, rng=np.random.default_rng(1)
+    )
+    assert result == pytest.approx([10.0, 20.0, 30.0, 60.0, 11.0, 31.0])
+    # 5, 10, 15, 30 and 60 belong to the next class, not the preceding one.
+    boundaries = _measurement_frames([4.0, 5.0, 10.0, 15.0, 30.0, 60.0])
+    codes, _ = variation_report._rounding_cells(boundaries, config)
+    assert codes == pytest.approx(np.arange(6))
+
+
+def test_rounding_draws_reach_partial_targets_and_are_reproducible() -> None:
+    a = _measurement_frames([11.0] * 2000)
+    b = _measurement_frames([10.0] * 1000 + [11.0] * 1000)
+    config = _measurement_config()
+    result = variation_report.rounding_checks(a, b, config=config, seed=18)
+    repeated = variation_report.rounding_checks(a, b, config=config, seed=18)
+    shares = result["shares"]["nearest"][:, 0, 2, 1]
+    assert np.mean(shares) == pytest.approx(0.5, abs=0.02)
+    assert np.ptp(shares) > 0
+    assert np.mean(result["changes"]["nearest"]["overall"]) == pytest.approx(
+        -0.5, abs=0.02
+    )
+    np.testing.assert_equal(result["shares"]["nearest"], repeated["shares"]["nearest"])
+
+
+def test_common_distances_reaggregate_without_speed_or_producer_correction() -> None:
+    frames = _measurement_frames([2.0, 20.0, 30.0])
+    frames.trips["declared_km"] = np.array([300.0, np.nan, 0.0])
+    frames.trips["crow_fly_km"] = np.array([0.2, 8.0, np.nan])
+    declared = variation_report.common_distance_frames(frames, "declared_km")
+    crow = variation_report.common_distance_frames(frames, "crow_fly_km")
+    assert declared.days["total_distance_km"] == pytest.approx([300.0, 0.0, 0.0])
+    assert declared.days["distance_trips"] == pytest.approx([1.0, 0.0, 1.0])
+    assert declared.days["distance_time_min"] == pytest.approx([2.0, 0.0, 30.0])
+    assert crow.days["total_distance_km"] == pytest.approx([0.2, 8.0, 0.0])
+    assert crow.days["trips_per_day"] == pytest.approx([1.0, 1.0, 1.0])
+    assert frames.days["total_distance_km"] == pytest.approx([99.0] * 3)
+    # Day ids, not row ordering, determine aggregation.
+    frames.trips = {k: v[::-1] for k, v in frames.trips.items()}
+    reordered = variation_report.common_distance_frames(frames, "declared_km")
+    assert reordered.days["total_distance_km"] == pytest.approx([300.0, 0.0, 0.0])
+    decomposition = variation_report.b2_decompositions(
+        declared, crow, categories=(), n_reps=N_REPS, seed=0
+    )[0].result
+    assert decomposition is not None
+    assert decomposition.point.distance_a_km == pytest.approx(150.0)
+    assert decomposition.point.distance_b_km == pytest.approx(4.1)
+    assert decomposition.point.distance_share_a == pytest.approx(2 / 3)
+    assert decomposition.point.trips_a == pytest.approx(1.0)
+
+
+def test_motive_rates_include_zero_days_and_bootstrap_households() -> None:
+    a = _measurement_frames([2.0, 5.0, 4.0, 8.0])
+    b = _measurement_frames([2.0, 5.0, 4.0, 8.0])
+    for frames in (a, b):
+        frames.days["pond_jour"] = np.array([1.0, 1.0, 3.0, 3.0])
+        frames.trips["motive_group"] = np.array(["2", "9", "2", "9"])
+        frames.trips["crow_fly_km"] = np.array([0.2, np.nan, 0.5, 1.0])
+    b.trips["motive_group"][:] = "2"
+    rows = variation_report.motive_rate_checks(
+        a, b, config=_measurement_config(), n_reps=20, seed=3
+    )
+    shopping = next(r for r in rows if r.group == "employed" and r.metric == "shopping")
+    assert shopping.mean_a == pytest.approx(0.5)
+    assert shopping.mean_b == pytest.approx(1.0)
+    # Each household has one shopping day and one non-shopping day.
+    assert shopping.ci_a == pytest.approx((0.5, 0.5))
+    assert shopping.delta_ci == pytest.approx((0.5, 0.5))
+    short = next(
+        r
+        for r in rows
+        if r.group == "employed" and r.metric == "trips under 1 km (crow-fly)"
+    )
+    assert short.mean_a == pytest.approx(0.5)
+    short_time = next(
+        r for r in rows if r.group == "employed" and r.metric == "trips under 5 min"
+    )
+    assert short_time.mean_a == pytest.approx(0.5)
+    absent = next(r for r in rows if r.group == "retired" and r.metric == "shopping")
+    assert absent.n_a == 0 and np.isnan(absent.mean_a)
+
+
+def test_measurement_loader_reads_exact_raw_distance_fields(
+    synthetic_emp_zip: Path,
+    synthetic_entd2008_raw_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for survey, path, declared, crow in (
+        (variation_report.emp2019, synthetic_emp_zip, "MDISTTOT_decl", "dVO_ORIDES"),
+        (
+            variation_report.entd2008,
+            synthetic_entd2008_raw_dir,
+            "V2_MDISTTOT",
+            "V2_DVO_LOC",
+        ),
+    ):
+        build = survey.build_trip_legs
+
+        def distinguish_raw_columns(con, config, **kwargs):
+            build(con, config, **kwargs)
+            con.sql(f"""
+                CREATE TEMP TABLE measurement_raw AS
+                SELECT * REPLACE (123.0 AS {declared}, 0.75 AS {crow})
+                FROM k_deploc;
+                CREATE OR REPLACE VIEW k_deploc AS SELECT * FROM measurement_raw;
+            """)
+
+        monkeypatch.setattr(survey, "build_trip_legs", distinguish_raw_columns)
+        frames = variation_report.load_frames(survey, path, config_path=CONFIG_PATH)
+        assert frames.trips["declared_km"] == pytest.approx(
+            np.full(len(frames.trips["pond_jour"]), 123.0)
+        )
+        assert frames.trips["crow_fly_km"] == pytest.approx(
+            np.full(len(frames.trips["pond_jour"]), 0.75)
+        )

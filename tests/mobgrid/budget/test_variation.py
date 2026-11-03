@@ -154,6 +154,8 @@ def test_variation_config_has_the_requested_equivalence_margins() -> None:
 
     assert config.equivalence_margin == pytest.approx(0.15)
     assert config.secondary_equivalence_margin == pytest.approx(0.10)
+    assert config.measurement.rounding_draws == 20
+    assert config.measurement.rounding_levels == (1, 5, 15, 30)
 
 
 def test_variation_config_rejects_invalid_margins(tmp_path: Path) -> None:
