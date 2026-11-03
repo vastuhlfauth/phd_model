@@ -1,0 +1,4 @@
+year,survey,trips_per_person,min_per_trip,km_per_trip,no_trip_share_pct,status,source
+1994,ETC 1993-94 (INSEE),3.16,17.3,7.3,18.4,verified,"INSEE, enquête Transports et communications 1994, table 3-1 'Ensemble': 167.7 M trips / 53.06 M persons = 3.16; 17.3 min per trip; 7.3 km per trip; 18.4% no trip"
+2008,ENTD 2008 (SDES/INSEE),3.15,17.9,,,to confirm,"Value given by the author; consistent with SDES (2023): 56 min per person per weekday in 2008 (3.15 x 17.9 = 56.4)"
+2019,EMP 2019 (SDES/INSEE),3.04,20.0,,,to confirm,"Value given by the author; SDES (2023) gives 1 h 02 per person and about 20 min per trip (3.04 x 20.0 = 60.8, 1.2 min below 62)"
