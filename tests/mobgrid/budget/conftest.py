@@ -126,11 +126,14 @@ _Q_MENAGE_ROWS = [f"M{i};100.0;{(i - 1) % 3}" for i in range(1, 14)]
 #: the 13 households, so the weighted-quintile computation
 #: (``emp2019.build_respondent_income``) has a real spread to cut.
 _TCM_MEN_HEADER = (
-    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","DENSITECOM_RES",'
-    '"decile_rev_uc","REG_res"'
+    '"ident_men","TUU2017_RES","STATUTCOM_UU_RES","TYPE_UU_RES",'
+    '"TAA2017_RES","CATCOM_AA_RES","DENSITECOM_RES","decile_rev_uc",'
+    '"REG_res"'
 )
 _TCM_MEN_ROWS = [
-    f'"M{i}","7","C","1","{((i - 1) % 10) + 1}",'
+    f'"M{i}","7","C","2","3",'
+    f'"{("11", "12", "13", "20", "30")[(i - 1) % 5]}",'
+    f'"1","{((i - 1) % 10) + 1}",'
     f'"{"Ile-de-France" if i <= 3 else "Bretagne"}"'
     for i in range(1, 14)
 ]
@@ -145,10 +148,7 @@ def write_synthetic_emp_zip(path: Path) -> None:
             "\n".join(
                 [
                     _K_DEPLOC_HEADER,
-                    *[
-                        f"{row},SEQ-{row.split(',')[2]}"
-                        for row in _K_DEPLOC_ROWS
-                    ],
+                    *[f"{row},SEQ-{row.split(',')[2]}" for row in _K_DEPLOC_ROWS],
                 ]
             ),
         )
@@ -312,15 +312,16 @@ def write_synthetic_entd2008_zoning_csvs(zoning_dir: Path) -> None:
         "D8;2;1",
     ]
     residence_rows = [
-        "IDENT_MEN;DENSITECOM_RES",
-        "M1;1",
-        "M2;2",
-        "M3;3",
-        "M4;4",
-        "M5;4",
-        "M6;2",
-        "M7;4",
-        "M8;3",
+        "IDENT_MEN;TUU2017_RES;STATUTCOM_UU_RES;TYPE_UU_RES;"
+        "TAA2017_RES;CATCOM_AA_RES;DENSITECOM_RES",
+        "M1;7;C;2;3;11;1",
+        "M2;7;B;3;3;12;2",
+        "M3;7;B;3;3;13;3",
+        "M4;7;B;3;3;20;4",
+        "M5;0;H;;0;30;4",
+        "M6;5;B;2;4;12;2",
+        "M7;7;C;2;2;11;4",
+        "M8;7;B;3;5;20;3",
     ]
     files = {
         "K_DEPLOC_ENTD08_zon20_public.csv": trip_rows,

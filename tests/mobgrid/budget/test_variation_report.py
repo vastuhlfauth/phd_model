@@ -494,7 +494,7 @@ def test_frame_aggregation_keeps_missing_distance_days(
             CREATE VIEW vr_person AS SELECT DISTINCT ident_ind, 1 AS sex,
                 1 AS recall_lag, 'lundi' AS described_weekday_name,
                 'janvier' AS described_month_name, FALSE AS is_idf,
-                '1' AS cars_band FROM trip_legs;
+                '1' AS cars_band, '11' AS residence_aa_class FROM trip_legs;
             CREATE VIEW vr_trip_ext AS SELECT ident_dep,
                 NULL::DOUBLE AS crow_fly_km, NULL::DOUBLE AS declared_km,
                 0 AS vac_scol FROM trip_legs;
@@ -852,6 +852,20 @@ def test_cli_writes_report_on_synthetic_data(
     )
     assert report.index("C4. Measurement ledger") < report.index("C5.")
     assert "C5. Official-scope replication" in report
+    assert "C6. Door-to-door speed" in report
+    assert report.index("C5. Official-scope replication") < report.index(
+        "C6. Door-to-door speed"
+    )
+    assert "CATCOM_AA_RES" in report
+    assert "Codes 11/12/13 are grouped as pôle, 20 as couronne" in report
+    assert "30 as hors attraction" in report
+    assert "| A | producer |" in report
+    assert "6.1 / 17.7 / 20.7" in report
+    assert "9.9 / 17.6 / 33.7" in report
+    assert "2020 attraction-area zoning" in report
+    assert "secondary-pole communes (13) are counted as pôle" in report
+    assert "Car-driver speed pooled at the 2008 trip mix" in report
+    assert "Standardized 2019 km/h" in report
     assert "full respondent roster" in report
     assert "20.36964" in report
     assert "8.72921" in report
@@ -1471,3 +1485,98 @@ def test_c5_uses_full_roster_denominator_and_reports_published_gaps() -> None:
     assert "trips/person/week" in week_trip_row
     assert "19.7928" in week_trip_row
     assert "-98.7" in week_trip_row
+
+
+def test_c6_speed_uses_weighted_totals_and_cleans_declared_distance() -> None:
+    sample = variation_report.SpeedSample(
+        household=np.array(["h1", "h2", "h3", "h4"]),
+        weight=np.ones(4),
+        duration_min=np.array([10.0, 50.0, 20.0, 30.0]),
+        producer_km=np.array([1.0, 10.0, 8.0, 2.0]),
+        declared_km=np.array([1010.0, 0.5, 400.0, 12.0]),
+        crow_fly_km=np.array([1.0, 3.0, 3.0, 2.1]),
+        mode=np.array(["car_driver"] * 4),
+        density=np.array(["dense", "dense", "sparse", "very_sparse"]),
+        residence_zone=np.array(["11", "12", "13", ""]),
+    )
+    selected = np.ones(4, dtype=bool)
+
+    producer = variation_report._bootstrap_speed_estimate(
+        sample, "producer", selected, n_reps=40, seed=4
+    )
+    declared = variation_report._bootstrap_speed_estimate(
+        sample, "declared", selected, n_reps=40, seed=4
+    )
+    crow = variation_report._bootstrap_speed_estimate(
+        replace(sample, crow_fly_km=np.array([0.0, 3.0, 3.0, 2.1])),
+        "crow-fly",
+        selected,
+        n_reps=40,
+        seed=4,
+    )
+
+    assert producer.km_per_trip.estimate == pytest.approx(5.25)
+    assert producer.speed_kmh.estimate == pytest.approx(60.0 * 21.0 / 110.0)
+    assert producer.speed_kmh.estimate != pytest.approx(
+        np.mean(60.0 * sample.producer_km / sample.duration_min)
+    )
+    assert np.isfinite(producer.speed_kmh.interval).all()
+    assert declared.n_trips == 2
+    assert declared.rescaled_n == 2
+    assert declared.dropped_n == 2
+    assert crow.zero_km_share is not None
+    assert crow.zero_km_share.estimate == pytest.approx(0.25)
+    classified = replace(
+        sample,
+        density=np.array(
+            ["dense", "dense", "sparse", "intermediate", "very_sparse", "dense"]
+        ),
+        residence_zone=np.array(["11", "12", "13", "20", "30", ""]),
+    )
+    assert variation_report._residence_classes(classified).tolist() == [
+        "pôle",
+        "pôle",
+        "pôle",
+        "couronne",
+        "hors attraction",
+        "INSEE density: dense",
+    ]
+
+
+def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
+    def sample(
+        first_cell_n: int,
+        second_cell_n: int,
+        first_minutes: float,
+        second_minutes: float,
+    ) -> variation_report.SpeedSample:
+        n = first_cell_n + second_cell_n
+        return variation_report.SpeedSample(
+            household=np.array([f"h{i}" for i in range(n)]),
+            weight=np.ones(n),
+            duration_min=np.array(
+                [first_minutes] * first_cell_n + [second_minutes] * second_cell_n
+            ),
+            producer_km=np.array([3.0] * first_cell_n + [7.0] * second_cell_n),
+            declared_km=np.array([3.0] * first_cell_n + [7.0] * second_cell_n),
+            crow_fly_km=np.array([3.0] * first_cell_n + [7.0] * second_cell_n),
+            mode=np.array(["car_driver"] * n),
+            density=np.array(["dense"] * first_cell_n + ["sparse"] * second_cell_n),
+            residence_zone=np.array(["11"] * n),
+        )
+
+    cells, n_2008, n_2019, speed_2008, speed_2019 = (
+        variation_report._standardized_car_speed(
+            sample(50, 50, 30.0, 70.0),
+            sample(10, 90, 15.0, 21.0),
+            n_reps=30,
+            seed=8,
+        )
+    )
+
+    assert cells == 2
+    assert n_2008 == n_2019 == 100
+    assert speed_2008.estimate == pytest.approx(6.0)
+    assert speed_2019.estimate == pytest.approx(60.0 * 5.0 / 18.0)
+    assert np.isfinite(speed_2019.interval).all()
+    assert variation_report._ratio_metric(speed_2008, speed_2019) is not None

@@ -11,7 +11,7 @@ durations, calendar) and the decompositions of Part B (composition,
 trips x distance x speed, mode/motive/distance shift-shares, tails, the
 comparison pairs and their figures), and Part C measurement checks
 (rounding bounds, common distances, trips by motive, the measurement
-ledger and the official-scope replication).
+ledger, official-scope replication and door-to-door speed checks).
 Step-11 outputs are not touched.
 
 Bootstrap intervals resample households within each survey,
@@ -79,6 +79,36 @@ DISTANCE_BAND_LABELS = (
     "unknown distance",
 )
 
+SPEED_BAND_LABELS = ("2-5 km", "5-10 km", "10-20 km", "20-40 km", "40-80 km")
+SPEED_BAND_UPPER_KM = (5.0, 10.0, 20.0, 40.0)
+DENSITY_GRID_LABELS = ("dense", "intermediate", "sparse", "very_sparse")
+RESIDENCE_CLASS_LABELS = (
+    "pôle",
+    "couronne",
+    "hors attraction",
+)
+RESIDENCE_CLASS_BY_AAV_CODE = {
+    "11": "pôle",
+    "12": "pôle",
+    "13": "pôle",
+    "20": "couronne",
+    "30": "hors attraction",
+}
+RESIDENCE_ZONING_VARIABLES = (
+    "TUU2017_RES",
+    "STATUTCOM_UU_RES",
+    "TYPE_UU_RES",
+    "TAA2017_RES",
+    "CATCOM_AA_RES",
+    "DENSITECOM_RES",
+)
+HISTORICAL_1994_VALUES = {
+    "pôle": (6.1, 17.7, 20.7),
+    "couronne": (9.88, 17.60, 33.7),
+    "hors attraction": (9.0, 15.6, 34.6),
+    "All": (7.3, 17.3, 25.3),
+}
+
 #: B3's trip mode groups (step 11's trip-level mapping, with the two
 #: passenger types merged into "car_passenger").
 MODE7_LABELS = (
@@ -145,10 +175,38 @@ class SurveyFrames:
     aux: dict
 
 
+@dataclass(frozen=True)
+class SpeedSample:
+    """C6 trip-level inputs; distances are km and durations are minutes."""
+
+    household: np.ndarray
+    weight: np.ndarray
+    duration_min: np.ndarray
+    producer_km: np.ndarray
+    declared_km: np.ndarray
+    crow_fly_km: np.ndarray
+    mode: np.ndarray
+    density: np.ndarray
+    residence_zone: np.ndarray
+
+
 def _sample_sql(sample_pct: float | None) -> str:
     if sample_pct is None:
         return "TRUE"
     return f"(hash(CAST(ident_men AS VARCHAR)) % 100) < {float(sample_pct):g}"
+
+
+def _has_column(con: duckdb.DuckDBPyConnection, table: str, column: str) -> bool:
+    return bool(
+        con.execute(
+            """
+            SELECT count(*) > 0
+            FROM information_schema.columns
+            WHERE lower(table_name) = lower(?) AND lower(column_name) = lower(?)
+            """,
+            [table, column],
+        ).fetchone()[0]
+    )
 
 
 def _create_person_ext_emp2019(con: duckdb.DuckDBPyConnection) -> None:
@@ -156,7 +214,12 @@ def _create_person_ext_emp2019(con: duckdb.DuckDBPyConnection) -> None:
     days between the described day and the interview), the described
     day's weekday/month (`MDATE_jour`/`MDATE_mois`, French names),
     Île-de-France residence (`REG_res`), household cars (`JNBVEH`)."""
-    con.sql("""
+    residence_class_sql = (
+        "TRY_CAST(m.CATCOM_AA_RES AS VARCHAR)"
+        if _has_column(con, "tcm_men", "CATCOM_AA_RES")
+        else "CAST(NULL AS VARCHAR)"
+    )
+    con.sql(f"""
         CREATE OR REPLACE VIEW vr_person AS
         SELECT
             i.IDENT_IND AS ident_ind,
@@ -166,6 +229,7 @@ def _create_person_ext_emp2019(con: duckdb.DuckDBPyConnection) -> None:
             CAST(i.MDATE_mois AS VARCHAR) AS described_month_name,
             coalesce(CAST(m.REG_res AS VARCHAR) = 'Ile-de-France', FALSE)
                 AS is_idf,
+            {residence_class_sql} AS residence_aa_class,
             CASE
                 WHEN TRY_CAST(q.JNBVEH AS INTEGER) >= 2 THEN '2+'
                 WHEN TRY_CAST(q.JNBVEH AS INTEGER) = 1 THEN '1'
@@ -197,10 +261,21 @@ def _create_person_ext_entd2008(con: duckdb.DuckDBPyConnection) -> None:
     day's weekday/month, Île-de-France residence (`RG` = 11). Household
     cars are not in the four public tables used by step 11 (no
     `JNBVEH` equivalent): `cars_band` is 'unknown' throughout."""
-    con.sql("""
+    has_residence_class = _has_column(con, "q_tcm_men_zon20", "CATCOM_AA_RES")
+    residence_class_sql = (
+        "TRY_CAST(z.CATCOM_AA_RES AS VARCHAR)"
+        if has_residence_class
+        else "CAST(NULL AS VARCHAR)"
+    )
+    residence_zone_join = (
+        "LEFT JOIN q_tcm_men_zon20 z ON z.IDENT_MEN = d.IDENT_MEN"
+        if has_residence_class
+        else ""
+    )
+    con.sql(f"""
         CREATE OR REPLACE VIEW vr_person AS
         WITH dates AS (
-            SELECT IDENT_IND,
+            SELECT IDENT_IND, IDENT_MEN,
                 coalesce(
                     TRY_CAST(V2_DATESEMREF AS DATE),
                     TRY_CAST(try_strptime(CAST(V2_DATESEMREF AS VARCHAR),
@@ -233,9 +308,11 @@ def _create_person_ext_entd2008(con: duckdb.DuckDBPyConnection) -> None:
                 WHEN 11 THEN 'novembre' WHEN 12 THEN 'décembre'
             END AS described_month_name,
             coalesce(d.rg = '11', FALSE) AS is_idf,
+            {residence_class_sql} AS residence_aa_class,
             'unknown' AS cars_band
         FROM dates d
         LEFT JOIN q_tcm_individu q ON q.IDENT_IND = d.IDENT_IND
+        {residence_zone_join}
     """)
     con.sql("""
         CREATE OR REPLACE VIEW vr_trip_ext AS
@@ -281,7 +358,8 @@ def _create_frames_tables(
             coalesce({motive_group_sql}, 'unknown') AS motive_group,
             e.declared_km, e.crow_fly_km, e.vac_scol,
             p.sex, p.recall_lag, p.described_weekday_name,
-            p.described_month_name, p.is_idf, p.cars_band
+            p.described_month_name, p.is_idf, p.cars_band,
+            p.residence_aa_class
         FROM trip_legs t
         LEFT JOIN vr_person p ON p.ident_ind = t.ident_ind
         LEFT JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
@@ -554,8 +632,11 @@ def _official_scope_data(
     type_filter = "t.typejour = 1" if survey is entd2008 else "t.typejour IN (1, 2, 3)"
     trips = con.sql(f"""
         SELECT t.ident_men, t.pond_jour, t.typejour,
-            t.duration_min, t.distance_km
+            t.duration_min, t.distance_km, t.age, t.residence_density,
+            t.mode_group, e.declared_km, e.crow_fly_km, p.residence_aa_class
         FROM trip_legs t
+        LEFT JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
+        LEFT JOIN vr_person p ON p.ident_ind = t.ident_ind
         WHERE {type_filter} AND t.pond_jour > 0 AND t.age >= 6
             AND t.mobloc = 1 AND ({_sample_sql(sample_pct)})
     """).fetchall()
@@ -587,6 +668,16 @@ def _official_scope_data(
         "distance_km": np.asarray(
             [np.nan if row[4] is None else float(row[4]) for row in trips]
         ),
+        "age_t": np.asarray([int(row[5]) for row in trips]),
+        "density_t": np.asarray([row[6] for row in trips], dtype=object),
+        "mode_t": np.asarray([row[7] for row in trips], dtype=object),
+        "declared_km": np.asarray(
+            [np.nan if row[8] is None else float(row[8]) for row in trips]
+        ),
+        "crow_fly_km": np.asarray(
+            [np.nan if row[9] is None else float(row[9]) for row in trips]
+        ),
+        "residence_aa_class": np.asarray([row[10] for row in trips], dtype=object),
         "zero_local_n_days": len(zero_local_days),
         "described_n_days": len(described_days),
         "zero_local_weight": float(sum(float(row[2]) for row in zero_local_days)),
@@ -701,14 +792,10 @@ def _format_official_scope(results_2008: dict, results_2019: dict) -> list[str]:
         metric_2008 = value_2008.get(metric) if value_2008 else None
         metric_2019 = value_2019.get(metric) if value_2019 else None
         estimate_2008 = (
-            _ci_cell(metric_2008["estimate"], metric_2008["ci"])
-            if metric_2008
-            else "-"
+            _ci_cell(metric_2008["estimate"], metric_2008["ci"]) if metric_2008 else "-"
         )
         estimate_2019 = (
-            _ci_cell(metric_2019["estimate"], metric_2019["ci"])
-            if metric_2019
-            else "-"
+            _ci_cell(metric_2019["estimate"], metric_2019["ci"]) if metric_2019 else "-"
         )
         gap_2008 = (
             100.0 * (metric_2008["estimate"] / reference_2008 - 1.0)
@@ -763,6 +850,772 @@ def _plain_array(column: np.ndarray) -> np.ndarray:
             return column.astype(float).filled(np.nan)
         return column.filled(None)
     return column
+
+
+# ---------------------------------------------------------------------------
+# Part C6: door-to-door speed
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SpeedMetric:
+    estimate: float
+    interval: tuple[float, float]
+    replicates: np.ndarray
+
+
+@dataclass(frozen=True)
+class SpeedEstimate:
+    n_trips: int
+    km_per_trip: SpeedMetric
+    minutes_per_trip: SpeedMetric
+    speed_kmh: SpeedMetric
+    zero_km_share: SpeedMetric | None
+    rescaled_n: int
+    dropped_n: int
+
+
+def _text_values(values: np.ndarray) -> np.ndarray:
+    return np.asarray(
+        ["" if value is None else str(value).strip() for value in values],
+        dtype=object,
+    )
+
+
+def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
+    """Get C6 weekday trips, preserving the existing survey scope definitions."""
+    if scope == "A":
+        data = frames.aux["official_scope_data"]
+        weekday = data["type_t"] == 1
+        return SpeedSample(
+            household=data["household_t"][weekday].astype(str),
+            weight=data["weight_t"][weekday].astype(float),
+            duration_min=data["minutes"][weekday].astype(float),
+            producer_km=data["distance_km"][weekday].astype(float),
+            declared_km=data["declared_km"][weekday].astype(float),
+            crow_fly_km=data["crow_fly_km"][weekday].astype(float),
+            mode=_text_values(data["mode_t"][weekday]),
+            density=_text_values(data["density_t"][weekday]),
+            residence_zone=_text_values(data["residence_aa_class"][weekday]),
+        )
+    if scope != "B":
+        raise ValueError(f"unknown speed scope: {scope!r}")
+    trips = frames.trips
+    return SpeedSample(
+        household=trips["ident_men"].astype(str),
+        weight=trips["pond_jour"].astype(float),
+        duration_min=trips["duration_min"].astype(float),
+        producer_km=trips["distance_km"].astype(float),
+        declared_km=trips["declared_km"].astype(float),
+        crow_fly_km=trips["crow_fly_km"].astype(float),
+        mode=_text_values(trips["mode7"]),
+        density=_text_values(trips["home_density"]),
+        residence_zone=_text_values(trips["residence_aa_class"]),
+    )
+
+
+def _distance_measure_values(
+    sample: SpeedSample, measure: str, selected: np.ndarray
+) -> tuple[np.ndarray, int, int]:
+    """Return distance km and declared-distance cleaning counts for C6."""
+    if measure == "producer":
+        return sample.producer_km, 0, 0
+    if measure == "crow-fly":
+        return sample.crow_fly_km, 0, 0
+    if measure != "declared":
+        raise ValueError(f"unknown speed distance measure: {measure!r}")
+    distance = sample.declared_km.copy()
+    crow = sample.crow_fly_km
+    finite_pair = np.isfinite(distance) & np.isfinite(crow)
+    rescaled = finite_pair & (crow > 0) & (distance > 100.0 * crow)
+    distance[rescaled] /= 1000.0
+    dropped = (
+        selected
+        & np.isfinite(distance)
+        & np.isfinite(crow)
+        & (crow > 2.0)
+        & ((distance < 0.5 * crow) | (distance > 10.0 * crow))
+    )
+    distance[dropped] = np.nan
+    return distance, int(np.sum(rescaled & selected)), int(np.sum(dropped))
+
+
+def _metric_interval(
+    estimate: float, replicates: np.ndarray, *, percentiles: tuple[float, float]
+) -> SpeedMetric:
+    finite = replicates[np.isfinite(replicates)]
+    interval = (float("nan"), float("nan"))
+    if len(finite):
+        bounds = np.percentile(finite, percentiles)
+        interval = (float(bounds[0]), float(bounds[1]))
+    return SpeedMetric(estimate, interval, replicates)
+
+
+def _empty_speed_metric(n_reps: int) -> SpeedMetric:
+    return SpeedMetric(
+        float("nan"),
+        (float("nan"), float("nan")),
+        np.full(n_reps, np.nan),
+    )
+
+
+def _bootstrap_speed_estimate(
+    sample: SpeedSample,
+    measure: str,
+    selected: np.ndarray,
+    *,
+    n_reps: int,
+    seed: int,
+) -> SpeedEstimate:
+    """Ratio-of-weighted-totals speed and household-bootstrap CIs (C6)."""
+    if n_reps < 1:
+        raise ValueError("n_reps must be positive")
+    selected = np.asarray(selected, dtype=bool)
+    if len(selected) != len(sample.weight):
+        raise ValueError("speed selection mask length must match trip arrays")
+    distance, rescaled_n, dropped_n = _distance_measure_values(
+        sample, measure, selected
+    )
+    valid = (
+        selected
+        & np.isfinite(sample.weight)
+        & (sample.weight > 0)
+        & np.isfinite(sample.duration_min)
+        & (sample.duration_min > 0)
+        & np.isfinite(distance)
+        & (distance >= 0)
+    )
+    n_trips = int(np.sum(valid))
+    if n_trips == 0:
+        empty = _empty_speed_metric(n_reps)
+        return SpeedEstimate(
+            0,
+            empty,
+            empty,
+            empty,
+            empty if measure == "crow-fly" else None,
+            rescaled_n,
+            dropped_n,
+        )
+
+    household = sample.household[valid].astype(str)
+    weight = sample.weight[valid]
+    duration = sample.duration_min[valid]
+    km = distance[valid]
+    total_weight = float(np.sum(weight))
+    total_time = float(np.sum(weight * duration))
+    if total_weight <= 0 or total_time <= 0:
+        raise ValueError("speed estimates require positive weighted trips and time")
+    point_km = float(np.sum(weight * km) / total_weight)
+    point_minutes = float(total_time / total_weight)
+    point_speed = float(60.0 * np.sum(weight * km) / total_time)
+    point_zero = (
+        float(np.sum(weight * (km == 0)) / total_weight)
+        if measure == "crow-fly"
+        else None
+    )
+
+    reps_km = np.full(n_reps, np.nan)
+    reps_minutes = np.full(n_reps, np.nan)
+    reps_speed = np.full(n_reps, np.nan)
+    reps_zero = np.full(n_reps, np.nan) if measure == "crow-fly" else None
+    rng = np.random.default_rng(seed)
+    for rep in range(n_reps):
+        multiplier = variation.household_multipliers(household, rng)
+        rep_weight = weight * multiplier
+        rep_total = float(np.sum(rep_weight))
+        rep_time = float(np.sum(rep_weight * duration))
+        if rep_total <= 0 or rep_time <= 0:
+            continue
+        rep_distance = float(np.sum(rep_weight * km))
+        reps_km[rep] = rep_distance / rep_total
+        reps_minutes[rep] = rep_time / rep_total
+        reps_speed[rep] = 60.0 * rep_distance / rep_time
+        if reps_zero is not None:
+            reps_zero[rep] = float(np.sum(rep_weight * (km == 0)) / rep_total)
+
+    return SpeedEstimate(
+        n_trips,
+        _metric_interval(point_km, reps_km, percentiles=(2.5, 97.5)),
+        _metric_interval(point_minutes, reps_minutes, percentiles=(2.5, 97.5)),
+        _metric_interval(point_speed, reps_speed, percentiles=(2.5, 97.5)),
+        (
+            _metric_interval(point_zero, reps_zero, percentiles=(2.5, 97.5))
+            if reps_zero is not None and point_zero is not None
+            else None
+        ),
+        rescaled_n,
+        dropped_n,
+    )
+
+
+def _ratio_metric(metric_a: SpeedMetric, metric_b: SpeedMetric) -> SpeedMetric | None:
+    """Independent-survey 2019/2008 ratio and percentile 90% interval."""
+    if (
+        not np.isfinite(metric_a.estimate)
+        or not np.isfinite(metric_b.estimate)
+        or metric_a.estimate <= 0
+        or metric_b.estimate <= 0
+        or len(metric_a.replicates) == 0
+        or len(metric_a.replicates) != len(metric_b.replicates)
+    ):
+        return None
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratios = metric_b.replicates / metric_a.replicates
+    finite = ratios[np.isfinite(ratios) & (ratios > 0)]
+    if len(finite) == 0:
+        return None
+    return SpeedMetric(
+        metric_b.estimate / metric_a.estimate,
+        tuple(float(v) for v in np.percentile(finite, [5.0, 95.0])),
+        ratios,
+    )
+
+
+def _residence_classes(sample: SpeedSample) -> np.ndarray:
+    """Map shared AAV residence codes, using the INSEE grid for unknowns."""
+    density = np.asarray(
+        [
+            value
+            if value in DENSITY_GRID_LABELS
+            else {
+                "1": "dense",
+                "2": "intermediate",
+                "3": "sparse",
+                "4": "very_sparse",
+            }.get(value, "unknown")
+            for value in sample.density
+        ],
+        dtype=object,
+    )
+    return np.asarray(
+        [
+            RESIDENCE_CLASS_BY_AAV_CODE.get(
+                str(code), f"INSEE density: {grid}" if grid != "unknown" else "unknown"
+            )
+            for code, grid in zip(sample.residence_zone, density, strict=True)
+        ],
+        dtype=object,
+    )
+
+
+def _speed_band_index(distance_km: np.ndarray) -> np.ndarray:
+    valid = np.isfinite(distance_km) & (distance_km >= 2.0) & (distance_km <= 80.0)
+    result = np.full(len(distance_km), -1, dtype=int)
+    result[valid] = np.searchsorted(
+        SPEED_BAND_UPPER_KM, distance_km[valid], side="right"
+    )
+    return result
+
+
+def _density_index(values: np.ndarray) -> np.ndarray:
+    as_text = _text_values(values)
+    code_map = {str(i + 1): i for i in range(len(DENSITY_GRID_LABELS))}
+    result = np.full(len(as_text), -1, dtype=int)
+    for index, value in enumerate(as_text):
+        if value in DENSITY_GRID_LABELS:
+            result[index] = DENSITY_GRID_LABELS.index(value)
+        elif value in code_map:
+            result[index] = code_map[value]
+    return result
+
+
+def _standardization_input(sample: SpeedSample) -> dict[str, np.ndarray]:
+    bands = _speed_band_index(sample.crow_fly_km)
+    density = _density_index(sample.density)
+    cells = bands * len(DENSITY_GRID_LABELS) + density
+    valid = (
+        (bands >= 0)
+        & (density >= 0)
+        & (sample.mode == "car_driver")
+        & np.isfinite(sample.weight)
+        & (sample.weight > 0)
+        & np.isfinite(sample.duration_min)
+        & (sample.duration_min > 0)
+        & np.isfinite(sample.crow_fly_km)
+        & (sample.crow_fly_km >= 0)
+    )
+    return {
+        "household": sample.household[valid].astype(str),
+        "weight": sample.weight[valid],
+        "duration": sample.duration_min[valid],
+        "distance": sample.crow_fly_km[valid],
+        "cell": cells[valid],
+    }
+
+
+def _standardized_speed_value(
+    sample: dict[str, np.ndarray],
+    multiplier: np.ndarray,
+    common_cells: np.ndarray,
+    mix: np.ndarray,
+) -> float:
+    weight = sample["weight"] * multiplier
+    active_cells = common_cells[mix[common_cells] > 0]
+    if len(active_cells) == 0:
+        return float("nan")
+    distance_mean = np.zeros(len(SPEED_BAND_LABELS) * len(DENSITY_GRID_LABELS))
+    time_mean = np.zeros_like(distance_mean)
+    for cell in active_cells:
+        selected = sample["cell"] == cell
+        total = float(np.sum(weight[selected]))
+        if total <= 0:
+            return float("nan")
+        distance_mean[cell] = float(
+            np.sum(weight[selected] * sample["distance"][selected]) / total
+        )
+        time_mean[cell] = float(
+            np.sum(weight[selected] * sample["duration"][selected]) / total
+        )
+    weighted_distance = float(np.sum(mix[active_cells] * distance_mean[active_cells]))
+    weighted_time = float(np.sum(mix[active_cells] * time_mean[active_cells]))
+    return (
+        60.0 * weighted_distance / weighted_time if weighted_time > 0 else float("nan")
+    )
+
+
+def _standardized_car_speed(
+    sample_2008: SpeedSample,
+    sample_2019: SpeedSample,
+    *,
+    n_reps: int,
+    seed: int,
+) -> tuple[int, int, int, SpeedMetric, SpeedMetric]:
+    """Reweight crow-fly car speeds to the 2008 band x density trip mix."""
+    data_a = _standardization_input(sample_2008)
+    data_b = _standardization_input(sample_2019)
+    n_cells = len(SPEED_BAND_LABELS) * len(DENSITY_GRID_LABELS)
+    weight_a = np.bincount(data_a["cell"], weights=data_a["weight"], minlength=n_cells)
+    weight_b = np.bincount(data_b["cell"], weights=data_b["weight"], minlength=n_cells)
+    common_cells = np.flatnonzero((weight_a > 0) & (weight_b > 0))
+    empty = _empty_speed_metric(n_reps)
+    if len(common_cells) == 0:
+        return 0, 0, 0, empty, empty
+
+    n_a = int(np.sum(np.isin(data_a["cell"], common_cells)))
+    n_b = int(np.sum(np.isin(data_b["cell"], common_cells)))
+    cell_weight_a = np.bincount(
+        data_a["cell"], weights=data_a["weight"], minlength=n_cells
+    )
+    point_mix = cell_weight_a / np.sum(cell_weight_a[common_cells])
+    point_a = _standardized_speed_value(
+        data_a, np.ones(len(data_a["weight"])), common_cells, point_mix
+    )
+    point_b = _standardized_speed_value(
+        data_b, np.ones(len(data_b["weight"])), common_cells, point_mix
+    )
+    reps_a = np.full(n_reps, np.nan)
+    reps_b = np.full(n_reps, np.nan)
+    rng_a, rng_b = (
+        np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(2)
+    )
+    for rep in range(n_reps):
+        multiplier_a = variation.household_multipliers(data_a["household"], rng_a)
+        multiplier_b = variation.household_multipliers(data_b["household"], rng_b)
+        cell_weight_a = np.bincount(
+            data_a["cell"],
+            weights=data_a["weight"] * multiplier_a,
+            minlength=n_cells,
+        )
+        mix_total = float(np.sum(cell_weight_a[common_cells]))
+        if mix_total <= 0:
+            continue
+        mix = cell_weight_a / mix_total
+        reps_a[rep] = _standardized_speed_value(data_a, multiplier_a, common_cells, mix)
+        reps_b[rep] = _standardized_speed_value(data_b, multiplier_b, common_cells, mix)
+    return (
+        len(common_cells),
+        n_a,
+        n_b,
+        _metric_interval(point_a, reps_a, percentiles=(2.5, 97.5)),
+        _metric_interval(point_b, reps_b, percentiles=(2.5, 97.5)),
+    )
+
+
+def _metric_cell(metric: SpeedMetric, n_trips: int, decimals: int = 2) -> str:
+    if (
+        n_trips < MIN_CELL_N
+        or not np.isfinite(metric.estimate)
+        or not np.isfinite(metric.interval).all()
+    ):
+        return "-"
+    return (
+        f"{_num(metric.estimate, decimals)} "
+        f"[{_num(metric.interval[0], decimals)}, "
+        f"{_num(metric.interval[1], decimals)}]"
+    )
+
+
+def _ratio_cell(
+    metric_a: SpeedMetric,
+    metric_b: SpeedMetric,
+    n_a: int,
+    n_b: int,
+    decimals: int = 2,
+) -> str:
+    ratio = _ratio_metric(metric_a, metric_b)
+    return "-" if ratio is None else _metric_cell(ratio, min(n_a, n_b), decimals)
+
+
+def _speed_report_sample(
+    sample: SpeedSample,
+    measure: str,
+    selected: np.ndarray,
+    *,
+    n_reps: int,
+    seed: int,
+) -> SpeedEstimate:
+    return _bootstrap_speed_estimate(
+        sample,
+        measure,
+        selected,
+        n_reps=n_reps,
+        seed=seed,
+    )
+
+
+def _format_c6_overall(
+    samples: dict[str, tuple[SpeedSample, SpeedSample]],
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    lines = [
+        "#### Overall speed and distance",
+        "",
+        "| Scope | Distance measure | n 2008 | n 2019 | 2008 km/trip [95% CI] | "
+        "2019 km/trip [95% CI] | km/trip ratio 2019/2008 [90% CI] | "
+        "2008 km/h [95% CI] | 2019 km/h [95% CI] | "
+        "speed ratio 2019/2008 [90% CI] | Rescaled declared 2008 | "
+        "Dropped declared 2008 | Rescaled declared 2019 | "
+        "Dropped declared 2019 |",
+        "|---|---|---:|---:|---|---|---|---|---|---|---:|---:|---:|---:|",
+    ]
+    for scope_index, (scope, pair) in enumerate(samples.items()):
+        selected_a = np.ones(len(pair[0].weight), dtype=bool)
+        selected_b = np.ones(len(pair[1].weight), dtype=bool)
+        for measure_index, measure in enumerate(("producer", "declared", "crow-fly")):
+            offset = seed + scope_index * 100 + measure_index * 10
+            a = _speed_report_sample(
+                pair[0], measure, selected_a, n_reps=n_reps, seed=offset
+            )
+            b = _speed_report_sample(
+                pair[1], measure, selected_b, n_reps=n_reps, seed=offset + 1
+            )
+            lines.append(
+                f"| {scope} | {measure} | {a.n_trips} | {b.n_trips} | "
+                f"{_metric_cell(a.km_per_trip, a.n_trips)} | "
+                f"{_metric_cell(b.km_per_trip, b.n_trips)} | "
+                f"{_ratio_cell(a.km_per_trip, b.km_per_trip, a.n_trips, b.n_trips)} | "
+                f"{_metric_cell(a.speed_kmh, a.n_trips)} | "
+                f"{_metric_cell(b.speed_kmh, b.n_trips)} | "
+                f"{_ratio_cell(a.speed_kmh, b.speed_kmh, a.n_trips, b.n_trips)} | "
+                f"{a.rescaled_n} | {a.dropped_n} | "
+                f"{b.rescaled_n} | {b.dropped_n} |"
+            )
+    lines += [
+        "",
+        "The declared-distance counts are unweighted trip counts in the "
+        "selected scope. Crow-fly distance treats zero as a valid distance; "
+        "producer distance is ENTD `distcor` (otherwise `V2_MDISTTOT`) and "
+        "EMP `MDISTTOT_fin`, with the existing step-11 correction.",
+    ]
+    return lines
+
+
+def _format_c6_residence(
+    samples: dict[str, tuple[SpeedSample, SpeedSample]],
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    class_values = {
+        scope: (_residence_classes(pair[0]), _residence_classes(pair[1]))
+        for scope, pair in samples.items()
+    }
+    fallback_labels = sorted(
+        {
+            str(label)
+            for pair in class_values.values()
+            for values in pair
+            for label in values
+            if str(label).startswith("INSEE density:")
+        }
+    )
+    classes = [*RESIDENCE_CLASS_LABELS, *fallback_labels]
+    lines = [
+        "#### Speed by residence class",
+        "",
+        "The 1994 values are the survey's own published measures (scope A) "
+        "and are repeated as a reference across the distance-measure rows; "
+        "they are not a common-distance sensitivity estimate.",
+        "",
+        "| Scope | Residence class | Distance | n 2008 | n 2019 | "
+        "2008 km/trip [95% CI] | "
+        "2019 km/trip [95% CI] | km/trip ratio [90% CI] | "
+        "2008 min/trip [95% CI] | 2019 min/trip [95% CI] | "
+        "min/trip ratio [90% CI] | 2008 km/h [95% CI] | "
+        "2019 km/h [95% CI] | speed ratio [90% CI] | "
+        "1994 published (km/trip; min/trip; km/h) |",
+        "|---|---|---|---:|---:|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for scope_index, (scope, pair) in enumerate(samples.items()):
+        classes_a, classes_b = class_values[scope]
+        groups = [("All", None), *((label, label) for label in classes)]
+        for group_index, (label, class_value) in enumerate(groups):
+            mask_a = (
+                np.ones(len(classes_a), dtype=bool)
+                if class_value is None
+                else classes_a == class_value
+            )
+            mask_b = (
+                np.ones(len(classes_b), dtype=bool)
+                if class_value is None
+                else classes_b == class_value
+            )
+            for measure_index, measure in enumerate(
+                ("producer", "declared", "crow-fly")
+            ):
+                offset = (
+                    seed
+                    + 1000
+                    + scope_index * 1000
+                    + group_index * 30
+                    + measure_index * 2
+                )
+                a = _speed_report_sample(
+                    pair[0], measure, mask_a, n_reps=n_reps, seed=offset
+                )
+                b = _speed_report_sample(
+                    pair[1], measure, mask_b, n_reps=n_reps, seed=offset + 1
+                )
+                historical = HISTORICAL_1994_VALUES.get(label)
+                historical_cell = (
+                    " / ".join(f"{value:.1f}" for value in historical)
+                    if scope == "A" and historical is not None
+                    else "-"
+                )
+                km_ratio = _ratio_cell(
+                    a.km_per_trip, b.km_per_trip, a.n_trips, b.n_trips
+                )
+                minutes_ratio = _ratio_cell(
+                    a.minutes_per_trip,
+                    b.minutes_per_trip,
+                    a.n_trips,
+                    b.n_trips,
+                )
+                speed_ratio = _ratio_cell(
+                    a.speed_kmh, b.speed_kmh, a.n_trips, b.n_trips
+                )
+                lines.append(
+                    f"| {scope} | {label} | {measure} | {a.n_trips} | "
+                    f"{b.n_trips} | "
+                    f"{_metric_cell(a.km_per_trip, a.n_trips)} | "
+                    f"{_metric_cell(b.km_per_trip, b.n_trips)} | "
+                    f"{km_ratio} | "
+                    f"{_metric_cell(a.minutes_per_trip, a.n_trips)} | "
+                    f"{_metric_cell(b.minutes_per_trip, b.n_trips)} | "
+                    f"{minutes_ratio} | "
+                    f"{_metric_cell(a.speed_kmh, a.n_trips)} | "
+                    f"{_metric_cell(b.speed_kmh, b.n_trips)} | "
+                    f"{speed_ratio} | "
+                    f"{historical_cell} |"
+                )
+    return lines
+
+
+def _format_c6_zero_share(
+    samples: dict[str, tuple[SpeedSample, SpeedSample]],
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    lines = [
+        "#### Same-commune trips (crow-fly = 0 km)",
+        "",
+        "| Scope | n 2008 | 2008 share [95% CI] | n 2019 | "
+        "2019 share [95% CI] | 2019/2008 share ratio [90% CI] |",
+        "|---|---:|---|---:|---|---|",
+    ]
+    for scope_index, (scope, pair) in enumerate(samples.items()):
+        estimates = [
+            _speed_report_sample(
+                sample,
+                "crow-fly",
+                np.ones(len(sample.weight), dtype=bool),
+                n_reps=n_reps,
+                seed=seed + scope_index * 10 + year_index,
+            )
+            for year_index, sample in enumerate(pair)
+        ]
+        a, b = estimates
+        if a.zero_km_share is None or b.zero_km_share is None:
+            raise ValueError("crow-fly estimates must include zero-distance shares")
+        lines.append(
+            f"| {scope} | {a.n_trips} | "
+            f"{_metric_cell(a.zero_km_share, a.n_trips, 3)} | "
+            f"{b.n_trips} | "
+            f"{_metric_cell(b.zero_km_share, b.n_trips, 3)} | "
+            f"{_ratio_cell(a.zero_km_share, b.zero_km_share, a.n_trips, b.n_trips)} |"
+        )
+    return lines
+
+
+def _format_c6_mode_bands(
+    sample_a: SpeedSample,
+    sample_b: SpeedSample,
+    *,
+    mode: str,
+    by_density: bool,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    title = (
+        "Car-driver speed by crow-fly band and INSEE density"
+        if by_density
+        else f"{'Urban PT' if mode == 'urban_pt' else 'Walking'} speed by crow-fly band"
+    )
+    groups = tuple(DENSITY_GRID_LABELS) if by_density else (None,)
+    density_a = _density_index(sample_a.density)
+    density_b = _density_index(sample_b.density)
+    band_a = _speed_band_index(sample_a.crow_fly_km)
+    band_b = _speed_band_index(sample_b.crow_fly_km)
+    lines = [
+        f"#### {title}",
+        "",
+        "| Band | Density | n 2008 | 2008 km/h [95% CI] | "
+        "n 2019 | 2019 km/h [95% CI] | 2019/2008 speed ratio [90% CI] |",
+        "|---|---|---:|---|---:|---|---|",
+    ]
+    for band_index, band_label in enumerate(SPEED_BAND_LABELS):
+        for density_index, density_label in enumerate(groups):
+            selected_a = (band_a == band_index) & (sample_a.mode == mode)
+            selected_b = (band_b == band_index) & (sample_b.mode == mode)
+            if by_density:
+                selected_a &= density_a == density_index
+                selected_b &= density_b == density_index
+            offset = seed + band_index * 10 + density_index
+            a = _speed_report_sample(
+                sample_a, "crow-fly", selected_a, n_reps=n_reps, seed=offset
+            )
+            b = _speed_report_sample(
+                sample_b, "crow-fly", selected_b, n_reps=n_reps, seed=offset + 1
+            )
+            lines.append(
+                f"| {band_label} | {density_label or '-'} | {a.n_trips} | "
+                f"{_metric_cell(a.speed_kmh, a.n_trips)} | {b.n_trips} | "
+                f"{_metric_cell(b.speed_kmh, b.n_trips)} | "
+                f"{_ratio_cell(a.speed_kmh, b.speed_kmh, a.n_trips, b.n_trips)} |"
+            )
+    return lines
+
+
+def _format_c6_standardized(
+    sample_a: SpeedSample,
+    sample_b: SpeedSample,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    common_cells, n_a, n_b, speed_a, speed_b = _standardized_car_speed(
+        sample_a, sample_b, n_reps=n_reps, seed=seed
+    )
+    ratio = _ratio_metric(speed_a, speed_b)
+    ratio_cell = "-" if ratio is None else _metric_cell(ratio, min(n_a, n_b))
+    change = (
+        "-"
+        if ratio is None or min(n_a, n_b) < MIN_CELL_N
+        else (
+            f"{100 * (ratio.estimate - 1):.1f}% "
+            f"[{100 * (ratio.interval[0] - 1):.1f}%, "
+            f"{100 * (ratio.interval[1] - 1):.1f}%]"
+        )
+    )
+    return [
+        "#### Car-driver speed pooled at the 2008 trip mix",
+        "",
+        "Crow-fly car-driver trips in 2–80 km bands are standardized over "
+        "the band × density cells observed in both years. Each cell's mean "
+        "distance and minutes are reweighted to the 2008 weighted trip mix; "
+        "the reported speed remains a ratio of those weighted totals.",
+        "",
+        "| Common cells | n 2008 | Standardized 2008 km/h [95% CI] | "
+        "n 2019 | Standardized 2019 km/h [95% CI] | "
+        "2019/2008 ratio [90% CI] | Change [90% CI] |",
+        "|---:|---:|---|---:|---|---|---|",
+        f"| {common_cells} | {n_a} | {_metric_cell(speed_a, n_a)} | "
+        f"{n_b} | {_metric_cell(speed_b, n_b)} | {ratio_cell} | {change} |",
+    ]
+
+
+def _format_c6(
+    frames_2008: SurveyFrames,
+    frames_2019: SurveyFrames,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[str]:
+    """Render C6 speed estimates from the existing trip scopes and weights."""
+    samples = {
+        "A": (_speed_sample(frames_2008, "A"), _speed_sample(frames_2019, "A")),
+        "B": (_speed_sample(frames_2008, "B"), _speed_sample(frames_2019, "B")),
+    }
+    lines = [
+        "### C6. Door-to-door speed",
+        "",
+        "Speed is total weighted distance (km) divided by total weighted "
+        "duration (minutes), multiplied by 60; it is not the mean of trip "
+        "speeds. The household bootstrap is independent by survey. Scope A "
+        "is ages 6+, Monday–Friday, local trips, all motives (SDES); scope B "
+        "is the existing step-12 weekday needs scope. Estimates use trip "
+        "weights; distance-specific metrics use trips with valid distance "
+        "and positive duration. 2008/2019 ratios use 90% bootstrap intervals; "
+        "year estimates use 95% intervals. Cells with fewer than 50 trips "
+        "suppress estimates. Declared distances over 100 times crow-fly "
+        "(with positive crow-fly) are rescaled from metres, then values "
+        "outside 0.5–10 times crow-fly are dropped when crow-fly exceeds 2 km.",
+        "",
+        *_format_c6_overall(samples, n_reps=n_reps, seed=seed),
+        "",
+        *_format_c6_zero_share(samples, n_reps=n_reps, seed=seed + 500),
+        "",
+        *_format_c6_residence(samples, n_reps=n_reps, seed=seed),
+        "",
+        *_format_c6_mode_bands(
+            samples["B"][0],
+            samples["B"][1],
+            mode="car_driver",
+            by_density=True,
+            n_reps=n_reps,
+            seed=seed + 10_000,
+        ),
+        "",
+        *_format_c6_mode_bands(
+            samples["B"][0],
+            samples["B"][1],
+            mode="urban_pt",
+            by_density=False,
+            n_reps=n_reps,
+            seed=seed + 20_000,
+        ),
+        "",
+        *_format_c6_mode_bands(
+            samples["B"][0],
+            samples["B"][1],
+            mode="walk",
+            by_density=False,
+            n_reps=n_reps,
+            seed=seed + 30_000,
+        ),
+        "",
+        *_format_c6_standardized(
+            samples["B"][0],
+            samples["B"][1],
+            n_reps=n_reps,
+            seed=seed + 40_000,
+        ),
+    ]
+    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -1669,6 +2522,21 @@ BASE_CHOICES = [
     "surveys' code inventories are visible.",
     "EMP 2019 declared distances have unit/coding errors and are excluded "
     "from the 2008 -> 2019 distance comparison.",
+    "C6 residence classes use the shared 2020-zoning fields "
+    f"({', '.join(RESIDENCE_ZONING_VARIABLES)}) in EMP's `TCM_MEN` and "
+    "ENTD's `Q_TCM_MEN_ENTD08_zon20_public.csv`. `CATCOM_AA_RES` uses "
+    "INSEE's CATEAAV2020 classes: 11 = commune-centre, 12 = other commune "
+    "of the main pole, 13 = commune of a secondary pole, 20 = commune of "
+    "the crown, and 30 = commune outside city attraction. Codes 11/12/13 "
+    "are grouped as pôle, 20 as couronne, and 30 as hors attraction; "
+    "unmatched codes fall back to the INSEE residence-density grid. "
+    "The 1994 classes come from the older urban-area zoning, while the "
+    "2008 and 2019 classes come from the 2020 attraction-area zoning, so "
+    "the 1994 comparison is approximate. CATEAAV2020 has no multipolarised "
+    "class; the 1994 couronne and multipolarisée values are merged using "
+    "trip weights, and secondary-pole communes (13) are counted as pôle. "
+    "Car-driver density bands use the residence grid class "
+    "(`DENSITECOM_RES`), not a trip-end class.",
     "Distance bands use step 11's corrected distances "
     "(`trip_legs.distance_km`): the speed-plausibility correction "
     "replaces implausible declared distances, as in every step-11 "
@@ -1801,6 +2669,14 @@ def run(
     results["extra_sections"].append(
         _format_official_scope(
             results["official_scope_2008"], results["official_scope_2019"]
+        )
+    )
+    results["extra_sections"].append(
+        _format_c6(
+            frames_2008,
+            frames_2019,
+            n_reps=n_reps,
+            seed=seed,
         )
     )
     return results
@@ -4084,12 +4960,14 @@ def measurement_ledger(
         )
     )
     residual_effects = {row.key: row.bounds for row in rows if row.key in "abefg"}
-    residual_bounds = observed[:, None] - np.sum(
-        [residual_effects[key] for key in "abef"], axis=0
-    )[:, ::-1]
-    residual_bounds_with_composition = observed[:, None] - np.sum(
-        [residual_effects[key] for key in "abefg"], axis=0
-    )[:, ::-1]
+    residual_bounds = (
+        observed[:, None]
+        - np.sum([residual_effects[key] for key in "abef"], axis=0)[:, ::-1]
+    )
+    residual_bounds_with_composition = (
+        observed[:, None]
+        - np.sum([residual_effects[key] for key in "abefg"], axis=0)[:, ::-1]
+    )
     diagnostics = []
     delta_trips = observed[1]
     delta_trip_reps = reps_b[:, 1] - reps_a[:, 1]
@@ -4210,9 +5088,7 @@ def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
         + " |",
         "| Residual (also removing g, composition) | "
         + " | ".join(
-            _suppress(
-                composition_residual_n, f"[{_num(lo, 3)}, {_num(hi, 3)}]"
-            )
+            _suppress(composition_residual_n, f"[{_num(lo, 3)}, {_num(hi, 3)}]")
             for lo, hi in ledger.residual_bounds_with_composition
         )
         + " |",
