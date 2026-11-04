@@ -224,6 +224,14 @@ def _day_rows(con: duckdb.DuckDBPyConnection) -> dict:
     ).fetchnumpy()
 
 
+def _person_budget_day_rows(con: duckdb.DuckDBPyConnection) -> dict:
+    """Fetch local needs-scope day totals, including days with no energy."""
+    return con.sql(
+        "SELECT population_category, home_density, income_quintile, ident_men, "
+        "typejour, pond_jour, total_time_min FROM day_summary"
+    ).fetchnumpy()
+
+
 def _income_quintile_report(con: duckdb.DuckDBPyConnection, days: dict, survey) -> dict:
     """Section 9.9's 28 October 2026 decision: equal-sized income
     quintiles. ``trip_legs.income_quintile_summary`` gives the cut
@@ -718,23 +726,25 @@ def run(
     motive_by_population = _trips_by_group_and_motive(con, "population_category")
     motive_by_density = _trips_by_group_and_motive(con, "home_density")
 
-    # Section 9.9 point 2's per-person budget: P(out) x T(out), days
-    # without trips included, by population category and by category x
-    # density/income. Weekday only in both surveys (comparable with
-    # 2008); EMP 2019 also reports the all-week budget (its IMMODEP
-    # questions cover the whole week; ENTD 2008's weekend eligibility is
-    # unverified, so it stays weekday-only, per the user's instruction).
+    # Section 9.9 point 2: direct producer-weighted sums of local,
+    # needs-scope trip-days over the full respondent roster.
     person = _person_universe(survey, con, density_source)
+    daily_energy.create_day_summary(
+        con,
+        where_sql=f"({emp2019.NEEDS_ONLY_WHERE_SQL}) AND mobloc = 1",
+    )
+    person_budget_days = _person_budget_day_rows(con)
+    daily_energy.create_day_summary(con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL)
     (
         person_budget_weekday_population,
         person_budget_weekday_category_density,
         person_budget_weekday_category_income,
     ) = _person_budget_tables(
         person,
-        days,
-        value=days["total_time_min"],
+        person_budget_days,
+        value=person_budget_days["total_time_min"],
         day_types=("weekday",),
-        day_type_weight=None,
+        period_divisor=5.0,
         n_reps=n_reps,
         seed=seed,
     )
@@ -745,10 +755,10 @@ def run(
             person_budget_all_week_category_income,
         ) = _person_budget_tables(
             person,
-            days,
-            value=days["total_time_min"],
+            person_budget_days,
+            value=person_budget_days["total_time_min"],
             day_types=person["day_types"],
-            day_type_weight=daily_energy.DAY_TYPE_WEIGHT,
+            period_divisor=7.0,
             n_reps=n_reps,
             seed=seed,
         )
@@ -1023,13 +1033,22 @@ def run(
         n_reps=n_reps,
         seed=seed,
     )
-    weekday_person_mask = person["day_type"] == "weekday"
     weekday_person_rows = {
-        "category": person["category"][weekday_person_mask],
-        "household": person["ident_men"][weekday_person_mask],
-        "weight": person["weight"][weekday_person_mask],
-        "immobile": person["immobile"][weekday_person_mask],
+        "category": person["category"],
+        "household": person["ident_men"],
+        "weight": person["weight"],
+        "period_divisor": person["period_divisor"],
     }
+    weekday_person_budget_days = {
+        key: person_budget_days[key][person_budget_days["typejour"] == 1]
+        for key in (
+            "ident_men",
+            "pond_jour",
+            "total_time_min",
+            "population_category",
+        )
+    }
+    zero_local_trip_day = daily_energy.zero_local_trip_day_summary(con)
 
     return {
         "config": config,
@@ -1075,8 +1094,10 @@ def run(
         "person_budget_all_week_category_income": (
             person_budget_all_week_category_income
         ),
+        "zero_local_trip_day": zero_local_trip_day,
         "_weekday_days": weekday_days,
         "_weekday_person_rows": weekday_person_rows,
+        "_weekday_person_budget_days": weekday_person_budget_days,
         "mean_kh": mean_kh,
         "mean_cp": mean_cp,
         "mean_time_min": mean_time_min,
@@ -1301,17 +1322,11 @@ _DAY_TYPE_BY_TYPEJOUR = {1.0: "weekday", 2.0: "saturday", 3.0: "sunday"}
 def _person_universe(
     survey, con: duckdb.DuckDBPyConnection, density_source: str
 ) -> dict:
-    """The full respondent roster with its per-day-type immobility rows
-    (section 9.9 point 2's per-person budget), each respondent's
-    population category, residence density and income quintile joined
-    on: EMP 2019's `person_day_type_rows` (weekday/Saturday/Sunday, from
-    `IMMODEP_A`-`G`) or ENTD 2008's `person_weekday_rows` (weekday only,
-    from `V2_MOBILREF`), whichever the survey module exposes."""
-    if hasattr(survey, "person_day_type_rows"):
-        rows = survey.person_day_type_rows(con)
+    """Full respondent roster and weights for the direct estimator."""
+    rows = survey.person_estimator_rows(con)
+    if survey is emp2019:
         day_types = ("weekday", "saturday", "sunday")
     else:
-        rows = survey.person_weekday_rows(con)
         day_types = ("weekday",)
     category_by_ident = survey.population_category_by_ident(con)
     density_by_ident = survey.residence_density_by_ident(con, density_source)
@@ -1319,10 +1334,10 @@ def _person_universe(
     ident_ind = np.array([r[0] for r in rows])
     return {
         "day_types": day_types,
+        "period_divisor": 1.0 if survey is entd2008 else 5.0,
+        "ident_ind": ident_ind,
         "ident_men": np.array([r[1] for r in rows]),
         "weight": np.array([r[2] for r in rows], dtype=float),
-        "day_type": np.array([r[3] for r in rows]),
-        "immobile": np.array([r[4] for r in rows], dtype=float),
         "category": np.array([category_by_ident.get(i, "unknown") for i in ident_ind]),
         "density": np.array(
             [density_by_ident.get(i, "intermediate") for i in ident_ind]
@@ -1337,7 +1352,7 @@ def _person_budget_tables(
     *,
     value: np.ndarray,
     day_types: tuple[str, ...],
-    day_type_weight: dict[str, float] | None,
+    period_divisor: float,
     n_reps: int,
     seed: int,
 ) -> tuple[
@@ -1345,21 +1360,14 @@ def _person_budget_tables(
     dict[tuple[str, str], daily_energy.PersonBudgetRow],
     dict[tuple[str, str], daily_energy.PersonBudgetRow],
 ]:
-    """Per-person budget (section 9.9 point 2) of ``value`` (a
-    ``days``-length array, e.g. `total_time_min`): by population
-    category alone, by category x density, and by category x income
-    quintile. ``day_types``/``day_type_weight`` select weekday-only
-    (both surveys) or all-week (EMP 2019 only, `daily_energy.
-    DAY_TYPE_WEIGHT`)."""
+    """Direct per-person budget of ``value`` by category and subgroup."""
     t_day_type = np.array(
         [_DAY_TYPE_BY_TYPEJOUR.get(t, "weekday") for t in days["typejour"]]
     )
     by_category = daily_energy.person_budget_by_group(
         person["category"],
-        person["day_type"],
         person["ident_men"],
         person["weight"],
-        person["immobile"],
         days["population_category"],
         t_day_type,
         days["ident_men"],
@@ -1367,7 +1375,8 @@ def _person_budget_tables(
         value,
         groups=list(daily_energy.POPULATION_CATEGORIES),
         day_types=day_types,
-        day_type_weight=day_type_weight,
+        person_weight_scale=1.0,
+        period_divisor=period_divisor,
         min_cell_n=MIN_CELL_N,
         n_reps=n_reps,
         seed=seed,
@@ -1388,10 +1397,8 @@ def _person_budget_tables(
         ]
         raw = daily_energy.person_budget_by_group(
             p_combined,
-            person["day_type"],
             person["ident_men"],
             person["weight"],
-            person["immobile"],
             t_combined,
             t_day_type,
             days["ident_men"],
@@ -1399,7 +1406,8 @@ def _person_budget_tables(
             value,
             groups=groups,
             day_types=day_types,
-            day_type_weight=day_type_weight,
+            person_weight_scale=1.0,
+            period_divisor=period_divisor,
             min_cell_n=MIN_CELL_N,
             n_reps=n_reps,
             seed=seed,
@@ -2858,21 +2866,19 @@ def _format_scalar_group_table(
 def _format_person_budget_table(
     rows: dict[str, daily_energy.PersonBudgetRow],
 ) -> list[str]:
-    """Per-person budget (section 9.9 point 2) by population category:
-    P(out), T|out, n, budget and its 95% CI (blank when there is no
-    bootstrap, i.e. an all-week budget)."""
+    """Direct per-person budget by population category and its 95% CI."""
     lines = [
-        "| Category | n | P(out) | T\\|out (min) | budget (min) | 95% CI |",
-        "|---|---|---|---|---|---|",
+        "| Category | n respondents | min/person/day | 95% CI |",
+        "|---|---:|---:|---|",
     ]
     order = [*daily_energy.POPULATION_CATEGORIES, "overall"]
     for category in order:
         row = rows.get(category)
         if row is None or row.n == 0:
-            lines.append(f"| {category} | 0 | - | - | - | - |")
+            lines.append(f"| {category} | 0 | - | - |")
             continue
         if row.n < MIN_CELL_N or np.isnan(row.budget):
-            lines.append(f"| {category} | {row.n} | - | - | - | - |")
+            lines.append(f"| {category} | {row.n} | - | - |")
             continue
         ci = (
             f"[{row.budget_ci[0]:.1f}, {row.budget_ci[1]:.1f}]"
@@ -2880,8 +2886,7 @@ def _format_person_budget_table(
             else "-"
         )
         lines.append(
-            f"| {category} | {row.n} | {row.p_out:.3f} | "
-            f"{row.value_given_out:.1f} | {row.budget:.1f} | {ci} |"
+            f"| {category} | {row.n} | {row.budget:.1f} | {ci} |"
         )
     return lines
 
@@ -2891,22 +2896,19 @@ def _format_person_budget_key_table(
     key_order: tuple[str, ...],
     key_label: str,
 ) -> list[str]:
-    """Per-person budget by population category x key (density or
-    income quintile, section 9.9 point 2): P(out), T|out, n, budget and
-    its 95% CI."""
+    """Direct per-person budget by population category x key."""
     lines = [
-        f"| Category | {key_label} | n | P(out) | T\\|out (min) | "
-        "budget (min) | 95% CI |",
-        "|---|---|---|---|---|---|---|",
+        f"| Category | {key_label} | n respondents | min/person/day | 95% CI |",
+        "|---|---|---:|---:|---|",
     ]
     for category in daily_energy.POPULATION_CATEGORIES:
         for key in key_order:
             row = rows.get((category, key))
             if row is None or row.n == 0:
-                lines.append(f"| {category} | {key} | 0 | - | - | - | - |")
+                lines.append(f"| {category} | {key} | 0 | - | - |")
                 continue
             if row.n < MIN_CELL_N or np.isnan(row.budget):
-                lines.append(f"| {category} | {key} | {row.n} | - | - | - | - |")
+                lines.append(f"| {category} | {key} | {row.n} | - | - |")
                 continue
             ci = (
                 f"[{row.budget_ci[0]:.1f}, {row.budget_ci[1]:.1f}]"
@@ -2914,8 +2916,7 @@ def _format_person_budget_key_table(
                 else "-"
             )
             lines.append(
-                f"| {category} | {key} | {row.n} | {row.p_out:.3f} | "
-                f"{row.value_given_out:.1f} | {row.budget:.1f} | {ci} |"
+                f"| {category} | {key} | {row.n} | {row.budget:.1f} | {ci} |"
             )
     return lines
 
@@ -3355,16 +3356,27 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "## Per-person budget, days without trips included (section 9.9 point 2b)",
         "",
-        "P(out on the weekday) x T(weekday|out), weekday only (comparable "
-        "with ENTD 2008's own, unverified-weekend-eligibility budget); "
+        "Direct producer-weighted sum of local, needs-scope day values over "
+        "the full respondent roster. EMP 2019 weekdays use "
+        "Σ pond_jour × value ÷ 5 ÷ Σ pond_indC; ENTD 2008 uses the weighted "
+        "reference-weekday total ÷ Σ POIDS_JOUR for the full Kish roster. "
+        "The weekday estimates are comparable; "
         + (
-            "EMP 2019 additionally reports the all-week budget, Sigma_d "
-            "w_d . P(out on day type d) . T(d|out), w_d = 5/7, 1/7, 1/7 "
-            "(P from `IMMODEP_A`-`G`, T from the described days of each "
-            "day type; point estimate only, no bootstrap CI)."
+            "EMP 2019 also reports the 7-day average, Σ pond_jour × value "
+            "over the described week ÷ 7 ÷ Σ pond_indC."
             if results["person_budget_all_week_population"] is not None
-            else "ENTD 2008 reports the weekday budget only: its weekend "
-            "eligibility is unverified (`docs/progress.md`)."
+            else "ENTD 2008 reports weekdays only; weekend estimates are "
+            "not used."
+        ),
+        "",
+        (
+            "Among described weekdays with trips (all motives), the "
+            "producer-weighted share with zero local trips is "
+            f"{results['zero_local_trip_day'].share:.2%} "
+            f"({results['zero_local_trip_day'].n_zero_local_days}/"
+            f"{results['zero_local_trip_day'].n_described_days} days; "
+            f"{results['zero_local_trip_day'].weighted_zero_local_days:,.0f}/"
+            f"{results['zero_local_trip_day'].weighted_days:,.0f} weighted days)."
         ),
         "",
         "### By population category",
@@ -3867,10 +3879,10 @@ def _format_weekday_comparison(
         "",
         "### Daily time, per person (days without trips included)",
         "",
-        "P(out on the weekday) x T(weekday|out); the difference shown is "
-        "between the two surveys' independent point budgets, without a "
-        "joint bootstrap interval (each side's own 95% CI is shown "
-        "instead, from its single-survey per-person budget table above).",
+        "Direct producer-weighted local-trip total divided by the full "
+        "respondent roster. The difference is between the two independent "
+        "point estimates (each survey's household-bootstrap 95% CI appears "
+        "in the adjacent columns).",
         "",
         "| Category | 2008 (min) | 2008 95% CI | 2019 (min) | 2019 95% CI "
         "| 2019 - 2008 |",
@@ -3943,7 +3955,7 @@ def _temporal_person_budget_rows(
     for index, category in enumerate((*daily_energy.POPULATION_CATEGORIES, "overall")):
         year_data = []
         for results in (results_2008, results_2019):
-            days = results["_weekday_days"]
+            days = results["_weekday_person_budget_days"]
             persons = results["_weekday_person_rows"]
             day_mask = (
                 np.ones(len(days["pond_jour"]), dtype=bool)
@@ -3958,28 +3970,28 @@ def _temporal_person_budget_rows(
             year_data.append((days, persons, day_mask, person_mask))
         (days_2008, persons_2008, day_mask_2008, person_mask_2008) = year_data[0]
         (days_2019, persons_2019, day_mask_2019, person_mask_2019) = year_data[1]
-        n_2008, n_2019 = int(day_mask_2008.sum()), int(day_mask_2019.sum())
+        n_2008, n_2019 = int(person_mask_2008.sum()), int(person_mask_2019.sum())
         if min(n_2008, n_2019) < MIN_CELL_N:
             rows.append((category, "-", n_2008, n_2019, None, None))
             continue
         seed_2008, seed_2019 = np.random.SeedSequence(seed + index).spawn(2)
-        point_2008, reps_2008 = daily_energy.bootstrap_person_budget_replicates(
+        point_2008, reps_2008 = daily_energy.bootstrap_person_value_replicates(
             persons_2008["household"][person_mask_2008],
             persons_2008["weight"][person_mask_2008],
-            persons_2008["immobile"][person_mask_2008],
             days_2008["ident_men"][day_mask_2008],
             days_2008["pond_jour"][day_mask_2008],
             days_2008["total_time_min"][day_mask_2008],
+            period_divisor=persons_2008["period_divisor"],
             n_reps=n_reps,
             seed=int(seed_2008.generate_state(1)[0]),
         )
-        point_2019, reps_2019 = daily_energy.bootstrap_person_budget_replicates(
+        point_2019, reps_2019 = daily_energy.bootstrap_person_value_replicates(
             persons_2019["household"][person_mask_2019],
             persons_2019["weight"][person_mask_2019],
-            persons_2019["immobile"][person_mask_2019],
             days_2019["ident_men"][day_mask_2019],
             days_2019["pond_jour"][day_mask_2019],
             days_2019["total_time_min"][day_mask_2019],
+            period_divisor=persons_2019["period_divisor"],
             n_reps=n_reps,
             seed=int(seed_2019.generate_state(1)[0]),
         )
@@ -4522,8 +4534,8 @@ def _figure_compare_time_by_category(
     (section 9.9's income update). Three panels, left to right: (A) all
     days, day with trips, needs scope; (B) weekday only, day with
     trips; (C) weekday only, per person (days without trips included,
-    P(out) x T(out|out) -- no median marker, a per-person budget is a
-    product, not a quantile of a raw distribution). (B)/(C) share the
+    direct producer-weighted sum over the full respondent roster; no
+    median marker for a per-person total). (B)/(C) share the
     one scope both surveys' per-person budgets are directly comparable
     on (ENTD 2008 describes only the reference weekday)."""
     categories = list(daily_energy.POPULATION_CATEGORIES)
@@ -4637,7 +4649,7 @@ def _figure_compare_time_by_category(
     ax_person.set_xticks(x)
     ax_person.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
     ax_person.set_ylabel("Mean daily time, minutes")
-    ax_person.set_title("(C) Weekday only, per person (P(out) x T(out))", fontsize=9)
+    ax_person.set_title("(C) Weekday only, per person", fontsize=9)
     ax_person.legend(fontsize=6)
 
     fig.suptitle(

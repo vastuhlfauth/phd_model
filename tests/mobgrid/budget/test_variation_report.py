@@ -852,7 +852,13 @@ def test_cli_writes_report_on_synthetic_data(
     )
     assert report.index("C4. Measurement ledger") < report.index("C5.")
     assert "C5. Official-scope replication" in report
-    assert "IMMODEP_A`-`G" in report
+    assert "full respondent roster" in report
+    assert "20.36964" in report
+    assert "8.72921" in report
+    assert "19.7928" in report
+    assert "20.69912" in report
+    assert "8.970084" in report
+    assert "zero-local-trip diagnostic" in report.lower()
     assert "SDES 2008" in report and "SDES 2019" in report
     assert "B6.5. 2008 -> 2019 by INSEE density grid" in report
     assert (out_dir / "fig_b7a_waterfall.png").is_file()
@@ -1411,3 +1417,49 @@ def test_measurement_loader_reads_exact_raw_distance_fields(
         assert frames.trips["crow_fly_km"] == pytest.approx(
             np.full(len(frames.trips["pond_jour"]), 0.75)
         )
+
+
+def test_c5_uses_full_roster_denominator_and_reports_published_gaps() -> None:
+    def frames(name: str, person_weights: list[float], day_weight: float):
+        data = {
+            "household_p": np.array(["h1", "h2"]),
+            "weight_p": np.array(person_weights),
+            "household_t": np.array(["h1"]),
+            "weight_t": np.array([day_weight]),
+            "type_t": np.array([1]),
+            "minutes": np.array([20.0]),
+            "distance_km": np.array([8.0]),
+            "zero_local_n_days": 1,
+            "described_n_days": 2,
+            "zero_local_weight": 3.0,
+            "described_weight": 4.0,
+            "n_people": 2,
+        }
+        return variation_report.SurveyFrames(
+            name=name, days={}, trips={}, aux={"official_scope_data": data}
+        )
+
+    entd = variation_report._official_scope_estimates(
+        frames("ENTD 2008", [5.0, 15.0], 5.0), n_reps=30, seed=1
+    )
+    emp = variation_report._official_scope_estimates(
+        frames("EMP 2019", [1.0, 3.0], 1.0), n_reps=30, seed=2
+    )
+
+    assert entd["weekday"]["trips_per_person"]["estimate"] == pytest.approx(0.25)
+    assert emp["weekday"]["trips_per_person"]["estimate"] == pytest.approx(0.05)
+    assert emp["week"]["trips_per_person"]["estimate"] == pytest.approx(1 / 28)
+    report = "\n".join(variation_report._format_official_scope(entd, emp))
+    for reference in (
+        "3.15",
+        "3.04055",
+        "20.36964",
+        "8.72921",
+        "19.7928",
+        "20.69912",
+        "8.970084",
+    ):
+        assert reference in report
+    assert "Gap 2019" in report
+    assert "zero-local-trip diagnostic" in report.lower()
+    assert "75.00% by day weight" in report

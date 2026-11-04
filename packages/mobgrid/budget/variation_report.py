@@ -521,9 +521,9 @@ def load_frames(
 def _official_scope_data(
     con: duckdb.DuckDBPyConnection, survey, sample_pct: float | None
 ) -> dict[str, np.ndarray]:
-    """Extract age-6+ weekday local trips, all motives, and person out-days."""
+    """Extract age-6+ local trips and full person/day denominators."""
     if survey is emp2019:
-        person_rows = emp2019.person_day_type_rows(con)
+        person_rows = emp2019.person_estimator_rows(con)
         age_rows = con.sql(
             "SELECT IDENT_IND, TRY_CAST(AGE AS INTEGER) FROM tcm_ind_kish"
         ).fetchall()
@@ -534,7 +534,7 @@ def _official_scope_data(
             WHERE {_sample_sql(sample_pct)}
         """).fetchall()
     else:
-        person_rows = entd2008.person_weekday_rows(con)
+        person_rows = entd2008.person_estimator_rows(con)
         age_rows = con.sql(
             "SELECT i.IDENT_IND, TRY_CAST(q.AGE AS INTEGER) "
             "FROM k_individu i JOIN q_tcm_individu q ON q.IDENT_IND = i.IDENT_IND"
@@ -547,124 +547,210 @@ def _official_scope_data(
     eligible_people = [
         row
         for row in person_rows
-        if row[3] == "weekday"
-        and str(row[0]) in sampled_ids
+        if str(row[0]) in sampled_ids
         and ages.get(str(row[0])) is not None
         and ages[str(row[0])] >= 6
     ]
-    days = con.sql(f"""
-        SELECT t.ident_men, t.pond_jour, count(*) AS trips,
-            sum(t.duration_min) AS minutes
+    type_filter = "t.typejour = 1" if survey is entd2008 else "t.typejour IN (1, 2, 3)"
+    trips = con.sql(f"""
+        SELECT t.ident_men, t.pond_jour, t.typejour,
+            t.duration_min, t.distance_km
         FROM trip_legs t
-        JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
-        WHERE t.typejour = 1 AND t.pond_jour > 0 AND t.age >= 6
-            AND e.is_local AND ({_sample_sql(sample_pct)})
-        GROUP BY t.day_id, t.ident_men, t.pond_jour
+        WHERE {type_filter} AND t.pond_jour > 0 AND t.age >= 6
+            AND t.mobloc = 1 AND ({_sample_sql(sample_pct)})
     """).fetchall()
-    if not eligible_people or not days:
+    described_days = con.sql(f"""
+        SELECT t.day_id, any_value(t.ident_men) AS ident_men,
+            any_value(t.pond_jour) AS pond_jour,
+            count(*) FILTER (WHERE t.mobloc = 1) AS local_trips
+        FROM trip_legs t
+        WHERE t.typejour = 1 AND t.pond_jour > 0 AND t.age >= 6
+            AND ({_sample_sql(sample_pct)})
+        GROUP BY t.day_id
+    """).fetchall()
+    if not eligible_people or not trips or not described_days:
         raise ValueError(
             f"{survey.SURVEY_NAME} official-scope sample is empty "
-            f"(people={len(eligible_people)}, trip-days={len(days)})"
+            f"(people={len(eligible_people)}, local-trips={len(trips)}, "
+            f"described-weekdays={len(described_days)})"
         )
+    zero_local_days = [row for row in described_days if row[3] == 0]
     return {
         "household_p": np.asarray([str(row[1]) for row in eligible_people]),
         "weight_p": np.asarray([float(row[2]) for row in eligible_people]),
-        "immobile_p": np.asarray([float(row[4]) for row in eligible_people]),
-        "household_t": np.asarray([str(row[0]) for row in days]),
-        "weight_t": np.asarray([float(row[1]) for row in days]),
-        "trips": np.asarray([float(row[2]) for row in days]),
-        "minutes": np.asarray([float(row[3]) for row in days]),
-        "n_people": len({str(row[0]) for row in eligible_people}),
+        "household_t": np.asarray([str(row[0]) for row in trips]),
+        "weight_t": np.asarray([float(row[1]) for row in trips]),
+        "type_t": np.asarray([int(row[2]) for row in trips]),
+        "minutes": np.asarray(
+            [np.nan if row[3] is None else float(row[3]) for row in trips]
+        ),
+        "distance_km": np.asarray(
+            [np.nan if row[4] is None else float(row[4]) for row in trips]
+        ),
+        "zero_local_n_days": len(zero_local_days),
+        "described_n_days": len(described_days),
+        "zero_local_weight": float(sum(float(row[2]) for row in zero_local_days)),
+        "described_weight": float(sum(float(row[2]) for row in described_days)),
+        "n_people": len(eligible_people),
     }
 
 
 def _official_scope_estimates(
     frames: SurveyFrames, *, n_reps: int, seed: int
 ) -> dict[str, dict]:
-    """C5 per-person indicators using the existing person-budget bootstrap."""
+    """C5 direct producer-weighted local-trip estimates and CIs."""
     data = frames.aux["official_scope_data"]
-    trip_mean, trip_reps = daily_energy.bootstrap_person_budget_replicates(
-        data["household_p"],
-        data["weight_p"],
-        data["immobile_p"],
-        data["household_t"],
-        data["weight_t"],
-        data["trips"],
-        n_reps=n_reps,
-        seed=seed,
-    )
-    time_mean, time_reps = daily_energy.bootstrap_person_budget_replicates(
-        data["household_p"],
-        data["weight_p"],
-        data["immobile_p"],
-        data["household_t"],
-        data["weight_t"],
-        data["minutes"],
-        n_reps=n_reps,
-        seed=seed,
-    )
 
     def interval(values: np.ndarray) -> tuple[float, float]:
-        low, high = np.percentile(values[np.isfinite(values)], [2.5, 97.5])
+        finite = values[np.isfinite(values)]
+        if len(finite) == 0:
+            return float("nan"), float("nan")
+        low, high = np.percentile(finite, [2.5, 97.5])
         return float(low), float(high)
 
-    minutes_per_trip = time_mean / trip_mean
-    ratio_reps = np.divide(
-        time_reps,
-        trip_reps,
-        out=np.full_like(time_reps, np.nan),
-        where=trip_reps > 0,
-    )
-    return {
-        "trips_per_person": {
-            "estimate": trip_mean,
-            "ci": interval(trip_reps),
-        },
-        "minutes_per_trip": {
-            "estimate": minutes_per_trip,
-            "ci": interval(ratio_reps),
-        },
-        "minutes_per_person": {
-            "estimate": time_mean,
-            "ci": interval(time_reps),
-        },
-        "n": int(data["n_people"]),
+    weekday = data["type_t"] == 1
+    periods = {"weekday": (weekday, 5.0 if frames.name == "EMP 2019" else 1.0)}
+    if frames.name == "EMP 2019":
+        periods["week"] = (np.ones(len(weekday), dtype=bool), 7.0)
+    results = {"n": int(data["n_people"])}
+    for period, (mask, divisor) in periods.items():
+        household = data["household_t"][mask]
+        weight = data["weight_t"][mask]
+        ones = np.ones(len(weight))
+        trip_mean, trip_reps = daily_energy.bootstrap_person_value_replicates(
+            data["household_p"],
+            data["weight_p"],
+            household,
+            weight,
+            ones,
+            period_divisor=divisor,
+            n_reps=n_reps,
+            seed=seed,
+        )
+        time_mask = mask & np.isfinite(data["minutes"])
+        minutes_per_trip, minutes_ci = daily_energy.bootstrap_mean_ci(
+            data["household_t"][time_mask],
+            data["weight_t"][time_mask],
+            data["minutes"][time_mask],
+            n_reps=n_reps,
+            seed=seed,
+        )
+        distance_mask = mask & np.isfinite(data["distance_km"])
+        km_per_trip, km_ci = daily_energy.bootstrap_mean_ci(
+            data["household_t"][distance_mask],
+            data["weight_t"][distance_mask],
+            data["distance_km"][distance_mask],
+            n_reps=n_reps,
+            seed=seed,
+        )
+        results[period] = {
+            "trips_per_person": {
+                "estimate": trip_mean,
+                "ci": interval(trip_reps),
+            },
+            "minutes_per_trip": {
+                "estimate": minutes_per_trip,
+                "ci": minutes_ci,
+            },
+            "km_per_trip": {"estimate": km_per_trip, "ci": km_ci},
+        }
+    described_weight = float(data["described_weight"])
+    results["zero_local_trip_days"] = {
+        "share": (
+            float(data["zero_local_weight"]) / described_weight
+            if described_weight > 0
+            else float("nan")
+        ),
+        "n_zero": int(data["zero_local_n_days"]),
+        "n_described": int(data["described_n_days"]),
+        "weighted_zero": float(data["zero_local_weight"]),
+        "weighted_described": described_weight,
     }
+    return results
 
 
 def _format_official_scope(results_2008: dict, results_2019: dict) -> list[str]:
-    published = {
-        "trips_per_person": (3.15, 3.04, "trips/person"),
-        "minutes_per_trip": (17.9, 20.0, "min/trip"),
-        "minutes_per_person": (56.0, 62.0, "min/person"),
-    }
+    published = (
+        ("Weekday", "weekday", "trips_per_person", "trips/person", 3.15, 3.04055),
+        ("Weekday", "weekday", "minutes_per_trip", "min/trip", 17.9, 20.36964),
+        ("Weekday", "weekday", "km_per_trip", "km/trip", None, 8.72921),
+        ("7-day", "week", "trips_per_person", "trips/person/week", None, 19.7928),
+        ("7-day", "week", "minutes_per_trip", "min/trip", None, 20.69912),
+        ("7-day", "week", "km_per_trip", "km/trip", None, 8.970084),
+    )
     lines = [
         "### C5. Official-scope replication",
         "",
-        "Residents aged 6+, Monday-Friday local trips, all motives, per "
-        "person with non-travellers counted as zero. EMP 2019 uses the "
-        "weekday going-out share from `IMMODEP_A`-`G` times the weighted "
-        "value on days out; ENTD 2008 uses its reference-weekday "
-        "`V2_MOBILREF` indicator. Household-bootstrap 95% CIs.",
+        "Residents aged 6+, all motives, local trips (`mobloc = 1`). "
+        "Per-person trip counts are direct producer-weighted sums over the "
+        "full respondent roster: EMP 2019 divides weekday and 7-day totals "
+        "by 5 and 7, respectively; ENTD 2008 uses `POIDS_JOUR` over all "
+        "Kish reference weekdays. Minutes and kilometres per trip use "
+        "household-bootstrap 95% CIs; kilometre estimates use trips with "
+        "known distance.",
         "",
-        "| Indicator | Unit | n 2008 | 2008 [95% CI] | SDES 2008 | "
-        "Gap 2008 | n 2019 | 2019 [95% CI] | SDES 2019 | Gap 2019 |",
-        "|---|---|---:|---|---:|---:|---:|---|---:|---:|",
+        "| Period | Indicator | Unit | n 2008 | 2008 [95% CI] | "
+        "SDES 2008 | Gap 2008 | n 2019 | 2019 [95% CI] | SDES 2019 | "
+        "Gap 2019 |",
+        "|---|---|---|---:|---|---:|---:|---:|---|---:|---:|",
     ]
-    for metric, (reference_2008, reference_2019, unit) in published.items():
-        value_2008 = results_2008[metric]
-        value_2019 = results_2019[metric]
-        gap_2008 = 100.0 * (value_2008["estimate"] / reference_2008 - 1.0)
-        gap_2019 = 100.0 * (value_2019["estimate"] / reference_2019 - 1.0)
-        estimate_2008 = _ci_cell(value_2008["estimate"], value_2008["ci"])
-        estimate_2019 = _ci_cell(value_2019["estimate"], value_2019["ci"])
+    for period, period_key, metric, unit, reference_2008, reference_2019 in published:
+        value_2008 = results_2008.get(period_key)
+        value_2019 = results_2019.get(period_key)
+        metric_2008 = value_2008.get(metric) if value_2008 else None
+        metric_2019 = value_2019.get(metric) if value_2019 else None
+        estimate_2008 = (
+            _ci_cell(metric_2008["estimate"], metric_2008["ci"])
+            if metric_2008
+            else "-"
+        )
+        estimate_2019 = (
+            _ci_cell(metric_2019["estimate"], metric_2019["ci"])
+            if metric_2019
+            else "-"
+        )
+        gap_2008 = (
+            100.0 * (metric_2008["estimate"] / reference_2008 - 1.0)
+            if metric_2008 and reference_2008 is not None
+            else None
+        )
+        gap_2019 = (
+            100.0 * (metric_2019["estimate"] / reference_2019 - 1.0)
+            if metric_2019 and reference_2019 is not None
+            else None
+        )
+        gap_cell_2008 = (
+            _suppress(results_2008["n"], _num(gap_2008))
+            if gap_2008 is not None
+            else "-"
+        )
+        gap_cell_2019 = (
+            _suppress(results_2019["n"], _num(gap_2019))
+            if gap_2019 is not None
+            else "-"
+        )
         lines.append(
-            f"| {metric} | {unit} | {results_2008['n']} | "
-            f"{_suppress(results_2008['n'], estimate_2008)} | "
-            f"{reference_2008:g} | {_suppress(results_2008['n'], _num(gap_2008))}% | "
-            f"{results_2019['n']} | "
-            f"{_suppress(results_2019['n'], estimate_2019)} | "
-            f"{reference_2019:g} | {_suppress(results_2019['n'], _num(gap_2019))}% |"
+            f"| {period} | {metric} | {unit} | "
+            f"{results_2008['n'] if metric_2008 else '-'} | "
+            f"{_suppress(results_2008['n'], estimate_2008) if metric_2008 else '-'} | "
+            f"{reference_2008 if reference_2008 is not None else '-'} | "
+            f"{gap_cell_2008} | "
+            f"{results_2019['n'] if metric_2019 else '-'} | "
+            f"{_suppress(results_2019['n'], estimate_2019) if metric_2019 else '-'} | "
+            f"{reference_2019 if reference_2019 is not None else '-'} | "
+            f"{gap_cell_2019} |"
+        )
+    lines += [
+        "",
+        "**Zero-local-trip diagnostic (weekday described out-days, age 6+):**",
+    ]
+    for label, results in (("ENTD 2008", results_2008), ("EMP 2019", results_2019)):
+        diagnostic = results["zero_local_trip_days"]
+        lines.append(
+            f"- {label}: {diagnostic['share']:.2%} by day weight "
+            f"({diagnostic['n_zero']}/{diagnostic['n_described']} days; "
+            f"{diagnostic['weighted_zero']:,.0f}/"
+            f"{diagnostic['weighted_described']:,.0f} weighted days)."
         )
     return lines
 

@@ -687,6 +687,15 @@ def income_quintile_by_ident(con: duckdb.DuckDBPyConnection) -> dict:
     )
 
 
+def person_estimator_rows(con: duckdb.DuckDBPyConnection) -> list[tuple]:
+    """Full Kish roster for the weekday producer estimator:
+    ``(ident_ind, ident_men, 5 * PONDKI)`` for all reference weekdays,
+    including respondents with no trips."""
+    return con.sql("""
+        SELECT IDENT_IND, IDENT_MEN, 5.0 * PONDKI FROM k_individu
+    """).fetchall()
+
+
 def person_weekday_rows(con: duckdb.DuckDBPyConnection) -> list[tuple]:
     """One row per respondent, the reference weekday only (ENTD 2008's
     weekend eligibility is unverified, section 9.9 point 2): ``(ident_ind,

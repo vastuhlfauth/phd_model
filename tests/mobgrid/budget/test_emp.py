@@ -67,6 +67,8 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "no code-side failure mode to report here" in report
     assert "Trips per day and minutes per trip" in report
     assert "Per-person budget, days without trips included" in report
+    assert "Direct producer-weighted sum of local" in report
+    assert "zero local trips is" in report
     assert "Equivalent at ±15%" in report
     assert "Equivalent at ±10%" in report
 
@@ -214,8 +216,6 @@ def test_suppressed_person_budget_cell_keeps_true_n() -> None:
     rows = {
         ("unemployed", "q4"): daily_energy.PersonBudgetRow(
             group="unemployed||q4",
-            p_out=float("nan"),
-            value_given_out=float("nan"),
             n=12,
             budget=float("nan"),
             budget_ci=(float("nan"), float("nan")),
@@ -224,7 +224,7 @@ def test_suppressed_person_budget_cell_keeps_true_n() -> None:
 
     lines = emp._format_person_budget_key_table(rows, ("q4",), "Income quintile")
 
-    assert "| unemployed | q4 | 12 | - | - | - | - |" in lines
+    assert "| unemployed | q4 | 12 | - | - |" in lines
 
 
 @pytest.mark.skipif(

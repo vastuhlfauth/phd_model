@@ -4,6 +4,27 @@ Read this file at the start of every task and update it at the end.
 
 _Last updated: 2026-11-03 by Copilot (branch `step/variation`: step-12 comparison finalized; real-data regeneration left to the user)_
 
+### Step 11/12: producer per-person estimators (A3)
+
+- Step 11 weekday and 7-day per-person time budgets now use direct
+  producer-weighted sums of local, needs-scope day totals over the full
+  respondent roster; EMP uses divisors 5/7, ENTD uses full-roster
+  `POIDS_JOUR`. Household-bootstrap CIs cover weekday and 7-day values.
+- Both step-11 reports describe the weighted share of weekday out-days with
+  zero local trips. Step 12 C5 now checks each supplied SDES trip/person,
+  minutes/trip and km/trip reference and reports percentage gaps, including
+  EMP's weekday and 7-day values; its diagnostic is age 6+.
+- Validation: 23 `test_daily_energy.py`, 2 focused `test_emp.py`, 15
+  `test_emp2019.py`, 21 `test_entd2008.py`, and 51
+  `test_variation_report.py` tests passed; targeted Ruff passed. The full
+  `test_emp.py` module exceeded the 2-minute job limit and was stopped.
+- No real-data report or generated output was changed. Regenerate in the
+  user's terminal:
+  `uv run python -m mobgrid.budget.emp --out docs\data\step11_budget`
+  `uv run python -m mobgrid.budget.emp --survey entd2008 --out docs\data\step11_budget_entd2008`
+  `uv run python -m mobgrid.budget.emp --compare --out docs\data\step11_compare`
+  `uv run python -m mobgrid.budget.variation_report --out docs\data\step12_variation --entd2008-zoning-data-path data\raw\entd2008\ENTD2008_avec_zonages_EMP`
+
 ### Step 12: final-prompt follow-up (2026-11-03)
 
 - Fixed B2 ratio-table column alignment and changed equivalence results to

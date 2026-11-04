@@ -602,6 +602,14 @@ def income_quintile_by_ident(con: duckdb.DuckDBPyConnection) -> dict:
     )
 
 
+def person_estimator_rows(con: duckdb.DuckDBPyConnection) -> list[tuple]:
+    """Full EMP respondent roster for direct per-person estimates:
+    ``(ident_ind, ident_men, pond_indC)``."""
+    return con.sql("""
+        SELECT IDENT_IND, IDENT_MEN, pond_indC FROM k_individu
+    """).fetchall()
+
+
 def person_day_type_rows(con: duckdb.DuckDBPyConnection) -> list[tuple]:
     """One row per (respondent, IMMODEP offset 1-7) with data: ``(ident_ind,
     ident_men, pond_ind, day_type, immobile)`` (section 9.9 point 2's

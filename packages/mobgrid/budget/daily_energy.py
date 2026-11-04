@@ -840,40 +840,136 @@ def robustness_row(
     )
 
 
-#: Section 9.9 point 2's weekday/Saturday/Sunday weights for the
-#: all-week per-person budget, Sigma_d w_d . P(out on day type d) .
-#: T(d|out) (EMP 2019 only: ENTD 2008's weekend eligibility is
-#: unverified, so it reports a weekday-only per-person budget).
-DAY_TYPE_WEIGHT = {"weekday": 5.0 / 7.0, "saturday": 1.0 / 7.0, "sunday": 1.0 / 7.0}
-
-
 @dataclass(frozen=True)
 class PersonBudgetRow:
-    """One group's per-person budget (section 9.9 point 2): P(out),
-    the day-summary value given out, their product (the budget) and its
-    bootstrap 95% CI, and the day-summary cell size the "given out" term
-    is based on (the smallest across day types, for an all-week budget).
-    """
+    """Direct producer-weighted per-person value and household-bootstrap CI."""
 
     group: str
-    p_out: float
-    value_given_out: float
     n: int
     budget: float
     budget_ci: tuple[float, float]
 
 
-def _weighted_ratio(numerator: np.ndarray, weight: np.ndarray) -> float:
-    total = weight.sum()
-    return float(numerator.sum() / total) if total > 0 else float("nan")
+@dataclass(frozen=True)
+class ZeroLocalTripDaySummary:
+    """Weighted zero-local-trip share among described weekday out-days."""
+
+    n_described_days: int
+    n_zero_local_days: int
+    weighted_days: float
+    weighted_zero_local_days: float
+    share: float
+
+
+def zero_local_trip_day_summary(
+    con: duckdb.DuckDBPyConnection, *, where_sql: str = "typejour = 1"
+) -> ZeroLocalTripDaySummary:
+    """Summarize described days with trips but no local trip (section 9.9).
+
+    The weighted share uses one ``pond_jour`` per described day. ``where_sql``
+    filters trip rows before grouping and defaults to weekdays.
+    """
+    row = con.sql(f"""
+        WITH described_days AS (
+            SELECT day_id,
+                any_value(pond_jour) AS day_weight,
+                count(*) FILTER (WHERE mobloc = 1) AS local_trips
+            FROM trip_legs
+            WHERE ({where_sql}) AND pond_jour > 0
+            GROUP BY day_id
+        )
+        SELECT count(*) AS n_days,
+            count(*) FILTER (WHERE local_trips = 0) AS n_zero_local_days,
+            sum(day_weight) AS weighted_days,
+            sum(day_weight) FILTER (WHERE local_trips = 0)
+                AS weighted_zero_local_days
+        FROM described_days
+    """).fetchone()
+    n_days, n_zero, weighted_days, weighted_zero = row
+    if not n_days or weighted_days is None or weighted_days <= 0:
+        raise ValueError("zero-local-trip diagnostic requires described weekdays")
+    weighted_zero = float(weighted_zero or 0.0)
+    return ZeroLocalTripDaySummary(
+        n_described_days=int(n_days),
+        n_zero_local_days=int(n_zero),
+        weighted_days=float(weighted_days),
+        weighted_zero_local_days=weighted_zero,
+        share=weighted_zero / float(weighted_days),
+    )
+
+
+def bootstrap_person_value_replicates(
+    household_p: np.ndarray,
+    weight_p: np.ndarray,
+    household_t: np.ndarray,
+    weight_t: np.ndarray,
+    value_t: np.ndarray,
+    *,
+    person_weight_scale: float = 1.0,
+    period_divisor: float = 1.0,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> tuple[float, np.ndarray]:
+    """Direct producer-weighted per-person value and household replicates.
+
+    The numerator is ``sum(weight_t * value_t)``. The denominator is the
+    full respondent weight, multiplied by the producer's denominator scale
+    and the number of days represented by the period. A household draw is
+    applied to both samples, so respondents with no local trip contribute
+    zero to the numerator without leaving the denominator.
+    """
+    if len(household_p) != len(weight_p):
+        raise ValueError("person-budget inputs must have equal lengths")
+    if len(household_t) != len(weight_t) or len(weight_t) != len(value_t):
+        raise ValueError("trip-day inputs must have equal lengths")
+    if len(weight_p) == 0 or n_reps < 0:
+        raise ValueError(
+            "person-budget bootstrap requires people and non-negative reps"
+        )
+    if (
+        not np.isfinite(weight_p).all()
+        or not np.isfinite(weight_t).all()
+        or np.any(weight_p < 0)
+        or np.any(weight_t < 0)
+        or weight_p.sum() <= 0
+        or not np.isfinite(person_weight_scale)
+        or person_weight_scale <= 0
+        or not np.isfinite(period_divisor)
+        or period_divisor <= 0
+    ):
+        raise ValueError("person-budget weights and scales must be finite and positive")
+    if not np.isfinite(value_t).all() or np.any(value_t < 0):
+        raise ValueError("person-budget values must be finite and non-negative")
+
+    point = float(
+        np.sum(weight_t * value_t)
+        / (np.sum(weight_p) * person_weight_scale * period_divisor)
+    )
+    households = np.unique(np.concatenate([household_p, household_t]))
+    hh_index = {household: i for i, household in enumerate(households)}
+    idx_p = np.array([hh_index[household] for household in household_p])
+    idx_t = np.array([hh_index[household] for household in household_t])
+    rng = np.random.default_rng(seed)
+    reps = np.empty(n_reps)
+    for rep in range(n_reps):
+        multiplicity = np.bincount(
+            rng.integers(0, len(households), size=len(households)),
+            minlength=len(households),
+        )
+        denominator = (
+            np.sum(weight_p * multiplicity[idx_p])
+            * person_weight_scale
+            * period_divisor
+        )
+        numerator = np.sum(weight_t * value_t * multiplicity[idx_t])
+        reps[rep] = numerator / denominator if denominator > 0 else np.nan
+    return point, reps
 
 
 def person_budget_by_group(
     p_group: np.ndarray,
-    p_day_type: np.ndarray,
     p_household: np.ndarray,
     p_weight: np.ndarray,
-    p_immobile: np.ndarray,
     t_group: np.ndarray,
     t_day_type: np.ndarray,
     t_household: np.ndarray,
@@ -882,33 +978,35 @@ def person_budget_by_group(
     *,
     groups: list[str],
     day_types: tuple[str, ...] = ("weekday",),
-    day_type_weight: dict[str, float] | None = None,
+    person_weight_scale: float = 1.0,
+    period_divisor: float = 1.0,
     min_cell_n: int = 50,
     n_reps: int = 200,
     seed: int = 0,
 ) -> dict[str, PersonBudgetRow]:
-    """Per-person budget by group (section 9.9 point 2): for each group
-    (plus ``None``, "overall"), P(out on each of ``day_types``) from the
-    person-level rows (one row per person and day-type occurrence:
-    EMP 2019's `IMMODEP_A`-`G` offsets, ENTD 2008's single reference
-    weekday) and the day-summary's weighted mean of ``t_value`` given
-    out, summed over ``day_types`` with ``day_type_weight`` (defaults to
-    1.0 on every day type given, i.e. weekday-only when
-    ``day_types=("weekday",)``, section 9.9's "Sigma_d w_d . P(out) .
-    T(out)"). A day type's own contribution is left out of the sum (not
-    just blanked) when its day-summary cell has fewer than
-    ``min_cell_n`` days.
+    """Estimate direct producer-weighted per-person values by group.
 
-    95% CIs are bootstrapped over households (the same resampled
-    household multiplicities applied to both the person- and day-level
-    rows of that one day type, in every replicate) for a single day type
-    (``len(day_types) == 1``, both surveys' weekday budget); an all-week
-    budget (``len(day_types) > 1``, EMP 2019 only) reports the point
-    estimate only, each day type's own bootstrap being a separate,
-    independent resampling that the simple sum below does not combine
-    into one joint CI.
+    Person inputs contain one row per respondent. Trip-day inputs contain
+    local day summaries; their weighted values are summed over ``day_types``
+    and divided by the full group roster weight and ``period_divisor``.
+    Cells are suppressed using respondent counts, and household bootstrap
+    multiplicities are shared by both inputs.
     """
-    weights = day_type_weight or dict.fromkeys(day_types, 1.0)
+    if len(p_group) != len(p_household) or len(p_group) != len(p_weight):
+        raise ValueError("person-budget person inputs must have equal lengths")
+    if not (
+        len(t_group)
+        == len(t_day_type)
+        == len(t_household)
+        == len(t_weight)
+        == len(t_value)
+    ):
+        raise ValueError("person-budget trip-day inputs must have equal lengths")
+    if min_cell_n < 1 or n_reps < 0:
+        raise ValueError("min_cell_n must be positive and n_reps non-negative")
+    if not day_types:
+        raise ValueError("person-budget day_types must not be empty")
+
     results: dict[str, PersonBudgetRow] = {}
     for group in (*groups, None):
         label = group or "overall"
@@ -918,150 +1016,38 @@ def person_budget_by_group(
         mask_t_all = (
             t_group == group if group is not None else np.ones(len(t_group), bool)
         )
-
-        point_budget = 0.0
-        min_n = None
-        observed_min_n = None
-        first_p_out = first_t_out = float("nan")
-        for day_type in day_types:
-            mp = mask_p_all & (p_day_type == day_type)
-            mt = mask_t_all & (t_day_type == day_type)
-            n = int(mt.sum())
-            observed_min_n = n if observed_min_n is None else min(observed_min_n, n)
-            if n < min_cell_n or mp.sum() == 0:
-                continue
-            p_out = _weighted_ratio(p_weight[mp] * (1 - p_immobile[mp]), p_weight[mp])
-            t_out = _weighted_ratio(t_weight[mt] * t_value[mt], t_weight[mt])
-            point_budget += weights[day_type] * p_out * t_out
-            min_n = n if min_n is None else min(min_n, n)
-            if day_type == day_types[0]:
-                first_p_out, first_t_out = p_out, t_out
-
-        if min_n is None:
+        n = int(mask_p_all.sum())
+        if n < min_cell_n or n == 0:
             results[label] = PersonBudgetRow(
                 group=label,
-                p_out=float("nan"),
-                value_given_out=float("nan"),
-                n=int(observed_min_n or 0),
+                n=n,
                 budget=float("nan"),
                 budget_ci=(float("nan"), float("nan")),
             )
             continue
 
-        if len(day_types) == 1:
-            day_type = day_types[0]
-            mp = mask_p_all & (p_day_type == day_type)
-            mt = mask_t_all & (t_day_type == day_type)
-            reps = _bootstrap_budget_reps(
-                p_household[mp],
-                p_weight[mp],
-                p_weight[mp] * (1 - p_immobile[mp]),
-                t_household[mt],
-                t_weight[mt],
-                t_weight[mt] * t_value[mt],
-                n_reps=n_reps,
-                seed=seed,
-            )
-            ci = (
-                tuple(float(v) for v in np.nanpercentile(reps, [2.5, 97.5]))
-                if n_reps > 0
-                else (float("nan"), float("nan"))
-            )
+        mask_t = mask_t_all & np.isin(t_day_type, day_types)
+        point, reps = bootstrap_person_value_replicates(
+            p_household[mask_p_all],
+            p_weight[mask_p_all],
+            t_household[mask_t],
+            t_weight[mask_t],
+            t_value[mask_t],
+            person_weight_scale=person_weight_scale,
+            period_divisor=period_divisor,
+            n_reps=n_reps,
+            seed=seed,
+        )
+        finite_reps = reps[np.isfinite(reps)]
+        if len(finite_reps):
+            low, high = np.percentile(finite_reps, [2.5, 97.5])
+            ci = (float(low), float(high))
         else:
             ci = (float("nan"), float("nan"))
-
         results[label] = PersonBudgetRow(
             group=label,
-            p_out=first_p_out,
-            value_given_out=first_t_out,
-            n=min_n,
-            budget=point_budget,
+            n=n,
+            budget=point,
             budget_ci=ci,
         )
     return results
-
-
-def _bootstrap_budget_reps(
-    household_p: np.ndarray,
-    weight_p: np.ndarray,
-    numerator_p: np.ndarray,
-    household_t: np.ndarray,
-    weight_t: np.ndarray,
-    numerator_t: np.ndarray,
-    *,
-    n_reps: int = 200,
-    seed: int = 0,
-) -> np.ndarray:
-    """Bootstrap replicate array of P(out) x T(out), one day type's
-    per-person budget: households are drawn with replacement once per
-    rep, and the *same* multiplicities are applied to both the
-    person-level data (``numerator_p``/``weight_p``, e.g. weight *
-    (1 - immobile)) and the day-level data (``numerator_t``/``weight_t``,
-    e.g. weight * value) -- the household being the one resampling unit
-    (section 9.9's "Weights and confidence intervals")."""
-    households = np.unique(np.concatenate([household_p, household_t]))
-    hh_index = {h: i for i, h in enumerate(households)}
-    idx_p = np.array([hh_index[h] for h in household_p])
-    idx_t = np.array([hh_index[h] for h in household_t])
-    n_hh = len(households)
-    rng = np.random.default_rng(seed)
-    reps = np.empty(n_reps)
-    for rep in range(n_reps):
-        mult = np.bincount(rng.integers(0, n_hh, size=n_hh), minlength=n_hh)
-        mult_p = mult[idx_p]
-        mult_t = mult[idx_t]
-        denom_p = np.sum(weight_p * mult_p)
-        denom_t = np.sum(weight_t * mult_t)
-        p_rep = np.sum(numerator_p * mult_p) / denom_p if denom_p > 0 else np.nan
-        t_rep = np.sum(numerator_t * mult_t) / denom_t if denom_t > 0 else np.nan
-        reps[rep] = p_rep * t_rep
-    return reps
-
-
-def bootstrap_person_budget_replicates(
-    household_p: np.ndarray,
-    weight_p: np.ndarray,
-    immobile_p: np.ndarray,
-    household_t: np.ndarray,
-    weight_t: np.ndarray,
-    value_t: np.ndarray,
-    *,
-    n_reps: int = 200,
-    seed: int = 0,
-) -> tuple[float, np.ndarray]:
-    """Per-person budget in minutes and its household-bootstrap
-    replicates (section 9.9: P(out) × T(weekday|out))."""
-    if not (len(household_p) == len(weight_p) == len(immobile_p)):
-        raise ValueError("person-budget inputs must have equal lengths")
-    if not (len(household_t) == len(weight_t) == len(value_t)):
-        raise ValueError("trip-day inputs must have equal lengths")
-    if len(weight_p) == 0 or len(weight_t) == 0 or n_reps <= 0:
-        raise ValueError("person-budget bootstrap requires non-empty samples")
-    if (
-        not np.isfinite(weight_p).all()
-        or not np.isfinite(weight_t).all()
-        or np.any(weight_p < 0)
-        or np.any(weight_t < 0)
-        or weight_p.sum() <= 0
-        or weight_t.sum() <= 0
-    ):
-        raise ValueError("person-budget weights must be finite and non-zero")
-    if not np.isfinite(immobile_p).all() or not np.isfinite(value_t).all():
-        raise ValueError("person-budget values must be finite")
-    if np.any((immobile_p < 0) | (immobile_p > 1)):
-        raise ValueError("immobility indicators must be between zero and one")
-    if np.any(value_t < 0):
-        raise ValueError("day time values must be non-negative")
-    p_out = float(np.sum(weight_p * (1 - immobile_p)) / weight_p.sum())
-    time_out = float(np.sum(weight_t * value_t) / weight_t.sum())
-    reps = _bootstrap_budget_reps(
-        household_p,
-        weight_p,
-        weight_p * (1 - immobile_p),
-        household_t,
-        weight_t,
-        weight_t * value_t,
-        n_reps=n_reps,
-        seed=seed,
-    )
-    return p_out * time_out, reps
