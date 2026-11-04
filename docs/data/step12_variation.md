@@ -13,6 +13,7 @@ Sample: ENTD 2008, 14958 weekday days with trips (52810 trips); EMP 2019, 9809 d
 - Residence density uses the INSEE grid in both years (ENTD 2008's 2020-zoning SDES supplement, EMP 2019's published grid). The SDES tables contain no commune codes, so C2 crow-fly distances are not recomputed.
 - The motive crosswalk reports raw code shares before the needs scope and before the return-trip motive reassignment, so both surveys' code inventories are visible.
 - EMP 2019 declared distances have unit/coding errors and are excluded from the 2008 -> 2019 distance comparison.
+- C6 residence classes use the shared 2020-zoning fields (TUU2017_RES, STATUTCOM_UU_RES, TYPE_UU_RES, TAA2017_RES, CATCOM_AA_RES, DENSITECOM_RES) in EMP's `TCM_MEN` and ENTD's `Q_TCM_MEN_ENTD08_zon20_public.csv`. `CATCOM_AA_RES` uses INSEE's CATEAAV2020 classes: 11 = commune-centre, 12 = other commune of the main pole, 13 = commune of a secondary pole, 20 = commune of the crown, and 30 = commune outside city attraction. Codes 11/12/13 are grouped as pôle, 20 as couronne, and 30 as hors attraction; unmatched codes fall back to the INSEE residence-density grid. The 1994 classes come from the older urban-area zoning, while the 2008 and 2019 classes come from the 2020 attraction-area zoning, so the 1994 comparison is approximate. CATEAAV2020 has no multipolarised class; the 1994 couronne and multipolarisée values are merged using trip weights, and secondary-pole communes (13) are counted as pôle. Car-driver density bands use the residence grid class (`DENSITECOM_RES`), not a trip-end class.
 - Distance bands use step 11's corrected distances (`trip_legs.distance_km`): the speed-plausibility correction replaces implausible declared distances, as in every step-11 table.
 - Missing distances form a separate unknown-distance band. N and T include all trips; L and v use distance-known trips. Coverage is day-weighted at trip level, and the selection residual is explicit rather than attributed to speed.
 - The waterfall figure shows B1 V2's composition effect, then the behavioural remainder split in proportion to B2's trips / km per trip / speed / selection terms (the decompositions are not nested). At zero total change, an explicit allocation residual closes the plot.
@@ -212,7 +213,7 @@ N and T use all trips. L and v use distance-known trips only (km per trip and km
 | overall | 14958 | 9809 | 68.5 | 73.9 | 5.4 [3.3, 7.7] | -4.6 [-6.0, -3.4] | -1.9 [-12.7, 6.8] | 11.6 [3.3, 21.0] | 0.2 [0.1, 0.4] | 100.0% | 99.9% | 1.078 | [1.049, 1.109] | equivalent | inconclusive |
 | children_6_17 | 1284 | 917 | 49.4 | 53.3 | 3.9 [-0.7, 9.1] | -3.3 [-5.9, -0.9] | 3.9 [-16.6, 24.0] | 3.4 [-14.3, 20.4] | -0.1 [-0.4, 0.1] | 99.9% | 99.9% | 1.079 | [0.995, 1.171] | inconclusive | inconclusive |
 | employed | 7868 | 4316 | 80.1 | 86.7 | 6.6 [2.6, 10.5] | -6.1 [-8.9, -3.5] | -2.4 [-17.8, 15.7] | 14.8 [0.5, 29.6] | 0.2 [0.1, 0.5] | 100.0% | 99.9% | 1.082 | [1.043, 1.119] | equivalent | inconclusive |
-| unemployed | 625 | 527 | 68.0 | 79.6 | 11.6 [2.2, 23.7] | 0.9 [-6.5, 8.8] | 5.4 [-22.6, 32.1] | 5.3 [-13.1, 27.2] | -0.0 [-0.0, 0.0] | 100.0% | 100.0% | 1.171 | [1.036, 1.341] | inconclusive | inconclusive |
+| unemployed | 625 | 527 | 68.0 | 79.6 | 11.6 [2.2, 23.7] | 0.9 [-6.5, 8.8] | 5.4 [-22.6, 32.1] | 5.3 [-13.1, 27.2] | 0.0 [-0.0, 0.0] | 100.0% | 100.0% | 1.171 | [1.036, 1.341] | inconclusive | inconclusive |
 | retired | 3689 | 3219 | 55.3 | 59.8 | 4.6 [1.3, 8.6] | -1.3 [-3.3, 0.8] | -3.0 [-13.1, 7.6] | 8.5 [0.3, 16.7] | 0.3 [-0.0, 0.8] | 100.0% | 99.9% | 1.083 | [1.034, 1.143] | equivalent | inconclusive |
 | other_inactive | 1415 | 820 | 67.7 | 74.7 | 7.0 [0.3, 13.9] | -6.3 [-11.7, -0.8] | 9.3 [-5.2, 25.3] | 3.4 [-8.9, 15.5] | 0.6 [-0.0, 1.8] | 100.0% | 100.0% | 1.103 | [1.012, 1.196] | inconclusive | inconclusive |
 
@@ -250,7 +251,7 @@ Trips per day: 3.63 (2008) -> 3.40 (2019); minutes per trip: 18.9 -> 21.7.
 | bike | 1024 | 625 | 2.2% | 2.2% | 13.5 | 14.5 | 0.01 | 0.08 | 0.12 | -0.04 | 0.00 | 100.0% | 100.0% | 0.00 |
 | car_driver | 30820 | 18292 | 55.0% | 53.1% | 18.3 | 21.4 | -1.16 | 5.84 | 5.24 | 0.64 | -0.20 | 99.9% | 100.0% | -0.04 |
 | car_passenger | 5090 | 3867 | 11.6% | 12.1% | 18.2 | 21.5 | 0.33 | 1.30 | 1.09 | 0.24 | 0.06 | 99.7% | 100.0% | -0.02 |
-| urban_pt | 3110 | 1925 | 5.3% | 6.9% | 34.3 | 37.2 | 1.78 | 0.52 | -0.70 | 1.23 | 0.15 | 100.0% | 100.0% | 0.00 |
+| urban_pt | 3110 | 1925 | 5.3% | 6.9% | 34.3 | 37.2 | 1.78 | 0.52 | -0.70 | 1.23 | 0.15 | 100.0% | 100.0% | -0.00 |
 | train | 1248 | 507 | 1.8% | 1.9% | 75.1 | 75.9 | 0.37 | 0.05 | 0.39 | 0.19 | 0.00 | 91.6% | 100.0% | -0.52 |
 | other | 1582 | 759 | 3.9% | 2.8% | 26.8 | 33.5 | -1.03 | 0.90 | 3.69 | -2.59 | -0.26 | 98.2% | 100.0% | -0.21 |
 
@@ -301,10 +302,10 @@ Trips per day: 3.63 (2008) -> 3.40 (2019); minutes per trip: 18.9 -> 21.7.
 | 0-1 km | 8639 | 5564 | 17.6% | 18.9% | 7.0 | 7.6 | 0.31 | 0.37 | -0.44 | 0.80 | 0.03 | 100.0% | 100.0% | -0.00 |
 | 1-2 km | 7695 | 3872 | 15.4% | 12.4% | 8.5 | 11.0 | -0.88 | 1.33 | -1.00 | 2.33 | -0.26 | 100.0% | 100.0% | -0.00 |
 | 2-5 km | 11215 | 7404 | 22.6% | 22.1% | 13.0 | 14.1 | -0.24 | 0.83 | -1.18 | 2.01 | -0.02 | 100.0% | 100.0% | 0.00 |
-| 5-10 km | 10109 | 5831 | 17.8% | 17.1% | 18.9 | 19.3 | -0.45 | 0.25 | -0.55 | 0.80 | -0.01 | 100.0% | 100.0% | 0.00 |
+| 5-10 km | 10109 | 5831 | 17.8% | 17.1% | 18.9 | 19.3 | -0.45 | 0.25 | -0.55 | 0.80 | -0.01 | 100.0% | 100.0% | -0.00 |
 | 10-20 km | 8077 | 4817 | 14.0% | 14.7% | 25.0 | 26.0 | 0.65 | 0.44 | -0.47 | 0.90 | 0.02 | 100.0% | 100.0% | 0.00 |
-| 20-40 km | 4953 | 2958 | 8.7% | 9.5% | 37.5 | 39.5 | 1.11 | 0.57 | -0.26 | 0.83 | 0.06 | 100.0% | 100.0% | -0.00 |
-| 40-80 km | 1350 | 1237 | 2.4% | 3.7% | 58.9 | 65.0 | 2.73 | 0.48 | -0.11 | 0.60 | 0.28 | 100.0% | 100.0% | -0.00 |
+| 20-40 km | 4953 | 2958 | 8.7% | 9.5% | 37.5 | 39.5 | 1.11 | 0.57 | -0.26 | 0.83 | 0.06 | 100.0% | 100.0% | 0.00 |
+| 40-80 km | 1350 | 1237 | 2.4% | 3.7% | 58.9 | 65.0 | 2.73 | 0.48 | -0.11 | 0.60 | 0.28 | 100.0% | 100.0% | 0.00 |
 | >=80 km | 634 | 510 | 1.2% | 1.5% | 127.9 | 165.7 | 1.29 | 1.56 | 1.39 | 0.17 | 0.38 | 100.0% | 100.0% | -0.00 |
 | unknown distance | 138 | 0 | - | - | - | - | - | - | - | - | - | - | - | - |
 
@@ -359,7 +360,7 @@ N and T use all trips. L and v use distance-known trips only (km per trip and km
 | overall | 14958 | 6665 | 68.5 | 72.1 | 3.5 [0.8, 5.9] | -3.8 [-5.4, -2.3] | -8.6 [-19.7, 0.0] | 15.8 [7.6, 27.4] | 0.1 [-0.0, 0.3] | 100.0% | 99.9% | 1.052 | [1.023, 1.081] | equivalent | equivalent |
 | children_6_17 | 1284 | 660 | 49.4 | 51.8 | 2.4 [-1.8, 6.3] | -3.2 [-5.8, -0.5] | -8.6 [-24.9, 7.1] | 14.2 [0.6, 29.8] | -0.0 [-0.4, 0.2] | 99.9% | 99.9% | 1.048 | [0.977, 1.123] | equivalent | inconclusive |
 | employed | 7868 | 3153 | 80.1 | 83.2 | 3.1 [0.0, 6.5] | -5.4 [-8.1, -2.9] | -9.9 [-27.3, 5.6] | 18.3 [4.0, 33.9] | 0.1 [-0.0, 0.2] | 100.0% | 99.9% | 1.038 | [1.006, 1.077] | equivalent | equivalent |
-| unemployed | 625 | 353 | 68.0 | 80.8 | 12.8 [-0.5, 25.6] | 0.0 [-7.6, 7.6] | 4.8 [-24.2, 36.9] | 8.0 [-15.2, 30.2] | -0.0 [-0.0, 0.0] | 100.0% | 100.0% | 1.189 | [1.015, 1.336] | inconclusive | inconclusive |
+| unemployed | 625 | 353 | 68.0 | 80.8 | 12.8 [-0.5, 25.6] | 0.0 [-7.6, 7.6] | 4.8 [-24.2, 36.9] | 8.0 [-15.2, 30.2] | 0.0 [-0.0, 0.0] | 100.0% | 100.0% | 1.189 | [1.015, 1.336] | inconclusive | inconclusive |
 | retired | 3689 | 1951 | 55.3 | 59.9 | 4.7 [1.4, 9.5] | -0.2 [-2.7, 1.9] | -7.6 [-18.9, 3.7] | 12.0 [2.6, 20.6] | 0.4 [-0.0, 1.2] | 100.0% | 99.9% | 1.084 | [1.029, 1.154] | inconclusive | inconclusive |
 | other_inactive | 1415 | 539 | 67.7 | 71.8 | 4.1 [-1.8, 10.9] | -5.3 [-10.6, -0.2] | -1.8 [-16.2, 16.4] | 11.1 [-2.5, 21.2] | 0.0 [-0.0, 0.0] | 100.0% | 100.0% | 1.060 | [0.982, 1.159] | inconclusive | inconclusive |
 
@@ -403,7 +404,7 @@ N and T use all trips. L and v use distance-known trips only (km per trip and km
 
 | Group | n q1 | n q5 | T q1 | T q5 | Δ (min) [CI] | trips (min) [CI] | km/trip (min) [CI] | speed (min) [CI] | selection R (min) [CI] | distance-known share q1 | distance-known share q5 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| employed | 405 | 1255 | 77.0 | 93.6 | 16.7 [7.3, 24.0] | -1.0 [-7.2, 5.5] | 48.1 [31.1, 66.3] | -30.4 [-44.8, -17.8] | 0.0 [-0.0, 0.0] | 100.0% | 100.0% |
+| employed | 405 | 1255 | 77.0 | 93.6 | 16.7 [7.3, 24.0] | -1.0 [-7.2, 5.5] | 48.1 [31.1, 66.3] | -30.4 [-44.8, -17.8] | -0.0 [-0.0, 0.0] | 100.0% | 100.0% |
 | retired | 372 | 743 | 52.7 | 69.9 | 17.3 [7.0, 25.2] | 14.6 [8.5, 19.1] | 14.4 [-5.4, 30.8] | -11.7 [-23.6, 2.1] | -0.0 [-0.0, 0.0] | 100.0% | 100.0% |
 
 Mode shift-share aggregates (B3, minutes):
@@ -551,24 +552,24 @@ Cells are mode x original duration class in each survey. The 2008 classes remain
 
 | Variant | Category | n 2008 | Mean change min/day | Range |
 |---|---|---|---|---|
-| nearest | overall | 14958 | 0.10 | [0.01, 0.15] |
-| nearest | children_6_17 | 1284 | -0.05 | [-0.14, 0.12] |
-| nearest | employed | 7868 | 0.18 | [0.07, 0.27] |
-| nearest | unemployed | 625 | 0.02 | [-0.18, 0.37] |
-| nearest | retired | 3689 | 0.10 | [0.03, 0.22] |
-| nearest | other_inactive | 1415 | 0.00 | [-0.12, 0.17] |
+| nearest | overall | 14958 | 0.09 | [0.03, 0.14] |
+| nearest | children_6_17 | 1284 | -0.03 | [-0.14, 0.10] |
+| nearest | employed | 7868 | 0.15 | [0.05, 0.25] |
+| nearest | unemployed | 625 | 0.05 | [-0.16, 0.24] |
+| nearest | retired | 3689 | 0.07 | [-0.07, 0.21] |
+| nearest | other_inactive | 1415 | -0.00 | [-0.16, 0.15] |
 | up | overall | 14958 | 2.26 | [2.19, 2.38] |
-| up | children_6_17 | 1284 | 1.19 | [0.96, 1.43] |
-| up | employed | 7868 | 2.97 | [2.85, 3.09] |
-| up | unemployed | 625 | 1.63 | [1.41, 1.86] |
-| up | retired | 3689 | 1.70 | [1.56, 1.85] |
-| up | other_inactive | 1415 | 1.80 | [1.34, 2.21] |
-| nearest_min5 | overall | 14958 | 0.10 | [0.07, 0.16] |
-| nearest_min5 | children_6_17 | 1284 | -0.03 | [-0.16, 0.14] |
-| nearest_min5 | employed | 7868 | 0.18 | [0.10, 0.28] |
-| nearest_min5 | unemployed | 625 | 0.07 | [-0.19, 0.23] |
-| nearest_min5 | retired | 3689 | 0.08 | [-0.05, 0.18] |
-| nearest_min5 | other_inactive | 1415 | -0.02 | [-0.14, 0.14] |
+| up | children_6_17 | 1284 | 1.20 | [1.06, 1.40] |
+| up | employed | 7868 | 2.98 | [2.83, 3.09] |
+| up | unemployed | 625 | 1.62 | [1.31, 1.90] |
+| up | retired | 3689 | 1.68 | [1.52, 1.82] |
+| up | other_inactive | 1415 | 1.77 | [1.58, 2.01] |
+| nearest_min5 | overall | 14958 | 0.09 | [0.01, 0.15] |
+| nearest_min5 | children_6_17 | 1284 | -0.05 | [-0.15, 0.12] |
+| nearest_min5 | employed | 7868 | 0.17 | [0.02, 0.27] |
+| nearest_min5 | unemployed | 625 | 0.02 | [-0.19, 0.24] |
+| nearest_min5 | retired | 3689 | 0.08 | [-0.05, 0.16] |
+| nearest_min5 | other_inactive | 1415 | -0.04 | [-0.21, 0.10] |
 
 Cumulative day-weighted trip shares at or above each level. Simulated shares are mean [min, max] across draws, within original 2008 cells; 2019 shares use original 2019 cells.
 
@@ -579,31 +580,31 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | nearest | walk | <5 min | 15 | 1122 | 0.0% [0.0%, 0.0%] | 581 | 0.0% |
 | nearest | walk | <5 min | 30 | 1122 | 0.0% [0.0%, 0.0%] | 581 | 0.0% |
 | nearest | walk | 5-9 min | 1 | 3236 | 100.0% [100.0%, 100.0%] | 1875 | 100.0% |
-| nearest | walk | 5-9 min | 5 | 3236 | 92.4% [91.6%, 93.1%] | 1875 | 92.5% |
+| nearest | walk | 5-9 min | 5 | 3236 | 92.2% [91.2%, 93.3%] | 1875 | 92.5% |
 | nearest | walk | 5-9 min | 15 | 3236 | 0.0% [0.0%, 0.0%] | 1875 | 0.0% |
 | nearest | walk | 5-9 min | 30 | 3236 | 0.0% [0.0%, 0.0%] | 1875 | 0.0% |
 | nearest | walk | 10-14 min | 1 | 2567 | 100.0% [100.0%, 100.0%] | 1562 | 100.0% |
-| nearest | walk | 10-14 min | 5 | 2567 | 97.4% [96.7%, 98.1%] | 1562 | 97.3% |
-| nearest | walk | 10-14 min | 15 | 2567 | 1.1% [0.5%, 1.9%] | 1562 | 0.0% |
+| nearest | walk | 10-14 min | 5 | 2567 | 97.3% [96.8%, 97.7%] | 1562 | 97.3% |
+| nearest | walk | 10-14 min | 15 | 2567 | 1.0% [0.5%, 1.4%] | 1562 | 0.0% |
 | nearest | walk | 10-14 min | 30 | 2567 | 0.0% [0.0%, 0.0%] | 1562 | 0.0% |
 | nearest | walk | 15-29 min | 1 | 2249 | 100.0% [100.0%, 100.0%] | 1554 | 100.0% |
-| nearest | walk | 15-29 min | 5 | 2249 | 98.2% [97.3%, 98.9%] | 1554 | 98.1% |
-| nearest | walk | 15-29 min | 15 | 2249 | 68.7% [67.8%, 69.8%] | 1554 | 68.5% |
-| nearest | walk | 15-29 min | 30 | 2249 | 1.0% [0.4%, 1.8%] | 1554 | 0.0% |
+| nearest | walk | 15-29 min | 5 | 2249 | 98.4% [97.2%, 99.5%] | 1554 | 98.1% |
+| nearest | walk | 15-29 min | 15 | 2249 | 68.6% [67.5%, 69.7%] | 1554 | 68.5% |
+| nearest | walk | 15-29 min | 30 | 2249 | 0.9% [0.4%, 1.4%] | 1554 | 0.0% |
 | nearest | walk | 30-59 min | 1 | 632 | 100.0% [100.0%, 100.0%] | 539 | 100.0% |
-| nearest | walk | 30-59 min | 5 | 632 | 97.9% [96.5%, 98.9%] | 539 | 97.5% |
-| nearest | walk | 30-59 min | 15 | 632 | 84.8% [83.2%, 86.4%] | 539 | 82.1% |
-| nearest | walk | 30-59 min | 30 | 632 | 73.6% [71.6%, 75.3%] | 539 | 73.7% |
+| nearest | walk | 30-59 min | 5 | 632 | 97.7% [96.6%, 98.6%] | 539 | 97.5% |
+| nearest | walk | 30-59 min | 15 | 632 | 84.7% [83.6%, 86.8%] | 539 | 82.1% |
+| nearest | walk | 30-59 min | 30 | 632 | 73.7% [71.7%, 76.6%] | 539 | 73.7% |
 | nearest | walk | 60+ min | 1 | 130 | 100.0% [100.0%, 100.0%] | 107 | 100.0% |
-| nearest | walk | 60+ min | 5 | 130 | 99.1% [97.9%, 100.0%] | 107 | 98.4% |
-| nearest | walk | 60+ min | 15 | 130 | 81.2% [75.1%, 85.6%] | 107 | 80.9% |
-| nearest | walk | 60+ min | 30 | 130 | 66.8% [61.9%, 72.9%] | 107 | 66.2% |
+| nearest | walk | 60+ min | 5 | 130 | 99.2% [97.8%, 100.0%] | 107 | 98.4% |
+| nearest | walk | 60+ min | 15 | 130 | 80.3% [74.9%, 86.8%] | 107 | 80.9% |
+| nearest | walk | 60+ min | 30 | 130 | 67.2% [62.2%, 71.7%] | 107 | 66.2% |
 | nearest | bike | <5 min | 1 | 100 | 100.0% [100.0%, 100.0%] | 42 | - |
 | nearest | bike | <5 min | 5 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | nearest | bike | <5 min | 15 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | nearest | bike | <5 min | 30 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | nearest | bike | 5-9 min | 1 | 295 | 100.0% [100.0%, 100.0%] | 135 | 100.0% |
-| nearest | bike | 5-9 min | 5 | 295 | 93.2% [92.8%, 94.4%] | 135 | 93.3% |
+| nearest | bike | 5-9 min | 5 | 295 | 93.3% [92.8%, 94.0%] | 135 | 93.3% |
 | nearest | bike | 5-9 min | 15 | 295 | 0.0% [0.0%, 0.0%] | 135 | 0.0% |
 | nearest | bike | 5-9 min | 30 | 295 | 0.0% [0.0%, 0.0%] | 135 | 0.0% |
 | nearest | bike | 10-14 min | 1 | 226 | 100.0% [100.0%, 100.0%] | 180 | 100.0% |
@@ -611,65 +612,65 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | nearest | bike | 10-14 min | 15 | 226 | 0.0% [0.0%, 0.0%] | 180 | 0.0% |
 | nearest | bike | 10-14 min | 30 | 226 | 0.0% [0.0%, 0.0%] | 180 | 0.0% |
 | nearest | bike | 15-29 min | 1 | 276 | 100.0% [100.0%, 100.0%] | 176 | 100.0% |
-| nearest | bike | 15-29 min | 5 | 276 | 98.9% [98.2%, 99.8%] | 176 | 99.0% |
-| nearest | bike | 15-29 min | 15 | 276 | 65.8% [65.1%, 66.5%] | 176 | 59.6% |
+| nearest | bike | 15-29 min | 5 | 276 | 99.0% [98.3%, 99.6%] | 176 | 99.0% |
+| nearest | bike | 15-29 min | 15 | 276 | 66.0% [65.3%, 66.6%] | 176 | 59.6% |
 | nearest | bike | 15-29 min | 30 | 276 | 0.0% [0.0%, 0.1%] | 176 | 0.0% |
 | nearest | bike | 30-59 min | 1 | 117 | 100.0% [100.0%, 100.0%] | 81 | 100.0% |
-| nearest | bike | 30-59 min | 5 | 117 | 99.8% [98.0%, 100.0%] | 81 | 99.3% |
-| nearest | bike | 30-59 min | 15 | 117 | 90.7% [84.8%, 96.2%] | 81 | 87.6% |
-| nearest | bike | 30-59 min | 30 | 117 | 79.4% [75.0%, 83.9%] | 81 | 79.2% |
+| nearest | bike | 30-59 min | 5 | 117 | 99.8% [98.4%, 100.0%] | 81 | 99.3% |
+| nearest | bike | 30-59 min | 15 | 117 | 90.2% [85.5%, 96.1%] | 81 | 87.6% |
+| nearest | bike | 30-59 min | 30 | 117 | 79.2% [74.5%, 84.4%] | 81 | 79.2% |
 | nearest | bike | 60+ min | 1 | 10 | - | 11 | - |
 | nearest | bike | 60+ min | 5 | 10 | - | 11 | - |
 | nearest | bike | 60+ min | 15 | 10 | - | 11 | - |
 | nearest | bike | 60+ min | 30 | 10 | - | 11 | - |
 | nearest | car_driver | <5 min | 1 | 1984 | 100.0% [100.0%, 100.0%] | 684 | 100.0% |
-| nearest | car_driver | <5 min | 5 | 1984 | 1.5% [0.9%, 2.1%] | 684 | 0.9% |
-| nearest | car_driver | <5 min | 15 | 1984 | 1.0% [0.6%, 1.6%] | 684 | 0.9% |
-| nearest | car_driver | <5 min | 30 | 1984 | 1.0% [0.6%, 1.6%] | 684 | 0.9% |
+| nearest | car_driver | <5 min | 5 | 1984 | 1.6% [0.9%, 2.3%] | 684 | 0.9% |
+| nearest | car_driver | <5 min | 15 | 1984 | 1.0% [0.7%, 1.3%] | 684 | 0.9% |
+| nearest | car_driver | <5 min | 30 | 1984 | 1.0% [0.7%, 1.3%] | 684 | 0.9% |
 | nearest | car_driver | 5-9 min | 1 | 6488 | 100.0% [100.0%, 100.0%] | 3454 | 100.0% |
-| nearest | car_driver | 5-9 min | 5 | 6488 | 91.7% [91.1%, 92.5%] | 3454 | 91.8% |
+| nearest | car_driver | 5-9 min | 5 | 6488 | 91.7% [90.8%, 92.6%] | 3454 | 91.8% |
 | nearest | car_driver | 5-9 min | 15 | 6488 | 0.0% [0.0%, 0.0%] | 3454 | 0.0% |
 | nearest | car_driver | 5-9 min | 30 | 6488 | 0.0% [0.0%, 0.0%] | 3454 | 0.0% |
 | nearest | car_driver | 10-14 min | 1 | 6482 | 100.0% [100.0%, 100.0%] | 3672 | 100.0% |
-| nearest | car_driver | 10-14 min | 5 | 6482 | 96.3% [95.7%, 97.0%] | 3672 | 96.4% |
-| nearest | car_driver | 10-14 min | 15 | 6482 | 6.9% [6.4%, 7.4%] | 3672 | 0.0% |
+| nearest | car_driver | 10-14 min | 5 | 6482 | 96.5% [95.4%, 96.9%] | 3672 | 96.4% |
+| nearest | car_driver | 10-14 min | 15 | 6482 | 7.1% [6.4%, 7.5%] | 3672 | 0.0% |
 | nearest | car_driver | 10-14 min | 30 | 6482 | 0.0% [0.0%, 0.0%] | 3672 | 0.0% |
 | nearest | car_driver | 15-29 min | 1 | 9816 | 100.0% [100.0%, 100.0%] | 6117 | 100.0% |
-| nearest | car_driver | 15-29 min | 5 | 9816 | 97.9% [97.5%, 98.3%] | 6117 | 97.8% |
-| nearest | car_driver | 15-29 min | 15 | 9816 | 58.2% [57.8%, 58.8%] | 6117 | 58.2% |
-| nearest | car_driver | 15-29 min | 30 | 9816 | 2.1% [1.9%, 2.3%] | 6117 | 0.0% |
+| nearest | car_driver | 15-29 min | 5 | 9816 | 97.9% [97.6%, 98.2%] | 6117 | 97.8% |
+| nearest | car_driver | 15-29 min | 15 | 9816 | 58.2% [57.9%, 58.8%] | 6117 | 58.2% |
+| nearest | car_driver | 15-29 min | 30 | 9816 | 2.0% [1.8%, 2.3%] | 6117 | 0.0% |
 | nearest | car_driver | 30-59 min | 1 | 4776 | 100.0% [100.0%, 100.0%] | 3318 | 100.0% |
-| nearest | car_driver | 30-59 min | 5 | 4776 | 98.1% [97.6%, 98.6%] | 3318 | 97.3% |
-| nearest | car_driver | 30-59 min | 15 | 4776 | 76.3% [75.3%, 77.3%] | 3318 | 75.0% |
-| nearest | car_driver | 30-59 min | 30 | 4776 | 59.3% [58.5%, 59.8%] | 3318 | 59.4% |
+| nearest | car_driver | 30-59 min | 5 | 4776 | 98.2% [97.7%, 98.5%] | 3318 | 97.3% |
+| nearest | car_driver | 30-59 min | 15 | 4776 | 76.6% [75.7%, 77.4%] | 3318 | 75.0% |
+| nearest | car_driver | 30-59 min | 30 | 4776 | 59.4% [58.9%, 60.0%] | 3318 | 59.4% |
 | nearest | car_driver | 60+ min | 1 | 1274 | 100.0% [100.0%, 100.0%] | 1047 | 100.0% |
-| nearest | car_driver | 60+ min | 5 | 1274 | 97.9% [97.0%, 99.1%] | 1047 | 95.3% |
-| nearest | car_driver | 60+ min | 15 | 1274 | 84.7% [82.9%, 85.8%] | 1047 | 77.5% |
-| nearest | car_driver | 60+ min | 30 | 1274 | 67.9% [64.7%, 71.4%] | 1047 | 67.2% |
+| nearest | car_driver | 60+ min | 5 | 1274 | 97.4% [96.3%, 98.4%] | 1047 | 95.3% |
+| nearest | car_driver | 60+ min | 15 | 1274 | 84.0% [82.4%, 85.8%] | 1047 | 77.5% |
+| nearest | car_driver | 60+ min | 30 | 1274 | 66.8% [64.1%, 71.0%] | 1047 | 67.2% |
 | nearest | car_passenger | <5 min | 1 | 270 | 100.0% [100.0%, 100.0%] | 97 | 100.0% |
-| nearest | car_passenger | <5 min | 5 | 270 | 0.2% [0.0%, 0.6%] | 97 | 0.1% |
-| nearest | car_passenger | <5 min | 15 | 270 | 0.2% [0.0%, 0.6%] | 97 | 0.1% |
-| nearest | car_passenger | <5 min | 30 | 270 | 0.2% [0.0%, 0.6%] | 97 | 0.1% |
+| nearest | car_passenger | <5 min | 5 | 270 | 0.4% [0.0%, 1.9%] | 97 | 0.1% |
+| nearest | car_passenger | <5 min | 15 | 270 | 0.2% [0.0%, 1.2%] | 97 | 0.1% |
+| nearest | car_passenger | <5 min | 30 | 270 | 0.2% [0.0%, 1.2%] | 97 | 0.1% |
 | nearest | car_passenger | 5-9 min | 1 | 1064 | 100.0% [100.0%, 100.0%] | 656 | 100.0% |
-| nearest | car_passenger | 5-9 min | 5 | 1064 | 90.8% [88.6%, 93.7%] | 656 | 90.7% |
+| nearest | car_passenger | 5-9 min | 5 | 1064 | 90.7% [89.0%, 92.1%] | 656 | 90.7% |
 | nearest | car_passenger | 5-9 min | 15 | 1064 | 0.0% [0.0%, 0.0%] | 656 | 0.0% |
 | nearest | car_passenger | 5-9 min | 30 | 1064 | 0.0% [0.0%, 0.0%] | 656 | 0.0% |
 | nearest | car_passenger | 10-14 min | 1 | 1060 | 100.0% [100.0%, 100.0%] | 754 | 100.0% |
-| nearest | car_passenger | 10-14 min | 5 | 1060 | 96.8% [95.9%, 98.3%] | 754 | 96.6% |
-| nearest | car_passenger | 10-14 min | 15 | 1060 | 4.2% [3.2%, 5.1%] | 754 | 0.0% |
+| nearest | car_passenger | 10-14 min | 5 | 1060 | 96.9% [96.0%, 97.8%] | 754 | 96.6% |
+| nearest | car_passenger | 10-14 min | 15 | 1060 | 4.3% [3.3%, 5.1%] | 754 | 0.0% |
 | nearest | car_passenger | 10-14 min | 30 | 1060 | 0.0% [0.0%, 0.0%] | 754 | 0.0% |
 | nearest | car_passenger | 15-29 min | 1 | 1577 | 100.0% [100.0%, 100.0%] | 1316 | 100.0% |
-| nearest | car_passenger | 15-29 min | 5 | 1577 | 98.7% [98.1%, 99.3%] | 1316 | 98.6% |
-| nearest | car_passenger | 15-29 min | 15 | 1577 | 62.0% [60.9%, 62.9%] | 1316 | 62.1% |
-| nearest | car_passenger | 15-29 min | 30 | 1577 | 1.6% [1.0%, 2.4%] | 1316 | 0.0% |
+| nearest | car_passenger | 15-29 min | 5 | 1577 | 98.7% [97.7%, 99.1%] | 1316 | 98.6% |
+| nearest | car_passenger | 15-29 min | 15 | 1577 | 62.1% [61.3%, 63.1%] | 1316 | 62.1% |
+| nearest | car_passenger | 15-29 min | 30 | 1577 | 1.5% [1.1%, 2.0%] | 1316 | 0.0% |
 | nearest | car_passenger | 30-59 min | 1 | 829 | 100.0% [100.0%, 100.0%] | 758 | 100.0% |
-| nearest | car_passenger | 30-59 min | 5 | 829 | 99.1% [97.8%, 99.9%] | 758 | 98.6% |
-| nearest | car_passenger | 30-59 min | 15 | 829 | 80.6% [78.5%, 82.2%] | 758 | 80.0% |
-| nearest | car_passenger | 30-59 min | 30 | 829 | 62.5% [61.1%, 64.5%] | 758 | 62.3% |
+| nearest | car_passenger | 30-59 min | 5 | 829 | 99.0% [97.2%, 99.7%] | 758 | 98.6% |
+| nearest | car_passenger | 30-59 min | 15 | 829 | 80.6% [78.8%, 82.5%] | 758 | 80.0% |
+| nearest | car_passenger | 30-59 min | 30 | 829 | 62.3% [61.4%, 64.1%] | 758 | 62.3% |
 | nearest | car_passenger | 60+ min | 1 | 290 | 100.0% [100.0%, 100.0%] | 286 | 100.0% |
-| nearest | car_passenger | 60+ min | 5 | 290 | 98.2% [96.1%, 99.9%] | 286 | 95.7% |
-| nearest | car_passenger | 60+ min | 15 | 290 | 88.8% [84.8%, 92.8%] | 286 | 85.5% |
-| nearest | car_passenger | 60+ min | 30 | 290 | 68.3% [64.4%, 75.2%] | 286 | 68.4% |
+| nearest | car_passenger | 60+ min | 5 | 290 | 98.6% [94.4%, 100.0%] | 286 | 95.7% |
+| nearest | car_passenger | 60+ min | 15 | 290 | 90.0% [85.2%, 94.5%] | 286 | 85.5% |
+| nearest | car_passenger | 60+ min | 30 | 290 | 68.8% [65.7%, 74.3%] | 286 | 68.4% |
 | nearest | urban_pt | <5 min | 1 | 3 | - | 3 | - |
 | nearest | urban_pt | <5 min | 5 | 3 | - | 3 | - |
 | nearest | urban_pt | <5 min | 15 | 3 | - | 3 | - |
@@ -679,21 +680,21 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | nearest | urban_pt | 5-9 min | 15 | 26 | - | 22 | - |
 | nearest | urban_pt | 5-9 min | 30 | 26 | - | 22 | - |
 | nearest | urban_pt | 10-14 min | 1 | 152 | 100.0% [100.0%, 100.0%] | 85 | 100.0% |
-| nearest | urban_pt | 10-14 min | 5 | 152 | 91.0% [85.7%, 97.5%] | 85 | 90.5% |
-| nearest | urban_pt | 10-14 min | 15 | 152 | 10.9% [5.4%, 18.0%] | 85 | 0.0% |
+| nearest | urban_pt | 10-14 min | 5 | 152 | 90.2% [81.8%, 97.1%] | 85 | 90.5% |
+| nearest | urban_pt | 10-14 min | 15 | 152 | 10.0% [1.5%, 16.9%] | 85 | 0.0% |
 | nearest | urban_pt | 10-14 min | 30 | 152 | 0.0% [0.0%, 0.0%] | 85 | 0.0% |
 | nearest | urban_pt | 15-29 min | 1 | 973 | 100.0% [100.0%, 100.0%] | 520 | 100.0% |
-| nearest | urban_pt | 15-29 min | 5 | 973 | 92.7% [91.8%, 93.8%] | 520 | 92.8% |
-| nearest | urban_pt | 15-29 min | 15 | 973 | 34.7% [34.0%, 36.2%] | 520 | 30.7% |
-| nearest | urban_pt | 15-29 min | 30 | 973 | 0.4% [0.1%, 0.6%] | 520 | 0.0% |
+| nearest | urban_pt | 15-29 min | 5 | 973 | 92.9% [91.3%, 94.4%] | 520 | 92.8% |
+| nearest | urban_pt | 15-29 min | 15 | 973 | 35.1% [34.0%, 36.2%] | 520 | 30.7% |
+| nearest | urban_pt | 15-29 min | 30 | 973 | 0.3% [0.1%, 0.5%] | 520 | 0.0% |
 | nearest | urban_pt | 30-59 min | 1 | 1564 | 100.0% [100.0%, 100.0%] | 955 | 100.0% |
-| nearest | urban_pt | 30-59 min | 5 | 1564 | 97.0% [95.8%, 97.9%] | 955 | 97.1% |
-| nearest | urban_pt | 30-59 min | 15 | 1564 | 65.2% [64.7%, 65.8%] | 955 | 64.7% |
-| nearest | urban_pt | 30-59 min | 30 | 1564 | 47.4% [47.0%, 48.0%] | 955 | 47.2% |
+| nearest | urban_pt | 30-59 min | 5 | 1564 | 97.2% [96.5%, 98.6%] | 955 | 97.1% |
+| nearest | urban_pt | 30-59 min | 15 | 1564 | 65.0% [64.5%, 65.6%] | 955 | 64.7% |
+| nearest | urban_pt | 30-59 min | 30 | 1564 | 47.3% [46.9%, 48.3%] | 955 | 47.2% |
 | nearest | urban_pt | 60+ min | 1 | 392 | 100.0% [100.0%, 100.0%] | 340 | 100.0% |
-| nearest | urban_pt | 60+ min | 5 | 392 | 98.1% [96.0%, 99.8%] | 340 | 97.9% |
-| nearest | urban_pt | 60+ min | 15 | 392 | 75.2% [74.3%, 77.2%] | 340 | 73.9% |
-| nearest | urban_pt | 60+ min | 30 | 392 | 60.7% [59.3%, 62.9%] | 340 | 60.9% |
+| nearest | urban_pt | 60+ min | 5 | 392 | 98.0% [96.5%, 99.9%] | 340 | 97.9% |
+| nearest | urban_pt | 60+ min | 15 | 392 | 75.3% [73.5%, 78.2%] | 340 | 73.9% |
+| nearest | urban_pt | 60+ min | 30 | 392 | 60.8% [58.8%, 63.4%] | 340 | 60.9% |
 | nearest | train | <5 min | 1 | 3 | - | 1 | - |
 | nearest | train | <5 min | 5 | 3 | - | 1 | - |
 | nearest | train | <5 min | 15 | 3 | - | 1 | - |
@@ -707,37 +708,37 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | nearest | train | 10-14 min | 15 | 13 | - | 3 | - |
 | nearest | train | 10-14 min | 30 | 13 | - | 3 | - |
 | nearest | train | 15-29 min | 1 | 82 | 100.0% [100.0%, 100.0%] | 12 | - |
-| nearest | train | 15-29 min | 5 | 82 | 97.4% [90.6%, 100.0%] | 12 | - |
-| nearest | train | 15-29 min | 15 | 82 | 26.4% [21.6%, 38.5%] | 12 | - |
-| nearest | train | 15-29 min | 30 | 82 | 7.1% [3.8%, 15.5%] | 12 | - |
+| nearest | train | 15-29 min | 5 | 82 | 96.1% [93.8%, 98.6%] | 12 | - |
+| nearest | train | 15-29 min | 15 | 82 | 27.1% [21.0%, 35.2%] | 12 | - |
+| nearest | train | 15-29 min | 30 | 82 | 7.0% [3.6%, 16.2%] | 12 | - |
 | nearest | train | 30-59 min | 1 | 472 | 100.0% [100.0%, 100.0%] | 142 | 100.0% |
-| nearest | train | 30-59 min | 5 | 472 | 95.6% [94.6%, 97.3%] | 142 | 96.0% |
-| nearest | train | 30-59 min | 15 | 472 | 44.6% [43.7%, 45.6%] | 142 | 41.9% |
-| nearest | train | 30-59 min | 30 | 472 | 21.8% [21.3%, 22.5%] | 142 | 20.2% |
+| nearest | train | 30-59 min | 5 | 472 | 96.4% [94.4%, 97.6%] | 142 | 96.0% |
+| nearest | train | 30-59 min | 15 | 472 | 45.0% [44.5%, 45.7%] | 142 | 41.9% |
+| nearest | train | 30-59 min | 30 | 472 | 22.0% [21.2%, 22.5%] | 142 | 20.2% |
 | nearest | train | 60+ min | 1 | 676 | 100.0% [100.0%, 100.0%] | 348 | 100.0% |
-| nearest | train | 60+ min | 5 | 676 | 96.9% [95.3%, 98.3%] | 348 | 94.9% |
-| nearest | train | 60+ min | 15 | 676 | 75.5% [72.1%, 78.7%] | 348 | 70.3% |
-| nearest | train | 60+ min | 30 | 676 | 56.2% [52.8%, 61.1%] | 348 | 56.0% |
+| nearest | train | 60+ min | 5 | 676 | 97.0% [95.6%, 98.4%] | 348 | 94.9% |
+| nearest | train | 60+ min | 15 | 676 | 75.1% [72.5%, 78.0%] | 348 | 70.3% |
+| nearest | train | 60+ min | 30 | 676 | 56.5% [52.0%, 62.1%] | 348 | 56.0% |
 | nearest | other | <5 min | 1 | 41 | - | 19 | - |
 | nearest | other | <5 min | 5 | 41 | - | 19 | - |
 | nearest | other | <5 min | 15 | 41 | - | 19 | - |
 | nearest | other | <5 min | 30 | 41 | - | 19 | - |
 | nearest | other | 5-9 min | 1 | 166 | 100.0% [100.0%, 100.0%] | 73 | 100.0% |
-| nearest | other | 5-9 min | 5 | 166 | 92.4% [84.7%, 98.2%] | 73 | 92.6% |
+| nearest | other | 5-9 min | 5 | 166 | 93.2% [89.1%, 97.8%] | 73 | 92.6% |
 | nearest | other | 5-9 min | 15 | 166 | 0.0% [0.0%, 0.0%] | 73 | 0.0% |
 | nearest | other | 5-9 min | 30 | 166 | 0.0% [0.0%, 0.0%] | 73 | 0.0% |
 | nearest | other | 10-14 min | 1 | 224 | 100.0% [100.0%, 100.0%] | 82 | 100.0% |
-| nearest | other | 10-14 min | 5 | 224 | 95.8% [94.1%, 97.2%] | 82 | 95.9% |
-| nearest | other | 10-14 min | 15 | 224 | 3.1% [2.0%, 4.4%] | 82 | 0.0% |
+| nearest | other | 10-14 min | 5 | 224 | 95.7% [94.0%, 98.7%] | 82 | 95.9% |
+| nearest | other | 10-14 min | 15 | 224 | 2.7% [1.2%, 4.6%] | 82 | 0.0% |
 | nearest | other | 10-14 min | 30 | 224 | 0.0% [0.0%, 0.0%] | 82 | 0.0% |
 | nearest | other | 15-29 min | 1 | 594 | 100.0% [100.0%, 100.0%] | 241 | 100.0% |
-| nearest | other | 15-29 min | 5 | 594 | 93.8% [92.6%, 94.9%] | 241 | 94.2% |
-| nearest | other | 15-29 min | 15 | 594 | 46.4% [45.9%, 46.9%] | 241 | 42.7% |
-| nearest | other | 15-29 min | 30 | 594 | 0.1% [0.0%, 0.7%] | 241 | 0.0% |
+| nearest | other | 15-29 min | 5 | 594 | 94.3% [93.1%, 95.4%] | 241 | 94.2% |
+| nearest | other | 15-29 min | 15 | 594 | 46.9% [46.1%, 47.8%] | 241 | 42.7% |
+| nearest | other | 15-29 min | 30 | 594 | 0.3% [0.0%, 0.7%] | 241 | 0.0% |
 | nearest | other | 30-59 min | 1 | 427 | 100.0% [100.0%, 100.0%] | 245 | 100.0% |
-| nearest | other | 30-59 min | 5 | 427 | 97.1% [95.2%, 98.7%] | 245 | 96.3% |
-| nearest | other | 30-59 min | 15 | 427 | 67.9% [64.9%, 72.8%] | 245 | 66.0% |
-| nearest | other | 30-59 min | 30 | 427 | 50.2% [48.1%, 54.2%] | 245 | 50.1% |
+| nearest | other | 30-59 min | 5 | 427 | 97.1% [95.3%, 98.7%] | 245 | 96.3% |
+| nearest | other | 30-59 min | 15 | 427 | 68.3% [65.6%, 72.1%] | 245 | 66.0% |
+| nearest | other | 30-59 min | 30 | 427 | 49.7% [47.9%, 51.3%] | 245 | 50.1% |
 | nearest | other | 60+ min | 1 | 130 | 100.0% [100.0%, 100.0%] | 99 | 100.0% |
 | nearest | other | 60+ min | 5 | 130 | 97.1% [97.1%, 97.1%] | 99 | 91.0% |
 | nearest | other | 60+ min | 15 | 130 | 72.0% [72.0%, 72.0%] | 99 | 60.8% |
@@ -747,31 +748,31 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | up | walk | <5 min | 15 | 1122 | 0.0% [0.0%, 0.0%] | 581 | 0.0% |
 | up | walk | <5 min | 30 | 1122 | 0.0% [0.0%, 0.0%] | 581 | 0.0% |
 | up | walk | 5-9 min | 1 | 3236 | 100.0% [100.0%, 100.0%] | 1875 | 100.0% |
-| up | walk | 5-9 min | 5 | 3236 | 92.6% [91.6%, 93.5%] | 1875 | 92.5% |
+| up | walk | 5-9 min | 5 | 3236 | 92.4% [91.3%, 92.9%] | 1875 | 92.5% |
 | up | walk | 5-9 min | 15 | 3236 | 0.0% [0.0%, 0.0%] | 1875 | 0.0% |
 | up | walk | 5-9 min | 30 | 3236 | 0.0% [0.0%, 0.0%] | 1875 | 0.0% |
 | up | walk | 10-14 min | 1 | 2567 | 100.0% [100.0%, 100.0%] | 1562 | 100.0% |
-| up | walk | 10-14 min | 5 | 2567 | 97.2% [96.7%, 98.0%] | 1562 | 97.3% |
-| up | walk | 10-14 min | 15 | 2567 | 1.3% [0.8%, 2.1%] | 1562 | 0.0% |
+| up | walk | 10-14 min | 5 | 2567 | 97.2% [96.6%, 98.1%] | 1562 | 97.3% |
+| up | walk | 10-14 min | 15 | 2567 | 1.3% [0.8%, 2.2%] | 1562 | 0.0% |
 | up | walk | 10-14 min | 30 | 2567 | 0.0% [0.0%, 0.0%] | 1562 | 0.0% |
 | up | walk | 15-29 min | 1 | 2249 | 100.0% [100.0%, 100.0%] | 1554 | 100.0% |
-| up | walk | 15-29 min | 5 | 2249 | 98.3% [97.5%, 99.1%] | 1554 | 98.1% |
-| up | walk | 15-29 min | 15 | 2249 | 68.5% [67.1%, 70.0%] | 1554 | 68.5% |
-| up | walk | 15-29 min | 30 | 2249 | 4.0% [2.6%, 5.5%] | 1554 | 0.0% |
+| up | walk | 15-29 min | 5 | 2249 | 98.3% [97.5%, 99.3%] | 1554 | 98.1% |
+| up | walk | 15-29 min | 15 | 2249 | 68.2% [67.2%, 69.1%] | 1554 | 68.5% |
+| up | walk | 15-29 min | 30 | 2249 | 3.7% [2.7%, 4.6%] | 1554 | 0.0% |
 | up | walk | 30-59 min | 1 | 632 | 100.0% [100.0%, 100.0%] | 539 | 100.0% |
-| up | walk | 30-59 min | 5 | 632 | 97.7% [97.0%, 98.8%] | 539 | 97.5% |
-| up | walk | 30-59 min | 15 | 632 | 84.7% [83.8%, 86.2%] | 539 | 82.1% |
-| up | walk | 30-59 min | 30 | 632 | 73.7% [72.0%, 75.2%] | 539 | 73.7% |
+| up | walk | 30-59 min | 5 | 632 | 97.7% [96.4%, 99.0%] | 539 | 97.5% |
+| up | walk | 30-59 min | 15 | 632 | 84.9% [83.3%, 86.6%] | 539 | 82.1% |
+| up | walk | 30-59 min | 30 | 632 | 74.1% [72.1%, 75.4%] | 539 | 73.7% |
 | up | walk | 60+ min | 1 | 130 | 100.0% [100.0%, 100.0%] | 107 | 100.0% |
-| up | walk | 60+ min | 5 | 130 | 99.3% [98.2%, 100.0%] | 107 | 98.4% |
-| up | walk | 60+ min | 15 | 130 | 83.4% [73.9%, 91.5%] | 107 | 80.9% |
-| up | walk | 60+ min | 30 | 130 | 65.4% [61.4%, 70.9%] | 107 | 66.2% |
+| up | walk | 60+ min | 5 | 130 | 99.3% [98.0%, 100.0%] | 107 | 98.4% |
+| up | walk | 60+ min | 15 | 130 | 85.3% [78.8%, 91.1%] | 107 | 80.9% |
+| up | walk | 60+ min | 30 | 130 | 67.4% [63.9%, 74.9%] | 107 | 66.2% |
 | up | bike | <5 min | 1 | 100 | 100.0% [100.0%, 100.0%] | 42 | - |
 | up | bike | <5 min | 5 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | up | bike | <5 min | 15 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | up | bike | <5 min | 30 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | up | bike | 5-9 min | 1 | 295 | 100.0% [100.0%, 100.0%] | 135 | 100.0% |
-| up | bike | 5-9 min | 5 | 295 | 93.5% [92.8%, 95.0%] | 135 | 93.3% |
+| up | bike | 5-9 min | 5 | 295 | 93.1% [92.8%, 94.9%] | 135 | 93.3% |
 | up | bike | 5-9 min | 15 | 295 | 0.0% [0.0%, 0.0%] | 135 | 0.0% |
 | up | bike | 5-9 min | 30 | 295 | 0.0% [0.0%, 0.0%] | 135 | 0.0% |
 | up | bike | 10-14 min | 1 | 226 | 100.0% [100.0%, 100.0%] | 180 | 100.0% |
@@ -779,65 +780,65 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | up | bike | 10-14 min | 15 | 226 | 0.0% [0.0%, 0.0%] | 180 | 0.0% |
 | up | bike | 10-14 min | 30 | 226 | 0.0% [0.0%, 0.0%] | 180 | 0.0% |
 | up | bike | 15-29 min | 1 | 276 | 100.0% [100.0%, 100.0%] | 176 | 100.0% |
-| up | bike | 15-29 min | 5 | 276 | 98.8% [97.8%, 99.8%] | 176 | 99.0% |
-| up | bike | 15-29 min | 15 | 276 | 65.0% [64.9%, 65.0%] | 176 | 59.6% |
+| up | bike | 15-29 min | 5 | 276 | 98.8% [98.1%, 99.8%] | 176 | 99.0% |
+| up | bike | 15-29 min | 15 | 276 | 65.0% [64.9%, 65.1%] | 176 | 59.6% |
 | up | bike | 15-29 min | 30 | 276 | 0.1% [0.0%, 0.2%] | 176 | 0.0% |
 | up | bike | 30-59 min | 1 | 117 | 100.0% [100.0%, 100.0%] | 81 | 100.0% |
-| up | bike | 30-59 min | 5 | 117 | 99.5% [97.1%, 100.0%] | 81 | 99.3% |
-| up | bike | 30-59 min | 15 | 117 | 92.4% [84.5%, 98.1%] | 81 | 87.6% |
-| up | bike | 30-59 min | 30 | 117 | 78.9% [73.1%, 84.8%] | 81 | 79.2% |
+| up | bike | 30-59 min | 5 | 117 | 99.8% [98.4%, 100.0%] | 81 | 99.3% |
+| up | bike | 30-59 min | 15 | 117 | 91.7% [84.6%, 96.2%] | 81 | 87.6% |
+| up | bike | 30-59 min | 30 | 117 | 78.6% [73.8%, 84.1%] | 81 | 79.2% |
 | up | bike | 60+ min | 1 | 10 | - | 11 | - |
 | up | bike | 60+ min | 5 | 10 | - | 11 | - |
 | up | bike | 60+ min | 15 | 10 | - | 11 | - |
 | up | bike | 60+ min | 30 | 10 | - | 11 | - |
 | up | car_driver | <5 min | 1 | 1984 | 100.0% [100.0%, 100.0%] | 684 | 100.0% |
-| up | car_driver | <5 min | 5 | 1984 | 2.4% [1.3%, 3.5%] | 684 | 0.9% |
-| up | car_driver | <5 min | 15 | 1984 | 1.6% [0.9%, 2.6%] | 684 | 0.9% |
-| up | car_driver | <5 min | 30 | 1984 | 0.8% [0.3%, 1.5%] | 684 | 0.9% |
+| up | car_driver | <5 min | 5 | 1984 | 2.6% [1.9%, 4.2%] | 684 | 0.9% |
+| up | car_driver | <5 min | 15 | 1984 | 1.7% [1.0%, 2.6%] | 684 | 0.9% |
+| up | car_driver | <5 min | 30 | 1984 | 0.9% [0.4%, 1.5%] | 684 | 0.9% |
 | up | car_driver | 5-9 min | 1 | 6488 | 100.0% [100.0%, 100.0%] | 3454 | 100.0% |
-| up | car_driver | 5-9 min | 5 | 6488 | 91.7% [90.8%, 92.7%] | 3454 | 91.8% |
+| up | car_driver | 5-9 min | 5 | 6488 | 91.7% [90.9%, 92.2%] | 3454 | 91.8% |
 | up | car_driver | 5-9 min | 15 | 6488 | 0.0% [0.0%, 0.0%] | 3454 | 0.0% |
 | up | car_driver | 5-9 min | 30 | 6488 | 0.0% [0.0%, 0.0%] | 3454 | 0.0% |
 | up | car_driver | 10-14 min | 1 | 6482 | 100.0% [100.0%, 100.0%] | 3672 | 100.0% |
-| up | car_driver | 10-14 min | 5 | 6482 | 96.5% [95.9%, 97.1%] | 3672 | 96.4% |
-| up | car_driver | 10-14 min | 15 | 6482 | 13.9% [13.3%, 14.5%] | 3672 | 0.0% |
+| up | car_driver | 10-14 min | 5 | 6482 | 96.5% [95.9%, 96.8%] | 3672 | 96.4% |
+| up | car_driver | 10-14 min | 15 | 6482 | 13.8% [13.3%, 14.2%] | 3672 | 0.0% |
 | up | car_driver | 10-14 min | 30 | 6482 | 0.0% [0.0%, 0.0%] | 3672 | 0.0% |
 | up | car_driver | 15-29 min | 1 | 9816 | 100.0% [100.0%, 100.0%] | 6117 | 100.0% |
-| up | car_driver | 15-29 min | 5 | 9816 | 98.1% [97.5%, 98.5%] | 6117 | 97.8% |
-| up | car_driver | 15-29 min | 15 | 9816 | 58.3% [57.6%, 58.9%] | 6117 | 58.2% |
-| up | car_driver | 15-29 min | 30 | 9816 | 6.2% [5.5%, 6.8%] | 6117 | 0.0% |
+| up | car_driver | 15-29 min | 5 | 9816 | 98.1% [97.7%, 98.3%] | 6117 | 97.8% |
+| up | car_driver | 15-29 min | 15 | 9816 | 58.2% [57.8%, 58.7%] | 6117 | 58.2% |
+| up | car_driver | 15-29 min | 30 | 9816 | 6.1% [5.8%, 6.7%] | 6117 | 0.0% |
 | up | car_driver | 30-59 min | 1 | 4776 | 100.0% [100.0%, 100.0%] | 3318 | 100.0% |
-| up | car_driver | 30-59 min | 5 | 4776 | 98.4% [97.7%, 98.8%] | 3318 | 97.3% |
-| up | car_driver | 30-59 min | 15 | 4776 | 78.3% [77.0%, 79.3%] | 3318 | 75.0% |
-| up | car_driver | 30-59 min | 30 | 4776 | 59.5% [58.8%, 60.8%] | 3318 | 59.4% |
+| up | car_driver | 30-59 min | 5 | 4776 | 98.4% [97.8%, 98.8%] | 3318 | 97.3% |
+| up | car_driver | 30-59 min | 15 | 4776 | 78.3% [76.6%, 80.2%] | 3318 | 75.0% |
+| up | car_driver | 30-59 min | 30 | 4776 | 59.6% [58.5%, 60.4%] | 3318 | 59.4% |
 | up | car_driver | 60+ min | 1 | 1274 | 100.0% [100.0%, 100.0%] | 1047 | 100.0% |
-| up | car_driver | 60+ min | 5 | 1274 | 97.9% [96.3%, 98.8%] | 1047 | 95.3% |
-| up | car_driver | 60+ min | 15 | 1274 | 84.8% [83.3%, 87.5%] | 1047 | 77.5% |
-| up | car_driver | 60+ min | 30 | 1274 | 67.7% [64.9%, 72.1%] | 1047 | 67.2% |
+| up | car_driver | 60+ min | 5 | 1274 | 98.0% [96.5%, 98.8%] | 1047 | 95.3% |
+| up | car_driver | 60+ min | 15 | 1274 | 85.3% [83.5%, 87.9%] | 1047 | 77.5% |
+| up | car_driver | 60+ min | 30 | 1274 | 67.9% [65.4%, 72.5%] | 1047 | 67.2% |
 | up | car_passenger | <5 min | 1 | 270 | 100.0% [100.0%, 100.0%] | 97 | 100.0% |
-| up | car_passenger | <5 min | 5 | 270 | 0.4% [0.0%, 2.7%] | 97 | 0.1% |
-| up | car_passenger | <5 min | 15 | 270 | 0.2% [0.0%, 0.9%] | 97 | 0.1% |
-| up | car_passenger | <5 min | 30 | 270 | 0.1% [0.0%, 0.6%] | 97 | 0.1% |
+| up | car_passenger | <5 min | 5 | 270 | 0.3% [0.0%, 1.4%] | 97 | 0.1% |
+| up | car_passenger | <5 min | 15 | 270 | 0.1% [0.0%, 0.6%] | 97 | 0.1% |
+| up | car_passenger | <5 min | 30 | 270 | 0.0% [0.0%, 0.4%] | 97 | 0.1% |
 | up | car_passenger | 5-9 min | 1 | 1064 | 100.0% [100.0%, 100.0%] | 656 | 100.0% |
-| up | car_passenger | 5-9 min | 5 | 1064 | 90.9% [88.7%, 93.6%] | 656 | 90.7% |
+| up | car_passenger | 5-9 min | 5 | 1064 | 90.9% [88.4%, 92.7%] | 656 | 90.7% |
 | up | car_passenger | 5-9 min | 15 | 1064 | 0.0% [0.0%, 0.0%] | 656 | 0.0% |
 | up | car_passenger | 5-9 min | 30 | 1064 | 0.0% [0.0%, 0.0%] | 656 | 0.0% |
 | up | car_passenger | 10-14 min | 1 | 1060 | 100.0% [100.0%, 100.0%] | 754 | 100.0% |
-| up | car_passenger | 10-14 min | 5 | 1060 | 96.4% [95.0%, 98.3%] | 754 | 96.6% |
-| up | car_passenger | 10-14 min | 15 | 1060 | 8.1% [6.6%, 9.9%] | 754 | 0.0% |
+| up | car_passenger | 10-14 min | 5 | 1060 | 96.6% [94.5%, 98.0%] | 754 | 96.6% |
+| up | car_passenger | 10-14 min | 15 | 1060 | 8.2% [6.1%, 9.6%] | 754 | 0.0% |
 | up | car_passenger | 10-14 min | 30 | 1060 | 0.0% [0.0%, 0.0%] | 754 | 0.0% |
 | up | car_passenger | 15-29 min | 1 | 1577 | 100.0% [100.0%, 100.0%] | 1316 | 100.0% |
-| up | car_passenger | 15-29 min | 5 | 1577 | 98.6% [98.0%, 99.1%] | 1316 | 98.6% |
-| up | car_passenger | 15-29 min | 15 | 1577 | 62.2% [60.8%, 63.3%] | 1316 | 62.1% |
-| up | car_passenger | 15-29 min | 30 | 1577 | 4.9% [3.6%, 6.1%] | 1316 | 0.0% |
+| up | car_passenger | 15-29 min | 5 | 1577 | 98.7% [97.8%, 99.5%] | 1316 | 98.6% |
+| up | car_passenger | 15-29 min | 15 | 1577 | 62.0% [61.2%, 62.8%] | 1316 | 62.1% |
+| up | car_passenger | 15-29 min | 30 | 1577 | 4.8% [4.0%, 5.6%] | 1316 | 0.0% |
 | up | car_passenger | 30-59 min | 1 | 829 | 100.0% [100.0%, 100.0%] | 758 | 100.0% |
-| up | car_passenger | 30-59 min | 5 | 829 | 99.2% [98.3%, 99.8%] | 758 | 98.6% |
-| up | car_passenger | 30-59 min | 15 | 829 | 81.2% [78.9%, 83.1%] | 758 | 80.0% |
-| up | car_passenger | 30-59 min | 30 | 829 | 62.5% [61.7%, 64.4%] | 758 | 62.3% |
+| up | car_passenger | 30-59 min | 5 | 829 | 99.0% [97.2%, 99.7%] | 758 | 98.6% |
+| up | car_passenger | 30-59 min | 15 | 829 | 81.9% [79.9%, 85.1%] | 758 | 80.0% |
+| up | car_passenger | 30-59 min | 30 | 829 | 62.6% [61.2%, 64.1%] | 758 | 62.3% |
 | up | car_passenger | 60+ min | 1 | 290 | 100.0% [100.0%, 100.0%] | 286 | 100.0% |
-| up | car_passenger | 60+ min | 5 | 290 | 98.7% [95.7%, 99.9%] | 286 | 95.7% |
-| up | car_passenger | 60+ min | 15 | 290 | 90.1% [85.9%, 93.1%] | 286 | 85.5% |
-| up | car_passenger | 60+ min | 30 | 290 | 68.8% [63.2%, 73.7%] | 286 | 68.4% |
+| up | car_passenger | 60+ min | 5 | 290 | 98.3% [95.9%, 99.7%] | 286 | 95.7% |
+| up | car_passenger | 60+ min | 15 | 290 | 89.1% [85.3%, 93.0%] | 286 | 85.5% |
+| up | car_passenger | 60+ min | 30 | 290 | 67.5% [62.5%, 71.5%] | 286 | 68.4% |
 | up | urban_pt | <5 min | 1 | 3 | - | 3 | - |
 | up | urban_pt | <5 min | 5 | 3 | - | 3 | - |
 | up | urban_pt | <5 min | 15 | 3 | - | 3 | - |
@@ -847,21 +848,21 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | up | urban_pt | 5-9 min | 15 | 26 | - | 22 | - |
 | up | urban_pt | 5-9 min | 30 | 26 | - | 22 | - |
 | up | urban_pt | 10-14 min | 1 | 152 | 100.0% [100.0%, 100.0%] | 85 | 100.0% |
-| up | urban_pt | 10-14 min | 5 | 152 | 91.5% [83.7%, 96.2%] | 85 | 90.5% |
-| up | urban_pt | 10-14 min | 15 | 152 | 12.8% [5.0%, 17.5%] | 85 | 0.0% |
+| up | urban_pt | 10-14 min | 5 | 152 | 91.0% [84.2%, 97.9%] | 85 | 90.5% |
+| up | urban_pt | 10-14 min | 15 | 152 | 12.3% [5.4%, 19.2%] | 85 | 0.0% |
 | up | urban_pt | 10-14 min | 30 | 152 | 0.0% [0.0%, 0.0%] | 85 | 0.0% |
 | up | urban_pt | 15-29 min | 1 | 973 | 100.0% [100.0%, 100.0%] | 520 | 100.0% |
-| up | urban_pt | 15-29 min | 5 | 973 | 92.5% [91.2%, 93.8%] | 520 | 92.8% |
-| up | urban_pt | 15-29 min | 15 | 973 | 34.2% [33.8%, 34.8%] | 520 | 30.7% |
-| up | urban_pt | 15-29 min | 30 | 973 | 0.6% [0.3%, 1.2%] | 520 | 0.0% |
+| up | urban_pt | 15-29 min | 5 | 973 | 92.7% [91.2%, 94.6%] | 520 | 92.8% |
+| up | urban_pt | 15-29 min | 15 | 973 | 34.2% [33.9%, 34.6%] | 520 | 30.7% |
+| up | urban_pt | 15-29 min | 30 | 973 | 0.6% [0.3%, 1.0%] | 520 | 0.0% |
 | up | urban_pt | 30-59 min | 1 | 1564 | 100.0% [100.0%, 100.0%] | 955 | 100.0% |
-| up | urban_pt | 30-59 min | 5 | 1564 | 97.2% [96.4%, 98.1%] | 955 | 97.1% |
-| up | urban_pt | 30-59 min | 15 | 1564 | 65.1% [64.5%, 65.7%] | 955 | 64.7% |
-| up | urban_pt | 30-59 min | 30 | 1564 | 47.1% [46.5%, 47.7%] | 955 | 47.2% |
+| up | urban_pt | 30-59 min | 5 | 1564 | 97.4% [96.7%, 98.0%] | 955 | 97.1% |
+| up | urban_pt | 30-59 min | 15 | 1564 | 65.2% [64.6%, 66.2%] | 955 | 64.7% |
+| up | urban_pt | 30-59 min | 30 | 1564 | 47.1% [46.8%, 48.2%] | 955 | 47.2% |
 | up | urban_pt | 60+ min | 1 | 392 | 100.0% [100.0%, 100.0%] | 340 | 100.0% |
-| up | urban_pt | 60+ min | 5 | 392 | 97.8% [96.9%, 99.4%] | 340 | 97.9% |
-| up | urban_pt | 60+ min | 15 | 392 | 75.1% [73.7%, 78.3%] | 340 | 73.9% |
-| up | urban_pt | 60+ min | 30 | 392 | 61.1% [59.1%, 63.6%] | 340 | 60.9% |
+| up | urban_pt | 60+ min | 5 | 392 | 97.8% [96.0%, 99.4%] | 340 | 97.9% |
+| up | urban_pt | 60+ min | 15 | 392 | 75.0% [73.9%, 76.8%] | 340 | 73.9% |
+| up | urban_pt | 60+ min | 30 | 392 | 61.2% [59.5%, 64.1%] | 340 | 60.9% |
 | up | train | <5 min | 1 | 3 | - | 1 | - |
 | up | train | <5 min | 5 | 3 | - | 1 | - |
 | up | train | <5 min | 15 | 3 | - | 1 | - |
@@ -875,37 +876,37 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | up | train | 10-14 min | 15 | 13 | - | 3 | - |
 | up | train | 10-14 min | 30 | 13 | - | 3 | - |
 | up | train | 15-29 min | 1 | 82 | 100.0% [100.0%, 100.0%] | 12 | - |
-| up | train | 15-29 min | 5 | 82 | 97.0% [92.6%, 99.5%] | 12 | - |
-| up | train | 15-29 min | 15 | 82 | 26.5% [20.9%, 34.4%] | 12 | - |
-| up | train | 15-29 min | 30 | 82 | 12.2% [6.6%, 20.1%] | 12 | - |
+| up | train | 15-29 min | 5 | 82 | 97.0% [92.4%, 100.0%] | 12 | - |
+| up | train | 15-29 min | 15 | 82 | 29.5% [21.1%, 40.8%] | 12 | - |
+| up | train | 15-29 min | 30 | 82 | 15.2% [6.8%, 26.6%] | 12 | - |
 | up | train | 30-59 min | 1 | 472 | 100.0% [100.0%, 100.0%] | 142 | 100.0% |
-| up | train | 30-59 min | 5 | 472 | 95.6% [92.6%, 97.1%] | 142 | 96.0% |
-| up | train | 30-59 min | 15 | 472 | 44.8% [43.6%, 45.6%] | 142 | 41.9% |
-| up | train | 30-59 min | 30 | 472 | 22.4% [21.5%, 23.4%] | 142 | 20.2% |
+| up | train | 30-59 min | 5 | 472 | 95.7% [93.7%, 96.9%] | 142 | 96.0% |
+| up | train | 30-59 min | 15 | 472 | 44.6% [43.3%, 45.6%] | 142 | 41.9% |
+| up | train | 30-59 min | 30 | 472 | 22.3% [21.1%, 23.5%] | 142 | 20.2% |
 | up | train | 60+ min | 1 | 676 | 100.0% [100.0%, 100.0%] | 348 | 100.0% |
-| up | train | 60+ min | 5 | 676 | 96.5% [94.8%, 98.0%] | 348 | 94.9% |
-| up | train | 60+ min | 15 | 676 | 75.1% [71.9%, 79.9%] | 348 | 70.3% |
-| up | train | 60+ min | 30 | 676 | 54.8% [50.6%, 59.5%] | 348 | 56.0% |
+| up | train | 60+ min | 5 | 676 | 96.5% [95.0%, 98.2%] | 348 | 94.9% |
+| up | train | 60+ min | 15 | 676 | 76.4% [73.4%, 78.5%] | 348 | 70.3% |
+| up | train | 60+ min | 30 | 676 | 56.7% [52.4%, 62.1%] | 348 | 56.0% |
 | up | other | <5 min | 1 | 41 | - | 19 | - |
 | up | other | <5 min | 5 | 41 | - | 19 | - |
 | up | other | <5 min | 15 | 41 | - | 19 | - |
 | up | other | <5 min | 30 | 41 | - | 19 | - |
 | up | other | 5-9 min | 1 | 166 | 100.0% [100.0%, 100.0%] | 73 | 100.0% |
-| up | other | 5-9 min | 5 | 166 | 93.4% [82.6%, 97.6%] | 73 | 92.6% |
+| up | other | 5-9 min | 5 | 166 | 91.3% [86.4%, 96.4%] | 73 | 92.6% |
 | up | other | 5-9 min | 15 | 166 | 0.0% [0.0%, 0.0%] | 73 | 0.0% |
 | up | other | 5-9 min | 30 | 166 | 0.0% [0.0%, 0.0%] | 73 | 0.0% |
 | up | other | 10-14 min | 1 | 224 | 100.0% [100.0%, 100.0%] | 82 | 100.0% |
-| up | other | 10-14 min | 5 | 224 | 95.9% [93.4%, 98.3%] | 82 | 95.9% |
-| up | other | 10-14 min | 15 | 224 | 4.8% [2.3%, 7.1%] | 82 | 0.0% |
+| up | other | 10-14 min | 5 | 224 | 95.4% [93.5%, 97.5%] | 82 | 95.9% |
+| up | other | 10-14 min | 15 | 224 | 4.3% [2.4%, 6.4%] | 82 | 0.0% |
 | up | other | 10-14 min | 30 | 224 | 0.0% [0.0%, 0.0%] | 82 | 0.0% |
 | up | other | 15-29 min | 1 | 594 | 100.0% [100.0%, 100.0%] | 241 | 100.0% |
-| up | other | 15-29 min | 5 | 594 | 94.3% [93.2%, 96.3%] | 241 | 94.2% |
-| up | other | 15-29 min | 15 | 594 | 46.3% [45.9%, 47.2%] | 241 | 42.7% |
-| up | other | 15-29 min | 30 | 594 | 0.3% [0.0%, 1.3%] | 241 | 0.0% |
+| up | other | 15-29 min | 5 | 594 | 94.0% [92.6%, 95.1%] | 241 | 94.2% |
+| up | other | 15-29 min | 15 | 594 | 46.1% [45.9%, 46.7%] | 241 | 42.7% |
+| up | other | 15-29 min | 30 | 594 | 0.2% [0.0%, 0.7%] | 241 | 0.0% |
 | up | other | 30-59 min | 1 | 427 | 100.0% [100.0%, 100.0%] | 245 | 100.0% |
-| up | other | 30-59 min | 5 | 427 | 97.4% [95.3%, 98.8%] | 245 | 96.3% |
-| up | other | 30-59 min | 15 | 427 | 70.0% [67.3%, 72.7%] | 245 | 66.0% |
-| up | other | 30-59 min | 30 | 427 | 50.9% [48.5%, 54.6%] | 245 | 50.1% |
+| up | other | 30-59 min | 5 | 427 | 97.4% [96.2%, 99.2%] | 245 | 96.3% |
+| up | other | 30-59 min | 15 | 427 | 69.7% [66.1%, 74.2%] | 245 | 66.0% |
+| up | other | 30-59 min | 30 | 427 | 50.2% [48.3%, 52.6%] | 245 | 50.1% |
 | up | other | 60+ min | 1 | 130 | 100.0% [100.0%, 100.0%] | 99 | 100.0% |
 | up | other | 60+ min | 5 | 130 | 97.1% [97.1%, 97.1%] | 99 | 91.0% |
 | up | other | 60+ min | 15 | 130 | 72.0% [72.0%, 72.0%] | 99 | 60.8% |
@@ -915,31 +916,31 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | nearest_min5 | walk | <5 min | 15 | 1122 | 0.0% [0.0%, 0.0%] | 581 | 0.0% |
 | nearest_min5 | walk | <5 min | 30 | 1122 | 0.0% [0.0%, 0.0%] | 581 | 0.0% |
 | nearest_min5 | walk | 5-9 min | 1 | 3236 | 100.0% [100.0%, 100.0%] | 1875 | 100.0% |
-| nearest_min5 | walk | 5-9 min | 5 | 3236 | 92.5% [91.7%, 93.2%] | 1875 | 92.5% |
+| nearest_min5 | walk | 5-9 min | 5 | 3236 | 92.5% [91.6%, 93.0%] | 1875 | 92.5% |
 | nearest_min5 | walk | 5-9 min | 15 | 3236 | 0.0% [0.0%, 0.0%] | 1875 | 0.0% |
 | nearest_min5 | walk | 5-9 min | 30 | 3236 | 0.0% [0.0%, 0.0%] | 1875 | 0.0% |
 | nearest_min5 | walk | 10-14 min | 1 | 2567 | 100.0% [100.0%, 100.0%] | 1562 | 100.0% |
-| nearest_min5 | walk | 10-14 min | 5 | 2567 | 97.3% [96.7%, 97.9%] | 1562 | 97.3% |
-| nearest_min5 | walk | 10-14 min | 15 | 2567 | 1.1% [0.5%, 1.5%] | 1562 | 0.0% |
+| nearest_min5 | walk | 10-14 min | 5 | 2567 | 97.3% [96.7%, 98.1%] | 1562 | 97.3% |
+| nearest_min5 | walk | 10-14 min | 15 | 2567 | 1.0% [0.5%, 1.9%] | 1562 | 0.0% |
 | nearest_min5 | walk | 10-14 min | 30 | 2567 | 0.0% [0.0%, 0.0%] | 1562 | 0.0% |
 | nearest_min5 | walk | 15-29 min | 1 | 2249 | 100.0% [100.0%, 100.0%] | 1554 | 100.0% |
-| nearest_min5 | walk | 15-29 min | 5 | 2249 | 98.3% [97.5%, 98.8%] | 1554 | 98.1% |
-| nearest_min5 | walk | 15-29 min | 15 | 2249 | 68.6% [67.8%, 69.5%] | 1554 | 68.5% |
-| nearest_min5 | walk | 15-29 min | 30 | 2249 | 1.0% [0.6%, 2.4%] | 1554 | 0.0% |
+| nearest_min5 | walk | 15-29 min | 5 | 2249 | 98.3% [97.4%, 98.8%] | 1554 | 98.1% |
+| nearest_min5 | walk | 15-29 min | 15 | 2249 | 68.6% [67.9%, 69.9%] | 1554 | 68.5% |
+| nearest_min5 | walk | 15-29 min | 30 | 2249 | 0.9% [0.5%, 1.3%] | 1554 | 0.0% |
 | nearest_min5 | walk | 30-59 min | 1 | 632 | 100.0% [100.0%, 100.0%] | 539 | 100.0% |
-| nearest_min5 | walk | 30-59 min | 5 | 632 | 97.9% [96.2%, 99.0%] | 539 | 97.5% |
-| nearest_min5 | walk | 30-59 min | 15 | 632 | 84.9% [83.9%, 86.6%] | 539 | 82.1% |
-| nearest_min5 | walk | 30-59 min | 30 | 632 | 74.1% [72.5%, 75.9%] | 539 | 73.7% |
+| nearest_min5 | walk | 30-59 min | 5 | 632 | 97.7% [96.5%, 98.6%] | 539 | 97.5% |
+| nearest_min5 | walk | 30-59 min | 15 | 632 | 84.8% [83.3%, 86.5%] | 539 | 82.1% |
+| nearest_min5 | walk | 30-59 min | 30 | 632 | 73.5% [71.7%, 75.7%] | 539 | 73.7% |
 | nearest_min5 | walk | 60+ min | 1 | 130 | 100.0% [100.0%, 100.0%] | 107 | 100.0% |
-| nearest_min5 | walk | 60+ min | 5 | 130 | 99.1% [97.9%, 100.0%] | 107 | 98.4% |
-| nearest_min5 | walk | 60+ min | 15 | 130 | 82.6% [75.9%, 90.3%] | 107 | 80.9% |
-| nearest_min5 | walk | 60+ min | 30 | 130 | 67.4% [62.5%, 71.9%] | 107 | 66.2% |
+| nearest_min5 | walk | 60+ min | 5 | 130 | 99.3% [97.6%, 100.0%] | 107 | 98.4% |
+| nearest_min5 | walk | 60+ min | 15 | 130 | 82.1% [74.8%, 92.7%] | 107 | 80.9% |
+| nearest_min5 | walk | 60+ min | 30 | 130 | 67.2% [63.0%, 73.8%] | 107 | 66.2% |
 | nearest_min5 | bike | <5 min | 1 | 100 | 100.0% [100.0%, 100.0%] | 42 | - |
 | nearest_min5 | bike | <5 min | 5 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | nearest_min5 | bike | <5 min | 15 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | nearest_min5 | bike | <5 min | 30 | 100 | 0.0% [0.0%, 0.0%] | 42 | - |
 | nearest_min5 | bike | 5-9 min | 1 | 295 | 100.0% [100.0%, 100.0%] | 135 | 100.0% |
-| nearest_min5 | bike | 5-9 min | 5 | 295 | 93.3% [92.8%, 94.1%] | 135 | 93.3% |
+| nearest_min5 | bike | 5-9 min | 5 | 295 | 93.2% [92.8%, 93.7%] | 135 | 93.3% |
 | nearest_min5 | bike | 5-9 min | 15 | 295 | 0.0% [0.0%, 0.0%] | 135 | 0.0% |
 | nearest_min5 | bike | 5-9 min | 30 | 295 | 0.0% [0.0%, 0.0%] | 135 | 0.0% |
 | nearest_min5 | bike | 10-14 min | 1 | 226 | 100.0% [100.0%, 100.0%] | 180 | 100.0% |
@@ -947,65 +948,65 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | nearest_min5 | bike | 10-14 min | 15 | 226 | 0.0% [0.0%, 0.0%] | 180 | 0.0% |
 | nearest_min5 | bike | 10-14 min | 30 | 226 | 0.0% [0.0%, 0.0%] | 180 | 0.0% |
 | nearest_min5 | bike | 15-29 min | 1 | 276 | 100.0% [100.0%, 100.0%] | 176 | 100.0% |
-| nearest_min5 | bike | 15-29 min | 5 | 276 | 99.0% [98.2%, 99.7%] | 176 | 99.0% |
-| nearest_min5 | bike | 15-29 min | 15 | 276 | 65.9% [65.0%, 66.6%] | 176 | 59.6% |
+| nearest_min5 | bike | 15-29 min | 5 | 276 | 99.1% [98.3%, 99.9%] | 176 | 99.0% |
+| nearest_min5 | bike | 15-29 min | 15 | 276 | 66.0% [65.2%, 66.6%] | 176 | 59.6% |
 | nearest_min5 | bike | 15-29 min | 30 | 276 | 0.0% [0.0%, 0.1%] | 176 | 0.0% |
 | nearest_min5 | bike | 30-59 min | 1 | 117 | 100.0% [100.0%, 100.0%] | 81 | 100.0% |
-| nearest_min5 | bike | 30-59 min | 5 | 117 | 99.8% [98.2%, 100.0%] | 81 | 99.3% |
-| nearest_min5 | bike | 30-59 min | 15 | 117 | 90.2% [86.0%, 97.8%] | 81 | 87.6% |
-| nearest_min5 | bike | 30-59 min | 30 | 117 | 78.6% [76.1%, 85.3%] | 81 | 79.2% |
+| nearest_min5 | bike | 30-59 min | 5 | 117 | 99.9% [97.8%, 100.0%] | 81 | 99.3% |
+| nearest_min5 | bike | 30-59 min | 15 | 117 | 91.4% [87.4%, 96.1%] | 81 | 87.6% |
+| nearest_min5 | bike | 30-59 min | 30 | 117 | 80.2% [75.7%, 84.1%] | 81 | 79.2% |
 | nearest_min5 | bike | 60+ min | 1 | 10 | - | 11 | - |
 | nearest_min5 | bike | 60+ min | 5 | 10 | - | 11 | - |
 | nearest_min5 | bike | 60+ min | 15 | 10 | - | 11 | - |
 | nearest_min5 | bike | 60+ min | 30 | 10 | - | 11 | - |
 | nearest_min5 | car_driver | <5 min | 1 | 1984 | 100.0% [100.0%, 100.0%] | 684 | 100.0% |
-| nearest_min5 | car_driver | <5 min | 5 | 1984 | 0.9% [0.3%, 1.4%] | 684 | 0.9% |
+| nearest_min5 | car_driver | <5 min | 5 | 1984 | 1.0% [0.5%, 1.9%] | 684 | 0.9% |
 | nearest_min5 | car_driver | <5 min | 15 | 1984 | 0.0% [0.0%, 0.0%] | 684 | 0.9% |
 | nearest_min5 | car_driver | <5 min | 30 | 1984 | 0.0% [0.0%, 0.0%] | 684 | 0.9% |
 | nearest_min5 | car_driver | 5-9 min | 1 | 6488 | 100.0% [100.0%, 100.0%] | 3454 | 100.0% |
-| nearest_min5 | car_driver | 5-9 min | 5 | 6488 | 91.5% [90.8%, 92.2%] | 3454 | 91.8% |
+| nearest_min5 | car_driver | 5-9 min | 5 | 6488 | 91.7% [90.8%, 92.5%] | 3454 | 91.8% |
 | nearest_min5 | car_driver | 5-9 min | 15 | 6488 | 0.0% [0.0%, 0.0%] | 3454 | 0.0% |
 | nearest_min5 | car_driver | 5-9 min | 30 | 6488 | 0.0% [0.0%, 0.0%] | 3454 | 0.0% |
 | nearest_min5 | car_driver | 10-14 min | 1 | 6482 | 100.0% [100.0%, 100.0%] | 3672 | 100.0% |
-| nearest_min5 | car_driver | 10-14 min | 5 | 6482 | 96.5% [95.8%, 97.0%] | 3672 | 96.4% |
-| nearest_min5 | car_driver | 10-14 min | 15 | 6482 | 7.1% [6.5%, 7.6%] | 3672 | 0.0% |
+| nearest_min5 | car_driver | 10-14 min | 5 | 6482 | 96.5% [95.9%, 97.1%] | 3672 | 96.4% |
+| nearest_min5 | car_driver | 10-14 min | 15 | 6482 | 7.2% [6.5%, 7.6%] | 3672 | 0.0% |
 | nearest_min5 | car_driver | 10-14 min | 30 | 6482 | 0.0% [0.0%, 0.0%] | 3672 | 0.0% |
 | nearest_min5 | car_driver | 15-29 min | 1 | 9816 | 100.0% [100.0%, 100.0%] | 6117 | 100.0% |
-| nearest_min5 | car_driver | 15-29 min | 5 | 9816 | 97.9% [97.5%, 98.2%] | 6117 | 97.8% |
-| nearest_min5 | car_driver | 15-29 min | 15 | 9816 | 58.2% [57.9%, 58.8%] | 6117 | 58.2% |
-| nearest_min5 | car_driver | 15-29 min | 30 | 9816 | 2.0% [1.9%, 2.2%] | 6117 | 0.0% |
+| nearest_min5 | car_driver | 15-29 min | 5 | 9816 | 97.9% [97.6%, 98.3%] | 6117 | 97.8% |
+| nearest_min5 | car_driver | 15-29 min | 15 | 9816 | 58.3% [57.9%, 58.7%] | 6117 | 58.2% |
+| nearest_min5 | car_driver | 15-29 min | 30 | 9816 | 2.1% [1.9%, 2.2%] | 6117 | 0.0% |
 | nearest_min5 | car_driver | 30-59 min | 1 | 4776 | 100.0% [100.0%, 100.0%] | 3318 | 100.0% |
-| nearest_min5 | car_driver | 30-59 min | 5 | 4776 | 98.2% [97.6%, 98.6%] | 3318 | 97.3% |
-| nearest_min5 | car_driver | 30-59 min | 15 | 4776 | 76.8% [75.8%, 78.1%] | 3318 | 75.0% |
-| nearest_min5 | car_driver | 30-59 min | 30 | 4776 | 59.5% [58.9%, 60.4%] | 3318 | 59.4% |
+| nearest_min5 | car_driver | 30-59 min | 5 | 4776 | 98.3% [97.5%, 98.7%] | 3318 | 97.3% |
+| nearest_min5 | car_driver | 30-59 min | 15 | 4776 | 76.6% [76.0%, 77.2%] | 3318 | 75.0% |
+| nearest_min5 | car_driver | 30-59 min | 30 | 4776 | 59.5% [58.1%, 60.3%] | 3318 | 59.4% |
 | nearest_min5 | car_driver | 60+ min | 1 | 1274 | 100.0% [100.0%, 100.0%] | 1047 | 100.0% |
-| nearest_min5 | car_driver | 60+ min | 5 | 1274 | 97.7% [95.9%, 98.9%] | 1047 | 95.3% |
-| nearest_min5 | car_driver | 60+ min | 15 | 1274 | 84.2% [81.5%, 86.7%] | 1047 | 77.5% |
-| nearest_min5 | car_driver | 60+ min | 30 | 1274 | 67.1% [63.5%, 68.9%] | 1047 | 67.2% |
+| nearest_min5 | car_driver | 60+ min | 5 | 1274 | 97.9% [96.7%, 98.6%] | 1047 | 95.3% |
+| nearest_min5 | car_driver | 60+ min | 15 | 1274 | 84.8% [82.8%, 87.1%] | 1047 | 77.5% |
+| nearest_min5 | car_driver | 60+ min | 30 | 1274 | 67.2% [64.2%, 70.7%] | 1047 | 67.2% |
 | nearest_min5 | car_passenger | <5 min | 1 | 270 | 100.0% [100.0%, 100.0%] | 97 | 100.0% |
-| nearest_min5 | car_passenger | <5 min | 5 | 270 | 0.1% [0.0%, 0.8%] | 97 | 0.1% |
+| nearest_min5 | car_passenger | <5 min | 5 | 270 | 0.2% [0.0%, 1.1%] | 97 | 0.1% |
 | nearest_min5 | car_passenger | <5 min | 15 | 270 | 0.0% [0.0%, 0.0%] | 97 | 0.1% |
 | nearest_min5 | car_passenger | <5 min | 30 | 270 | 0.0% [0.0%, 0.0%] | 97 | 0.1% |
 | nearest_min5 | car_passenger | 5-9 min | 1 | 1064 | 100.0% [100.0%, 100.0%] | 656 | 100.0% |
-| nearest_min5 | car_passenger | 5-9 min | 5 | 1064 | 90.5% [88.9%, 92.1%] | 656 | 90.7% |
+| nearest_min5 | car_passenger | 5-9 min | 5 | 1064 | 91.0% [88.9%, 93.5%] | 656 | 90.7% |
 | nearest_min5 | car_passenger | 5-9 min | 15 | 1064 | 0.0% [0.0%, 0.0%] | 656 | 0.0% |
 | nearest_min5 | car_passenger | 5-9 min | 30 | 1064 | 0.0% [0.0%, 0.0%] | 656 | 0.0% |
 | nearest_min5 | car_passenger | 10-14 min | 1 | 1060 | 100.0% [100.0%, 100.0%] | 754 | 100.0% |
-| nearest_min5 | car_passenger | 10-14 min | 5 | 1060 | 96.6% [95.4%, 97.9%] | 754 | 96.6% |
-| nearest_min5 | car_passenger | 10-14 min | 15 | 1060 | 4.3% [3.5%, 5.1%] | 754 | 0.0% |
+| nearest_min5 | car_passenger | 10-14 min | 5 | 1060 | 96.6% [95.6%, 97.6%] | 754 | 96.6% |
+| nearest_min5 | car_passenger | 10-14 min | 15 | 1060 | 4.0% [3.4%, 4.9%] | 754 | 0.0% |
 | nearest_min5 | car_passenger | 10-14 min | 30 | 1060 | 0.0% [0.0%, 0.0%] | 754 | 0.0% |
 | nearest_min5 | car_passenger | 15-29 min | 1 | 1577 | 100.0% [100.0%, 100.0%] | 1316 | 100.0% |
-| nearest_min5 | car_passenger | 15-29 min | 5 | 1577 | 98.7% [98.0%, 99.5%] | 1316 | 98.6% |
-| nearest_min5 | car_passenger | 15-29 min | 15 | 1577 | 62.0% [61.0%, 64.0%] | 1316 | 62.1% |
-| nearest_min5 | car_passenger | 15-29 min | 30 | 1577 | 1.6% [1.2%, 2.3%] | 1316 | 0.0% |
+| nearest_min5 | car_passenger | 15-29 min | 5 | 1577 | 98.7% [98.1%, 99.0%] | 1316 | 98.6% |
+| nearest_min5 | car_passenger | 15-29 min | 15 | 1577 | 62.2% [60.7%, 63.8%] | 1316 | 62.1% |
+| nearest_min5 | car_passenger | 15-29 min | 30 | 1577 | 1.6% [1.2%, 2.2%] | 1316 | 0.0% |
 | nearest_min5 | car_passenger | 30-59 min | 1 | 829 | 100.0% [100.0%, 100.0%] | 758 | 100.0% |
-| nearest_min5 | car_passenger | 30-59 min | 5 | 829 | 99.1% [98.3%, 99.9%] | 758 | 98.6% |
-| nearest_min5 | car_passenger | 30-59 min | 15 | 829 | 81.0% [79.3%, 82.7%] | 758 | 80.0% |
-| nearest_min5 | car_passenger | 30-59 min | 30 | 829 | 62.5% [61.6%, 64.0%] | 758 | 62.3% |
+| nearest_min5 | car_passenger | 30-59 min | 5 | 829 | 98.9% [97.6%, 99.5%] | 758 | 98.6% |
+| nearest_min5 | car_passenger | 30-59 min | 15 | 829 | 80.8% [79.2%, 83.3%] | 758 | 80.0% |
+| nearest_min5 | car_passenger | 30-59 min | 30 | 829 | 62.3% [61.5%, 63.5%] | 758 | 62.3% |
 | nearest_min5 | car_passenger | 60+ min | 1 | 290 | 100.0% [100.0%, 100.0%] | 286 | 100.0% |
-| nearest_min5 | car_passenger | 60+ min | 5 | 290 | 98.5% [96.3%, 99.7%] | 286 | 95.7% |
-| nearest_min5 | car_passenger | 60+ min | 15 | 290 | 88.1% [82.7%, 92.3%] | 286 | 85.5% |
-| nearest_min5 | car_passenger | 60+ min | 30 | 290 | 68.3% [63.0%, 72.0%] | 286 | 68.4% |
+| nearest_min5 | car_passenger | 60+ min | 5 | 290 | 98.6% [95.5%, 100.0%] | 286 | 95.7% |
+| nearest_min5 | car_passenger | 60+ min | 15 | 290 | 88.7% [84.1%, 94.5%] | 286 | 85.5% |
+| nearest_min5 | car_passenger | 60+ min | 30 | 290 | 68.2% [63.6%, 72.8%] | 286 | 68.4% |
 | nearest_min5 | urban_pt | <5 min | 1 | 3 | - | 3 | - |
 | nearest_min5 | urban_pt | <5 min | 5 | 3 | - | 3 | - |
 | nearest_min5 | urban_pt | <5 min | 15 | 3 | - | 3 | - |
@@ -1015,21 +1016,21 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | nearest_min5 | urban_pt | 5-9 min | 15 | 26 | - | 22 | - |
 | nearest_min5 | urban_pt | 5-9 min | 30 | 26 | - | 22 | - |
 | nearest_min5 | urban_pt | 10-14 min | 1 | 152 | 100.0% [100.0%, 100.0%] | 85 | 100.0% |
-| nearest_min5 | urban_pt | 10-14 min | 5 | 152 | 90.9% [83.7%, 97.5%] | 85 | 90.5% |
-| nearest_min5 | urban_pt | 10-14 min | 15 | 152 | 11.0% [3.7%, 17.8%] | 85 | 0.0% |
+| nearest_min5 | urban_pt | 10-14 min | 5 | 152 | 91.8% [84.2%, 96.6%] | 85 | 90.5% |
+| nearest_min5 | urban_pt | 10-14 min | 15 | 152 | 11.4% [4.1%, 15.5%] | 85 | 0.0% |
 | nearest_min5 | urban_pt | 10-14 min | 30 | 152 | 0.0% [0.0%, 0.0%] | 85 | 0.0% |
 | nearest_min5 | urban_pt | 15-29 min | 1 | 973 | 100.0% [100.0%, 100.0%] | 520 | 100.0% |
-| nearest_min5 | urban_pt | 15-29 min | 5 | 973 | 92.8% [91.0%, 94.6%] | 520 | 92.8% |
-| nearest_min5 | urban_pt | 15-29 min | 15 | 973 | 35.0% [33.9%, 36.6%] | 520 | 30.7% |
-| nearest_min5 | urban_pt | 15-29 min | 30 | 973 | 0.3% [0.1%, 0.6%] | 520 | 0.0% |
+| nearest_min5 | urban_pt | 15-29 min | 5 | 973 | 92.6% [91.2%, 94.6%] | 520 | 92.8% |
+| nearest_min5 | urban_pt | 15-29 min | 15 | 973 | 34.8% [33.8%, 36.2%] | 520 | 30.7% |
+| nearest_min5 | urban_pt | 15-29 min | 30 | 973 | 0.2% [0.0%, 0.5%] | 520 | 0.0% |
 | nearest_min5 | urban_pt | 30-59 min | 1 | 1564 | 100.0% [100.0%, 100.0%] | 955 | 100.0% |
-| nearest_min5 | urban_pt | 30-59 min | 5 | 1564 | 97.1% [96.2%, 97.9%] | 955 | 97.1% |
-| nearest_min5 | urban_pt | 30-59 min | 15 | 1564 | 64.9% [64.7%, 65.2%] | 955 | 64.7% |
-| nearest_min5 | urban_pt | 30-59 min | 30 | 1564 | 47.1% [46.9%, 47.3%] | 955 | 47.2% |
+| nearest_min5 | urban_pt | 30-59 min | 5 | 1564 | 97.1% [96.4%, 97.6%] | 955 | 97.1% |
+| nearest_min5 | urban_pt | 30-59 min | 15 | 1564 | 65.0% [64.7%, 65.5%] | 955 | 64.7% |
+| nearest_min5 | urban_pt | 30-59 min | 30 | 1564 | 47.1% [46.7%, 47.6%] | 955 | 47.2% |
 | nearest_min5 | urban_pt | 60+ min | 1 | 392 | 100.0% [100.0%, 100.0%] | 340 | 100.0% |
-| nearest_min5 | urban_pt | 60+ min | 5 | 392 | 98.2% [96.3%, 99.4%] | 340 | 97.9% |
-| nearest_min5 | urban_pt | 60+ min | 15 | 392 | 75.5% [74.4%, 79.1%] | 340 | 73.9% |
-| nearest_min5 | urban_pt | 60+ min | 30 | 392 | 61.1% [59.7%, 64.4%] | 340 | 60.9% |
+| nearest_min5 | urban_pt | 60+ min | 5 | 392 | 98.3% [95.5%, 99.8%] | 340 | 97.9% |
+| nearest_min5 | urban_pt | 60+ min | 15 | 392 | 75.4% [74.1%, 77.4%] | 340 | 73.9% |
+| nearest_min5 | urban_pt | 60+ min | 30 | 392 | 61.2% [59.7%, 63.7%] | 340 | 60.9% |
 | nearest_min5 | train | <5 min | 1 | 3 | - | 1 | - |
 | nearest_min5 | train | <5 min | 5 | 3 | - | 1 | - |
 | nearest_min5 | train | <5 min | 15 | 3 | - | 1 | - |
@@ -1043,37 +1044,37 @@ Cumulative day-weighted trip shares at or above each level. Simulated shares are
 | nearest_min5 | train | 10-14 min | 15 | 13 | - | 3 | - |
 | nearest_min5 | train | 10-14 min | 30 | 13 | - | 3 | - |
 | nearest_min5 | train | 15-29 min | 1 | 82 | 100.0% [100.0%, 100.0%] | 12 | - |
-| nearest_min5 | train | 15-29 min | 5 | 82 | 98.0% [94.2%, 100.0%] | 12 | - |
-| nearest_min5 | train | 15-29 min | 15 | 82 | 25.4% [20.7%, 35.2%] | 12 | - |
-| nearest_min5 | train | 15-29 min | 30 | 82 | 5.9% [3.9%, 15.1%] | 12 | - |
+| nearest_min5 | train | 15-29 min | 5 | 82 | 95.8% [88.0%, 100.0%] | 12 | - |
+| nearest_min5 | train | 15-29 min | 15 | 82 | 24.7% [20.5%, 35.5%] | 12 | - |
+| nearest_min5 | train | 15-29 min | 30 | 82 | 5.9% [2.9%, 15.6%] | 12 | - |
 | nearest_min5 | train | 30-59 min | 1 | 472 | 100.0% [100.0%, 100.0%] | 142 | 100.0% |
-| nearest_min5 | train | 30-59 min | 5 | 472 | 95.9% [93.9%, 97.3%] | 142 | 96.0% |
-| nearest_min5 | train | 30-59 min | 15 | 472 | 44.7% [43.7%, 45.4%] | 142 | 41.9% |
-| nearest_min5 | train | 30-59 min | 30 | 472 | 21.8% [21.2%, 22.4%] | 142 | 20.2% |
+| nearest_min5 | train | 30-59 min | 5 | 472 | 96.0% [93.8%, 98.3%] | 142 | 96.0% |
+| nearest_min5 | train | 30-59 min | 15 | 472 | 44.9% [43.9%, 45.9%] | 142 | 41.9% |
+| nearest_min5 | train | 30-59 min | 30 | 472 | 21.9% [21.3%, 22.4%] | 142 | 20.2% |
 | nearest_min5 | train | 60+ min | 1 | 676 | 100.0% [100.0%, 100.0%] | 348 | 100.0% |
-| nearest_min5 | train | 60+ min | 5 | 676 | 96.8% [95.2%, 98.2%] | 348 | 94.9% |
-| nearest_min5 | train | 60+ min | 15 | 676 | 76.0% [73.4%, 78.4%] | 348 | 70.3% |
-| nearest_min5 | train | 60+ min | 30 | 676 | 55.5% [52.6%, 59.1%] | 348 | 56.0% |
+| nearest_min5 | train | 60+ min | 5 | 676 | 96.7% [94.5%, 98.4%] | 348 | 94.9% |
+| nearest_min5 | train | 60+ min | 15 | 676 | 76.1% [72.1%, 79.7%] | 348 | 70.3% |
+| nearest_min5 | train | 60+ min | 30 | 676 | 56.0% [53.6%, 60.3%] | 348 | 56.0% |
 | nearest_min5 | other | <5 min | 1 | 41 | - | 19 | - |
 | nearest_min5 | other | <5 min | 5 | 41 | - | 19 | - |
 | nearest_min5 | other | <5 min | 15 | 41 | - | 19 | - |
 | nearest_min5 | other | <5 min | 30 | 41 | - | 19 | - |
 | nearest_min5 | other | 5-9 min | 1 | 166 | 100.0% [100.0%, 100.0%] | 73 | 100.0% |
-| nearest_min5 | other | 5-9 min | 5 | 166 | 91.6% [85.9%, 97.6%] | 73 | 92.6% |
+| nearest_min5 | other | 5-9 min | 5 | 166 | 92.2% [84.8%, 99.4%] | 73 | 92.6% |
 | nearest_min5 | other | 5-9 min | 15 | 166 | 0.0% [0.0%, 0.0%] | 73 | 0.0% |
 | nearest_min5 | other | 5-9 min | 30 | 166 | 0.0% [0.0%, 0.0%] | 73 | 0.0% |
 | nearest_min5 | other | 10-14 min | 1 | 224 | 100.0% [100.0%, 100.0%] | 82 | 100.0% |
-| nearest_min5 | other | 10-14 min | 5 | 224 | 96.0% [93.6%, 98.2%] | 82 | 95.9% |
-| nearest_min5 | other | 10-14 min | 15 | 224 | 3.0% [1.3%, 4.7%] | 82 | 0.0% |
+| nearest_min5 | other | 10-14 min | 5 | 224 | 95.5% [93.7%, 97.9%] | 82 | 95.9% |
+| nearest_min5 | other | 10-14 min | 15 | 224 | 2.7% [0.8%, 4.6%] | 82 | 0.0% |
 | nearest_min5 | other | 10-14 min | 30 | 224 | 0.0% [0.0%, 0.0%] | 82 | 0.0% |
 | nearest_min5 | other | 15-29 min | 1 | 594 | 100.0% [100.0%, 100.0%] | 241 | 100.0% |
-| nearest_min5 | other | 15-29 min | 5 | 594 | 94.1% [93.1%, 95.3%] | 241 | 94.2% |
-| nearest_min5 | other | 15-29 min | 15 | 594 | 46.7% [46.1%, 47.6%] | 241 | 42.7% |
-| nearest_min5 | other | 15-29 min | 30 | 594 | 0.2% [0.0%, 0.7%] | 241 | 0.0% |
+| nearest_min5 | other | 15-29 min | 5 | 594 | 94.1% [93.0%, 95.5%] | 241 | 94.2% |
+| nearest_min5 | other | 15-29 min | 15 | 594 | 46.8% [45.9%, 48.1%] | 241 | 42.7% |
+| nearest_min5 | other | 15-29 min | 30 | 594 | 0.3% [0.0%, 0.7%] | 241 | 0.0% |
 | nearest_min5 | other | 30-59 min | 1 | 427 | 100.0% [100.0%, 100.0%] | 245 | 100.0% |
-| nearest_min5 | other | 30-59 min | 5 | 427 | 96.9% [95.6%, 97.9%] | 245 | 96.3% |
-| nearest_min5 | other | 30-59 min | 15 | 427 | 68.9% [66.5%, 72.1%] | 245 | 66.0% |
-| nearest_min5 | other | 30-59 min | 30 | 427 | 50.4% [48.0%, 53.4%] | 245 | 50.1% |
+| nearest_min5 | other | 30-59 min | 5 | 427 | 97.2% [95.6%, 98.4%] | 245 | 96.3% |
+| nearest_min5 | other | 30-59 min | 15 | 427 | 69.3% [64.9%, 73.0%] | 245 | 66.0% |
+| nearest_min5 | other | 30-59 min | 30 | 427 | 50.7% [48.6%, 54.1%] | 245 | 50.1% |
 | nearest_min5 | other | 60+ min | 1 | 130 | 100.0% [100.0%, 100.0%] | 99 | 100.0% |
 | nearest_min5 | other | 60+ min | 5 | 130 | 97.1% [97.1%, 97.1%] | 99 | 91.0% |
 | nearest_min5 | other | 60+ min | 15 | 130 | 72.0% [72.0%, 72.0%] | 99 | 60.8% |
@@ -1092,7 +1093,7 @@ N and T use all trips. L and v use distance-known trips only (km per trip and km
 | overall | 14958 | 9809 | 68.5 | 73.9 | 5.4 [3.3, 7.7] | -4.6 [-6.0, -3.4] | -1.9 [-12.7, 6.8] | 11.6 [3.3, 21.0] | 0.2 [0.1, 0.4] | 100.0% | 99.9% |
 | children_6_17 | 1284 | 917 | 49.4 | 53.3 | 3.9 [-0.7, 9.1] | -3.3 [-5.9, -0.9] | 3.9 [-16.6, 24.0] | 3.4 [-14.3, 20.4] | -0.1 [-0.4, 0.1] | 99.9% | 99.9% |
 | employed | 7868 | 4316 | 80.1 | 86.7 | 6.6 [2.6, 10.5] | -6.1 [-8.9, -3.5] | -2.4 [-17.8, 15.7] | 14.8 [0.5, 29.6] | 0.2 [0.1, 0.5] | 100.0% | 99.9% |
-| unemployed | 625 | 527 | 68.0 | 79.6 | 11.6 [2.2, 23.7] | 0.9 [-6.5, 8.8] | 5.4 [-22.6, 32.1] | 5.3 [-13.1, 27.2] | -0.0 [-0.0, 0.0] | 100.0% | 100.0% |
+| unemployed | 625 | 527 | 68.0 | 79.6 | 11.6 [2.2, 23.7] | 0.9 [-6.5, 8.8] | 5.4 [-22.6, 32.1] | 5.3 [-13.1, 27.2] | 0.0 [-0.0, 0.0] | 100.0% | 100.0% |
 | retired | 3689 | 3219 | 55.3 | 59.8 | 4.6 [1.3, 8.6] | -1.3 [-3.3, 0.8] | -3.0 [-13.1, 7.6] | 8.5 [0.3, 16.7] | 0.3 [-0.0, 0.8] | 100.0% | 99.9% |
 | other_inactive | 1415 | 820 | 67.7 | 74.7 | 7.0 [0.3, 13.9] | -6.3 [-11.7, -0.8] | 9.3 [-5.2, 25.3] | 3.4 [-8.9, 15.5] | 0.6 [-0.0, 1.8] | 100.0% | 100.0% |
 
@@ -1124,12 +1125,12 @@ Trips per day: 3.63 (2008) -> 3.40 (2019); minutes per trip: 18.9 -> 21.7.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0-1 km | 24387 | 15723 | 49.9% | 49.7% | 10.8 | 12.0 | -0.07 | 2.09 | - | - | -0.01 | 100.0% | 100.0% | - |
 | 1-2 km | 545 | 680 | 1.1% | 2.1% | 11.6 | 14.7 | 0.41 | 0.11 | 0.24 | -0.12 | 0.11 | 100.0% | 100.0% | 0.00 |
-| 2-5 km | 7254 | 4375 | 14.1% | 13.1% | 15.1 | 18.4 | -0.55 | 1.57 | 1.07 | 0.50 | -0.12 | 100.0% | 100.0% | 0.00 |
-| 5-10 km | 9571 | 5059 | 15.8% | 15.3% | 20.0 | 21.9 | -0.29 | 1.03 | 0.79 | 0.24 | -0.03 | 100.0% | 100.0% | 0.00 |
+| 2-5 km | 7254 | 4375 | 14.1% | 13.1% | 15.1 | 18.4 | -0.55 | 1.57 | 1.07 | 0.50 | -0.12 | 100.0% | 100.0% | -0.00 |
+| 5-10 km | 9571 | 5059 | 15.8% | 15.3% | 20.0 | 21.9 | -0.29 | 1.03 | 0.79 | 0.24 | -0.03 | 100.0% | 100.0% | -0.00 |
 | 10-20 km | 6697 | 3497 | 11.4% | 11.1% | 28.7 | 32.4 | -0.32 | 1.46 | 0.64 | 0.83 | -0.04 | 100.0% | 100.0% | 0.00 |
 | 20-40 km | 2929 | 1859 | 5.0% | 5.8% | 43.8 | 48.8 | 1.20 | 0.86 | 0.18 | 0.68 | 0.14 | 100.0% | 100.0% | 0.00 |
 | 40-80 km | 860 | 659 | 1.6% | 1.9% | 66.3 | 77.5 | 0.62 | 0.61 | -0.05 | 0.66 | 0.10 | 100.0% | 100.0% | -0.00 |
-| >=80 km | 564 | 308 | 1.1% | 0.9% | 144.0 | 185.2 | -0.81 | 1.51 | -0.94 | 2.45 | -0.23 | 100.0% | 100.0% | -0.00 |
+| >=80 km | 564 | 308 | 1.1% | 0.9% | 144.0 | 185.2 | -0.81 | 1.51 | -0.94 | 2.45 | -0.23 | 100.0% | 100.0% | 0.00 |
 | unknown distance | 3 | 33 | - | - | - | - | - | - | - | - | - | - | - | - |
 
 #### crow-fly: B4b trip-duration distributions
@@ -1290,7 +1291,7 @@ Weekday person-days with needs-scope trips, day weights (section 9.9). T = minut
 
 | Difference | Effect on time change (min/day) | Effect on trips/day change | Effect on min/trip change | Interval or bounds (T; N; M) | Source section |
 |---|---:|---:|---:|---|---|
-| a. Duration rounding | [0.011, 2.379] | 0.000 | [0.003, 0.656] | [0.011, 2.379]; [0.000, 0.000]; [0.003, 0.656] | C1 |
+| a. Duration rounding | [0.028, 2.379] | 0.000 | [0.008, 0.656] | [0.028, 2.379]; [0.000, 0.000]; [0.008, 0.656] | C1 |
 | b. Recall lag | -0.397 | -0.025 | 0.042 | [-0.623, -0.089]; [-0.031, -0.019]; [-0.031, 0.134] | A1 |
 | d. Distance measurement | 0.000 | 0.000 | 0.000 | [0.000, 0.000]; [0.000, 0.000]; [0.000, 0.000] | B2 sensitivity / B2 |
 | e. Short trips missing in 2019 | -0.281 | -0.105 | 0.573 | [-0.373, -0.217]; [-0.137, -0.081]; [0.439, 0.759] | C3 / C4 |
@@ -1316,8 +1317,8 @@ A positive effect means the difference raises the measured 2019 value (and hence
 | Quantity | Time (min/day) | Trips/day | Minutes/trip |
 |---|---:|---:|---:|
 | Observed change | 5.372 | -0.225 | 2.833 |
-| Residual (removing a, b, e, f) | [3.269, 7.670] | [-0.143, -0.047] | [1.322, 2.820] |
-| Residual (also removing g, composition) | [3.646, 10.016] | [-0.120, 0.038] | [1.224, 3.172] |
+| Residual (removing a, b, e, f) | [3.268, 7.653] | [-0.143, -0.047] | [1.322, 2.815] |
+| Residual (also removing g, composition) | [3.646, 9.998] | [-0.120, 0.038] | [1.224, 3.167] |
 
 Both residual ranges exclude c (motive processing), since the main comparison already uses the harmonised motive rule. The first removes a, b, e and f; the second also removes g (composition). Each range is observed change minus the highest/lowest combinations of the selected effect bounds. These are sensitivity ranges, not a confidence interval: CIs are not added across rows, and overlapping checks are not an identified causal decomposition. Distance is excluded. Missing required effects make the corresponding residual unavailable.
 
@@ -1337,6 +1338,114 @@ Residents aged 6+, all motives, local trips (`mobloc = 1`). Per-person trip coun
 **Zero-local-trip diagnostic (weekday described out-days, age 6+):**
 - ENTD 2008: 2.13% by day weight (389/15605 days; 5,025,492/236,059,394 weighted days).
 - EMP 2019: 2.88% by day weight (285/10356 days; 7,371,178/255,634,487 weighted days).
+
+### C6. Door-to-door speed
+
+Speed is total weighted distance (km) divided by total weighted duration (minutes), multiplied by 60; it is not the mean of trip speeds. The household bootstrap is independent by survey. Scope A is ages 6+, Monday–Friday, local trips, all motives (SDES); scope B is the existing step-12 weekday needs scope. Estimates use trip weights; distance-specific metrics use trips with valid distance and positive duration. 2008/2019 ratios use 90% bootstrap intervals; year estimates use 95% intervals. Cells with fewer than 50 trips suppress estimates. Declared distances over 100 times crow-fly (with positive crow-fly) are rescaled from metres, then values outside 0.5–10 times crow-fly are dropped when crow-fly exceeds 2 km.
+
+#### Overall speed and distance
+
+| Scope | Distance measure | n 2008 | n 2019 | 2008 km/trip [95% CI] | 2019 km/trip [95% CI] | km/trip ratio 2019/2008 [90% CI] | 2008 km/h [95% CI] | 2019 km/h [95% CI] | speed ratio 2019/2008 [90% CI] | Rescaled declared 2008 | Dropped declared 2008 | Rescaled declared 2019 | Dropped declared 2019 |
+|---|---|---:|---:|---|---|---|---|---|---|---:|---:|---:|---:|
+| A | producer | 56611 | 35243 | 8.10 [7.84, 8.34] | 8.70 [8.46, 8.97] | 1.07 [1.04, 1.12] | 27.04 [26.42, 27.58] | 25.61 [25.14, 26.22] | 0.95 [0.93, 0.97] | 0 | 0 | 0 | 0 |
+| A | declared | 56297 | 34306 | 8.17 [7.92, 8.39] | 10374429.32 [8332778.20, 12208913.74] | 1270342.33 [1071089.92, 1452606.43] | 27.26 [26.61, 27.75] | 30910280.02 [25146891.43, 36532581.54] | 1134057.05 [950973.02, 1306768.62] | 0 | 310 | 357 | 905 |
+| A | crow-fly | 56653 | 35243 | 5.22 [5.02, 5.38] | 5.56 [5.38, 5.74] | 1.07 [1.02, 1.11] | 17.41 [16.90, 17.90] | 16.37 [15.97, 16.75] | 0.94 [0.91, 0.97] | 0 | 0 | 0 | 0 |
+| B | producer | 52672 | 32186 | 9.75 [9.40, 10.22] | 11.42 [10.86, 12.07] | 1.17 [1.11, 1.24] | 31.43 [30.63, 32.32] | 31.52 [30.41, 32.83] | 1.00 [0.97, 1.04] | 0 | 0 | 0 | 0 |
+| B | declared | 52359 | 31299 | 10.00 [9.61, 10.41] | 10531530.05 [8134201.19, 13245288.03] | 1053564.12 [828044.80, 1276314.07] | 32.26 [31.47, 33.31] | 29466753.58 [22899992.72, 37047405.82] | 913391.76 [719138.67, 1096225.54] | 0 | 309 | 348 | 856 |
+| B | crow-fly | 52807 | 32154 | 7.92 [7.16, 9.11] | 7.72 [7.12, 8.36] | 0.97 [0.86, 1.09] | 25.15 [22.97, 28.39] | 21.37 [20.09, 22.73] | 0.85 [0.78, 0.94] | 0 | 0 | 0 | 0 |
+
+The declared-distance counts are unweighted trip counts in the selected scope. Crow-fly distance treats zero as a valid distance; producer distance is ENTD `distcor` (otherwise `V2_MDISTTOT`) and EMP `MDISTTOT_fin`, with the existing step-11 correction.
+
+#### Same-commune trips (crow-fly = 0 km)
+
+| Scope | n 2008 | 2008 share [95% CI] | n 2019 | 2019 share [95% CI] | 2019/2008 share ratio [90% CI] |
+|---|---:|---|---:|---|---|
+| A | 56653 | 0.514 [0.504, 0.524] | 35243 | 0.515 [0.503, 0.527] | 1.00 [0.98, 1.03] |
+| B | 52807 | 0.499 [0.487, 0.510] | 32154 | 0.493 [0.484, 0.505] | 0.99 [0.97, 1.01] |
+
+#### Speed by residence class
+
+The 1994 values are the survey's own published measures (scope A) and are repeated as a reference across the distance-measure rows; they are not a common-distance sensitivity estimate.
+
+| Scope | Residence class | Distance | n 2008 | n 2019 | 2008 km/trip [95% CI] | 2019 km/trip [95% CI] | km/trip ratio [90% CI] | 2008 min/trip [95% CI] | 2019 min/trip [95% CI] | min/trip ratio [90% CI] | 2008 km/h [95% CI] | 2019 km/h [95% CI] | speed ratio [90% CI] | 1994 published (km/trip; min/trip; km/h) |
+|---|---|---|---:|---:|---|---|---|---|---|---|---|---|---|---|
+| A | All | producer | 56611 | 35243 | 8.10 [7.86, 8.34] | 8.70 [8.45, 8.96] | 1.07 [1.03, 1.11] | 17.97 [17.66, 18.35] | 20.38 [20.00, 20.82] | 1.13 [1.11, 1.16] | 27.04 [26.49, 27.60] | 25.61 [25.12, 26.09] | 0.95 [0.92, 0.97] | 7.3 / 17.3 / 25.3 |
+| A | All | declared | 56297 | 34306 | 8.17 [7.92, 8.39] | 10374429.32 [8129139.37, 12636400.45] | 1270342.33 [1041150.06, 1483310.03] | 17.98 [17.70, 18.27] | 20.14 [19.76, 20.49] | 1.12 [1.09, 1.14] | 27.26 [26.65, 27.82] | 30910280.02 [24135366.98, 37281408.43] | 1134057.05 [919691.19, 1333809.90] | 7.3 / 17.3 / 25.3 |
+| A | All | crow-fly | 56653 | 35243 | 5.22 [5.02, 5.38] | 5.56 [5.39, 5.75] | 1.07 [1.03, 1.11] | 17.98 [17.64, 18.32] | 20.38 [20.02, 20.76] | 1.13 [1.11, 1.16] | 17.41 [16.92, 17.88] | 16.37 [16.02, 16.80] | 0.94 [0.92, 0.97] | 7.3 / 17.3 / 25.3 |
+| A | pôle | producer | 27851 | 17902 | 6.45 [6.17, 6.72] | 6.48 [6.17, 6.79] | 1.00 [0.96, 1.06] | 18.87 [18.45, 19.33] | 20.93 [20.45, 21.56] | 1.11 [1.08, 1.14] | 20.52 [19.77, 21.14] | 18.56 [17.89, 19.22] | 0.90 [0.87, 0.95] | 6.1 / 17.7 / 20.7 |
+| A | pôle | declared | 27669 | 17332 | 6.51 [6.20, 6.78] | 16245497.52 [12546547.82, 20129640.45] | 2493972.95 [2004289.53, 3048550.99] | 18.89 [18.41, 19.33] | 20.54 [20.03, 21.05] | 1.09 [1.05, 1.12] | 20.69 [19.93, 21.30] | 47449511.73 [36786311.27, 58968946.36] | 2293132.58 [1847424.00, 2777167.19] | 6.1 / 17.7 / 20.7 |
+| A | pôle | crow-fly | 27857 | 17902 | 3.76 [3.51, 4.02] | 3.77 [3.56, 3.95] | 1.00 [0.94, 1.08] | 18.89 [18.40, 19.42] | 20.93 [20.47, 21.46] | 1.11 [1.08, 1.15] | 11.93 [11.33, 12.60] | 10.80 [10.28, 11.23] | 0.91 [0.85, 0.97] | 6.1 / 17.7 / 20.7 |
+| A | couronne | producer | 25572 | 14852 | 9.70 [9.31, 10.06] | 10.95 [10.57, 11.50] | 1.13 [1.08, 1.19] | 17.07 [16.63, 17.56] | 19.80 [19.23, 20.34] | 1.16 [1.12, 1.20] | 34.08 [33.31, 34.80] | 33.20 [32.46, 34.22] | 0.97 [0.95, 1.01] | 9.9 / 17.6 / 33.7 |
+| A | couronne | declared | 25460 | 14555 | 9.77 [9.34, 10.14] | 4348922.75 [2421396.80, 6610422.11] | 445158.30 [275820.12, 644209.75] | 17.08 [16.65, 17.58] | 19.70 [19.18, 20.30] | 1.15 [1.12, 1.20] | 34.32 [33.38, 35.01] | 13246783.54 [7410616.31, 20288627.20] | 385979.04 [238249.76, 556932.65] | 9.9 / 17.6 / 33.7 |
+| A | couronne | crow-fly | 25604 | 14852 | 6.65 [6.35, 6.97] | 7.37 [7.05, 7.69] | 1.11 [1.04, 1.17] | 17.09 [16.63, 17.51] | 19.80 [19.14, 20.39] | 1.16 [1.12, 1.20] | 23.34 [22.72, 24.02] | 22.33 [21.79, 22.88] | 0.96 [0.93, 0.99] | 9.9 / 17.6 / 33.7 |
+| A | hors attraction | producer | 3188 | 2489 | 10.63 [9.72, 11.55] | 11.95 [11.10, 12.94] | 1.12 [1.02, 1.24] | 16.71 [15.60, 17.69] | 19.63 [18.48, 20.93] | 1.18 [1.09, 1.27] | 38.19 [36.02, 40.17] | 36.54 [33.99, 38.55] | 0.96 [0.89, 1.02] | 9.0 / 15.6 / 34.6 |
+| A | hors attraction | declared | 3168 | 2419 | 10.73 [9.54, 11.68] | 2754839.84 [604107.42, 5670706.69] | 256848.33 [80045.59, 461927.56] | 16.69 [15.51, 17.82] | 19.78 [18.53, 21.29] | 1.18 [1.10, 1.28] | 38.55 [36.38, 40.61] | 8356486.99 [1897583.41, 17502882.28] | 216788.72 [65468.28, 395205.31] | 9.0 / 15.6 / 34.6 |
+| A | hors attraction | crow-fly | 3192 | 2489 | 7.41 [6.53, 8.37] | 8.25 [7.55, 9.06] | 1.11 [0.97, 1.28] | 16.70 [15.67, 18.13] | 19.63 [18.36, 20.98] | 1.18 [1.08, 1.27] | 26.61 [24.61, 28.72] | 25.22 [23.23, 27.20] | 0.95 [0.86, 1.05] | 9.0 / 15.6 / 34.6 |
+| B | All | producer | 52672 | 32186 | 9.75 [9.36, 10.13] | 11.42 [10.79, 12.03] | 1.17 [1.09, 1.24] | 18.61 [18.21, 19.02] | 21.74 [21.24, 22.30] | 1.17 [1.14, 1.20] | 31.43 [30.57, 32.19] | 31.52 [30.22, 32.71] | 1.00 [0.96, 1.04] | - |
+| B | All | declared | 52359 | 31299 | 10.00 [9.61, 10.49] | 10531530.05 [8312759.31, 13292479.79] | 1053564.12 [875715.38, 1285308.33] | 18.59 [18.20, 19.04] | 21.44 [20.99, 21.97] | 1.15 [1.12, 1.18] | 32.26 [31.39, 33.32] | 29466753.58 [23297614.40, 37754447.99] | 913391.76 [757451.53, 1113550.94] | - |
+| B | All | crow-fly | 52807 | 32154 | 7.92 [7.19, 9.15] | 7.72 [7.21, 8.25] | 0.97 [0.86, 1.09] | 18.90 [18.40, 19.29] | 21.67 [21.09, 22.29] | 1.15 [1.11, 1.18] | 25.15 [23.02, 28.78] | 21.37 [20.21, 22.52] | 0.85 [0.76, 0.93] | - |
+| B | pôle | producer | 25880 | 16276 | 7.84 [7.42, 8.31] | 8.99 [8.15, 9.90] | 1.15 [1.04, 1.26] | 19.29 [18.77, 19.88] | 22.12 [21.45, 22.93] | 1.15 [1.10, 1.19] | 24.39 [23.44, 25.36] | 24.39 [22.77, 26.53] | 1.00 [0.94, 1.08] | - |
+| B | pôle | declared | 25702 | 15739 | 8.10 [7.59, 8.60] | 16369011.14 [12281984.67, 20012511.10] | 2022033.73 [1546812.09, 2466068.85] | 19.26 [18.69, 19.81] | 21.71 [21.14, 22.62] | 1.13 [1.09, 1.18] | 25.22 [24.08, 26.44] | 45234900.07 [33788942.37, 55381795.72] | 1793799.56 [1359281.37, 2182110.21] | - |
+| B | pôle | crow-fly | 25934 | 16259 | 6.97 [5.87, 8.70] | 5.85 [5.10, 6.72] | 0.84 [0.67, 1.02] | 19.71 [19.13, 20.32] | 22.06 [21.34, 22.83] | 1.12 [1.08, 1.16] | 21.22 [17.86, 26.43] | 15.91 [14.11, 17.85] | 0.75 [0.60, 0.90] | - |
+| B | couronne | producer | 23794 | 13666 | 11.50 [10.92, 12.18] | 13.80 [12.87, 14.91] | 1.20 [1.10, 1.30] | 17.84 [17.28, 18.41] | 21.35 [20.40, 22.26] | 1.20 [1.14, 1.25] | 38.69 [37.50, 40.17] | 38.80 [37.08, 40.70] | 1.00 [0.96, 1.05] | - |
+| B | couronne | declared | 23680 | 13382 | 11.76 [11.08, 12.36] | 4633897.27 [2128766.60, 7590780.60] | 393984.58 [211539.80, 592767.51] | 17.84 [17.20, 18.45] | 21.12 [20.50, 21.94] | 1.18 [1.14, 1.24] | 39.55 [38.13, 41.24] | 13165221.04 [5914935.39, 21538652.91] | 332852.37 [178345.63, 496346.83] | - |
+| B | couronne | crow-fly | 23855 | 13657 | 8.76 [8.16, 9.55] | 9.52 [8.94, 10.25] | 1.09 [1.00, 1.18] | 17.97 [17.37, 18.56] | 21.24 [20.53, 22.10] | 1.18 [1.13, 1.24] | 29.23 [27.66, 31.11] | 26.88 [25.82, 28.08] | 0.92 [0.86, 0.98] | - |
+| B | hors attraction | producer | 2998 | 2244 | 13.45 [11.26, 15.94] | 15.43 [13.66, 17.30] | 1.15 [0.99, 1.37] | 18.41 [16.60, 20.55] | 21.25 [19.43, 22.98] | 1.15 [1.03, 1.30] | 43.84 [40.23, 47.19] | 43.56 [40.98, 46.11] | 0.99 [0.93, 1.08] | - |
+| B | hors attraction | declared | 2977 | 2178 | 13.55 [11.48, 16.01] | 2676559.84 [533883.26, 6099325.50] | 197552.63 [52106.97, 432465.35] | 18.43 [16.68, 20.36] | 21.47 [19.74, 23.33] | 1.17 [1.03, 1.31] | 44.12 [40.74, 47.67] | 7480357.14 [1459909.05, 16692362.92] | 169550.74 [44649.70, 347900.59] | - |
+| B | hors attraction | crow-fly | 3018 | 2238 | 10.11 [8.51, 12.00] | 11.00 [9.76, 12.52] | 1.09 [0.89, 1.32] | 18.73 [16.86, 21.16] | 21.25 [19.64, 23.35] | 1.13 [1.02, 1.27] | 32.40 [29.48, 35.28] | 31.06 [28.22, 34.00] | 0.96 [0.87, 1.05] | - |
+
+#### Car-driver speed by crow-fly band and INSEE density
+
+| Band | Density | n 2008 | 2008 km/h [95% CI] | n 2019 | 2019 km/h [95% CI] | 2019/2008 speed ratio [90% CI] |
+|---|---|---:|---|---:|---|---|
+| 2-5 km | dense | 1799 | 12.14 [11.47, 13.02] | 909 | 11.75 [10.51, 13.13] | 0.97 [0.86, 1.08] |
+| 2-5 km | intermediate | 1205 | 16.74 [15.68, 17.59] | 804 | 15.77 [14.74, 16.94] | 0.94 [0.88, 1.02] |
+| 2-5 km | sparse | 1542 | 20.42 [19.22, 21.66] | 1007 | 18.31 [17.02, 19.46] | 0.90 [0.83, 0.97] |
+| 2-5 km | very_sparse | 229 | 21.28 [18.22, 24.52] | 164 | 19.05 [14.94, 23.76] | 0.90 [0.71, 1.12] |
+| 5-10 km | dense | 1880 | 18.37 [17.63, 19.29] | 837 | 18.25 [17.35, 19.16] | 0.99 [0.93, 1.05] |
+| 5-10 km | intermediate | 1639 | 23.48 [22.34, 25.10] | 855 | 23.32 [22.22, 24.64] | 0.99 [0.93, 1.06] |
+| 5-10 km | sparse | 3032 | 28.46 [27.36, 29.48] | 1819 | 25.88 [24.24, 27.10] | 0.91 [0.86, 0.96] |
+| 5-10 km | very_sparse | 471 | 29.18 [26.61, 32.14] | 219 | 28.01 [25.40, 30.97] | 0.96 [0.85, 1.08] |
+| 10-20 km | dense | 1006 | 24.85 [23.66, 25.78] | 412 | 22.38 [20.60, 23.87] | 0.90 [0.84, 0.96] |
+| 10-20 km | intermediate | 1148 | 32.75 [31.06, 34.89] | 633 | 28.69 [27.48, 29.99] | 0.88 [0.82, 0.93] |
+| 10-20 km | sparse | 2532 | 34.73 [33.74, 35.62] | 1362 | 33.11 [31.89, 34.38] | 0.95 [0.92, 1.00] |
+| 10-20 km | very_sparse | 383 | 37.91 [35.55, 39.75] | 180 | 37.85 [35.33, 40.54] | 1.00 [0.92, 1.08] |
+| 20-40 km | dense | 387 | 34.43 [32.15, 36.95] | 187 | 30.16 [27.88, 33.23] | 0.88 [0.80, 0.97] |
+| 20-40 km | intermediate | 432 | 36.24 [30.49, 42.25] | 369 | 34.83 [32.19, 37.55] | 0.96 [0.83, 1.15] |
+| 20-40 km | sparse | 1126 | 42.37 [41.03, 43.79] | 708 | 38.13 [36.38, 39.83] | 0.90 [0.86, 0.94] |
+| 20-40 km | very_sparse | 214 | 40.56 [37.57, 43.17] | 102 | 41.70 [37.87, 45.66] | 1.03 [0.93, 1.14] |
+| 40-80 km | dense | 136 | 47.95 [43.77, 52.24] | 88 | 47.76 [42.02, 53.26] | 1.00 [0.86, 1.13] |
+| 40-80 km | intermediate | 116 | 53.51 [49.86, 57.53] | 133 | 42.64 [37.92, 47.21] | 0.80 [0.71, 0.89] |
+| 40-80 km | sparse | 308 | 52.52 [49.80, 56.51] | 194 | 42.66 [38.42, 47.91] | 0.81 [0.73, 0.91] |
+| 40-80 km | very_sparse | 47 | - | 32 | - | - |
+
+#### Urban PT speed by crow-fly band
+
+| Band | Density | n 2008 | 2008 km/h [95% CI] | n 2019 | 2019 km/h [95% CI] | 2019/2008 speed ratio [90% CI] |
+|---|---|---:|---|---:|---|---|
+| 2-5 km | - | 839 | 6.06 [5.56, 6.57] | 487 | 6.06 [5.78, 6.41] | 1.00 [0.93, 1.08] |
+| 5-10 km | - | 786 | 9.25 [8.43, 10.01] | 327 | 9.96 [9.32, 10.63] | 1.08 [0.99, 1.18] |
+| 10-20 km | - | 203 | 14.88 [13.03, 16.60] | 116 | 12.58 [11.62, 13.85] | 0.85 [0.75, 0.97] |
+| 20-40 km | - | 40 | - | 34 | - | - |
+| 40-80 km | - | 17 | - | 16 | - | - |
+
+#### Walking speed by crow-fly band
+
+| Band | Density | n 2008 | 2008 km/h [95% CI] | n 2019 | 2019 km/h [95% CI] | 2019/2008 speed ratio [90% CI] |
+|---|---|---:|---|---:|---|---|
+| 2-5 km | - | 377 | 8.09 [6.94, 9.21] | 137 | 8.13 [6.90, 9.61] | 1.00 [0.83, 1.25] |
+| 5-10 km | - | 54 | 15.60 [11.38, 21.22] | 26 | - | - |
+| 10-20 km | - | 3 | - | 7 | - | - |
+| 20-40 km | - | 2 | - | 0 | - | - |
+| 40-80 km | - | 0 | - | 0 | - | - |
+
+#### Car-driver speed pooled at the 2008 trip mix
+
+Crow-fly car-driver trips in 2–80 km bands are standardized over the band × density cells observed in both years. Each cell's mean distance and minutes are reweighted to the 2008 weighted trip mix; the reported speed remains a ratio of those weighted totals.
+
+| Common cells | n 2008 | Standardized 2008 km/h [95% CI] | n 2019 | Standardized 2019 km/h [95% CI] | 2019/2008 ratio [90% CI] | Change [90% CI] |
+|---:|---:|---|---:|---|---|---|
+| 20 | 19632 | 30.75 [30.16, 31.44] | 11014 | 28.04 [27.42, 28.76] | 0.91 [0.89, 0.93] | -8.8% [-10.7%, -6.9%] |
 
 ## Figures
 
