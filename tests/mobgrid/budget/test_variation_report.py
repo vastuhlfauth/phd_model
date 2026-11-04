@@ -1433,7 +1433,7 @@ def test_c5_uses_full_roster_denominator_and_reports_published_gaps() -> None:
             "described_n_days": 2,
             "zero_local_weight": 3.0,
             "described_weight": 4.0,
-            "n_people": 2,
+            "n_people": 60,
         }
         return variation_report.SurveyFrames(
             name=name, days={}, trips={}, aux={"official_scope_data": data}
@@ -1448,7 +1448,7 @@ def test_c5_uses_full_roster_denominator_and_reports_published_gaps() -> None:
 
     assert entd["weekday"]["trips_per_person"]["estimate"] == pytest.approx(0.25)
     assert emp["weekday"]["trips_per_person"]["estimate"] == pytest.approx(0.05)
-    assert emp["week"]["trips_per_person"]["estimate"] == pytest.approx(1 / 28)
+    assert emp["week"]["trips_per_person"]["estimate"] == pytest.approx(0.25)
     report = "\n".join(variation_report._format_official_scope(entd, emp))
     for reference in (
         "3.15",
@@ -1463,3 +1463,11 @@ def test_c5_uses_full_roster_denominator_and_reports_published_gaps() -> None:
     assert "Gap 2019" in report
     assert "zero-local-trip diagnostic" in report.lower()
     assert "75.00% by day weight" in report
+    week_trip_row = next(
+        line
+        for line in report.splitlines()
+        if line.startswith("| 7-day | trips_per_person |")
+    )
+    assert "trips/person/week" in week_trip_row
+    assert "19.7928" in week_trip_row
+    assert "-98.7" in week_trip_row

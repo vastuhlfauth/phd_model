@@ -611,7 +611,7 @@ def _official_scope_estimates(
     weekday = data["type_t"] == 1
     periods = {"weekday": (weekday, 5.0 if frames.name == "EMP 2019" else 1.0)}
     if frames.name == "EMP 2019":
-        periods["week"] = (np.ones(len(weekday), dtype=bool), 7.0)
+        periods["week"] = (np.ones(len(weekday), dtype=bool), 1.0)
     results = {"n": int(data["n_people"])}
     for period, (mask, divisor) in periods.items():
         household = data["household_t"][mask]
@@ -683,9 +683,10 @@ def _format_official_scope(results_2008: dict, results_2019: dict) -> list[str]:
         "",
         "Residents aged 6+, all motives, local trips (`mobloc = 1`). "
         "Per-person trip counts are direct producer-weighted sums over the "
-        "full respondent roster: EMP 2019 divides weekday and 7-day totals "
-        "by 5 and 7, respectively; ENTD 2008 uses `POIDS_JOUR` over all "
-        "Kish reference weekdays. Minutes and kilometres per trip use "
+        "full respondent roster: EMP 2019 divides weekday totals by 5 and "
+        "reports the 7-day total as a weekly value; ENTD 2008 uses "
+        "`POIDS_JOUR` over all Kish reference weekdays. Minutes and "
+        "kilometres per trip use "
         "household-bootstrap 95% CIs; kilometre estimates use trips with "
         "known distance.",
         "",

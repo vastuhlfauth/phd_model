@@ -2,7 +2,26 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-11-03 by Copilot (branch `step/variation`: step-12 comparison finalized; real-data regeneration left to the user)_
+_Last updated: 2026-11-04 by Copilot (B0 step-11/12 estimate corrections; real-data regeneration left to the user)_
+
+### B0: step-11/12 estimate corrections
+
+- ENTD 2008's weekday per-person estimator now uses its full Kish-roster
+  weight without an extra divisor of five, matching the temporal-ratio
+  estimator. The step-11 per-person comparison now reports the corrected
+  values, and equivalence verdicts distinguish equivalent, different and
+  inconclusive intervals.
+- C5 reports EMP's 7-day trip count as a weekly total and compares it with
+  SDES's weekly reference. The checked-in row was rescaled from the prior
+  rounded daily value and interval; regenerate the report for full-precision
+  values and confidence limits.
+- Validation: 2 focused `test_emp.py` tests, the synthetic step-11 report
+  test and the focused C5 test passed (4 total); targeted Ruff passed.
+  The synthetic report test emitted existing empty-legend warnings. No
+  national-data jobs were run.
+- Regenerate exact report values in the user's terminal:
+  `uv run python -m mobgrid.budget.emp --compare --out docs\data\step11_compare`
+  `uv run python -m mobgrid.budget.variation_report --out docs\data\step12_variation --entd2008-zoning-data-path data\raw\entd2008\ENTD2008_avec_zonages_EMP`
 
 ### Step 11/12: producer per-person estimators (A3)
 

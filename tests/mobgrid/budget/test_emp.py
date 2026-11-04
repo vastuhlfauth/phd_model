@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 from mobgrid.budget import daily_energy, emp, emp2019
 
@@ -69,8 +70,8 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "Per-person budget, days without trips included" in report
     assert "Direct producer-weighted sum of local" in report
     assert "zero local trips is" in report
-    assert "Equivalent at ±15%" in report
-    assert "Equivalent at ±10%" in report
+    assert "±15% verdict" in report
+    assert "±10% verdict" in report
 
 
 #: The EMP 2019 base-case group table on the synthetic fixture (section
@@ -210,6 +211,80 @@ def test_cli_compare_writes_report_and_figure(
     assert "Ratio 2019/2008" in report
     assert "Within-survey equivalence: density proxy" in report
     assert "Within-survey equivalence: income quintile" in report
+
+
+def test_weekday_person_table_uses_the_temporal_ratio_base() -> None:
+    def results(respondent_weight: float, period_divisor: float) -> dict:
+        household = np.array([f"h{i}" for i in range(60)])
+        weight = np.full(60, respondent_weight)
+        day_weight = np.full(60, 5.0)
+        time = np.full(60, 10.0)
+        categories = np.full(60, "employed")
+        daily = {
+            "ident_men": household,
+            "pond_jour": day_weight,
+            "total_time_min": time,
+            "population_category": categories,
+        }
+        budget = daily_energy.PersonBudgetRow(
+            group="overall",
+            n=60,
+            budget=float(
+                np.sum(day_weight * time) / (np.sum(weight) * period_divisor)
+            ),
+            budget_ci=(9.0, 11.0),
+        )
+        return {
+            "weekday_days": daily,
+            "_weekday_person_budget_days": daily,
+            "_weekday_person_rows": {
+                "category": categories,
+                "household": household,
+                "weight": weight,
+                "period_divisor": period_divisor,
+            },
+            "person_budget_weekday_population": {
+                "employed": budget,
+                "overall": budget,
+            },
+        }
+
+    results_2008 = results(5.0, 1.0)
+    results_2019 = results(1.0, 5.0)
+    ratio_rows = emp._temporal_person_budget_rows(
+        results_2008, results_2019, n_reps=30, seed=3
+    )
+    overall_ratio = next(row for row in ratio_rows if row.category == "overall")
+    report_lines = emp._format_weekday_comparison(
+        results_2008, results_2019, n_reps=30, seed=3
+    )
+    table = "\n".join(report_lines).split(
+        "### Daily time, per person (days without trips included)", 1
+    )[1]
+    overall_line = next(
+        line for line in table.splitlines() if line.startswith("| overall |")
+    )
+
+    assert float(overall_line.split("|")[2].strip()) == pytest.approx(
+        overall_ratio.estimate_2008
+    )
+    assert overall_ratio.estimate_2008 == pytest.approx(10.0)
+
+
+def test_temporal_equivalence_uses_three_state_verdicts() -> None:
+    rows = [
+        emp.TemporalRatioRow("equiv", "-", 60, 60, 1.0, (0.95, 1.05)),
+        emp.TemporalRatioRow("diff", "-", 60, 60, 1.2, (1.16, 1.24)),
+        emp.TemporalRatioRow("uncertain", "-", 60, 60, 1.12, (1.11, 1.16)),
+    ]
+
+    lines = emp._format_temporal_ratio_table(
+        rows, margin=0.15, secondary_margin=0.10, with_group=False
+    )
+
+    assert lines[2].endswith("| equivalent | equivalent |")
+    assert lines[3].endswith("| different | different |")
+    assert lines[4].endswith("| inconclusive | different |")
 
 
 def test_suppressed_person_budget_cell_keeps_true_n() -> None:

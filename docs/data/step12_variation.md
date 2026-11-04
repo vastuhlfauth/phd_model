@@ -1323,14 +1323,14 @@ Both residual ranges exclude c (motive processing), since the main comparison al
 
 ### C5. Official-scope replication
 
-Residents aged 6+, all motives, local trips (`mobloc = 1`). Per-person trip counts are direct producer-weighted sums over the full respondent roster: EMP 2019 divides weekday and 7-day totals by 5 and 7, respectively; ENTD 2008 uses `POIDS_JOUR` over all Kish reference weekdays. Minutes and kilometres per trip use household-bootstrap 95% CIs; kilometre estimates use trips with known distance.
+Residents aged 6+, all motives, local trips (`mobloc = 1`). Per-person trip counts are direct producer-weighted sums over the full respondent roster: EMP 2019 divides weekday totals by 5 and reports the 7-day total as a weekly value; ENTD 2008 uses `POIDS_JOUR` over all Kish reference weekdays. Minutes and kilometres per trip use household-bootstrap 95% CIs; kilometre estimates use trips with known distance.
 
 | Period | Indicator | Unit | n 2008 | 2008 [95% CI] | SDES 2008 | Gap 2008 | n 2019 | 2019 [95% CI] | SDES 2019 | Gap 2019 |
 |---|---|---|---:|---|---:|---:|---:|---|---:|---:|
 | Weekday | trips_per_person | trips/person | 18542 | 3.2 [3.1, 3.2] | 3.15 | 0.5 | 13825 | 3.0 [3.0, 3.1] | 3.04055 | -0.0 |
 | Weekday | minutes_per_trip | min/trip | 18542 | 18.0 [17.7, 18.3] | 17.9 | 0.5 | 13825 | 20.4 [20.0, 20.7] | 20.36964 | -0.0 |
 | Weekday | km_per_trip | km/trip | 18542 | 8.1 [7.8, 8.3] | - | - | 13825 | 8.7 [8.4, 8.9] | 8.72921 | -0.4 |
-| 7-day | trips_per_person | trips/person/week | - | - | - | - | 13825 | 2.8 [2.8, 2.9] | 19.7928 | -85.7 |
+| 7-day | trips_per_person | trips/person/week | - | - | - | - | 13825 | 19.6 [19.6, 20.3] | 19.7928 | -1.0 |
 | 7-day | minutes_per_trip | min/trip | - | - | - | - | 13825 | 20.7 [20.4, 21.1] | 20.69912 | 0.0 |
 | 7-day | km_per_trip | km/trip | - | - | - | - | 13825 | 8.9 [8.7, 9.2] | 8.970084 | -0.4 |
 
@@ -1347,4 +1347,3 @@ B7a allocates the behavioural remainder proportionally to B2's terms; it is not 
 ![fig_b7b_shift_share](step12_variation/fig_b7b_shift_share.png)
 
 ![fig_b7c_recall_lag](step12_variation/fig_b7c_recall_lag.png)
-

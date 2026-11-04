@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
@@ -744,7 +745,7 @@ def run(
         person_budget_days,
         value=person_budget_days["total_time_min"],
         day_types=("weekday",),
-        period_divisor=5.0,
+        period_divisor=person["period_divisor"],
         n_reps=n_reps,
         seed=seed,
     )
@@ -2730,15 +2731,15 @@ def _format_equivalence_table(
 ) -> list[str]:
     lines = [
         "| Category | Group | n | Ratio to category mean | 90% CI | "
-        f"Equivalent at ±{margin:.0%} | Equivalent at ±{secondary_margin:.0%} |",
+        f"±{margin:.0%} verdict | ±{secondary_margin:.0%} verdict |",
         "|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         if row.equivalent_15 is None:
             lines.append(f"| {row.category} | {row.group} | {row.n} | - | - | - | - |")
             continue
-        verdict_15 = "yes" if row.equivalent_15 else "no"
-        verdict_10 = "yes" if row.equivalent_10 else "no"
+        verdict_15 = _equivalence_verdict(row.ci90, margin)
+        verdict_10 = _equivalence_verdict(row.ci90, secondary_margin)
         lines.append(
             f"| {row.category} | {row.group} | {row.n} | {row.ratio:.3f} | "
             f"[{row.ci90[0]:.3f}, {row.ci90[1]:.3f}] | "
@@ -2759,9 +2760,9 @@ def _format_equivalence_side_by_side(
     keys = sorted(set(by_2008) | set(by_2019))
     lines = [
         "| Category | Group | n 2008 | Ratio 2008 | 90% CI 2008 | "
-        f"±{margin:.0%} 2008 | ±{secondary_margin:.0%} 2008 | n 2019 | "
-        f"Ratio 2019 | 90% CI 2019 | ±{margin:.0%} 2019 | "
-        f"±{secondary_margin:.0%} 2019 |",
+        f"±{margin:.0%} verdict 2008 | ±{secondary_margin:.0%} verdict 2008 | "
+        "n 2019 | Ratio 2019 | 90% CI 2019 | "
+        f"±{margin:.0%} verdict 2019 | ±{secondary_margin:.0%} verdict 2019 |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for category, group in keys:
@@ -2773,8 +2774,8 @@ def _format_equivalence_side_by_side(
             elif row.equivalent_15 is None:
                 cells.extend([str(row.n), "-", "-", "-", "-"])
             else:
-                verdict_15 = "yes" if row.equivalent_15 else "no"
-                verdict_10 = "yes" if row.equivalent_10 else "no"
+                verdict_15 = _equivalence_verdict(row.ci90, margin)
+                verdict_10 = _equivalence_verdict(row.ci90, secondary_margin)
                 cells.extend(
                     [
                         str(row.n),
@@ -2786,6 +2787,16 @@ def _format_equivalence_side_by_side(
                 )
         lines.append(f"| {category} | {group} | " + " | ".join(cells) + " |")
     return lines
+
+
+def _equivalence_verdict(ci: tuple[float, float], margin: float) -> str:
+    """Classify a confidence interval against a symmetric equivalence margin."""
+    lower, upper = 1.0 - margin, 1.0 + margin
+    if ci[0] >= lower and ci[1] <= upper:
+        return "equivalent"
+    if ci[1] < lower or ci[0] > upper:
+        return "different"
+    return "inconclusive"
 
 
 def _format_income_quintile_report(report: dict) -> list[str]:
@@ -3215,9 +3226,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "### Equivalence to the category mean (TOST)",
         "",
         "Ratio of each density-class mean to its population-category mean; "
-        "90% household-bootstrap CI. A `yes` means the whole interval lies "
-        "within the configured margin; `no` means equivalence was not "
-        "established. Cells under 50 respondents are suppressed.",
+        "90% household-bootstrap CI. `equivalent` means the full interval "
+        "lies within the configured margin; `different` means it lies "
+        "wholly outside; otherwise the result is `inconclusive`. Cells "
+        "under 50 respondents are suppressed.",
         "",
         *_format_equivalence_table(
             results["density_equivalence"],
@@ -3253,9 +3265,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "### Equivalence to the category mean (TOST)",
         "",
         "Ratio of each income-quintile mean to its population-category "
-        "mean; 90% household-bootstrap CI. A `yes` means the whole interval "
-        "lies within the configured margin; `no` means equivalence was not "
-        "established. Cells under 50 respondents are suppressed.",
+        "mean; 90% household-bootstrap CI. `equivalent` means the full "
+        "interval lies within the configured margin; `different` means it "
+        "lies wholly outside; otherwise the result is `inconclusive`. Cells "
+        "under 50 respondents are suppressed.",
         "",
         *_format_equivalence_table(
             results["income_equivalence"],
@@ -3913,9 +3926,23 @@ def _format_weekday_comparison(
     return lines
 
 
+@dataclass(frozen=True)
+class TemporalRatioRow:
+    """Cross-year ratio and optional point-estimate bases."""
+
+    category: str
+    group: str
+    n_2008: int
+    n_2019: int
+    ratio: float | None
+    ci: tuple[float, float] | None
+    estimate_2008: float | None = None
+    estimate_2019: float | None = None
+
+
 def _temporal_day_ratio_rows(
     results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
-) -> list[tuple[str, str, int, int, float | None, tuple[float, float] | None]]:
+) -> list[TemporalRatioRow]:
     days_2008 = results_2008["_weekday_days"]
     days_2019 = results_2019["_weekday_days"]
     rows = []
@@ -3932,7 +3959,7 @@ def _temporal_day_ratio_rows(
         )
         n_2008, n_2019 = int(mask_2008.sum()), int(mask_2019.sum())
         if min(n_2008, n_2019) < MIN_CELL_N:
-            rows.append((category, "-", n_2008, n_2019, None, None))
+            rows.append(TemporalRatioRow(category, "-", n_2008, n_2019, None, None))
             continue
         ratio, ci = daily_energy.bootstrap_ratio_ci(
             days_2008["ident_men"][mask_2008],
@@ -3944,13 +3971,13 @@ def _temporal_day_ratio_rows(
             n_reps=n_reps,
             seed=seed + index,
         )
-        rows.append((category, "-", n_2008, n_2019, ratio, ci))
+        rows.append(TemporalRatioRow(category, "-", n_2008, n_2019, ratio, ci))
     return rows
 
 
 def _temporal_person_budget_rows(
     results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
-) -> list[tuple[str, str, int, int, float | None, tuple[float, float] | None]]:
+) -> list[TemporalRatioRow]:
     rows = []
     for index, category in enumerate((*daily_energy.POPULATION_CATEGORIES, "overall")):
         year_data = []
@@ -3972,7 +3999,7 @@ def _temporal_person_budget_rows(
         (days_2019, persons_2019, day_mask_2019, person_mask_2019) = year_data[1]
         n_2008, n_2019 = int(person_mask_2008.sum()), int(person_mask_2019.sum())
         if min(n_2008, n_2019) < MIN_CELL_N:
-            rows.append((category, "-", n_2008, n_2019, None, None))
+            rows.append(TemporalRatioRow(category, "-", n_2008, n_2019, None, None))
             continue
         seed_2008, seed_2019 = np.random.SeedSequence(seed + index).spawn(2)
         point_2008, reps_2008 = daily_energy.bootstrap_person_value_replicates(
@@ -3998,13 +4025,24 @@ def _temporal_person_budget_rows(
         ratio, ci = daily_energy.bootstrap_replicate_ratio_ci(
             point_2008, reps_2008, point_2019, reps_2019
         )
-        rows.append((category, "-", n_2008, n_2019, ratio, ci))
+        rows.append(
+            TemporalRatioRow(
+                category,
+                "-",
+                n_2008,
+                n_2019,
+                ratio,
+                ci,
+                estimate_2008=point_2008,
+                estimate_2019=point_2019,
+            )
+        )
     return rows
 
 
 def _temporal_density_ratio_rows(
     results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
-) -> list[tuple[str, str, int, int, float | None, tuple[float, float] | None]]:
+) -> list[TemporalRatioRow]:
     days_2008 = results_2008["_weekday_days"]
     days_2019 = results_2019["_weekday_days"]
     rows = []
@@ -4019,7 +4057,9 @@ def _temporal_density_ratio_rows(
             )
             n_2008, n_2019 = int(mask_2008.sum()), int(mask_2019.sum())
             if min(n_2008, n_2019) < MIN_CELL_N:
-                rows.append((category, density, n_2008, n_2019, None, None))
+                rows.append(
+                    TemporalRatioRow(category, density, n_2008, n_2019, None, None)
+                )
             else:
                 ratio, ci = daily_energy.bootstrap_ratio_ci(
                     days_2008["ident_men"][mask_2008],
@@ -4031,13 +4071,15 @@ def _temporal_density_ratio_rows(
                     n_reps=n_reps,
                     seed=seed + index,
                 )
-                rows.append((category, density, n_2008, n_2019, ratio, ci))
+                rows.append(
+                    TemporalRatioRow(category, density, n_2008, n_2019, ratio, ci)
+                )
             index += 1
     return rows
 
 
 def _format_temporal_ratio_table(
-    rows: list[tuple[str, str, int, int, float | None, tuple[float, float] | None]],
+    rows: list[TemporalRatioRow],
     *,
     margin: float,
     secondary_margin: float,
@@ -4049,25 +4091,23 @@ def _format_temporal_ratio_table(
         "| Category"
         + group_header
         + " | n 2008 | n 2019 | Ratio 2019/2008 | 90% CI | "
-        + f"Equivalent at ±{margin:.0%} | Equivalent at ±{secondary_margin:.0%} |",
+        + f"±{margin:.0%} verdict | ±{secondary_margin:.0%} verdict |",
         "|---" + group_separator + "|---|---|---|---|---|---|",
     ]
-    for category, group, n_2008, n_2019, ratio, ci in rows:
-        group_cell = f" | {group}" if with_group else ""
-        if ratio is None or ci is None:
+    for row in rows:
+        group_cell = f" | {row.group}" if with_group else ""
+        if row.ratio is None or row.ci is None:
             lines.append(
-                f"| {category}{group_cell} | {n_2008} | {n_2019} | - | - | - | - |"
+                f"| {row.category}{group_cell} | {row.n_2008} | {row.n_2019} | "
+                "- | - | - | - |"
             )
             continue
-        equivalent_margin = ci[0] >= 1 - margin and ci[1] <= 1 + margin
-        equivalent_secondary = (
-            ci[0] >= 1 - secondary_margin and ci[1] <= 1 + secondary_margin
-        )
-        verdict_margin = "yes" if equivalent_margin else "no"
-        verdict_secondary = "yes" if equivalent_secondary else "no"
+        verdict_margin = _equivalence_verdict(row.ci, margin)
+        verdict_secondary = _equivalence_verdict(row.ci, secondary_margin)
         lines.append(
-            f"| {category}{group_cell} | {n_2008} | {n_2019} | {ratio:.3f} | "
-            f"[{ci[0]:.3f}, {ci[1]:.3f}] | {verdict_margin} | "
+            f"| {row.category}{group_cell} | {row.n_2008} | {row.n_2019} | "
+            f"{row.ratio:.3f} | "
+            f"[{row.ci[0]:.3f}, {row.ci[1]:.3f}] | {verdict_margin} | "
             f"{verdict_secondary} |"
         )
     return lines
@@ -4086,10 +4126,11 @@ def _format_temporal_equivalence(
         "## Temporal equivalence, 2008 to 2019",
         "",
         f"Ratios are 2019/2008; the 90% CI pairs replicate b from two "
-        f"independent {n_reps}-replicate household bootstraps. `yes` means "
-        "the full interval is within the margin; `no` means equivalence "
-        "was not established. Cells with fewer than 50 weekday respondents "
-        "in either year are suppressed.",
+        f"independent {n_reps}-replicate household bootstraps. `equivalent` means "
+        "the full interval is within the margin; `different` means the "
+        "interval lies wholly outside it; otherwise the verdict is "
+        "`inconclusive`. Cells with fewer than 50 weekday respondents in "
+        "either year are suppressed.",
         "",
         "### Daily time, weekday days with trips (needs scope)",
         "",
