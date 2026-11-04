@@ -155,17 +155,17 @@ Direct producer-weighted local-trip total divided by the full respondent roster.
 
 | Category | 2008 (min) | 2008 95% CI | 2019 (min) | 2019 95% CI | 2019 - 2008 |
 |---|---|---|---|---|---|
-| children_6_17 | 40.0 | [37.5, 42.5] | 42.3 | [39.5, 45.3] | +2.3 |
-| employed | 64.5 | [62.5, 66.0] | 70.5 | [68.5, 72.5] | +6.0 |
-| unemployed | 46.5 | [42.0, 51.5] | 54.7 | [47.7, 61.6] | +8.2 |
-| retired | 33.0 | [31.5, 35.0] | 35.8 | [34.3, 37.1] | +2.8 |
-| other_inactive | 48.5 | [45.0, 52.0] | 53.9 | [49.1, 59.2] | +5.4 |
-| overall | 50.5 | [49.5, 52.0] | 54.3 | [53.1, 55.9] | +3.8 |
+| children_6_17 | 40.0 | [37.7, 42.4] | 42.3 | [39.5, 45.3] | +2.4 |
+| employed | 64.4 | [62.7, 66.2] | 70.5 | [68.5, 72.5] | +6.1 |
+| unemployed | 46.7 | [42.1, 51.5] | 54.7 | [47.7, 61.6] | +8.0 |
+| retired | 33.0 | [31.3, 34.8] | 35.8 | [34.3, 37.1] | +2.8 |
+| other_inactive | 48.4 | [44.9, 51.8] | 53.9 | [49.1, 59.2] | +5.5 |
+| overall | 50.5 | [49.5, 51.8] | 54.3 | [53.1, 55.9] | +3.8 |
 
 
 ## Temporal equivalence, 2008 to 2019
 
-Ratios are 2019/2008; the 90% CI pairs replicate b from two independent 200-replicate household bootstraps. `equivalent` means the full interval is within the margin; `different` means it lies wholly outside; otherwise the verdict is `inconclusive`. Cells with fewer than 50 weekday respondents in either year are suppressed.
+Ratios are 2019/2008; the 90% CI pairs replicate b from two independent 200-replicate household bootstraps. `equivalent` means the full interval is within the margin; `different` means the interval lies wholly outside it; otherwise the verdict is `inconclusive`. Cells with fewer than 50 weekday respondents in either year are suppressed.
 
 ### Daily time, weekday days with trips (needs scope)
 
@@ -219,3 +219,4 @@ Ratios are 2019/2008; the 90% CI pairs replicate b from two independent 200-repl
 ![compare_time_by_category](step11_compare/compare_time_by_category.png)
 
 ![compare_energy_time](step11_compare/compare_energy_time.png)
+
