@@ -3668,6 +3668,7 @@ class MeasurementLedger:
     rows: tuple[MeasurementLedgerRow, ...]
     observed: np.ndarray
     residual_bounds: np.ndarray
+    residual_bounds_with_composition: np.ndarray
     n: int
     diagnostics: tuple[str, ...]
 
@@ -4002,8 +4003,13 @@ def measurement_ledger(
             "from the residual.",
         )
     )
-    removable = [row.bounds for row in rows if row.key in "abcef"]
-    residual_bounds = observed[:, None] - np.sum(removable, axis=0)[:, ::-1]
+    residual_effects = {row.key: row.bounds for row in rows if row.key in "abefg"}
+    residual_bounds = observed[:, None] - np.sum(
+        [residual_effects[key] for key in "abef"], axis=0
+    )[:, ::-1]
+    residual_bounds_with_composition = observed[:, None] - np.sum(
+        [residual_effects[key] for key in "abefg"], axis=0
+    )[:, ::-1]
     diagnostics = []
     delta_trips = observed[1]
     delta_trip_reps = reps_b[:, 1] - reps_a[:, 1]
@@ -4042,7 +4048,12 @@ def measurement_ledger(
         "not added together.",
     ]
     return MeasurementLedger(
-        tuple(rows), observed, residual_bounds, n, tuple(diagnostics)
+        tuple(rows),
+        observed,
+        residual_bounds,
+        residual_bounds_with_composition,
+        n,
+        tuple(diagnostics),
     )
 
 
@@ -4098,7 +4109,10 @@ def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
             )
     if ledger.n >= MIN_CELL_N:
         lines += ["", *[f"- {note}" for note in ledger.diagnostics]]
-    residual_n = min(ledger.n, *(row.n for row in ledger.rows if row.key in "abcef"))
+    residual_n = min(ledger.n, *(row.n for row in ledger.rows if row.key in "abef"))
+    composition_residual_n = min(
+        residual_n, next(row.n for row in ledger.rows if row.key == "g")
+    )
     lines += [
         "",
         "#### Residual change",
@@ -4108,20 +4122,29 @@ def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
         "| Observed change | "
         + " | ".join(_suppress(ledger.n, _num(v, 3)) for v in ledger.observed)
         + " |",
-        "| Residual range | "
+        "| Residual (removing a, b, e, f) | "
         + " | ".join(
             _suppress(residual_n, f"[{_num(lo, 3)}, {_num(hi, 3)}]")
             for lo, hi in ledger.residual_bounds
         )
         + " |",
+        "| Residual (also removing g, composition) | "
+        + " | ".join(
+            _suppress(
+                composition_residual_n, f"[{_num(lo, 3)}, {_num(hi, 3)}]"
+            )
+            for lo, hi in ledger.residual_bounds_with_composition
+        )
+        + " |",
         "",
-        "Residual bounds = observed change minus the highest/lowest "
-        "combinations of bounds for a, b, c, e and f; equivalently add "
-        "the short-trip restoration while removing a, b, c and f. "
-        "These are sensitivity ranges, not a confidence interval: CIs "
+        "Both residual ranges exclude c (motive processing), since the main "
+        "comparison already uses the harmonised motive rule. The first removes "
+        "a, b, e and f; the second also removes g (composition). Each range is "
+        "observed change minus the highest/lowest combinations of the selected "
+        "effect bounds. These are sensitivity ranges, not a confidence interval: CIs "
         "are not added across rows, and overlapping checks are not an "
-        "identified causal decomposition. Distance and composition are "
-        "excluded. Missing required effects make the residual unavailable.",
+        "identified causal decomposition. Distance is excluded. Missing "
+        "required effects make the corresponding residual unavailable.",
     ]
     return lines
 

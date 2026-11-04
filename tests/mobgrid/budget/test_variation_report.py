@@ -5,6 +5,7 @@ every test stays well under 10 s)."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import duckdb
@@ -983,6 +984,13 @@ def _ledger_inputs(*, trips_2019: int = 1) -> tuple[SurveyFrames, SurveyFrames, 
             variation_report.bootstrap_composition(a, b, "V2", n_reps=N_REPS, seed=0)
         ],
     }
+    results["b1_rows"] = [
+        replace(
+            results["b1_rows"][0],
+            ledger_effect=np.array([2.0, 0.5, 1.0]),
+            ledger_bounds=np.array([[1.0, 3.0], [0.2, 0.8], [0.5, 1.5]]),
+        )
+    ]
     return a, b, results
 
 
@@ -1017,15 +1025,22 @@ def test_measurement_ledger_reuses_results_and_preserves_effect_signs(
     assert "decomposition only" in rows["d"].note
     assert rows["e"].effect == pytest.approx([-2.0, -1.0, 16.5])
     assert rows["f"].effect == pytest.approx([7.5, 0.0, 7.5])
-    assert rows["g"].effect == pytest.approx([0.0, 0.0, 0.0], abs=1e-10)
+    assert rows["g"].effect == pytest.approx([2.0, 0.5, 1.0])
     np.testing.assert_allclose(
         ledger.residual_bounds,
-        [[-9.5, -6.5], [0.0, 0.0], [-16.0, -14.5]],
+        [[-4.5, -1.5], [0.0, 0.0], [-11.0, -9.5]],
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        ledger.residual_bounds_with_composition,
+        [[-7.5, -2.5], [-0.8, -0.2], [-12.5, -10.0]],
         atol=1e-10,
     )
     text = "\n".join(variation_report._format_measurement_ledger(ledger))
     assert "### C4. Measurement ledger" in text
     assert "Residual change" in text
+    assert "removing a, b, e, f" in text
+    assert "also removing g, composition" in text
     assert "positive effect" in text
     assert "restoration" in text
     assert "100.0%" in text
@@ -1180,7 +1195,8 @@ def test_measurement_ledger_does_not_invent_duration_when_no_2008_short_trips() 
     assert np.isnan(short.effect[0]) and np.isnan(short.effect[2])
     assert "unavailable" in short.note
     text = "\n".join(variation_report._format_measurement_ledger(ledger))
-    assert "| Residual range | - | - | - |" in text
+    assert "| Residual (removing a, b, e, f) | - | - | - |" in text
+    assert "| Residual (also removing g, composition) | - | - | - |" in text
     assert "nan" not in text
 
 
@@ -1213,7 +1229,8 @@ def test_measurement_ledger_does_not_leak_a_suppressed_recall_effect() -> None:
     )
     text = "\n".join(variation_report._format_measurement_ledger(ledger))
     assert "| b. Recall lag | - | - | - | - | A1 |" in text
-    assert "| Residual range | - | - | - |" in text
+    assert "| Residual (removing a, b, e, f) | - | - | - |" in text
+    assert "| Residual (also removing g, composition) | - | - | - |" in text
 
 
 @pytest.mark.parametrize(
