@@ -157,7 +157,7 @@ def _compute_motive_decomposition(
     con: duckdb.DuckDBPyConnection, mode_group: str
 ) -> list[tuple]:
     """Section 9.9 point 1 follow-up ("decompose energy per motive"): one
-    row per ``MOT_SEQ_COMPL`` motive among ``mode_group``'s trips -- n,
+    row per harmonised trip motive among ``mode_group``'s trips -- n,
     weighted n (`pond_jour`, trip-weighted, as elsewhere in this report),
     weighted energy (both rate sets) and mean distance/duration -- sorted
     by weighted energy, largest first."""
@@ -3007,7 +3007,7 @@ def _format_group_table_by_panel(
 def _format_motive_table(
     rows: list[tuple], *, mode_label: str = "cycling"
 ) -> list[str]:
-    """Trip/energy share by `MOT_SEQ_COMPL` motive (section 9.9 point 1
+    """Trip/energy share by harmonised trip motive (section 9.9 point 1
     follow-up, "decompose energy per motive"), largest energy share
     first, plus a needs-excluded (`NEEDS_EXCLUDED_MOTIVE_CODES`)
     rollup row -- the evidence behind this report's needs-only scope."""
@@ -3431,7 +3431,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "Every table and figure above and below is restricted to this "
         "scope (2026-10-20 project decision, not an optional variant): "
-        "trips whose corrected motive (`motive`, `MOT_SEQ_COMPL`) is "
+        "trips whose harmonised trip motive is "
         'sport (7.6), a destination-less stroll (7.7, "se promener sans '
         'destination precise"), going to a place to walk/ride (7.8, a '
         "destination exists, but the movement itself is the point), or "
@@ -3654,10 +3654,11 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "### Cycling energy by motive (point 1 follow-up)",
         "",
-        "`MOT_SEQ_COMPL`, EMP's own chain-level, corrected trip purpose "
-        '(unlike the raw `MMOTIFDES`); excludes "return home"/"return '
-        'to residence" codes 1.1-1.3 (a return leg is recoded to the '
-        "purpose of the outward leg it closes). Full, pre-exclusion "
+        "Trip motive uses `MMOTIFDES`, except returns home or to a "
+        "residence (codes 1.1-1.3), which take the origin motive from "
+        "`MOTPREC`, harmonised with ENTD 2008. This is a trip-level table; "
+        "`MOT_SEQ_COMPL` is only used on unique sequences in the step-12 "
+        "sequence-level option. Full, pre-exclusion "
         "dataset (unlike every other table in this report): this is the "
         "evidence behind the needs-only scope above, not itself scoped "
         "to it; see also F9 for the same breakdown, every mode, "

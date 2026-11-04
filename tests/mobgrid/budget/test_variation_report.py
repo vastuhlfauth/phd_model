@@ -842,12 +842,14 @@ def test_cli_writes_report_on_synthetic_data(
     assert "declared" not in c2
     assert "C3. Trips by motive" in report
     assert "motive coding, not behaviour" in report
-    assert "C3 sensitivity: EMP 2019 producer sequence motive" in report
+    assert "C3 option: EMP 2019 sequence activity (`MOT_SEQ_COMPL`)" in report
     assert "MOT_SEQ_COMPL" in report
     assert "trips under 1 km (crow-fly)" in report
     assert "C4. Measurement ledger" in report
     assert "Residual change" in report
-    assert report.index("C3 sensitivity") < report.index("C4. Measurement ledger")
+    assert report.index("C3 option: EMP 2019 sequence activity") < report.index(
+        "C4. Measurement ledger"
+    )
     assert report.index("C4. Measurement ledger") < report.index("C5.")
     assert "C5. Official-scope replication" in report
     assert "IMMODEP_A`-`G" in report
@@ -949,12 +951,6 @@ def _ledger_inputs(*, trips_2019: int = 1) -> tuple[SurveyFrames, SurveyFrames, 
         ("février", "vendredi", float("nan"), [50.0] * trips_2019),
     ]
     b = _ledger_frames(specs)
-    producer = _ledger_frames(
-        [
-            (month, day, lag, [value + 5.0 for value in values])
-            for month, day, lag, values in specs
-        ]
-    )
     config = _measurement_config()
     ca = variation_report.common_distance_frames(a, "crow_fly_km")
     cb = variation_report.common_distance_frames(b, "crow_fly_km")
@@ -970,9 +966,6 @@ def _ledger_inputs(*, trips_2019: int = 1) -> tuple[SurveyFrames, SurveyFrames, 
         },
         "motive_rates": variation_report.motive_rate_checks(
             a, b, config=config, n_reps=N_REPS, seed=0
-        ),
-        "motive_rates_producer": variation_report.motive_rate_checks(
-            a, producer, config=config, n_reps=N_REPS, seed=0
         ),
         "b2_rows": variation_report.b2_decompositions(
             ca, cb, n_reps=N_REPS, seed=0, categories=()
@@ -1016,11 +1009,10 @@ def test_measurement_ledger_reuses_results_and_preserves_effect_signs(
         a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
     )
     rows = {row.key: row for row in ledger.rows}
-    assert tuple(rows) == tuple("abcdefg")
+    assert tuple(rows) == tuple("abdefg")
     assert ledger.observed == pytest.approx([15.0, -1.0, 25.0])
     np.testing.assert_allclose(rows["a"].bounds, [[1.0, 4.0], [0, 0], [0.5, 2.0]])
     assert rows["b"].effect == pytest.approx([10.0, 0.0, 10.0])
-    assert rows["c"].effect == pytest.approx([5.0, 0.0, 5.0])
     assert rows["d"].effect == pytest.approx([0.0, 0.0, 0.0])
     assert "decomposition only" in rows["d"].note
     assert rows["e"].effect == pytest.approx([-2.0, -1.0, 16.5])

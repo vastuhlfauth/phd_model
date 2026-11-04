@@ -21,7 +21,8 @@ _K_DEPLOC_HEADER = (
     "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,mobloc,MORIDOM,"
     "DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,DENSITECOM_ORI,DENSITECOM_DES,"
     "MMOTIFDES,MOT_SEQ_COMPL,STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,"
-    "MTPSATTENT,NEW_VAC_SCOL,dVO_ORIDES,MDISTTOT_decl,indic_dist_corr,MOTPREC,dist_ign"
+    "MTPSATTENT,NEW_VAC_SCOL,dVO_ORIDES,MDISTTOT_decl,indic_dist_corr,MOTPREC,"
+    "dist_ign,IDENT_SEQ"
 )
 _UU = "C,C,5,2"  # STATUTCOM_UU_ORI, STATUTCOM_UU_DES, MTEMPSMAP, MTPSATTENT
 
@@ -33,9 +34,8 @@ _UU = "C,C,5,2"  # STATUTCOM_UU_ORI, STATUTCOM_UU_DES, MTEMPSMAP, MTPSATTENT
 # walk is a leisure loop (MMOTIFDES 7.7, "se promener sans destination
 # precise"); every other trip is a generic purpose (1.1, "retour au
 # domicile"). ident_ind 2's cycle trip has MOT_SEQ_COMPL 7.6 ("sport"),
-# covering the motive decomposition's needs-excluded rollup (round 8: this
-# trip is also excluded from the main, needs-only-scoped day_summary, so
-# ident_ind 2 has no day_mode_group='cycle' row there -- by design).
+# which is retained only for the step-12 sequence-level option; it does not
+# override the harmonised trip motive.
 # ident_ind 12 (walk) and 13 (cycle) have a needs-only-scoped purpose
 # (9.1), so v0/P0 calibration (``daily_energy.calibrate_v0_kmh``/
 # ``calibrate_p0``, needs-only scoped like every other step 11 query)
@@ -142,7 +142,15 @@ def write_synthetic_emp_zip(path: Path) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             "5. k_deploc_public_V4.csv",
-            "\n".join([_K_DEPLOC_HEADER, *_K_DEPLOC_ROWS]),
+            "\n".join(
+                [
+                    _K_DEPLOC_HEADER,
+                    *[
+                        f"{row},SEQ-{row.split(',')[2]}"
+                        for row in _K_DEPLOC_ROWS
+                    ],
+                ]
+            ),
         )
         archive.writestr(
             "tcm_ind_kish_public_V3.csv",

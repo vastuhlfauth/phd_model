@@ -149,12 +149,8 @@ OTHER_MODE_DESCRIPTION = (
     "(mtp 9.1, missing, or the 9999 refusal code)"
 )
 
-#: `MOT_SEQ_COMPL`'s own labels ("Motif corrige detaille de la sequence",
-#: the chain-level, corrected trip purpose; unlike the raw, trip-level
-#: `MMOTIFDES`/is_loop_trip, it has no "return home"/"return to
-#: residence" codes 1.1-1.3, since a return leg is recoded to the
-#: purpose of the outward leg it closes). Shared across surveys: ENTD
-#: 2008's `V2_MMOTIFDES`/`V2_MMOTIFORI` are converted to these same
+#: Trip-motive labels after harmonising the surveys' purpose codes.
+#: ENTD 2008's `V2_MMOTIFDES`/`V2_MMOTIFORI` are converted to these same
 #: codes (`docs/data/entd2008.md`). Used by
 #: `emp._compute_motive_decomposition` (section 9.9 point 1 follow-up,
 #: "decompose energy per motive"), labels from
@@ -197,8 +193,8 @@ MOTIVE_LABEL_BY_CODE = {
 
 #: Section 9.9's scope (2026-10-20 project decision): the re-estimation
 #: is about commuting and travel for needs fulfilment, not recreational
-#: movement for its own sake. Trips whose corrected motive (`motive`,
-#: `MOT_SEQ_COMPL`, or ENTD 2008's converted equivalent) is sport (7.6),
+#: movement for its own sake. Trips whose harmonised motive (`motive`)
+#: is sport (7.6),
 #: a destination-less stroll (7.7, the same purpose as `is_loop_trip`),
 #: "going to a place to walk/ride" (7.8, destination exists, but the
 #: movement itself is the point), or any top-level motive group 8

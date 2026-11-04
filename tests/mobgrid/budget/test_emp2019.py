@@ -147,34 +147,31 @@ def test_carpool_is_distinguished_from_household_passenger_by_companions(
     assert household_kh != pytest.approx(carpool_kh)
 
 
-def test_motive_column_reads_mot_seq_compl(
+def test_trip_motive_uses_harmonised_return_home_rule_by_default(
     trip_legs: duckdb.DuckDBPyConnection,
 ) -> None:
-    # ident_ind 2's cycle trip has MOT_SEQ_COMPL 7.6 ("sport").
-    motive = trip_legs.sql(
-        "SELECT motive FROM trip_legs WHERE ident_ind = 2"
-    ).fetchone()[0]
-    assert motive == pytest.approx(7.6)
-
-
-def test_motive_source_can_apply_raw_return_home_reassignment(
-    trip_legs: duckdb.DuckDBPyConnection,
-) -> None:
-    config = load_energy_config(CONFIG_PATH)
-    emp2019.build_trip_legs(trip_legs, config, motive_source="raw_return_home")
-
+    # ident_ind 2 returns home (MMOTIFDES=1.1) from a 9.1 trip motive.
     motive = trip_legs.sql(
         "SELECT motive FROM trip_legs WHERE ident_ind = 2"
     ).fetchone()[0]
     assert motive == pytest.approx(9.1)
 
 
-def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
+def test_mot_seq_compl_is_counted_once_per_sequence(
+    trip_legs: duckdb.DuckDBPyConnection,
+) -> None:
+    rows, missing_sequence_id_rows = emp2019.sequence_motive_summary(trip_legs)
+    assert missing_sequence_id_rows == 0
+    assert sum(row[1] for row in rows) == 12
+    assert (7.6, 1, 1) in rows
+
+
+def test_trip_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
     """A tiny, two-row k_deploc (so DuckDB's CSV type inference sees more
     than one value per column, avoiding single-row inference quirks
-    unrelated to this test): one trip with MOT_SEQ_COMPL 9999 (the
-    refusal code), the other with a normal motive, confirming only the
-    former reads back as NULL."""
+    unrelated to this test): one trip with MMOTIFDES 9999 (the refusal
+    code), the other with a normal motive, confirming only the former
+    reads back as NULL."""
     config = load_energy_config(CONFIG_PATH)
     zip_path = tmp_path / "emp2019-data.zip"
     with zipfile.ZipFile(zip_path, "w") as archive:
@@ -185,9 +182,9 @@ def test_motive_is_null_for_the_refusal_code(tmp_path: Path) -> None:
                     "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
                     "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
                     "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
-                    "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
-                    "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9999,C,C,5,2",
-                    "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,1.1,9.1,C,C,5,2",
+                    "MOTPREC,STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                    "D1,M1,1,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,9999,9999,9999,C,C,5,2",
+                    "D2,M2,2,1,100.0,1,1,1,20,1.5,0,0,1.1,1,1,9.1,9.1,9.1,C,C,5,2",
                 ]
             ),
         )
@@ -256,13 +253,13 @@ def test_implausibly_fast_cycle_trip_has_its_distance_corrected(
                     "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
                     "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
                     "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
-                    "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                    "MOTPREC,STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
                     # 4 km in 20 min = 12 km/h, not flagged (two respondents,
                     # for a clean median).
-                    "D1,M1,1,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
-                    "D2,M2,2,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    "D1,M1,1,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,9.1,9.1,9.1,C,C,5,2",
+                    "D2,M2,2,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,9.1,9.1,9.1,C,C,5,2",
                     # 50 km in 10 min = 300 km/h, flagged (> 35 km/h).
-                    "D3,M3,3,1,100.0,1,1,1,10,50.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    "D3,M3,3,1,100.0,1,1,1,10,50.0,0,0,2.1,1,1,9.1,9.1,9.1,C,C,5,2",
                 ]
             ),
         )
@@ -360,11 +357,11 @@ def test_stop_energy_per_stop_is_the_same_regardless_of_declared_speed(
                     "IDENT_DEP,IDENT_MEN,IDENT_IND,num_dep,POND_JOUR,TYPEJOUR,"
                     "mobloc,MORIDOM,DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,"
                     "DENSITECOM_ORI,DENSITECOM_DES,MMOTIFDES,MOT_SEQ_COMPL,"
-                    "STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
+                    "MOTPREC,STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,MTPSATTENT",
                     # 4 km in 20 min = 12 km/h, not flagged.
-                    "D1,M1,1,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    "D1,M1,1,1,100.0,1,1,1,20,4.0,0,0,2.1,1,1,9.1,9.1,9.1,C,C,5,2",
                     # 50 km in 10 min = 300 km/h, flagged (> 35 km/h).
-                    "D2,M2,2,1,100.0,1,1,1,10,50.0,0,0,2.1,1,1,1.1,9.1,C,C,5,2",
+                    "D2,M2,2,1,100.0,1,1,1,10,50.0,0,0,2.1,1,1,9.1,9.1,9.1,C,C,5,2",
                 ]
             ),
         )

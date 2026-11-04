@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
-from typing import Literal
 
 import duckdb
 import numpy as np
@@ -42,8 +41,6 @@ from mobgrid.budget.trip_legs import (
     build_trip_legs as _shared_build_trip_legs,
 )
 from mobgrid.energy.rates import EnergyConfig
-
-MotiveSource = Literal["producer", "raw_return_home"]
 
 #: Repository root, three levels above this file (packages/mobgrid/budget).
 ROOT = Path(__file__).resolve().parents[3]
@@ -226,41 +223,17 @@ def missing_income_breakdown(con: duckdb.DuckDBPyConnection) -> dict:
     }
 
 
-def build_trips_norm(
-    con: duckdb.DuckDBPyConnection, *, motive_source: MotiveSource = "producer"
-) -> None:
+def build_trips_norm(con: duckdb.DuckDBPyConnection) -> None:
     """Create the ``trips_norm`` view from EMP 2019's raw tables: the
     survey-specific half of the trip-leg reconstruction
     (``docs/data/entd2008.md``'s "Columns of the normalised trip view,
-    by survey"). ``producer`` preserves ``MOT_SEQ_COMPL``; ``raw_return_home``
-    applies ENTD 2008's raw destination/origin reassignment. The latter is
-    used only for the step-12 harmonised comparison.
+    by survey"). The trip motive uses `MMOTIFDES`, taking `MOTPREC` for
+    return-home/residence codes 1.1-1.3, harmonised with ENTD 2008.
+    `MOT_SEQ_COMPL` is not a trip motive; see
+    `sequence_motive_summary` for its sequence-level use.
     ``mobgrid.budget.trip_legs.build_trip_legs`` reads this view onward,
     shared with ENTD 2008.
     """
-    if motive_source not in ("producer", "raw_return_home"):
-        raise ValueError(f"unknown motive_source: {motive_source!r}")
-
-    motive_sql = f"""
-        CASE WHEN d.MOT_SEQ_COMPL = {trip_legs._dbl(9999.0)} THEN NULL
-            ELSE d.MOT_SEQ_COMPL
-        END
-    """
-    if motive_source == "raw_return_home":
-        motive_sql = f"""
-            CASE
-                WHEN d.MMOTIFDES IN (
-                    {trip_legs._dbl(1.1)},
-                    {trip_legs._dbl(1.2)},
-                    {trip_legs._dbl(1.3)}
-                ) THEN CASE
-                    WHEN d.MOTPREC = {trip_legs._dbl(9999.0)} THEN NULL
-                    ELSE d.MOTPREC
-                END
-                WHEN d.MMOTIFDES = {trip_legs._dbl(9999.0)} THEN NULL
-                ELSE d.MMOTIFDES
-            END
-        """
 
     build_respondent_income(con)
     population_category_sql = trip_legs._case_sql(
@@ -334,7 +307,18 @@ def build_trips_norm(
             -- code 7.8 ("go to a place for walking") has a destination
             -- and does not count.
             d.MMOTIFDES = {trip_legs._dbl(7.7)} AS is_loop_trip,
-            ({motive_sql}) AS motive,
+            CASE
+                WHEN d.MMOTIFDES IN (
+                    {trip_legs._dbl(1.1)},
+                    {trip_legs._dbl(1.2)},
+                    {trip_legs._dbl(1.3)}
+                ) THEN CASE
+                    WHEN d.MOTPREC = {trip_legs._dbl(9999.0)} THEN NULL
+                    ELSE d.MOTPREC
+                END
+                WHEN d.MMOTIFDES = {trip_legs._dbl(9999.0)} THEN NULL
+                ELSE d.MMOTIFDES
+            END AS motive,
             ({uu_status_ori_sql}) AS uu_status_ori,
             ({uu_status_des_sql}) AS uu_status_des,
             ({uu_status_res_sql}) AS uu_status_res,
@@ -363,6 +347,79 @@ def build_trips_norm(
     """)
 
 
+def sequence_motive_summary(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    sample_pct: float | None = None,
+) -> tuple[list[tuple[float | None, int, int]], int]:
+    """Count EMP 2019 sequences once by dominant activity (`MOT_SEQ_COMPL`).
+
+    Returns ``(motive, unique_sequences, respondents)`` rows and the number
+    of trip rows without an `IDENT_SEQ`. A sequence id must identify one
+    respondent and at most one non-refused sequence motive.
+    """
+    sample_filter = (
+        "TRUE"
+        if sample_pct is None
+        else f"(hash(CAST(IDENT_MEN AS VARCHAR)) % 100) < {float(sample_pct):g}"
+    )
+    inconsistent = con.sql(f"""
+        WITH sequence_checks AS (
+            SELECT ident_seq,
+                count(DISTINCT ident_ind) AS respondents,
+                count(DISTINCT CASE
+                    WHEN TRY_CAST(MOT_SEQ_COMPL AS DOUBLE) = 9999 THEN NULL
+                    ELSE TRY_CAST(MOT_SEQ_COMPL AS DOUBLE)
+                END) AS motives
+            FROM k_deploc
+            WHERE ident_seq IS NOT NULL
+                AND {sample_filter}
+            GROUP BY ident_seq
+        )
+        SELECT ident_seq FROM sequence_checks
+        WHERE respondents != 1 OR motives > 1
+        LIMIT 1
+    """).fetchone()
+    if inconsistent is not None:
+        raise ValueError(
+            "EMP 2019 IDENT_SEQ must map to one respondent and at most one "
+            f"MOT_SEQ_COMPL value; inconsistent sequence {inconsistent[0]!r}"
+        )
+    rows = con.sql(f"""
+        WITH sequences AS (
+            SELECT ident_seq, any_value(ident_ind) AS ident_ind,
+                min(CASE
+                    WHEN TRY_CAST(MOT_SEQ_COMPL AS DOUBLE) = 9999 THEN NULL
+                    ELSE TRY_CAST(MOT_SEQ_COMPL AS DOUBLE)
+                END) AS motive
+            FROM k_deploc
+            WHERE ident_seq IS NOT NULL
+                AND {sample_filter}
+            GROUP BY ident_seq
+        )
+        SELECT motive, count(*) AS unique_sequences,
+            count(DISTINCT ident_ind) AS respondents
+        FROM sequences
+        GROUP BY motive
+        ORDER BY motive NULLS LAST
+    """).fetchall()
+    missing_sequence_id_rows = con.sql(f"""
+        SELECT count(*) FROM k_deploc
+        WHERE ident_seq IS NULL AND {sample_filter}
+    """).fetchone()[0]
+    return (
+        [
+            (
+                float(motive) if motive is not None else None,
+                int(unique_sequences),
+                int(respondents),
+            )
+            for motive, unique_sequences, respondents in rows
+        ],
+        int(missing_sequence_id_rows),
+    )
+
+
 def build_trip_legs(
     con: duckdb.DuckDBPyConnection,
     config: EnergyConfig,
@@ -371,18 +428,16 @@ def build_trip_legs(
     bike_p0_override_w: float | None = None,
     density_source: str | None = None,
     terminal_legs: str = "declared",
-    motive_source: MotiveSource = "producer",
 ) -> None:
     """Build ``trips_norm`` from EMP 2019's raw tables, then ``trip_legs``
     from it (``trip_legs.build_trip_legs``, shared with ENTD 2008).
     ``density_source`` defaults to ``DEFAULT_DENSITY_SOURCE`` ('grid').
-    ``motive_source`` defaults to the producer's ``MOT_SEQ_COMPL``; the
-    step-12 comparison selects ``raw_return_home``.
+    The trip motive always applies the harmonised return-home rule.
     ``terminal_legs`` is ``trip_legs.build_trip_legs``'s own parameter
     (section 9.9's 27 October 2026 decision; see
     ``trip_legs.TERMINAL_LEGS_VARIANTS``), passed straight through.
     """
-    build_trips_norm(con, motive_source=motive_source)
+    build_trips_norm(con)
     _shared_build_trip_legs(
         con,
         config,

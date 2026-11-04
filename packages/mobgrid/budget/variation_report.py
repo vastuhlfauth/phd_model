@@ -454,7 +454,6 @@ def load_frames(
     *,
     density_source: str | None = None,
     zoning_data_path: Path | None = None,
-    motive_source: emp2019.MotiveSource = "raw_return_home",
     sample_pct: float | None = None,
 ) -> SurveyFrames:
     """Build one survey's step-12 frames with explicit motive/density inputs."""
@@ -493,7 +492,6 @@ def load_frames(
                 con,
                 config,
                 density_source=density_source,
-                motive_source=motive_source,
             )
         else:
             survey.build_trip_legs(con, config, density_source=density_source)
@@ -509,6 +507,10 @@ def load_frames(
             "distance_doc": distance_doc(con),
             "official_scope_data": official_data,
         }
+        if survey is emp2019:
+            aux["sequence_motive_summary"] = emp2019.sequence_motive_summary(
+                con, sample_pct=sample_pct
+            )
     finally:
         con.close()
     days = {k: _plain_array(v) for k, v in days.items()}
@@ -1566,10 +1568,11 @@ BASE_CHOICES = [
     "Household cars are not in ENTD 2008's four public step-11 tables: "
     "B1's V3 variant falls back to V2 for the 2008 -> 2019 pair and is "
     "computed fully within EMP 2019 pairs (`JNBVEH`).",
-    "The main 2008 -> 2019 comparison applies the raw return-home "
-    "reassignment to both surveys; EMP 2019's `MOT_SEQ_COMPL` is retained "
-    "as a C3 sensitivity check, with needs scope and groups using that "
-    "selected motive in each table.",
+    "Both surveys use the harmonised trip-motive rule: returns home or to "
+    "a residence (codes 1.1-1.3) take the trip's origin motive. Per SDES's "
+    "November 2024 note, EMP 2019's `MOT_SEQ_COMPL` is the dominant activity "
+    "of a sequence and is reported only once per unique `IDENT_SEQ`, not "
+    "used as a trip motive.",
     "Residence density uses the INSEE grid in both years (ENTD 2008's "
     "2020-zoning SDES supplement, EMP 2019's published grid). The SDES "
     "tables contain no commune codes, so C2 crow-fly distances are not "
@@ -1626,18 +1629,9 @@ def run(
         emp2019_data_path,
         config,
         density_source="grid",
-        motive_source="raw_return_home",
         sample_pct=sample_pct,
     )
     frames_2019_grid = frames_2019
-    frames_2019_producer = load_frames(
-        emp2019,
-        emp2019_data_path,
-        config,
-        density_source="grid",
-        motive_source="producer",
-        sample_pct=sample_pct,
-    )
     variation_config = variation.load_variation_config(
         ROOT / "config" / "variation.yaml"
     )
@@ -1703,7 +1697,6 @@ def run(
             config=variation_config.measurement,
             n_reps=n_reps,
             seed=seed,
-            b_producer=frames_2019_producer,
             results=results,
         )
     )
@@ -3456,6 +3449,45 @@ def _format_daily_rates(rows: list[DailyRateRow], unit: str) -> list[str]:
     return lines
 
 
+def _format_sequence_motive_summary(
+    summary: tuple[list[tuple[float | None, int, int]], int],
+) -> list[str]:
+    """Render EMP's unweighted `MOT_SEQ_COMPL` option at sequence level."""
+    rows, missing_id_rows = summary
+    lines = [
+        "### C3 option: EMP 2019 sequence activity (`MOT_SEQ_COMPL`)",
+        "",
+        "Unweighted counts; each `IDENT_SEQ` is counted once. "
+        "`MOT_SEQ_COMPL` is the dominant activity of a sequence between "
+        "home, usual workplace and place of study (SDES, November 2024), "
+        "not a trip motive. Cells with fewer than 50 respondents are "
+        "suppressed.",
+        "",
+        "| Sequence activity | Unique sequences | Respondents |",
+        "|---|---:|---:|",
+    ]
+    for motive, sequence_count, respondent_count in rows:
+        label = (
+            "missing/refused"
+            if motive is None
+            else emp2019.MOTIVE_LABEL_BY_CODE.get(motive, f"code {motive:g}")
+        )
+        lines.append(
+            f"| {label} | "
+            f"{_suppress(respondent_count, f'{sequence_count:,}')} | "
+            f"{_suppress(respondent_count, f'{respondent_count:,}')} |"
+        )
+    if not rows:
+        lines.append("| No sequences with an `IDENT_SEQ` | 0 | 0 |")
+    if missing_id_rows:
+        lines += [
+            "",
+            f"{missing_id_rows:,} trip rows without `IDENT_SEQ` are excluded "
+            "from this sequence-level summary.",
+        ]
+    return lines
+
+
 def measurement_checks(
     a: SurveyFrames,
     b: SurveyFrames,
@@ -3463,21 +3495,14 @@ def measurement_checks(
     config: variation.MeasurementConfig,
     n_reps: int,
     seed: int,
-    b_producer: SurveyFrames | None = None,
     results: dict | None = None,
 ) -> list[str]:
     """Render section C, reusing B2/B4b and household bootstrap (section 9.9)."""
     rounding = rounding_checks(a, b, config=config, seed=seed)
     rates = motive_rate_checks(a, b, config=config, n_reps=n_reps, seed=seed)
-    producer_rates = (
-        motive_rate_checks(a, b_producer, config=config, n_reps=n_reps, seed=seed)
-        if b_producer is not None
-        else None
-    )
     if results is not None:
         results["rounding_checks"] = rounding
         results["motive_rates"] = rates
-        results["motive_rates_producer"] = producer_rates
     hidden_rates = {"total trips", "total minutes", "short-trip minutes"}
     lines = [
         "## C. Measurement checks",
@@ -3632,19 +3657,10 @@ def measurement_checks(
             "trips/day with trips",
         ),
     ]
-    if producer_rates is not None:
-        lines += [
-            "",
-            "### C3 sensitivity: EMP 2019 producer sequence motive",
-            "",
-            "Same C3 measures and ENTD 2008 rule as above; EMP 2019 uses "
-            "`MOT_SEQ_COMPL` for both its needs scope and motive groups.",
-            "",
-            *_format_daily_rates(
-                [row for row in producer_rates if row.metric not in hidden_rates],
-                "trips/day with trips",
-            ),
-        ]
+    sequence_summary = b.aux.get("sequence_motive_summary")
+    if sequence_summary is None:
+        raise ValueError("C3 requires the EMP 2019 sequence-level motive summary")
+    lines += ["", *_format_sequence_motive_summary(sequence_summary)]
     return lines
 
 
@@ -3857,29 +3873,6 @@ def measurement_ledger(
             "EMP all days minus lag 1-3 days; missing lag stays in all days. "
             "Paired household-bootstrap 95% CIs."
             + (" No lag 1-3 days: unavailable." if not early_n else ""),
-        )
-    )
-    producer_rates = results["motive_rates_producer"]
-    if producer_rates is None:
-        raise ValueError("C4 requires the C3 producer-motive sensitivity estimates")
-    producer, producer_reps = _ledger_metrics(producer_rates, "b")
-    motive_bounds = np.array(
-        [
-            _ledger_interval(p) - _ledger_interval(h)[::-1]
-            for p, h in zip(producer_reps.T, reps_b.T, strict=True)
-        ]
-    )
-    producer_n = next(row.n_b for row in producer_rates if row.group == "overall")
-    rows.append(
-        MeasurementLedgerRow(
-            "c",
-            "Motive processing",
-            producer - point_b,
-            motive_bounds,
-            "C3 sensitivity",
-            min(n, producer_n),
-            "Producer MOT_SEQ_COMPL minus harmonised change (2008 cancels). "
-            "Envelope of marginal 95% CIs, not a CI for the contrast.",
         )
     )
     crow = results["b2_rows"][0].result

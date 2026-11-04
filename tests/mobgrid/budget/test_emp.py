@@ -92,7 +92,7 @@ _EXPECTED_BASE_CASE_GROUP_TABLE = {
     "car_driver": (1, 100.0, 25.0, 172.8, 176.12, 172.8, 176.12),
     "car_passenger_carpool": (1, 100.0, 25.0, 122.1, 103.5349, 122.1, 103.5349),
     "car_passenger_household": (1, 100.0, 25.0, 118.8, 100.2848, 118.8, 100.2848),
-    "cycle": (1, 100.0, 15.0, 149.526, 150.068, 149.526, 150.068),
+    "cycle": (2, 200.0, 15.0, 149.526, 150.068, 149.526, 150.068),
     "multimodal": (1, 100.0, 50.0, 308.3889, 285.0515, 308.3889, 285.0515),
     "train": (2, 200.0, 60.0, 193.4735, 172.6743, 147.3205, 126.5213),
     "urban_pt": (1, 100.0, 30.0, 156.5889, 136.0155, 156.5889, 136.0155),
@@ -129,9 +129,9 @@ def test_refactor_preserves_emp2019_base_case_group_table(
         for s in results["mode_stats"]
     }
     assert actual == _EXPECTED_BASE_CASE_GROUP_TABLE
-    assert results["n_days"] == 9
-    assert round(results["mean_kh"], 4) == 194.239
-    assert round(results["mean_cp"], 4) == 172.2904
+    assert results["n_days"] == 10
+    assert round(results["mean_kh"], 4) == 189.7677
+    assert round(results["mean_cp"], 4) == 170.0681
 
 
 def test_cli_entd2008_survey_writes_report(
