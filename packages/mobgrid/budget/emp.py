@@ -1561,6 +1561,9 @@ def _figure_f1_trips_per_day(
         ),
     ):
         ci_by_group = {row[0]: row for row in cis}
+        active = [i for i, group in enumerate(groups) if group in ci_by_group]
+        groups = [groups[i] for i in active]
+        matrix = matrix[active]
         x = np.arange(len(groups))
         bottom = np.zeros(len(groups))
         for j, top_motive in enumerate(top_motives):
@@ -3454,8 +3457,9 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "## Section 9.9's scope: commuting and travel for needs fulfilment",
         "",
-        "Every table and figure above and below is restricted to this "
-        "scope (2026-10-20 project decision, not an optional variant): "
+        "Every table and figure above and below is restricted to local "
+        "trips (`mobloc = 1`, including ENTD 2008 `V2_DLOCAL = 1`) that "
+        "fulfil needs (2026-10-20 project decision, not an optional variant): "
         "trips whose harmonised trip motive is "
         'sport (7.6), a destination-less stroll (7.7, "se promener sans '
         'destination precise"), going to a place to walk/ride (7.8, a '

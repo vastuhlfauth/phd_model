@@ -70,6 +70,7 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "Per-person budget, days without trips included" in report
     assert "Direct producer-weighted sum of local" in report
     assert "zero local trips is" in report
+    assert "local trips (`mobloc = 1`, including ENTD 2008 `V2_DLOCAL = 1`)" in report
     assert "±15% verdict" in report
     assert "±10% verdict" in report
 

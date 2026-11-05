@@ -143,6 +143,16 @@ def test_poids_jour_zero_rows_are_dropped(
     assert n == 0
 
 
+def test_v2_dlocal_abroad_code_is_not_local(
+    trips_norm: duckdb.DuckDBPyConnection,
+) -> None:
+    mobloc = trips_norm.sql(
+        "SELECT mobloc FROM trips_norm WHERE ident_dep = 'D7'"
+    ).fetchone()[0]
+
+    assert mobloc == 0
+
+
 def test_sequence_purpose_rule_return_trip_takes_outward_purpose(
     trips_norm: duckdb.DuckDBPyConnection,
 ) -> None:

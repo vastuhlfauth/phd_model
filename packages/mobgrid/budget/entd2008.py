@@ -470,7 +470,7 @@ def build_trips_norm(
             d.IDENT_JOUR AS day_id,
             d.POIDS_JOUR AS pond_jour,
             CAST(d.V2_TYPJOUR AS DOUBLE) AS typejour,
-            (CAST(d.V2_DLOCAL AS DOUBLE) <> 0)::INT AS mobloc,
+            (TRY_CAST(d.V2_DLOCAL AS DOUBLE) = 1)::INT AS mobloc,
             d.NODEP AS num_dep,
             CAST(d.V2_MORIDOM AS DOUBLE) AS moridom,
             coalesce(try_cast(d.v2_mduree AS DOUBLE), d.V2_DUREE) AS duration_min,

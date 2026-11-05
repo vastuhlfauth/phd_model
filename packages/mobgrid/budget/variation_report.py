@@ -165,14 +165,14 @@ WEEKDAY_LABELS = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
 
 @dataclass
 class SurveyFrames:
-    """One survey's step-12 extraction: weekday, needs-scope person-days
-    with trips (``days``) and their trips (``trips``), as numpy column
-    dicts, plus the in-SQL Part A diagnostics (``aux``)."""
+    """One survey's step-12 extraction: weekday person-days and trips,
+    plus the all-trips sensitivity and in-SQL Part A diagnostics."""
 
     name: str
     days: dict[str, np.ndarray]
     trips: dict[str, np.ndarray]
     aux: dict
+    all_trips: SurveyFrames | None = None
 
 
 @dataclass(frozen=True)
@@ -332,11 +332,18 @@ _PERSON_EXT_BY_SURVEY = {
 
 
 def _create_frames_tables(
-    con: duckdb.DuckDBPyConnection, *, sample_pct: float | None
+    con: duckdb.DuckDBPyConnection,
+    *,
+    sample_pct: float | None,
+    scope: str = "needs",
 ) -> None:
-    """Materialise ``vr_trips``/``vr_days``: weekday (typejour = 1),
-    needs-scope trips with a positive day weight, and their person-days,
-    with the step-12 extra columns."""
+    """Materialise weekday trip/day tables for the needs or all-trips scope."""
+    if scope == "needs":
+        scope_sql = trip_legs.NEEDS_ONLY_WHERE_SQL
+    elif scope == "all":
+        scope_sql = "TRUE"
+    else:
+        raise ValueError(f"unknown variation-report scope: {scope!r}")
     mode7_sql = """
         CASE t.mode_group
             WHEN 'cycle' THEN 'bike'
@@ -364,7 +371,7 @@ def _create_frames_tables(
         LEFT JOIN vr_person p ON p.ident_ind = t.ident_ind
         LEFT JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
         WHERE t.typejour = 1 AND t.pond_jour > 0
-            AND ({trip_legs.NEEDS_ONLY_WHERE_SQL})
+            AND ({scope_sql})
             AND ({_sample_sql(sample_pct)})
     """)
     con.sql("""
@@ -398,8 +405,8 @@ def _create_frames_tables(
 
 
 def _needs_scope_removal(con: duckdb.DuckDBPyConnection) -> dict:
-    """A2's scope check: the weighted share of weekday trips and of
-    weekday time removed by the needs scope."""
+    """A2's scope check: the weighted share of weekday trips and time
+    excluded from the local-needs reference scope."""
     row = con.sql(f"""
         SELECT
             sum(pond_jour) FILTER (
@@ -414,6 +421,34 @@ def _needs_scope_removal(con: duckdb.DuckDBPyConnection) -> dict:
     return {
         "share_trips_removed": float(row[0] or 0.0),
         "share_time_removed": float(row[1] or 0.0),
+    }
+
+
+def _local_scope_removal(con: duckdb.DuckDBPyConnection) -> dict[str, float | int]:
+    """Weighted non-local need trips and minutes removed per prior-scope day."""
+    row = con.sql(f"""
+        WITH old_scope_days AS (
+            SELECT day_id, any_value(pond_jour) AS weight,
+                count(*) FILTER (WHERE mobloc IS DISTINCT FROM 1)
+                    AS removed_trips,
+                coalesce(sum(duration_min) FILTER (
+                    WHERE mobloc IS DISTINCT FROM 1
+                ), 0) AS removed_minutes
+            FROM trip_legs
+            WHERE typejour = 1 AND pond_jour > 0
+                AND ({trip_legs.NEEDS_MOTIVE_WHERE_SQL})
+            GROUP BY day_id
+        )
+        SELECT count(*), sum(weight),
+            sum(weight * removed_trips) / nullif(sum(weight), 0),
+            sum(weight * removed_minutes) / nullif(sum(weight), 0)
+        FROM old_scope_days
+    """).fetchone()
+    return {
+        "n_days": int(row[0] or 0),
+        "weighted_days": float(row[1] or 0.0),
+        "trips_per_day_removed": float(row[2] or 0.0),
+        "minutes_per_day_removed": float(row[3] or 0.0),
     }
 
 
@@ -577,10 +612,14 @@ def load_frames(
         _create_frames_tables(con, sample_pct=sample_pct)
         days = con.sql("SELECT * FROM vr_days").fetchnumpy()
         trips = con.sql("SELECT * FROM vr_trips").fetchnumpy()
+        _create_frames_tables(con, sample_pct=sample_pct, scope="all")
+        all_days = con.sql("SELECT * FROM vr_days").fetchnumpy()
+        all_trips = con.sql("SELECT * FROM vr_trips").fetchnumpy()
         official_data = _official_scope_data(con, survey, sample_pct)
         motive_shares, distance_doc = _AUX_BY_SURVEY[survey.SURVEY_NAME]
         aux = {
             "needs_scope_removal": _needs_scope_removal(con),
+            "local_scope_removal": _local_scope_removal(con),
             "raw_motive_shares": motive_shares(con),
             "distance_doc": distance_doc(con),
             "official_scope_data": official_data,
@@ -593,7 +632,19 @@ def load_frames(
         con.close()
     days = {k: _plain_array(v) for k, v in days.items()}
     trips = {k: _plain_array(v) for k, v in trips.items()}
-    return SurveyFrames(name=survey.SURVEY_NAME, days=days, trips=trips, aux=aux)
+    all_trips_frames = SurveyFrames(
+        name=survey.SURVEY_NAME,
+        days={k: _plain_array(v) for k, v in all_days.items()},
+        trips={k: _plain_array(v) for k, v in all_trips.items()},
+        aux={},
+    )
+    return SurveyFrames(
+        name=survey.SURVEY_NAME,
+        days=days,
+        trips=trips,
+        aux=aux,
+        all_trips=all_trips_frames,
+    )
 
 
 def _official_scope_data(
@@ -2354,11 +2405,13 @@ def _format_a2(results: dict) -> list[str]:
         lines.append("")
     removal_2008 = results["needs_removal_2008"]
     removal_2019 = results["needs_removal_2019"]
+    local_2008 = results["local_scope_removal_2008"]
+    local_2019 = results["local_scope_removal_2019"]
     lines += [
         "### Needs scope",
         "",
-        "Weighted share of weekday trips and time removed by the needs "
-        "scope (motives 7.6-7.8 and 8.x):",
+        "Weighted share of weekday trips and time excluded from the reference "
+        "scope (non-local trips and motives 7.6-7.8 and 8.x):",
         "",
         "| Survey | Trips removed | Time removed |",
         "|---|---|---|",
@@ -2366,6 +2419,20 @@ def _format_a2(results: dict) -> list[str]:
         f"{_pct(removal_2008['share_time_removed'])} |",
         f"| EMP 2019 | {_pct(removal_2019['share_trips_removed'])} | "
         f"{_pct(removal_2019['share_time_removed'])} |",
+        "",
+        "The local-trip rule's additional removal relative to the former "
+        "motive-only scope, averaged over that scope's weekday person-days "
+        "with trips (including days with no local trips):",
+        "",
+        "| Survey | Days | Non-local needs trips/day removed | "
+        "Non-local needs min/day removed |",
+        "|---|---:|---:|---:|",
+        f"| ENTD 2008 | {local_2008['n_days']} | "
+        f"{_num(local_2008['trips_per_day_removed'], 2)} | "
+        f"{_num(local_2008['minutes_per_day_removed'])} |",
+        f"| EMP 2019 | {local_2019['n_days']} | "
+        f"{_num(local_2019['trips_per_day_removed'], 2)} | "
+        f"{_num(local_2019['minutes_per_day_removed'])} |",
     ]
     return lines
 
@@ -2438,7 +2505,8 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "# Step 12: what explains the variation of daily travel time",
         "",
         "Generated by `python -m mobgrid.budget.variation_report`. Unit of "
-        "analysis: weekday person-days with at least one trip, needs "
+        "analysis: weekday person-days with at least one local trip in the "
+        "needs "
         "scope, day weights (`POND_JOUR`/`POIDS_JOUR`), as in step 11. "
         "Bootstrap intervals resample households within each survey, "
         f"independently ({results['n_reps']} replicates). Cells of fewer "
@@ -2498,6 +2566,9 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
 #: ambiguous, choose, write the choice in the report under 'Choices
 #: made', and continue").
 BASE_CHOICES = [
+    "The reference needs scope includes local trips only (`mobloc = 1`; "
+    "ENTD 2008 `V2_DLOCAL = 1`). Non-local needs trips are excluded; the "
+    "all-trips sensitivity in B2 keeps them and every motive.",
     "ENTD 2008's recall lag uses the second visit (`MDATENQ2V`, when "
     "trips are collected) minus the described reference weekday "
     "(`V2_DATESEMREF`); the first visit (`DATENQ`) precedes the "
@@ -2623,6 +2694,8 @@ def run(
         },
         "needs_removal_2008": frames_2008.aux["needs_scope_removal"],
         "needs_removal_2019": frames_2019.aux["needs_scope_removal"],
+        "local_scope_removal_2008": frames_2008.aux["local_scope_removal"],
+        "local_scope_removal_2019": frames_2019.aux["local_scope_removal"],
         # A3
         "distance_doc_2008": frames_2008.aux["distance_doc"],
         "distance_doc_2019": frames_2019.aux["distance_doc"],
@@ -3861,6 +3934,29 @@ def _run_part_b(
         seed=seed,
         include_time_ratio=True,
     )
+    all_2008 = frames_2008.all_trips
+    all_2019 = frames_2019.all_trips
+    if all_2008 is None or all_2019 is None:
+        raise ValueError("all-trips sensitivity frames were not loaded")
+    all_crow_2008 = common_distance_frames(all_2008, "crow_fly_km")
+    all_crow_2019 = common_distance_frames(all_2019, "crow_fly_km")
+    all_trip_rows = b2_decompositions(
+        all_crow_2008,
+        all_crow_2019,
+        n_reps=n_reps,
+        seed=seed,
+        categories=(),
+        include_time_ratio=True,
+    )
+    results["b2_all_trips_row"] = B2Row(
+        group="All trips (all motives and distances)",
+        n_a=all_trip_rows[0].n_a,
+        n_b=all_trip_rows[0].n_b,
+        result=all_trip_rows[0].result,
+        unavailable_reason=all_trip_rows[0].unavailable_reason,
+        time_ratio=all_trip_rows[0].time_ratio,
+        time_ratio_ci90=all_trip_rows[0].time_ratio_ci90,
+    )
     results["b2_rows_corrected"] = b2_decompositions(
         frames_2008,
         frames_2019,
@@ -3952,7 +4048,7 @@ def _run_part_b(
     results["extra_sections"] += [
         _format_b1(results["b1_rows"], "2008", "2019"),
         _format_b2(
-            results["b2_rows"],
+            [*results["b2_rows"], results["b2_all_trips_row"]],
             "2008",
             "2019",
             distance_description=(

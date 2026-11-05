@@ -213,8 +213,8 @@ _ENTD_K_DEPLOC_ROWS = [
     # 'very_sparse' under the proxy, whatever the residence size).
     "D6;5;M5;J5;120;1;1;1;1;;30;;4.0;;;5.50;9.91;;R;R;10;5;0;3.2",
     # Respondent 6: TGV, suburb trip end, medium residence size (tuu_res
-    # '5' -> 'intermediate' under the proxy).
-    "D7;6;M6;J6;180;1;0;1;1;;90;;120.0;;;6.60;9.91;;B;B;15;5;0;96.0",
+    # '5' -> 'intermediate' under the proxy); -1 is abroad, not local.
+    "D7;6;M6;J6;180;1;-1;1;1;;90;;120.0;;;6.60;9.91;;B;B;15;5;0;96.0",
     # Respondent 8: a second, needs-only-scoped cycling trip (purpose
     # 9.91, unlike respondent 2's sport trip), so P0 calibration
     # (``daily_energy.calibrate_p0``, needs-only scoped) has a cycle

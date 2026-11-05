@@ -828,6 +828,8 @@ def test_cli_writes_report_on_synthetic_data(
     assert "MDISTTOT_fin" in report
     assert "Time ratio 2019/2008" in report
     assert "Equivalent at ±15%" in report
+    assert "All trips (all motives and distances)" in report
+    assert "Non-local needs trips/day removed" in report
     assert "Equivalent at ±10%" in report
     assert "## C. Measurement checks" in report
     assert "C1. Rounding bounds" in report
@@ -1005,6 +1007,30 @@ def _ledger_inputs(*, trips_2019: int = 1) -> tuple[SurveyFrames, SurveyFrames, 
         )
     ]
     return a, b, results
+
+
+def test_local_scope_removal_is_weighted_over_former_needs_days() -> None:
+    con = variation_report.duckdb.connect()
+    con.sql("""
+        CREATE TABLE trip_legs (
+            day_id VARCHAR, pond_jour DOUBLE, typejour INTEGER, mobloc INTEGER,
+            motive DOUBLE, duration_min DOUBLE
+        );
+        INSERT INTO trip_legs VALUES
+            ('a', 2, 1, 1, 9.1, 10),
+            ('a', 2, 1, 0, 9.1, 20),
+            ('b', 1, 1, 0, 9.1, 30),
+            ('c', 1, 1, 1, 7.6, 40),
+            ('weekend', 5, 2, 0, 9.1, 50);
+    """)
+
+    result = variation_report._local_scope_removal(con)
+
+    assert result["n_days"] == 2
+    assert result["weighted_days"] == pytest.approx(3.0)
+    assert result["trips_per_day_removed"] == pytest.approx(1.0)
+    assert result["minutes_per_day_removed"] == pytest.approx(70.0 / 3.0)
+    con.close()
 
 
 def test_measurement_ledger_reuses_results_and_preserves_effect_signs(
