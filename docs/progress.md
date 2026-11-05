@@ -2,7 +2,26 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-11-04 by Copilot (B0 step-11/12 estimate corrections; real-data regeneration left to the user)_
+_Last updated: 2026-11-04 by Copilot (C7/C8 report additions; real-data regeneration left to the user)_
+
+### Step 12: C7 budgets and C8 compensation (2026-11-04, branch `step/variation`)
+
+- C7 adds weekday, Saturday, Sunday and 7-day EMP estimates per person and
+  per traveller for SDES, needs and all-trips sensitivity scopes, with
+  household-bootstrap 2019/2008 ratios, 90% intervals and ±10%/±15% verdicts.
+  ENTD 2008 is weekday-only: weekend selector and weight checks failed.
+- C8b relates complete EMP weekday-out flags to local needs-scope intensity
+  and compares category × density CVs. C8a is deferred because ENTD weekend
+  weights are not validated; C8c is unavailable because EMP records no
+  teleworking/working-from-home variable.
+- Validation: 58 tests passed in `test_variation_report.py`; targeted Ruff
+  check and format passed. No national report or data job was run. The local
+  scope trip/minute reductions still need values from report regeneration.
+- Regenerate the step-11 reports, comparison and step-12 report:
+  `uv run python -m mobgrid.budget.emp --out docs\data\step11_budget`
+  `uv run python -m mobgrid.budget.emp --survey entd2008 --out docs\data\step11_budget_entd2008`
+  `uv run python -m mobgrid.budget.emp --compare --out docs\data\step11_compare`
+  `uv run python -m mobgrid.budget.variation_report --out docs\data\step12_variation --entd2008-zoning-data-path data\raw\entd2008\ENTD2008_avec_zonages_EMP`
 
 ### B0: step-11/12 estimate corrections
 

@@ -11,7 +11,8 @@ durations, calendar) and the decompositions of Part B (composition,
 trips x distance x speed, mode/motive/distance shift-shares, tails, the
 comparison pairs and their figures), and Part C measurement checks
 (rounding bounds, common distances, trips by motive, the measurement
-ledger, official-scope replication, door-to-door speed and budget comparisons).
+ledger, official-scope replication, door-to-door speed, budget comparisons
+and compensation across days).
 Step-11 outputs are not touched.
 
 Bootstrap intervals resample households within each survey,
@@ -213,10 +214,10 @@ class BudgetMetric:
     replicates: np.ndarray
 
 
-def _sample_sql(sample_pct: float | None) -> str:
+def _sample_sql(sample_pct: float | None, household_column: str = "ident_men") -> str:
     if sample_pct is None:
         return "TRUE"
-    return f"(hash(CAST(ident_men AS VARCHAR)) % 100) < {float(sample_pct):g}"
+    return f"(hash(CAST({household_column} AS VARCHAR)) % 100) < {float(sample_pct):g}"
 
 
 def _has_column(con: duckdb.DuckDBPyConnection, table: str, column: str) -> bool:
@@ -656,6 +657,19 @@ def load_frames(
             aux["sequence_motive_summary"] = emp2019.sequence_motive_summary(
                 con, sample_pct=sample_pct
             )
+            sampled_households = None
+            if sample_pct is not None:
+                sampled_households = _text_values(
+                    con.sql(f"""
+                        SELECT DISTINCT IDENT_MEN
+                        FROM k_individu
+                        WHERE {_sample_sql(sample_pct)}
+                    """).fetchnumpy()["IDENT_MEN"]
+                )
+            aux["emp_weekday_out"] = _emp_weekday_out_counts(
+                emp2019.person_day_type_rows(con),
+                sampled_households=sampled_households,
+            )
     finally:
         con.close()
     days = {k: _plain_array(v) for k, v in days.items()}
@@ -688,7 +702,7 @@ def _official_scope_data(
             SELECT i.IDENT_IND
             FROM k_individu i
             JOIN tcm_ind t ON t.ident_ind = i.IDENT_IND
-            WHERE {_sample_sql(sample_pct)}
+            WHERE {_sample_sql(sample_pct, "i.IDENT_MEN")}
         """).fetchall()
     else:
         person_rows = entd2008.person_estimator_rows(con)
@@ -979,6 +993,25 @@ def _period_budget_estimates(
             ),
         }
     return estimates
+
+
+def _emp_weekday_out_counts(
+    rows: list[tuple],
+    sampled_households: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Count section 9.9 weekday-out flags; ``immobile=0`` means went out."""
+    if not rows:
+        empty = np.asarray([], dtype=str)
+        return empty, np.asarray([], dtype=int), np.asarray([], dtype=int)
+    data = np.asarray(rows, dtype=object)
+    if sampled_households is not None:
+        data = data[np.isin(data[:, 1].astype(str), sampled_households)]
+    person_ids, inverse = np.unique(data[:, 0].astype(str), return_inverse=True)
+    weekday = data[:, 3].astype(str) == "weekday"
+    went_out = data[:, 4].astype(float) == 0
+    observed = np.bincount(inverse, weights=weekday.astype(int))
+    weekdays_out = np.bincount(inverse, weights=(weekday & went_out).astype(int))
+    return person_ids, weekdays_out.astype(int), observed.astype(int)
 
 
 def _official_scope_estimates(
@@ -2044,6 +2077,184 @@ def _format_c7(
             f"{value_2008} | {n_2019} | {value_2019} | {ratio_cell} | "
             f"{verdict_10} | {verdict_15} |"
         )
+    return lines
+
+
+def _c8b_summary(frames: SurveyFrames) -> dict:
+    """Relate complete EMP weekday-out flags to needs-scope intensity."""
+    data = frames.aux["emp_weekday_out"]
+    people, weekdays_out, weekdays_observed = data
+    complete = weekdays_observed == 5
+    days = frames.days
+    day_people = _text_values(days["ident_ind"])
+    positions = np.searchsorted(people, day_people)
+    matched = positions < len(people)
+    matched[matched] &= people[positions[matched]] == day_people[matched]
+    keep = matched.copy()
+    keep[matched] &= complete[positions[matched]]
+    indices = positions[keep]
+    day_people = day_people[keep]
+    weights = days["pond_jour"][keep].astype(float)
+    times = days["total_time_min"][keep].astype(float)
+    trips = days["trips_per_day"][keep].astype(float)
+    distances = days["total_distance_km"][keep].astype(float)
+    distance_trips = days["distance_trips"][keep].astype(float)
+    out_count = weekdays_out[indices].astype(float)
+    categories = days["population_category"][keep].astype(str)
+    densities = days["home_density"][keep].astype(str)
+
+    def metrics(mask: np.ndarray) -> tuple[int, float, float, float, float, float]:
+        valid = (
+            mask
+            & np.isfinite(weights)
+            & (weights > 0)
+            & np.isfinite(times)
+            & np.isfinite(trips)
+        )
+        n = len(np.unique(day_people[valid]))
+        weight = weights[valid]
+        total_weight = float(weight.sum())
+        if total_weight <= 0:
+            return n, *(float("nan"),) * 5
+        time_mean = float(np.sum(weight * times[valid]) / total_weight)
+        trips_mean = float(np.sum(weight * trips[valid]) / total_weight)
+        distance_weight = float(np.sum(weight * distance_trips[valid]))
+        km_per_trip = (
+            float(np.sum(weight * distances[valid]) / distance_weight)
+            if distance_weight > 0
+            else float("nan")
+        )
+        weekly_time = float(
+            np.sum(weight * out_count[valid] * times[valid]) / total_weight
+        )
+        mean_out = float(np.sum(weight * out_count[valid]) / total_weight)
+        return n, mean_out, time_mean, trips_mean, km_per_trip, weekly_time
+
+    frequency_rows = []
+    for frequency in range(6):
+        mask = out_count == frequency
+        n, _, time_mean, trips_mean, km_per_trip, _ = metrics(mask)
+        frequency_rows.append(
+            {
+                "frequency": frequency,
+                "n": n,
+                "time": time_mean,
+                "trips": trips_mean,
+                "km_per_trip": km_per_trip,
+            }
+        )
+
+    group_rows = []
+    for category, density in sorted(set(zip(categories, densities))):
+        mask = (categories == category) & (densities == density)
+        n, mean_out, time_mean, trips_mean, km_per_trip, weekly_time = metrics(mask)
+        group_rows.append(
+            {
+                "group": f"{category} × {density}",
+                "n": n,
+                "mean_out": mean_out,
+                "time": time_mean,
+                "trips": trips_mean,
+                "km_per_trip": km_per_trip,
+                "weekly_time": weekly_time,
+            }
+        )
+
+    supported = [row for row in group_rows if row["n"] >= MIN_CELL_N]
+
+    def cv(key: str) -> float:
+        values = np.asarray([row[key] for row in supported], dtype=float)
+        values = values[np.isfinite(values)]
+        if len(values) < 2 or float(np.mean(values)) <= 0:
+            return float("nan")
+        return float(np.std(values) / np.mean(values))
+
+    time_cv = cv("time")
+    weekly_time_cv = cv("weekly_time")
+    return {
+        "n_complete": int(complete.sum()),
+        "n_matched_days": len(day_people),
+        "frequency_rows": frequency_rows,
+        "group_rows": group_rows,
+        "time_cv": time_cv,
+        "weekly_time_cv": weekly_time_cv,
+        "less_variable": (
+            "weekdays-out × time/day"
+            if np.isfinite(weekly_time_cv)
+            and (not np.isfinite(time_cv) or weekly_time_cv < time_cv)
+            else "time/day"
+            if np.isfinite(time_cv)
+            else "not estimable"
+        ),
+        "n_cv_groups": len(supported),
+    }
+
+
+def _format_c8(frames_2019: SurveyFrames) -> list[str]:
+    summary = _c8b_summary(frames_2019)
+    lines = [
+        "### C8. Compensation across days",
+        "",
+        "#### C8a. ENTD 2008 paired weekday/weekend analysis — deferred",
+        "",
+        "The day-selector direction check passes for explicit `Sam`/`Dim` "
+        "records, but the eligibility and weight checks fail: blank selectors "
+        "occur outside the regions with both weekend days, observed single-day "
+        "weights are often 1× rather than the expected 2× `PONDKI`, and "
+        "Pays de la Loire includes two `Dim` records weighted 1× and a "
+        "5× Saturday anomaly. The report therefore does not infer a missing "
+        "weekend day as zero or estimate paired weekend compensation. The "
+        "public-table cross-tab is documented in `docs/data/entd2008.md`.",
+        "",
+        "#### C8b. EMP 2019 weekday frequency and intensity",
+        "",
+        "Weekday-out counts use complete five-weekday `IMMODEP_A`–`G` records "
+        "(`0` = went out, `1` = immobile). Intensity uses all trips on the "
+        "respondent's described weekday in the local needs scope; respondents "
+        "without a recorded in-scope trip that day are not in the intensity "
+        "table. Frequency is the count of weekdays out during the preceding "
+        "week. Category × density CVs compare "
+        "weighted mean weekday time with weekdays-out × weekday time. "
+        f"Complete flags: {summary['n_complete']}; matched described days: "
+        f"{summary['n_matched_days']}.",
+        "",
+        "| Weekdays out | n | Time/day (min) | Trips/day | Km/trip |",
+        "|---:|---:|---:|---:|---:|",
+    ]
+    for row in summary["frequency_rows"]:
+        n = row["n"]
+        lines.append(
+            f"| {row['frequency']} | {n} | "
+            f"{_suppress(n, _num(row['time']))} | "
+            f"{_suppress(n, _num(row['trips'], 2))} | "
+            f"{_suppress(n, _num(row['km_per_trip'], 2))} |"
+        )
+    lines += [
+        "",
+        "| Category × density | n | Mean weekdays out | Time/day (min) | "
+        "Days out × time/day (min/week) |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for row in summary["group_rows"]:
+        n = row["n"]
+        lines.append(
+            f"| {row['group']} | {n} | "
+            f"{_suppress(n, _num(row['mean_out'], 2))} | "
+            f"{_suppress(n, _num(row['time']))} | "
+            f"{_suppress(n, _num(row['weekly_time']))} |"
+        )
+    lines += [
+        "",
+        f"CV across {summary['n_cv_groups']} supported category × density "
+        f"groups: time/day = {_num(summary['time_cv'], 3)}; "
+        f"weekdays-out × time/day = {_num(summary['weekly_time_cv'], 3)}.",
+        f"Lower cross-group variation: {summary['less_variable']}.",
+        "",
+        "#### C8c. Teleworking",
+        "",
+        "The EMP 2019 dictionary contains no teleworking or working-from-home "
+        "variable; the requested teleworker comparison cannot be computed.",
+    ]
     return lines
 
 
@@ -3146,6 +3357,7 @@ def run(
             ),
         )
     )
+    results["extra_sections"].append(_format_c8(frames_2019))
     return results
 
 

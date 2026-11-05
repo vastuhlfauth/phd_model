@@ -805,6 +805,8 @@ def test_cli_writes_report_on_synthetic_data(
             str(CONFIG_PATH),
             "--bootstrap-reps",
             str(N_REPS),
+            "--sample-households",
+            "100",
         ]
     )
 
@@ -882,6 +884,10 @@ def test_cli_writes_report_on_synthetic_data(
     assert "C7. Budgets per person, per traveller and per week" in report
     assert "All trips sensitivity" in report
     assert "ENTD weekend design calls" in report
+    assert "C8a. ENTD 2008 paired weekday/weekend analysis — deferred" in report
+    assert "C8b. EMP 2019 weekday frequency and intensity" in report
+    assert "C8c. Teleworking" in report
+    assert "no teleworking or working-from-home variable" in report
     assert "B6.5. 2008 -> 2019 by INSEE density grid" in report
     assert (out_dir / "fig_b7a_waterfall.png").is_file()
     assert (out_dir / "fig_b7b_shift_share.png").is_file()
@@ -1713,3 +1719,73 @@ def test_c7_comparison_has_weekday_ratio_and_marks_entd_weekends_unavailable() -
     assert weekday["ratio"][0] == pytest.approx(1.0)
     assert saturday["estimate_2008"] is None
     assert saturday["ratio"] is None
+
+
+def test_emp_weekday_out_counts_require_complete_week() -> None:
+    rows = [
+        ("p1", "h1", 1.0, "weekday", 0.0),
+        ("p1", "h1", 1.0, "weekday", 0.0),
+        ("p1", "h1", 1.0, "weekday", 0.0),
+        ("p1", "h1", 1.0, "weekday", 0.0),
+        ("p1", "h1", 1.0, "weekday", 0.0),
+        ("p1", "h1", 1.0, "saturday", 0.0),
+        ("p2", "h2", 1.0, "weekday", 1.0),
+        ("p2", "h2", 1.0, "weekday", 1.0),
+        ("p2", "h2", 1.0, "weekday", 1.0),
+        ("p2", "h2", 1.0, "weekday", 1.0),
+        ("p2", "h2", 1.0, "weekday", 1.0),
+        ("p3", "h3", 1.0, "weekday", 0.0),
+        ("p3", "h3", 1.0, "weekday", 0.0),
+        ("p3", "h3", 1.0, "weekday", 0.0),
+        ("p3", "h3", 1.0, "weekday", 0.0),
+    ]
+
+    people, weekdays_out, weekdays_observed = variation_report._emp_weekday_out_counts(
+        rows
+    )
+    by_person = {
+        person: (int(out), int(observed))
+        for person, out, observed in zip(people, weekdays_out, weekdays_observed)
+    }
+
+    assert by_person == {"p1": (5, 5), "p2": (0, 5), "p3": (4, 4)}
+    selected_people, selected_out, selected_observed = (
+        variation_report._emp_weekday_out_counts(
+            rows, sampled_households=np.array(["h2"])
+        )
+    )
+    assert selected_people.tolist() == ["p2"]
+    assert selected_out.tolist() == [0]
+    assert selected_observed.tolist() == [5]
+
+
+def test_c8b_compares_weekday_time_with_frequency_times_time() -> None:
+    n = 100
+    people = np.array([f"p{i:03}" for i in range(n)])
+    out_count = np.repeat([1.0, 3.0], n // 2)
+    time = np.repeat([20.0, 30.0], n // 2)
+    days = {
+        "ident_ind": people,
+        "pond_jour": np.ones(n),
+        "total_time_min": time,
+        "trips_per_day": np.full(n, 2.0),
+        "total_distance_km": np.full(n, 4.0),
+        "distance_trips": np.full(n, 2.0),
+        "population_category": np.full(n, "employed"),
+        "home_density": np.repeat(["dense", "sparse"], n // 2),
+    }
+    frames = _frames(days, {}, aux={})
+    frames.aux["emp_weekday_out"] = (
+        people,
+        out_count.astype(int),
+        np.full(n, 5, dtype=int),
+    )
+
+    summary = variation_report._c8b_summary(frames)
+
+    assert summary["n_complete"] == 100
+    assert summary["n_matched_days"] == 100
+    assert summary["time_cv"] == pytest.approx(0.2)
+    assert summary["weekly_time_cv"] == pytest.approx(70 / 110)
+    assert summary["less_variable"] == "time/day"
+    assert summary["n_cv_groups"] == 2
