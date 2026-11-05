@@ -183,7 +183,6 @@ class SpeedSample:
     weight: np.ndarray
     duration_min: np.ndarray
     producer_km: np.ndarray
-    declared_km: np.ndarray
     crow_fly_km: np.ndarray
     mode: np.ndarray
     density: np.ndarray
@@ -684,7 +683,7 @@ def _official_scope_data(
     trips = con.sql(f"""
         SELECT t.ident_men, t.pond_jour, t.typejour,
             t.duration_min, t.distance_km, t.age, t.residence_density,
-            t.mode_group, e.declared_km, e.crow_fly_km, p.residence_aa_class
+            t.mode_group, e.crow_fly_km, p.residence_aa_class
         FROM trip_legs t
         LEFT JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
         LEFT JOIN vr_person p ON p.ident_ind = t.ident_ind
@@ -722,13 +721,10 @@ def _official_scope_data(
         "age_t": np.asarray([int(row[5]) for row in trips]),
         "density_t": np.asarray([row[6] for row in trips], dtype=object),
         "mode_t": np.asarray([row[7] for row in trips], dtype=object),
-        "declared_km": np.asarray(
+        "crow_fly_km": np.asarray(
             [np.nan if row[8] is None else float(row[8]) for row in trips]
         ),
-        "crow_fly_km": np.asarray(
-            [np.nan if row[9] is None else float(row[9]) for row in trips]
-        ),
-        "residence_aa_class": np.asarray([row[10] for row in trips], dtype=object),
+        "residence_aa_class": np.asarray([row[9] for row in trips], dtype=object),
         "zero_local_n_days": len(zero_local_days),
         "described_n_days": len(described_days),
         "zero_local_weight": float(sum(float(row[2]) for row in zero_local_days)),
@@ -922,8 +918,6 @@ class SpeedEstimate:
     minutes_per_trip: SpeedMetric
     speed_kmh: SpeedMetric
     zero_km_share: SpeedMetric | None
-    rescaled_n: int
-    dropped_n: int
 
 
 def _text_values(values: np.ndarray) -> np.ndarray:
@@ -943,7 +937,6 @@ def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
             weight=data["weight_t"][weekday].astype(float),
             duration_min=data["minutes"][weekday].astype(float),
             producer_km=data["distance_km"][weekday].astype(float),
-            declared_km=data["declared_km"][weekday].astype(float),
             crow_fly_km=data["crow_fly_km"][weekday].astype(float),
             mode=_text_values(data["mode_t"][weekday]),
             density=_text_values(data["density_t"][weekday]),
@@ -957,7 +950,6 @@ def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
         weight=trips["pond_jour"].astype(float),
         duration_min=trips["duration_min"].astype(float),
         producer_km=trips["distance_km"].astype(float),
-        declared_km=trips["declared_km"].astype(float),
         crow_fly_km=trips["crow_fly_km"].astype(float),
         mode=_text_values(trips["mode7"]),
         density=_text_values(trips["home_density"]),
@@ -966,29 +958,15 @@ def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
 
 
 def _distance_measure_values(
-    sample: SpeedSample, measure: str, selected: np.ndarray
-) -> tuple[np.ndarray, int, int]:
-    """Return distance km and declared-distance cleaning counts for C6."""
+    sample: SpeedSample, measure: str
+) -> np.ndarray:
+    """Return the producer or crow-fly distance in kilometres for C6."""
     if measure == "producer":
-        return sample.producer_km, 0, 0
+        return sample.producer_km
     if measure == "crow-fly":
-        return sample.crow_fly_km, 0, 0
-    if measure != "declared":
+        return sample.crow_fly_km
+    else:
         raise ValueError(f"unknown speed distance measure: {measure!r}")
-    distance = sample.declared_km.copy()
-    crow = sample.crow_fly_km
-    finite_pair = np.isfinite(distance) & np.isfinite(crow)
-    rescaled = finite_pair & (crow > 0) & (distance > 100.0 * crow)
-    distance[rescaled] /= 1000.0
-    dropped = (
-        selected
-        & np.isfinite(distance)
-        & np.isfinite(crow)
-        & (crow > 2.0)
-        & ((distance < 0.5 * crow) | (distance > 10.0 * crow))
-    )
-    distance[dropped] = np.nan
-    return distance, int(np.sum(rescaled & selected)), int(np.sum(dropped))
 
 
 def _metric_interval(
@@ -1024,9 +1002,7 @@ def _bootstrap_speed_estimate(
     selected = np.asarray(selected, dtype=bool)
     if len(selected) != len(sample.weight):
         raise ValueError("speed selection mask length must match trip arrays")
-    distance, rescaled_n, dropped_n = _distance_measure_values(
-        sample, measure, selected
-    )
+    distance = _distance_measure_values(sample, measure)
     valid = (
         selected
         & np.isfinite(sample.weight)
@@ -1045,8 +1021,6 @@ def _bootstrap_speed_estimate(
             empty,
             empty,
             empty if measure == "crow-fly" else None,
-            rescaled_n,
-            dropped_n,
         )
 
     household = sample.household[valid].astype(str)
@@ -1095,8 +1069,6 @@ def _bootstrap_speed_estimate(
             if reps_zero is not None and point_zero is not None
             else None
         ),
-        rescaled_n,
-        dropped_n,
     )
 
 
@@ -1337,15 +1309,13 @@ def _format_c6_overall(
         "| Scope | Distance measure | n 2008 | n 2019 | 2008 km/trip [95% CI] | "
         "2019 km/trip [95% CI] | km/trip ratio 2019/2008 [90% CI] | "
         "2008 km/h [95% CI] | 2019 km/h [95% CI] | "
-        "speed ratio 2019/2008 [90% CI] | Rescaled declared 2008 | "
-        "Dropped declared 2008 | Rescaled declared 2019 | "
-        "Dropped declared 2019 |",
-        "|---|---|---:|---:|---|---|---|---|---|---|---:|---:|---:|---:|",
+        "speed ratio 2019/2008 [90% CI] |",
+        "|---|---|---:|---:|---|---|---|---|---|---|",
     ]
     for scope_index, (scope, pair) in enumerate(samples.items()):
         selected_a = np.ones(len(pair[0].weight), dtype=bool)
         selected_b = np.ones(len(pair[1].weight), dtype=bool)
-        for measure_index, measure in enumerate(("producer", "declared", "crow-fly")):
+        for measure_index, measure in enumerate(("producer", "crow-fly")):
             offset = seed + scope_index * 100 + measure_index * 10
             a = _speed_report_sample(
                 pair[0], measure, selected_a, n_reps=n_reps, seed=offset
@@ -1360,14 +1330,11 @@ def _format_c6_overall(
                 f"{_ratio_cell(a.km_per_trip, b.km_per_trip, a.n_trips, b.n_trips)} | "
                 f"{_metric_cell(a.speed_kmh, a.n_trips)} | "
                 f"{_metric_cell(b.speed_kmh, b.n_trips)} | "
-                f"{_ratio_cell(a.speed_kmh, b.speed_kmh, a.n_trips, b.n_trips)} | "
-                f"{a.rescaled_n} | {a.dropped_n} | "
-                f"{b.rescaled_n} | {b.dropped_n} |"
+                f"{_ratio_cell(a.speed_kmh, b.speed_kmh, a.n_trips, b.n_trips)} |"
             )
     lines += [
         "",
-        "The declared-distance counts are unweighted trip counts in the "
-        "selected scope. Crow-fly distance treats zero as a valid distance; "
+        "Crow-fly distance treats zero as a valid distance; "
         "producer distance is ENTD `distcor` (otherwise `V2_MDISTTOT`) and "
         "EMP `MDISTTOT_fin`, with the existing step-11 correction.",
     ]
@@ -1424,9 +1391,7 @@ def _format_c6_residence(
                 if class_value is None
                 else classes_b == class_value
             )
-            for measure_index, measure in enumerate(
-                ("producer", "declared", "crow-fly")
-            ):
+            for measure_index, measure in enumerate(("producer", "crow-fly")):
                 offset = (
                     seed
                     + 1000
@@ -1622,9 +1587,7 @@ def _format_c6(
         "weights; distance-specific metrics use trips with valid distance "
         "and positive duration. 2008/2019 ratios use 90% bootstrap intervals; "
         "year estimates use 95% intervals. Cells with fewer than 50 trips "
-        "suppress estimates. Declared distances over 100 times crow-fly "
-        "(with positive crow-fly) are rescaled from metres, then values "
-        "outside 0.5–10 times crow-fly are dropped when crow-fly exceeds 2 km.",
+        "suppress estimates.",
         "",
         *_format_c6_overall(samples, n_reps=n_reps, seed=seed),
         "",
@@ -2591,8 +2554,9 @@ BASE_CHOICES = [
     "The motive crosswalk reports raw code shares before the needs "
     "scope and before the return-trip motive reassignment, so both "
     "surveys' code inventories are visible.",
-    "EMP 2019 declared distances have unit/coding errors and are excluded "
-    "from the 2008 -> 2019 distance comparison.",
+    "Declared distances are excluded from C6 because EMP 2019's declared "
+    "values contain unit/coding errors; C6 compares producer and crow-fly "
+    "distances only.",
     "C6 residence classes use the shared 2020-zoning fields "
     f"({', '.join(RESIDENCE_ZONING_VARIABLES)}) in EMP's `TCM_MEN` and "
     "ENTD's `Q_TCM_MEN_ENTD08_zon20_public.csv`. `CATCOM_AA_RES` uses "

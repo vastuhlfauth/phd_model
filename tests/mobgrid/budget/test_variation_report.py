@@ -874,6 +874,9 @@ def test_cli_writes_report_on_synthetic_data(
     assert "19.7928" in report
     assert "20.69912" in report
     assert "8.970084" in report
+    c6 = report.split("### C6. Door-to-door speed", 1)[1]
+    assert "| A | declared |" not in c6
+    assert "Declared distances are excluded from C6 because" in report
     assert "zero-local-trip diagnostic" in report.lower()
     assert "SDES 2008" in report and "SDES 2019" in report
     assert "B6.5. 2008 -> 2019 by INSEE density grid" in report
@@ -1513,13 +1516,12 @@ def test_c5_uses_full_roster_denominator_and_reports_published_gaps() -> None:
     assert "-98.7" in week_trip_row
 
 
-def test_c6_speed_uses_weighted_totals_and_cleans_declared_distance() -> None:
+def test_c6_speed_uses_weighted_totals_and_crow_fly_zero_share() -> None:
     sample = variation_report.SpeedSample(
         household=np.array(["h1", "h2", "h3", "h4"]),
         weight=np.ones(4),
         duration_min=np.array([10.0, 50.0, 20.0, 30.0]),
         producer_km=np.array([1.0, 10.0, 8.0, 2.0]),
-        declared_km=np.array([1010.0, 0.5, 400.0, 12.0]),
         crow_fly_km=np.array([1.0, 3.0, 3.0, 2.1]),
         mode=np.array(["car_driver"] * 4),
         density=np.array(["dense", "dense", "sparse", "very_sparse"]),
@@ -1529,9 +1531,6 @@ def test_c6_speed_uses_weighted_totals_and_cleans_declared_distance() -> None:
 
     producer = variation_report._bootstrap_speed_estimate(
         sample, "producer", selected, n_reps=40, seed=4
-    )
-    declared = variation_report._bootstrap_speed_estimate(
-        sample, "declared", selected, n_reps=40, seed=4
     )
     crow = variation_report._bootstrap_speed_estimate(
         replace(sample, crow_fly_km=np.array([0.0, 3.0, 3.0, 2.1])),
@@ -1547,9 +1546,8 @@ def test_c6_speed_uses_weighted_totals_and_cleans_declared_distance() -> None:
         np.mean(60.0 * sample.producer_km / sample.duration_min)
     )
     assert np.isfinite(producer.speed_kmh.interval).all()
-    assert declared.n_trips == 2
-    assert declared.rescaled_n == 2
-    assert declared.dropped_n == 2
+    with pytest.raises(ValueError, match="unknown speed distance measure"):
+        variation_report._distance_measure_values(sample, "declared")
     assert crow.zero_km_share is not None
     assert crow.zero_km_share.estimate == pytest.approx(0.25)
     classified = replace(
@@ -1584,7 +1582,6 @@ def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
                 [first_minutes] * first_cell_n + [second_minutes] * second_cell_n
             ),
             producer_km=np.array([3.0] * first_cell_n + [7.0] * second_cell_n),
-            declared_km=np.array([3.0] * first_cell_n + [7.0] * second_cell_n),
             crow_fly_km=np.array([3.0] * first_cell_n + [7.0] * second_cell_n),
             mode=np.array(["car_driver"] * n),
             density=np.array(["dense"] * first_cell_n + ["sparse"] * second_cell_n),
