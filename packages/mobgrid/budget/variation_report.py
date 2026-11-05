@@ -11,7 +11,7 @@ durations, calendar) and the decompositions of Part B (composition,
 trips x distance x speed, mode/motive/distance shift-shares, tails, the
 comparison pairs and their figures), and Part C measurement checks
 (rounding bounds, common distances, trips by motive, the measurement
-ledger, official-scope replication and door-to-door speed checks).
+ledger, official-scope replication, door-to-door speed and budget comparisons).
 Step-11 outputs are not touched.
 
 Bootstrap intervals resample households within each survey,
@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 import duckdb
 import matplotlib
@@ -187,6 +188,29 @@ class SpeedSample:
     mode: np.ndarray
     density: np.ndarray
     residence_zone: np.ndarray
+
+
+@dataclass(frozen=True)
+class PeriodBudgetSample:
+    """Section 9.9 person/day weights, trip counts and duration totals in minutes."""
+
+    person_household: np.ndarray
+    person_weight: np.ndarray
+    day_household: np.ndarray
+    day_person: np.ndarray
+    day_weight: np.ndarray
+    day_type: np.ndarray
+    trips: np.ndarray
+    total_time_min: np.ndarray
+    time_trips: np.ndarray
+
+
+@dataclass(frozen=True)
+class BudgetMetric:
+    """Point estimate and household-bootstrap replicates for one C7 metric."""
+
+    estimate: float
+    replicates: np.ndarray
 
 
 def _sample_sql(sample_pct: float | None) -> str:
@@ -615,6 +639,10 @@ def load_frames(
         all_days = con.sql("SELECT * FROM vr_days").fetchnumpy()
         all_trips = con.sql("SELECT * FROM vr_trips").fetchnumpy()
         official_data = _official_scope_data(con, survey, sample_pct)
+        c7_data = {
+            scope: _c7_scope_data(con, survey, scope, sample_pct)
+            for scope in ("sdes", "needs", "all_trips")
+        }
         motive_shares, distance_doc = _AUX_BY_SURVEY[survey.SURVEY_NAME]
         aux = {
             "needs_scope_removal": _needs_scope_removal(con),
@@ -622,6 +650,7 @@ def load_frames(
             "raw_motive_shares": motive_shares(con),
             "distance_doc": distance_doc(con),
             "official_scope_data": official_data,
+            "c7_data": c7_data,
         }
         if survey is emp2019:
             aux["sequence_motive_summary"] = emp2019.sequence_motive_summary(
@@ -731,6 +760,225 @@ def _official_scope_data(
         "described_weight": float(sum(float(row[2]) for row in described_days)),
         "n_people": len(eligible_people),
     }
+
+
+def _c7_scope_data(
+    con: duckdb.DuckDBPyConnection,
+    survey: ModuleType,
+    scope: str,
+    sample_pct: float | None,
+) -> PeriodBudgetSample:
+    """Extract section 9.9 rosters and trip/minute totals for a C7 scope."""
+    if scope == "sdes":
+        scope_sql = "mobloc = 1"
+        age_filter = "AND age >= 6"
+        roster_age_filter = "WHERE age >= 6"
+    elif scope == "needs":
+        scope_sql = trip_legs.NEEDS_ONLY_WHERE_SQL
+        age_filter = ""
+        roster_age_filter = ""
+    elif scope == "all_trips":
+        scope_sql = "TRUE"
+        age_filter = ""
+        roster_age_filter = ""
+    else:
+        raise ValueError(f"unknown C7 scope: {scope!r}")
+
+    if survey is emp2019:
+        roster_sql = f"""
+            WITH roster AS (
+                SELECT i.IDENT_IND AS ident_ind, i.IDENT_MEN AS ident_men,
+                    i.pond_indC AS person_weight,
+                    TRY_CAST(k.AGE AS INTEGER) AS age
+                FROM k_individu i
+                LEFT JOIN tcm_ind_kish k ON k.IDENT_IND = i.IDENT_IND
+            )
+            SELECT ident_men, person_weight
+            FROM roster
+            {roster_age_filter}
+                {"AND" if roster_age_filter else "WHERE"}
+                ({_sample_sql(sample_pct)})
+        """
+    else:
+        roster_sql = f"""
+            WITH roster AS (
+                SELECT i.IDENT_IND AS ident_ind, i.IDENT_MEN AS ident_men,
+                    5.0 * TRY_CAST(i.PONDKI AS DOUBLE) AS person_weight,
+                    TRY_CAST(q.AGE AS INTEGER) AS age
+                FROM k_individu i
+                LEFT JOIN q_tcm_individu q ON q.IDENT_IND = i.IDENT_IND
+            )
+            SELECT ident_men, person_weight
+            FROM roster
+            {roster_age_filter}
+                {"AND" if roster_age_filter else "WHERE"}
+                ({_sample_sql(sample_pct)})
+        """
+
+    people = con.sql(roster_sql).fetchnumpy()
+    day_rows = con.sql(f"""
+        SELECT any_value(ident_men) AS ident_men,
+            any_value(ident_ind) AS ident_ind,
+            any_value(pond_jour) AS day_weight,
+            any_value(typejour) AS typejour,
+            count(*) AS trips,
+            count(duration_min) FILTER (WHERE isfinite(duration_min))
+                AS time_trips,
+            coalesce(sum(duration_min), 0.0) AS total_time_min
+        FROM trip_legs
+        WHERE pond_jour > 0
+            AND ({scope_sql}) {age_filter}
+            AND ({_sample_sql(sample_pct)})
+        GROUP BY day_id
+    """).fetchnumpy()
+    return PeriodBudgetSample(
+        person_household=_text_values(people["ident_men"]),
+        person_weight=np.asarray(people["person_weight"], dtype=float),
+        day_household=_text_values(day_rows["ident_men"]),
+        day_person=_text_values(day_rows["ident_ind"]),
+        day_weight=np.asarray(day_rows["day_weight"], dtype=float),
+        day_type=np.asarray(day_rows["typejour"], dtype=int),
+        trips=np.asarray(day_rows["trips"], dtype=float),
+        total_time_min=np.asarray(day_rows["total_time_min"], dtype=float),
+        time_trips=np.asarray(day_rows["time_trips"], dtype=float),
+    )
+
+
+def _bootstrap_budget_metric(
+    sample: PeriodBudgetSample,
+    *,
+    day_mask: np.ndarray,
+    numerator_values: np.ndarray,
+    denominator_values: np.ndarray | None,
+    denominator_kind: str,
+    person_period_divisor: float,
+    n_reps: int,
+    seed: int,
+) -> BudgetMetric:
+    """Household-bootstrap one weighted section 9.9 ratio estimate."""
+    if n_reps < 1:
+        raise ValueError("n_reps must be at least one")
+    if person_period_divisor <= 0 or not np.isfinite(person_period_divisor):
+        raise ValueError("person_period_divisor must be finite and positive")
+    if denominator_kind not in {"person", "day"}:
+        raise ValueError(f"unknown budget denominator: {denominator_kind!r}")
+    if denominator_kind == "person" and denominator_values is not None:
+        raise ValueError("person-denominated metrics do not take day denominators")
+    if denominator_kind == "day" and denominator_values is None:
+        raise ValueError("day-denominated metrics require day denominators")
+
+    valid_day = (
+        day_mask
+        & np.isfinite(sample.day_weight)
+        & (sample.day_weight > 0)
+        & np.isfinite(numerator_values)
+    )
+    if denominator_values is not None:
+        valid_day &= np.isfinite(denominator_values) & (denominator_values > 0)
+
+    person_households = sample.person_household
+    day_households = sample.day_household[valid_day]
+    household_ids, codes = np.unique(
+        np.concatenate((person_households, day_households)), return_inverse=True
+    )
+    person_codes = codes[: len(person_households)]
+    day_codes = codes[len(person_households) :]
+    weights = sample.day_weight[valid_day]
+    values = numerator_values[valid_day]
+    if denominator_kind == "person":
+        point_denominator = float(np.sum(sample.person_weight)) * person_period_divisor
+        person_base = sample.person_weight
+    else:
+        day_denominators = denominator_values[valid_day]
+        point_denominator = float(np.sum(weights * day_denominators))
+        person_base = None
+
+    point_numerator = float(np.sum(weights * values))
+    point = (
+        point_numerator / point_denominator if point_denominator > 0 else float("nan")
+    )
+    rng = np.random.default_rng(seed)
+    replicates = np.full(n_reps, np.nan)
+    household_count = len(household_ids)
+    if household_count == 0:
+        return BudgetMetric(point, replicates)
+    for index in range(n_reps):
+        multiplicity = np.bincount(
+            rng.integers(0, household_count, size=household_count),
+            minlength=household_count,
+        )
+        numerator = float(np.sum(weights * values * multiplicity[day_codes]))
+        if denominator_kind == "person":
+            denominator = float(
+                np.sum(person_base * multiplicity[person_codes]) * person_period_divisor
+            )
+        else:
+            denominator = float(
+                np.sum(weights * day_denominators * multiplicity[day_codes])
+            )
+        if denominator > 0:
+            replicates[index] = numerator / denominator
+    return BudgetMetric(point, replicates)
+
+
+def _period_budget_estimates(
+    sample: PeriodBudgetSample,
+    *,
+    day_types: tuple[int, ...],
+    person_period_divisor: float,
+    n_reps: int,
+    seed: int,
+) -> dict[str, dict[str, BudgetMetric | int]]:
+    """Estimate section 9.9 trips/day and minutes/day or minutes/trip."""
+    period_days = np.isin(sample.day_type, day_types)
+    traveller_days = period_days & (sample.trips > 0)
+    estimates: dict[str, dict[str, BudgetMetric | int]] = {}
+    for basis, mask in (
+        ("per_person", period_days),
+        ("per_traveller", traveller_days),
+    ):
+        denominator_kind = "person" if basis == "per_person" else "day"
+        denominator_values = (
+            None if basis == "per_person" else np.ones_like(sample.trips)
+        )
+        estimates[basis] = {
+            "trips_per_day": _bootstrap_budget_metric(
+                sample,
+                day_mask=mask,
+                numerator_values=sample.trips,
+                denominator_values=denominator_values,
+                denominator_kind=denominator_kind,
+                person_period_divisor=person_period_divisor,
+                n_reps=n_reps,
+                seed=seed,
+            ),
+            "minutes_per_day": _bootstrap_budget_metric(
+                sample,
+                day_mask=mask,
+                numerator_values=sample.total_time_min,
+                denominator_values=denominator_values,
+                denominator_kind=denominator_kind,
+                person_period_divisor=person_period_divisor,
+                n_reps=n_reps,
+                seed=seed + 1,
+            ),
+            "minutes_per_trip": _bootstrap_budget_metric(
+                sample,
+                day_mask=traveller_days,
+                numerator_values=sample.total_time_min,
+                denominator_values=sample.time_trips,
+                denominator_kind="day",
+                person_period_divisor=person_period_divisor,
+                n_reps=n_reps,
+                seed=seed + 2,
+            ),
+            "n": (
+                len(sample.person_household)
+                if basis == "per_person"
+                else len(np.unique(sample.day_person[traveller_days]))
+            ),
+        }
+    return estimates
 
 
 def _official_scope_estimates(
@@ -957,9 +1205,7 @@ def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
     )
 
 
-def _distance_measure_values(
-    sample: SpeedSample, measure: str
-) -> np.ndarray:
+def _distance_measure_values(sample: SpeedSample, measure: str) -> np.ndarray:
     """Return the producer or crow-fly distance in kilometres for C6."""
     if measure == "producer":
         return sample.producer_km
@@ -1629,6 +1875,175 @@ def _format_c6(
             seed=seed + 40_000,
         ),
     ]
+    return lines
+
+
+def _budget_ratio(
+    metric_2008: BudgetMetric, metric_2019: BudgetMetric
+) -> tuple[float, tuple[float, float]] | None:
+    if (
+        not np.isfinite(metric_2008.estimate)
+        or not np.isfinite(metric_2019.estimate)
+        or metric_2008.estimate <= 0
+        or metric_2019.estimate <= 0
+        or len(metric_2008.replicates) == 0
+        or len(metric_2008.replicates) != len(metric_2019.replicates)
+    ):
+        return None
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratios = metric_2019.replicates / metric_2008.replicates
+    finite = ratios[np.isfinite(ratios) & (ratios > 0)]
+    if len(finite) == 0:
+        return None
+    interval = tuple(float(value) for value in np.percentile(finite, [5.0, 95.0]))
+    return metric_2019.estimate / metric_2008.estimate, interval
+
+
+def _c7_comparison(
+    frames_2008: SurveyFrames,
+    frames_2019: SurveyFrames,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[dict]:
+    scopes = (
+        ("sdes", "SDES: age 6+, local, all motives"),
+        ("needs", "Needs: local, needs motives"),
+        ("all_trips", "All trips sensitivity"),
+    )
+    periods = (
+        ("weekday", "weekday", (1,), 1.0, 5.0),
+        ("saturday", "Saturday", (2,), 1.0, 1.0),
+        ("sunday", "Sunday", (3,), 1.0, 1.0),
+        ("week", "7-day average", (1, 2, 3), 1.0, 7.0),
+    )
+    metric_labels = (
+        ("trips_per_day", "Trips/day"),
+        ("minutes_per_trip", "Minutes/trip"),
+        ("minutes_per_day", "Minutes/day"),
+    )
+    rows = []
+    for scope_index, (scope, scope_label) in enumerate(scopes):
+        sample_2008 = frames_2008.aux["c7_data"][scope]
+        sample_2019 = frames_2019.aux["c7_data"][scope]
+        for period_index, (
+            period_key,
+            period_label,
+            day_types,
+            divisor_2008,
+            divisor_2019,
+        ) in enumerate(periods):
+            estimate_2008 = None
+            if period_key == "weekday":
+                estimate_2008 = _period_budget_estimates(
+                    sample_2008,
+                    day_types=day_types,
+                    person_period_divisor=divisor_2008,
+                    n_reps=n_reps,
+                    seed=seed + scope_index * 100_000 + period_index * 1000,
+                )
+            estimate_2019 = _period_budget_estimates(
+                sample_2019,
+                day_types=day_types,
+                person_period_divisor=divisor_2019,
+                n_reps=n_reps,
+                seed=seed + 50_000 + scope_index * 100_000 + period_index * 1000,
+            )
+            for basis in ("per_person", "per_traveller"):
+                basis_n_2008 = (
+                    int(estimate_2008[basis]["n"])
+                    if estimate_2008 is not None
+                    else None
+                )
+                n_2019 = int(estimate_2019[basis]["n"])
+                for metric_key, metric_label in metric_labels:
+                    metric_2019 = estimate_2019[basis][metric_key]
+                    metric_2008 = (
+                        estimate_2008[basis][metric_key]
+                        if estimate_2008 is not None
+                        else None
+                    )
+                    ratio = (
+                        _budget_ratio(metric_2008, metric_2019)
+                        if metric_2008 is not None
+                        else None
+                    )
+                    rows.append(
+                        {
+                            "scope": scope_label,
+                            "period": period_label,
+                            "basis": basis.replace("_", " "),
+                            "measure": metric_label,
+                            "n_2008": basis_n_2008,
+                            "estimate_2008": (
+                                metric_2008.estimate
+                                if metric_2008 is not None
+                                else None
+                            ),
+                            "n_2019": n_2019,
+                            "estimate_2019": metric_2019.estimate,
+                            "ratio": ratio,
+                        }
+                    )
+    return rows
+
+
+def _format_c7(
+    rows: list[dict],
+    *,
+    equivalence_margin: float,
+    secondary_equivalence_margin: float,
+) -> list[str]:
+    lines = [
+        "### C7. Budgets per person, per traveller and per week",
+        "",
+        "The SDES scope is ages 6+, local trips, all motives; the needs scope "
+        "is local trips with needs motives. All trips are retained as a "
+        "sensitivity row. EMP 2019 uses the full respondent roster: weekday "
+        "totals /5, Saturday and Sunday /1, and 7-day totals /7. ENTD 2008 "
+        "uses the full Kish roster and `POIDS_JOUR`; its weekday denominator "
+        "is the sum of reference-weekday weights. ENTD weekend design calls "
+        "for Saturday and Sunday in Île-de-France and Pays de la Loire, and "
+        "one drawn weekend day elsewhere, nominally weighted 1× or 2× "
+        "`PONDKI` in `POIDS_JOUR`. The selector/weight checks fail outside "
+        "the verified groups, so no ENTD weekend weights or weekend/7-day "
+        "estimates are used. Per-traveller "
+        "means include only described days with at least one in-scope trip. "
+        "Ratios are independent-survey household-bootstrap 90% intervals; "
+        "verdicts use ±10% and ±15%. Cells below 50 respondents are hidden.",
+        "",
+        "| Scope | Period | Basis | Measure | n 2008 | 2008 | n 2019 | "
+        "2019 | 2019/2008 [90% CI] | ±10% | ±15% |",
+        "|---|---|---|---|---:|---:|---:|---:|---|---|---|",
+    ]
+    for row in rows:
+        n_2008 = row["n_2008"]
+        n_2019 = row["n_2019"]
+        value_2008 = (
+            _suppress(n_2008, _num(row["estimate_2008"], 2))
+            if n_2008 is not None
+            else "not available"
+        )
+        value_2019 = _suppress(n_2019, _num(row["estimate_2019"], 2))
+        ratio = row["ratio"]
+        ratio_cell = "not comparable"
+        verdict_10 = verdict_15 = "not comparable"
+        if ratio is not None:
+            estimate, ci = ratio
+            threshold_n = min(n_2008, n_2019)
+            ratio_cell = _suppress(threshold_n, _ci_cell(estimate, ci, 3))
+            verdict_10 = _suppress(
+                threshold_n, _equivalence_verdict(ci, secondary_equivalence_margin)
+            )
+            verdict_15 = _suppress(
+                threshold_n, _equivalence_verdict(ci, equivalence_margin)
+            )
+        lines.append(
+            f"| {row['scope']} | {row['period']} | {row['basis']} | "
+            f"{row['measure']} | {n_2008 if n_2008 is not None else '-'} | "
+            f"{value_2008} | {n_2019} | {value_2019} | {ratio_cell} | "
+            f"{verdict_10} | {verdict_15} |"
+        )
     return lines
 
 
@@ -2714,6 +3129,21 @@ def run(
             frames_2019,
             n_reps=n_reps,
             seed=seed,
+        )
+    )
+    results["c7_rows"] = _c7_comparison(
+        frames_2008,
+        frames_2019,
+        n_reps=n_reps,
+        seed=seed + 50_000,
+    )
+    results["extra_sections"].append(
+        _format_c7(
+            results["c7_rows"],
+            equivalence_margin=variation_config.equivalence_margin,
+            secondary_equivalence_margin=(
+                variation_config.secondary_equivalence_margin
+            ),
         )
     )
     return results

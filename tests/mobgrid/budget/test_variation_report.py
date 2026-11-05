@@ -879,6 +879,9 @@ def test_cli_writes_report_on_synthetic_data(
     assert "Declared distances are excluded from C6 because" in report
     assert "zero-local-trip diagnostic" in report.lower()
     assert "SDES 2008" in report and "SDES 2019" in report
+    assert "C7. Budgets per person, per traveller and per week" in report
+    assert "All trips sensitivity" in report
+    assert "ENTD weekend design calls" in report
     assert "B6.5. 2008 -> 2019 by INSEE density grid" in report
     assert (out_dir / "fig_b7a_waterfall.png").is_file()
     assert (out_dir / "fig_b7b_shift_share.png").is_file()
@@ -1603,3 +1606,110 @@ def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
     assert speed_2019.estimate == pytest.approx(60.0 * 5.0 / 18.0)
     assert np.isfinite(speed_2019.interval).all()
     assert variation_report._ratio_metric(speed_2008, speed_2019) is not None
+
+
+def test_c7_period_estimates_use_full_roster_and_traveller_days() -> None:
+    sample = variation_report.PeriodBudgetSample(
+        person_household=np.array(["h1", "h2"]),
+        person_weight=np.array([1.0, 3.0]),
+        day_household=np.array(["h1", "h1", "h2"]),
+        day_person=np.array(["p1", "p2", "p3"]),
+        day_weight=np.array([2.0, 2.0, 4.0]),
+        day_type=np.array([1, 2, 1]),
+        trips=np.array([2.0, 3.0, 1.0]),
+        total_time_min=np.array([20.0, 60.0, 30.0]),
+        time_trips=np.array([2.0, 3.0, 1.0]),
+    )
+
+    weekday = variation_report._period_budget_estimates(
+        sample,
+        day_types=(1,),
+        person_period_divisor=5.0,
+        n_reps=20,
+        seed=3,
+    )
+    saturday = variation_report._period_budget_estimates(
+        sample,
+        day_types=(2,),
+        person_period_divisor=1.0,
+        n_reps=20,
+        seed=3,
+    )
+    week = variation_report._period_budget_estimates(
+        sample,
+        day_types=(1, 2, 3),
+        person_period_divisor=7.0,
+        n_reps=20,
+        seed=3,
+    )
+
+    assert weekday["per_person"]["trips_per_day"].estimate == pytest.approx(0.4)
+    assert weekday["per_person"]["minutes_per_day"].estimate == pytest.approx(8.0)
+    assert weekday["per_traveller"]["trips_per_day"].estimate == pytest.approx(8 / 6)
+    assert weekday["per_traveller"]["minutes_per_day"].estimate == pytest.approx(
+        160 / 6
+    )
+    assert saturday["per_person"]["trips_per_day"].estimate == pytest.approx(1.5)
+    assert saturday["per_traveller"]["minutes_per_day"].estimate == pytest.approx(60.0)
+    assert week["per_person"]["trips_per_day"].estimate == pytest.approx(0.5)
+    assert week["per_person"]["minutes_per_day"].estimate == pytest.approx(10.0)
+    assert weekday["per_person"]["minutes_per_trip"].estimate == pytest.approx(20.0)
+    assert len(weekday["per_person"]["trips_per_day"].replicates) == 20
+
+
+def test_c7_comparison_has_weekday_ratio_and_marks_entd_weekends_unavailable() -> None:
+    def sample(name: str, day_weight: float, person_weight: float):
+        people = np.array([f"{name}{i}" for i in range(60)])
+        households = np.array([f"h{i}" for i in range(60)])
+        return variation_report.PeriodBudgetSample(
+            person_household=households,
+            person_weight=np.full(60, person_weight),
+            day_household=households,
+            day_person=people,
+            day_weight=np.full(60, day_weight),
+            day_type=np.ones(60, dtype=int),
+            trips=np.full(60, 2.0),
+            total_time_min=np.full(60, 40.0),
+            time_trips=np.full(60, 2.0),
+        )
+
+    sample_2008 = sample("a", 5.0, 5.0)
+    sample_2019 = sample("b", 5.0, 1.0)
+    frames_2008 = _frames(
+        {},
+        {},
+        aux={
+            "c7_data": {scope: sample_2008 for scope in ("sdes", "needs", "all_trips")}
+        },
+    )
+    frames_2019 = _frames(
+        {},
+        {},
+        aux={
+            "c7_data": {scope: sample_2019 for scope in ("sdes", "needs", "all_trips")}
+        },
+    )
+
+    rows = variation_report._c7_comparison(frames_2008, frames_2019, n_reps=30, seed=2)
+    weekday = next(
+        row
+        for row in rows
+        if row["scope"].startswith("SDES")
+        and row["period"] == "weekday"
+        and row["basis"] == "per person"
+        and row["measure"] == "Trips/day"
+    )
+    saturday = next(
+        row
+        for row in rows
+        if row["scope"].startswith("SDES")
+        and row["period"] == "Saturday"
+        and row["basis"] == "per person"
+        and row["measure"] == "Trips/day"
+    )
+    assert weekday["estimate_2008"] == pytest.approx(2.0)
+    assert weekday["estimate_2019"] == pytest.approx(2.0)
+    assert weekday["ratio"] is not None
+    assert weekday["ratio"][0] == pytest.approx(1.0)
+    assert saturday["estimate_2008"] is None
+    assert saturday["ratio"] is None
