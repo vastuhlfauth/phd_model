@@ -56,14 +56,8 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     md_path = out_dir.with_suffix(".md")
     assert md_path.is_file()
     report = md_path.read_text(encoding="utf-8")
-    assert (
-        "Round-trip days · destination purposes · local (≤ 80 km)"
-        in report
-    )
-    assert (
-        "*Scope: Round-trip days · destination purposes · local (≤ 80 km)*"
-        in report
-    )
+    assert "Round-trip days · destination purposes · local (≤ 80 km)" in report
+    assert "*Scope: Round-trip days · destination purposes · local (≤ 80 km)*" in report
     assert "Mean daily energy and time by main-mode group" in report
     assert "Calibrated v0 and P0" in report
     assert "car_passenger_household" in report
@@ -236,10 +230,19 @@ def test_scope_cli_defaults_to_reference_and_selects_scope(
     assert emp.main(["--out", str(tmp_path / "report")]) == 0
     assert calls[-1][2] == "round-dest-local"
 
-    assert emp.main(
-        ["--out", str(tmp_path / "report"), "--survey", "entd2008",
-         "--scope", "alldays-allpurp-daytable"]
-    ) == 0
+    assert (
+        emp.main(
+            [
+                "--out",
+                str(tmp_path / "report"),
+                "--survey",
+                "entd2008",
+                "--scope",
+                "alldays-allpurp-daytable",
+            ]
+        )
+        == 0
+    )
     assert calls[-1][1] is entd2008
     assert calls[-1][2] == "alldays-allpurp-daytable"
 
@@ -255,9 +258,10 @@ def test_scope_all_cli_runs_each_scope_in_separate_report_directory(
 
     monkeypatch.setattr(emp, "run_compare", fake_run_compare)
 
-    assert emp.main(
-        ["--out", str(tmp_path / "compare"), "--compare", "--scope", "all"]
-    ) == 0
+    assert (
+        emp.main(["--out", str(tmp_path / "compare"), "--compare", "--scope", "all"])
+        == 0
+    )
 
     assert [scope_id for _, scope_id in calls] == [s.id for s in scope.ALL_SCOPES]
     assert calls[0][0] == tmp_path / "scopes" / calls[0][1] / "compare"
@@ -280,9 +284,7 @@ def test_weekday_person_table_uses_the_temporal_ratio_base() -> None:
         budget = daily_energy.PersonBudgetRow(
             group="overall",
             n=60,
-            budget=float(
-                np.sum(day_weight * time) / (np.sum(weight) * period_divisor)
-            ),
+            budget=float(np.sum(day_weight * time) / (np.sum(weight) * period_divisor)),
             budget_ci=(9.0, 11.0),
         )
         return {
@@ -336,6 +338,21 @@ def test_temporal_equivalence_uses_three_state_verdicts() -> None:
     assert lines[2].endswith("| equivalent | equivalent |")
     assert lines[3].endswith("| different | different |")
     assert lines[4].endswith("| inconclusive | different |")
+
+
+def test_daytable_temporal_comparison_does_not_report_cross_year_ratios() -> None:
+    lines = emp._format_scope_temporal_comparison(
+        scope.Scope.parse("alldays-allpurp-daytable"),
+        {},
+        {},
+        n_reps=3,
+        seed=0,
+    )
+
+    report = "\n".join(lines)
+    assert "partial coverage" in report
+    assert "no 2019/2008 ratios" in report
+    assert "Ratio 2019/2008" not in report
 
 
 def test_suppressed_person_budget_cell_keeps_true_n() -> None:

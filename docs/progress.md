@@ -22,9 +22,15 @@ Read this file at the start of every task and update it at the end.
   C5's fixed SDES scope, and the three C7 scopes. The report pipelines emit
   Markdown and PNGs, not CSVs, so there were no report CSVs to add a scope
   column to. Focused synthetic report tests: 5 passed; targeted Ruff passed.
-- Next: step d, step-12 Scope diagnostics (open days, walking/cycling
-  activity, sequential rule drops and day-table coverage), including the
-  documented ENTD 2008 partial-coverage handling.
+- Step d is complete: the step-12 report begins with weekday Scope
+  diagnostics for open days, walking/cycling activity and stay durations,
+  sequential rule drops, and day-table coverage, split by survey and
+  population category. Household-bootstrap 95% intervals are reported;
+  negative point cells remain non-estimable and invalid draws are counted.
+  ENTD 2008 day-table results are marked partial coverage and cross-year
+  ratios are suppressed; unavailable away-from-home flags are reported as
+  not recorded. Four focused synthetic tests and targeted Ruff checks
+  passed. No real-data reports or full test suite were run.
 - Neither survey's documented immobility reasons identify a comparable
   away-from-home category. Count days without trips as zero in both surveys;
   do not use voyage dates. Verify and report any survey-specific away

@@ -32,30 +32,231 @@ def test_scope_cli_defaults_to_reference_and_scope_all_runs_eight(
     monkeypatch.setattr(variation_report, "run", fake_run)
     monkeypatch.setattr(variation_report, "write_markdown", lambda *args: None)
 
-    assert variation_report.main(
-        [
-            "--out",
-            str(tmp_path / "step12"),
-            "--entd2008-zoning-data-path",
-            "zoning",
-        ]
-    ) == 0
+    assert (
+        variation_report.main(
+            [
+                "--out",
+                str(tmp_path / "step12"),
+                "--entd2008-zoning-data-path",
+                "zoning",
+            ]
+        )
+        == 0
+    )
     assert calls[-1][1] == "round-dest-local"
 
     calls.clear()
-    assert variation_report.main(
-        [
-            "--out",
-            str(tmp_path / "step12"),
-            "--entd2008-zoning-data-path",
-            "zoning",
-            "--scope",
-            "all",
-        ]
-    ) == 0
+    assert (
+        variation_report.main(
+            [
+                "--out",
+                str(tmp_path / "step12"),
+                "--entd2008-zoning-data-path",
+                "zoning",
+                "--scope",
+                "all",
+            ]
+        )
+        == 0
+    )
     assert [scope_id for _, scope_id in calls] == [s.id for s in scope.ALL_SCOPES]
     assert calls[0][0] == tmp_path / "scopes" / calls[0][1] / "step12"
     assert len({path for path, _ in calls}) == len(scope.ALL_SCOPES)
+
+
+def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
+    con = duckdb.connect()
+    con.sql("""
+        CREATE TABLE scope_input (
+            day_id VARCHAR, num_dep INTEGER, origin_purpose VARCHAR,
+            destination_purpose VARCHAR, destination_motive DOUBLE,
+            motive DOUBLE, moridom DOUBLE, mode_group VARCHAR, mobloc INTEGER,
+            departure_time TIME, arrival_time TIME
+        )
+    """)
+    con.sql("""
+        INSERT INTO scope_input VALUES
+            ('sport', 1, '1.1', '7.6', 7.6, 7.6, 1, 'walk', 1,
+                '08:00', '08:10'),
+            ('sport', 2, '7.6', '1.1', 1.1, 7.6, NULL, 'walk', 1,
+                '08:20', '08:30'),
+            ('open', 1, '1.1', '9.1', 9.1, 9.1, 2, 'car_driver', 1,
+                '09:00', '09:20'),
+            ('nonlocal-study', 1, '1.1', '1.4', 1.4, 1.4, 1,
+                'car_driver', 0, '10:00', '10:30')
+    """)
+    scope.create_scope_views(con, activity_stay_min=15)
+    con.sql("""
+        CREATE TABLE trip_legs AS
+        SELECT day_id, num_dep, day_id || '-' || num_dep AS ident_dep,
+            day_id AS ident_men, CASE day_id
+                WHEN 'sport' THEN 2.0
+                WHEN 'open' THEN 1.0
+                ELSE 3.0
+            END AS pond_jour,
+            1 AS typejour, 35 AS age, 'employed' AS population_category,
+            mode_group, mobloc, CASE
+                WHEN day_id = 'sport' THEN 10.0
+                WHEN day_id = 'open' THEN 20.0
+                ELSE 30.0
+            END AS duration_min, CASE
+                WHEN day_id = 'sport' THEN 1.0
+                WHEN day_id = 'open' THEN 2.0
+                ELSE 10.0
+            END AS distance_km,
+            motive
+        FROM scope_input
+    """)
+    con.sql("""
+        CREATE TABLE vr_trip_ext AS
+        SELECT ident_dep, CASE WHEN day_id = 'sport' THEN 0.8
+            WHEN day_id = 'open' THEN 1.5 ELSE 9.0 END AS crow_fly_km
+        FROM trip_legs
+    """)
+    con.sql("""
+        CREATE TABLE k_individu (
+            IDENT_IND VARCHAR, IDENT_MEN VARCHAR, PONDKI DOUBLE,
+            V2_MOBILREF INTEGER
+        )
+    """)
+    con.sql("""
+        INSERT INTO k_individu VALUES
+            ('sport', 'sport', 1.0, 2),
+            ('open', 'open', 1.0, 2),
+            ('nonlocal-study', 'nonlocal-study', 1.0, 2)
+    """)
+    con.sql("""
+        CREATE TABLE q_tcm_individu (
+            IDENT_IND VARCHAR, SITUA VARCHAR, AGE INTEGER
+        )
+    """)
+    con.sql("""
+        INSERT INTO q_tcm_individu VALUES
+            ('sport', '1', 35), ('open', '1', 35),
+            ('nonlocal-study', '1', 35)
+    """)
+
+    try:
+        diagnostics = variation_report.scope_diagnostics(
+            con, survey_name="ENTD 2008", sample_pct=None, n_reps=30, seed=2
+        )
+    finally:
+        con.close()
+
+    open_days = next(
+        row
+        for row in diagnostics["open_days"]
+        if row["population_category"] == "overall"
+    )
+    assert open_days["last_not_home_share"] == pytest.approx(4 / 15)
+    assert open_days["last_not_home_trip_share"] == pytest.approx(4 / 6)
+    assert open_days["ends_study_childcare_share"] == pytest.approx(3 / 15)
+    assert open_days["ends_study_childcare_trip_share"] == pytest.approx(3 / 6)
+    assert open_days["tripday_share"] == pytest.approx(6 / 15)
+    assert open_days["no_trip_share"] == pytest.approx(9 / 15)
+    assert open_days["origin_moridom_agreement"] == pytest.approx(5 / 6)
+
+    activity = next(
+        row
+        for row in diagnostics["activity"]
+        if row["population_category"] == "overall" and row["mode_group"] == "walk"
+    )
+    assert activity["n_trips"] == 2
+    assert activity["trips_per_day"] == pytest.approx(4 / 15)
+    assert activity["mean_duration_min"] == pytest.approx(10.0)
+    assert activity["mean_duration_min_ci95"] is not None
+    assert activity["mean_crow_fly_km"] == pytest.approx(0.8)
+    assert activity["stay_5_15_share"] == pytest.approx(1.0)
+    assert activity["dropped_share_5"] == pytest.approx(0.0)
+    assert activity["dropped_share_15"] == pytest.approx(1.0)
+    assert activity["dropped_share_15_ci95"] is not None
+    all_modes_activity = next(
+        row
+        for row in diagnostics["activity"]
+        if row["population_category"] == "overall"
+        and row["mode_group"] == "all modes"
+    )
+    assert all_modes_activity["dropped_share_15"] == pytest.approx(4 / 5)
+
+    drops = {
+        row["rule"]: row
+        for row in diagnostics["rule_drops"]
+        if row["population_category"] == "overall" and row["mode_group"] == "all modes"
+    }
+    assert drops["distance"]["trip_share"] == pytest.approx(3 / 8)
+    assert drops["distance"]["trip_share_ci95"] is not None
+    assert drops["distance"]["minute_share"] == pytest.approx(90 / 150)
+    assert drops["distance"]["km_share"] == pytest.approx(30 / 36)
+    assert drops["activity"]["trip_share"] == pytest.approx(4 / 8)
+    assert drops["day"]["trip_share"] == pytest.approx(1 / 8)
+
+    coverage = next(
+        row
+        for row in diagnostics["coverage"]
+        if row["population_category"] == "overall"
+    )
+    assert coverage["days_with_nonlocal_share"] == pytest.approx(3 / 15)
+    assert coverage["days_with_nonlocal_trip_share"] == pytest.approx(3 / 6)
+    assert coverage["nonlocal_trips_per_day"] == pytest.approx(3 / 15)
+    assert coverage["nonlocal_minutes_per_day"] == pytest.approx(90 / 15)
+    assert coverage["nonlocal_km_per_day"] == pytest.approx(30 / 15)
+    assert coverage["days_out_no_local_share"] == pytest.approx(3 / 15)
+    assert coverage["days_out_no_local_trip_share"] == pytest.approx(3 / 6)
+    assert diagnostics["partial_coverage"] is True
+    assert diagnostics["away_reason_recorded"] is False
+    rendered = "\n".join(
+        variation_report._format_scope_diagnostics({"ENTD 2008": diagnostics})
+    )
+    assert "### Coverage of the day table" in rendered
+    assert "partial coverage" in rendered
+    assert "95% CI" in rendered
+    assert "person-weekdays / trip-days" in rendered
+    assert "negative point-estimate population cells" in rendered
+    assert "not recorded" in rendered
+
+
+def test_scope_diagnostics_does_not_clip_negative_person_weekday_cells() -> None:
+    diagnostics, negative_cells, negative_draws = (
+        variation_report._bootstrap_scope_day_shares(
+            [("person", "household", "employed", 5.0)],
+            [("household", "employed", 6.0, *([0.0] * 13))],
+            n_reps=3,
+            seed=1,
+        )
+    )
+
+    employed = diagnostics["employed"]
+    assert employed["estimable"] is False
+    assert np.isnan(employed["point"]["no_trip_share"])
+    assert employed["ci95"]["tripday_share"] is None
+    assert negative_cells == 1
+    assert negative_draws == 3
+
+
+def test_c7_marks_entd_daytable_partial_and_suppresses_ratio() -> None:
+    report = "\n".join(
+        variation_report._format_c7(
+            [
+                {
+                    "scope": "alldays-allpurp-daytable",
+                    "period": "weekday",
+                    "basis": "per person",
+                    "measure": "Minutes/day",
+                    "n_2008": 100,
+                    "estimate_2008": 100.0,
+                    "n_2019": 100,
+                    "estimate_2019": 102.0,
+                    "ratio": (1.02, (1.01, 1.03)),
+                }
+            ],
+            equivalence_margin=0.15,
+            secondary_equivalence_margin=0.10,
+        )
+    )
+
+    assert "alldays-allpurp-daytable (partial coverage)" in report
+    assert "not comparable (partial coverage)" in report
+    assert "1.020" not in report
 
 
 def _frames(days: dict, trips: dict, aux: dict | None = None) -> SurveyFrames:
@@ -856,18 +1057,11 @@ def test_cli_writes_report_on_synthetic_data(
     assert exit_code == 0
     md_path = out_dir.with_suffix(".md")
     report = md_path.read_text(encoding="utf-8")
-    assert (
-        "Round-trip days · destination purposes · local (≤ 80 km)"
-        in report
-    )
-    assert (
-        "*Scope: Round-trip days · destination purposes · local (≤ 80 km)*"
-        in report
-    )
+    assert "Round-trip days · destination purposes · local (≤ 80 km)" in report
+    assert "*Scope: Round-trip days · destination purposes · local (≤ 80 km)*" in report
     assert "All days · all purposes · local (≤ 80 km)" in report
     assert (
-        "### C5. Official-scope replication — "
-        "All days · all purposes · local (≤ 80 km)"
+        "### C5. Official-scope replication — All days · all purposes · local (≤ 80 km)"
     ) in report
     assert "### C7. Budgets per person" in report
     assert "Choices made" in report
@@ -1718,8 +1912,7 @@ def test_c7_comparison_has_weekday_ratio_and_marks_entd_weekends_unavailable() -
         {},
         aux={
             "c7_data": {
-                scope_id: sample_2008
-                for scope_id in ("sdes", "reference", "daytable")
+                scope_id: sample_2008 for scope_id in ("sdes", "reference", "daytable")
             }
         },
     )
@@ -1728,8 +1921,7 @@ def test_c7_comparison_has_weekday_ratio_and_marks_entd_weekends_unavailable() -
         {},
         aux={
             "c7_data": {
-                scope_id: sample_2019
-                for scope_id in ("sdes", "reference", "daytable")
+                scope_id: sample_2019 for scope_id in ("sdes", "reference", "daytable")
             }
         },
     )

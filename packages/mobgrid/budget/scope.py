@@ -115,13 +115,13 @@ def create_scope_views(
     """
     if not 0 < activity_stay_min < 24 * 60:
         raise ValueError("activity_stay_min must be between zero and one day")
-    invalid = con.sql("""
+    invalid = con.execute("""
         SELECT count(*) FROM (
             SELECT day_id, num_dep, count(*) AS n FROM scope_input
             GROUP BY day_id, num_dep
             HAVING day_id IS NULL OR num_dep IS NULL OR count(*) > 1
         )
-    """).fetchone()[0]
+    """).fetchall()[0][0]
     if invalid:
         raise ValueError("scope_input requires unique, non-null day and trip numbers")
 

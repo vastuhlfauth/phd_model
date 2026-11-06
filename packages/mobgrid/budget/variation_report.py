@@ -24,6 +24,7 @@ smoke runs only.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -424,6 +425,1101 @@ def _create_frames_tables(
     """)
 
 
+def _scope_person_weekday_rows(
+    con: duckdb.DuckDBPyConnection,
+    survey_name: str,
+    sample_pct: float | None,
+) -> list[tuple[str, str, str, float]]:
+    if survey_name == "EMP 2019":
+        categories = emp2019.population_category_by_ident(con)
+        rows = con.sql(f"""
+            SELECT IDENT_IND, IDENT_MEN, 5.0 * TRY_CAST(pond_indC AS DOUBLE)
+            FROM k_individu
+            WHERE {_sample_sql(sample_pct, "IDENT_MEN")}
+        """).fetchall()
+    elif survey_name == "ENTD 2008":
+        categories = entd2008.population_category_by_ident(con)
+        rows = con.sql(f"""
+            SELECT IDENT_IND, IDENT_MEN, 5.0 * TRY_CAST(PONDKI AS DOUBLE)
+            FROM k_individu
+            WHERE {_sample_sql(sample_pct, "IDENT_MEN")}
+        """).fetchall()
+    else:
+        raise ValueError(f"Unknown survey for scope diagnostics: {survey_name}")
+    return [
+        (
+            str(person_id),
+            str(household_id),
+            categories.get(str(person_id), "unknown"),
+            float(weight),
+        )
+        for person_id, household_id, weight in rows
+        if weight is not None and np.isfinite(float(weight)) and float(weight) > 0
+    ]
+
+
+def _bootstrap_scope_day_shares(
+    person_weekdays: list[tuple[str, str, str, float]],
+    tripday_rows: list[tuple],
+    *,
+    n_reps: int,
+    seed: int,
+) -> tuple[dict[str, dict], int, int]:
+    if n_reps <= 0:
+        raise ValueError("n_reps must be positive for scope diagnostics")
+    household_ids = sorted({row[1] for row in person_weekdays})
+    household_index = {household: i for i, household in enumerate(household_ids)}
+    categories = sorted({row[2] for row in person_weekdays})
+    cells = [*categories, "overall"]
+    person_arrays = {
+        category: np.zeros(len(household_ids), dtype=float) for category in cells
+    }
+    trip_arrays = {
+        category: np.zeros((len(household_ids), 14), dtype=float) for category in cells
+    }
+
+    for _, household, category, weight in person_weekdays:
+        person_arrays[category][household_index[household]] += weight
+        person_arrays["overall"][household_index[household]] += weight
+    for row in tripday_rows:
+        household, category = str(row[0]), str(row[1] or "unknown")
+        if household not in household_index:
+            raise ValueError(
+                f"Trip-day household {household!r} is absent from the Kish roster"
+            )
+        index = household_index[household]
+        values = np.asarray(
+            [0.0 if value is None else float(value) for value in row[2:]],
+            dtype=float,
+        )
+        trip_arrays[category][index] += values
+        trip_arrays["overall"][index] += values
+
+    rng = np.random.default_rng(seed)
+    sample_indices = rng.integers(
+        0, len(household_ids), size=(n_reps, len(household_ids))
+    )
+    multiplicities = np.zeros((n_reps, len(household_ids)), dtype=np.int32)
+    for rep_index in range(n_reps):
+        multiplicities[rep_index] = np.bincount(
+            sample_indices[rep_index], minlength=len(household_ids)
+        )
+
+    share_columns = {
+        "tripday_share": 0,
+        "first_not_home": 1,
+        "last_not_home": 2,
+        "both": 3,
+        "purpose_missing": 4,
+        "ends_study_childcare": 5,
+        "agreement": 6,
+        "agreement_base": 7,
+        "closed": 8,
+        "nonlocal_day": 9,
+        "nonlocal_trips": 10,
+        "nonlocal_minutes": 11,
+        "nonlocal_km": 12,
+        "no_local_day": 13,
+    }
+    output: dict[str, dict] = {}
+    negative_cells = 0
+    negative_draws = 0
+    for category in cells:
+        person = person_arrays[category]
+        trip = trip_arrays[category]
+        person_total = float(person.sum())
+        tripday_total = float(trip[:, 0].sum())
+        point_no_trip = person_total - tripday_total
+        estimable = person_total > 0 and point_no_trip >= 0
+        if category != "overall" and point_no_trip < 0:
+            negative_cells += 1
+        draw_person = multiplicities @ person
+        draw_trip = multiplicities @ trip
+        draw_no_trip = draw_person - draw_trip[:, 0]
+        invalid = draw_no_trip < 0
+        if category != "overall":
+            negative_draws += int(invalid.sum())
+        valid_person = ~invalid & (draw_person > 0)
+        valid_trip = valid_person & (draw_trip[:, 0] > 0)
+        ci95: dict[str, tuple[float, float] | None] = {}
+
+        def interval(values: np.ndarray, valid_draws: np.ndarray) -> tuple | None:
+            finite = values[valid_draws & np.isfinite(values)]
+            if not estimable or len(finite) == 0:
+                return None
+            lower, upper = np.percentile(finite, [2.5, 97.5])
+            return float(lower), float(upper)
+
+        if estimable:
+            for key, index in share_columns.items():
+                numerator = draw_trip[:, index]
+                if key == "tripday_share":
+                    values = numerator / np.maximum(draw_person, 1)
+                    ci95[key] = interval(values, valid_person)
+                elif key in ("agreement", "agreement_base"):
+                    continue
+                else:
+                    values = numerator / np.maximum(draw_person, 1)
+                    ci95[f"{key}_share"] = interval(values, valid_person)
+                    ci95[f"{key}_trip_share"] = interval(
+                        numerator / np.maximum(draw_trip[:, 0], 1), valid_trip
+                    )
+            ci95["no_trip_share"] = interval(
+                draw_no_trip / np.maximum(draw_person, 1), valid_person
+            )
+            ci95["closed_trip_share"] = interval(
+                draw_trip[:, 8] / np.maximum(draw_trip[:, 0], 1), valid_trip
+            )
+            ci95["days_with_nonlocal_share"] = interval(
+                draw_trip[:, 9] / np.maximum(draw_person, 1), valid_person
+            )
+            ci95["days_with_nonlocal_trip_share"] = interval(
+                draw_trip[:, 9] / np.maximum(draw_trip[:, 0], 1), valid_trip
+            )
+            ci95["days_out_no_local_share"] = interval(
+                draw_trip[:, 13] / np.maximum(draw_person, 1), valid_person
+            )
+            ci95["days_out_no_local_trip_share"] = interval(
+                draw_trip[:, 13] / np.maximum(draw_trip[:, 0], 1), valid_trip
+            )
+            for key, index in (
+                ("nonlocal_trips_per_day", 10),
+                ("nonlocal_minutes_per_day", 11),
+                ("nonlocal_km_per_day", 12),
+            ):
+                ci95[key] = interval(
+                    draw_trip[:, index] / np.maximum(draw_person, 1),
+                    valid_person,
+                )
+            ci95["origin_moridom_agreement"] = interval(
+                draw_trip[:, 6] / np.maximum(draw_trip[:, 7], 1),
+                valid_trip & (draw_trip[:, 7] > 0),
+            )
+        else:
+            ci95 = {
+                "tripday_share": None,
+                "first_not_home_share": None,
+                "first_not_home_trip_share": None,
+                "last_not_home_share": None,
+                "last_not_home_trip_share": None,
+                "both_share": None,
+                "both_trip_share": None,
+                "purpose_missing_share": None,
+                "purpose_missing_trip_share": None,
+                "ends_study_childcare_share": None,
+                "ends_study_childcare_trip_share": None,
+                "no_trip_share": None,
+                "closed_trip_share": None,
+                "origin_moridom_agreement": None,
+            }
+        output[category] = {
+            "estimable": estimable,
+            "point": {
+                "tripday_share": tripday_total / person_total
+                if person_total > 0
+                else float("nan"),
+                "no_trip_share": point_no_trip / person_total
+                if person_total > 0 and point_no_trip >= 0
+                else float("nan"),
+            },
+            "ci95": ci95,
+            "negative_draws": int(invalid.sum()),
+            "person_weekdays_weight": person_total,
+            "tripday_weight": tripday_total,
+        }
+    return output, negative_cells, negative_draws
+
+
+def _bootstrap_scope_trip_metrics(
+    con: duckdb.DuckDBPyConnection,
+    person_weekdays: list[tuple[str, str, str, float]],
+    *,
+    n_reps: int,
+    seed: int,
+) -> tuple[dict[tuple[str, str], dict], dict[tuple[str, str, str], dict]]:
+    household_ids = sorted({row[1] for row in person_weekdays})
+    household_index = {household: i for i, household in enumerate(household_ids)}
+    categories = sorted({row[2] for row in person_weekdays})
+    person_arrays = {
+        category: np.zeros(len(household_ids), dtype=float)
+        for category in (*categories, "overall")
+    }
+    for _, household, category, weight in person_weekdays:
+        index = household_index[household]
+        person_arrays[category][index] += weight
+        person_arrays["overall"][index] += weight
+
+    metric_names = (
+        "activity_weight",
+        "duration_weighted",
+        "duration_weight",
+        "crow_fly_weighted",
+        "crow_fly_weight",
+        "stay_weight",
+        "no_next_weight",
+        "stay_under_5_weight",
+        "stay_5_15_weight",
+        "stay_15_30_weight",
+        "stay_30_plus_weight",
+        "stay_unavailable_weight",
+        "dropped_5_weight",
+        "dropped_15_weight",
+        "dropped_30_weight",
+        "all_trip_weight",
+        "all_minute_weight",
+        "all_km_weight",
+        "distance_trips",
+        "distance_minutes",
+        "distance_km",
+        "group8_trips",
+        "group8_minutes",
+        "group8_km",
+        "activity_trips",
+        "activity_minutes",
+        "activity_km",
+        "day_trips",
+        "day_minutes",
+        "day_km",
+        "threshold_base_weight",
+    )
+    household_metrics = con.sql("""
+        SELECT ident_men, population_category, mode_group,
+            grouping(population_category) AS overall,
+            grouping(mode_group) AS all_modes,
+            sum(weight) FILTER (WHERE activity_trip) AS activity_weight,
+            sum(weight * duration_min) FILTER (
+                WHERE activity_trip AND duration_min IS NOT NULL
+                    AND isfinite(duration_min)
+            ) AS duration_weighted,
+            sum(weight) FILTER (
+                WHERE activity_trip AND duration_min IS NOT NULL
+                    AND isfinite(duration_min)
+            ) AS duration_weight,
+            sum(weight * crow_fly_km) FILTER (
+                WHERE activity_trip AND crow_fly_km IS NOT NULL
+                    AND isfinite(crow_fly_km)
+            ) AS crow_fly_weighted,
+            sum(weight) FILTER (
+                WHERE activity_trip AND crow_fly_km IS NOT NULL
+                    AND isfinite(crow_fly_km)
+            ) AS crow_fly_weight,
+            sum(weight) FILTER (WHERE activity_destination_trip)
+                AS stay_weight,
+            sum(weight) FILTER (WHERE activity_destination_trip
+                AND next_departure IS NULL) AS no_next_weight,
+            sum(weight) FILTER (WHERE activity_destination_trip
+                AND next_departure IS NOT NULL AND stay_min < 5)
+                AS stay_under_5_weight,
+            sum(weight) FILTER (WHERE activity_destination_trip
+                AND next_departure IS NOT NULL AND stay_min >= 5
+                AND stay_min < 15) AS stay_5_15_weight,
+            sum(weight) FILTER (WHERE activity_destination_trip
+                AND next_departure IS NOT NULL AND stay_min >= 15
+                AND stay_min < 30) AS stay_15_30_weight,
+            sum(weight) FILTER (WHERE activity_destination_trip
+                AND next_departure IS NOT NULL AND stay_min >= 30)
+                AS stay_30_plus_weight,
+            sum(weight) FILTER (WHERE activity_destination_trip
+                AND next_departure IS NOT NULL AND stay_min IS NULL)
+                AS stay_unavailable_weight,
+            sum(weight) FILTER (WHERE mobloc = 1 AND NOT drop_group8
+                AND (outward_5 OR (return_home AND prior_5)))
+                AS dropped_5_weight,
+            sum(weight) FILTER (WHERE mobloc = 1 AND NOT drop_group8
+                AND (outward_15 OR (return_home AND prior_15)))
+                AS dropped_15_weight,
+            sum(weight) FILTER (WHERE mobloc = 1 AND NOT drop_group8
+                AND (outward_30 OR (return_home AND prior_30)))
+                AS dropped_30_weight,
+            sum(weight) AS all_trip_weight,
+            sum(weight * duration_min) FILTER (
+                WHERE duration_min IS NOT NULL AND isfinite(duration_min)
+            ) AS all_minute_weight,
+            sum(weight * distance_km) FILTER (
+                WHERE distance_km IS NOT NULL AND isfinite(distance_km)
+            ) AS all_km_weight,
+            sum(weight) FILTER (WHERE drop_distance) AS distance_trips,
+            sum(weight * duration_min) FILTER (WHERE drop_distance
+                AND duration_min IS NOT NULL AND isfinite(duration_min))
+                AS distance_minutes,
+            sum(weight * distance_km) FILTER (WHERE drop_distance
+                AND distance_km IS NOT NULL AND isfinite(distance_km))
+                AS distance_km,
+            sum(weight) FILTER (WHERE NOT drop_distance AND drop_group8)
+                AS group8_trips,
+            sum(weight * duration_min) FILTER (WHERE NOT drop_distance
+                AND drop_group8 AND duration_min IS NOT NULL
+                AND isfinite(duration_min)) AS group8_minutes,
+            sum(weight * distance_km) FILTER (WHERE NOT drop_distance
+                AND drop_group8 AND distance_km IS NOT NULL
+                AND isfinite(distance_km)) AS group8_km,
+            sum(weight) FILTER (WHERE NOT drop_distance AND NOT drop_group8
+                AND (outward_15 OR (return_home AND prior_15)))
+                AS activity_trips,
+            sum(weight * duration_min) FILTER (WHERE NOT drop_distance
+                AND NOT drop_group8 AND (outward_15
+                    OR (return_home AND prior_15))
+                AND duration_min IS NOT NULL AND isfinite(duration_min))
+                AS activity_minutes,
+            sum(weight * distance_km) FILTER (WHERE NOT drop_distance
+                AND NOT drop_group8 AND (outward_15
+                    OR (return_home AND prior_15))
+                AND distance_km IS NOT NULL AND isfinite(distance_km))
+                AS activity_km,
+            sum(weight) FILTER (WHERE NOT drop_distance AND NOT drop_group8
+                AND NOT (outward_15 OR (return_home AND prior_15))
+                AND NOT is_round) AS day_trips,
+            sum(weight * duration_min) FILTER (WHERE NOT drop_distance
+                AND NOT drop_group8
+                AND NOT (outward_15 OR (return_home AND prior_15))
+                AND NOT is_round AND duration_min IS NOT NULL
+                AND isfinite(duration_min)) AS day_minutes,
+            sum(weight * distance_km) FILTER (WHERE NOT drop_distance
+                AND NOT drop_group8
+                AND NOT (outward_15 OR (return_home AND prior_15))
+                AND NOT is_round AND distance_km IS NOT NULL
+                AND isfinite(distance_km)) AS day_km,
+            sum(weight) FILTER (
+                WHERE NOT drop_distance AND NOT drop_group8
+            ) AS threshold_base_weight
+        FROM scope_diag_trips
+        GROUP BY GROUPING SETS (
+            (ident_men, population_category, mode_group),
+            (ident_men, population_category),
+            (ident_men, mode_group), (ident_men)
+        )
+    """).fetchall()
+    arrays: dict[tuple[str, str], np.ndarray] = {}
+    for row in household_metrics:
+        category = "overall" if row[3] else row[1] or "unknown"
+        mode = "all modes" if row[4] else row[2] or "unknown"
+        key = category, mode
+        if key not in arrays:
+            arrays[key] = np.zeros((len(household_ids), len(metric_names)), dtype=float)
+        values = np.asarray(
+            [0.0 if value is None else float(value) for value in row[5:]],
+            dtype=float,
+        )
+        arrays[key][household_index[str(row[0])]] += values
+
+    rng = np.random.default_rng(seed)
+    sample_indices = rng.integers(
+        0, len(household_ids), size=(n_reps, len(household_ids))
+    )
+    multiplicities = np.zeros((n_reps, len(household_ids)), dtype=np.int32)
+    for rep_index in range(n_reps):
+        multiplicities[rep_index] = np.bincount(
+            sample_indices[rep_index], minlength=len(household_ids)
+        )
+
+    def ci(values: np.ndarray, valid: np.ndarray) -> tuple[float, float] | None:
+        finite = values[valid & np.isfinite(values)]
+        if len(finite) == 0:
+            return None
+        lower, upper = np.percentile(finite, [2.5, 97.5])
+        return float(lower), float(upper)
+
+    activity_intervals = {}
+    rule_intervals = {}
+    for (category, mode), values in arrays.items():
+        draws = multiplicities @ values
+        person = multiplicities @ person_arrays[category]
+        trips = draws[:, 15]
+        valid_person = person > 0
+        valid_trips = trips > 0
+        activity_intervals[(category, mode)] = {
+            "trips_per_day_ci95": ci(draws[:, 0] / np.maximum(person, 1), valid_person),
+            "mean_duration_min_ci95": ci(
+                draws[:, 1] / np.maximum(draws[:, 2], 1),
+                draws[:, 2] > 0,
+            ),
+            "mean_crow_fly_km_ci95": ci(
+                draws[:, 3] / np.maximum(draws[:, 4], 1),
+                draws[:, 4] > 0,
+            ),
+            "stay_under_5_share_ci95": ci(
+                draws[:, 7] / np.maximum(draws[:, 5], 1), draws[:, 5] > 0
+            ),
+            "stay_5_15_share_ci95": ci(
+                draws[:, 8] / np.maximum(draws[:, 5], 1), draws[:, 5] > 0
+            ),
+            "stay_15_30_share_ci95": ci(
+                draws[:, 9] / np.maximum(draws[:, 5], 1), draws[:, 5] > 0
+            ),
+            "stay_30_plus_share_ci95": ci(
+                draws[:, 10] / np.maximum(draws[:, 5], 1), draws[:, 5] > 0
+            ),
+            "no_next_share_ci95": ci(
+                draws[:, 6] / np.maximum(draws[:, 5], 1), draws[:, 5] > 0
+            ),
+            "stay_unavailable_share_ci95": ci(
+                draws[:, 11] / np.maximum(draws[:, 5], 1), draws[:, 5] > 0
+            ),
+            "dropped_share_5_ci95": ci(
+                draws[:, 12] / np.maximum(draws[:, 30], 1), draws[:, 30] > 0
+            ),
+            "dropped_share_15_ci95": ci(
+                draws[:, 13] / np.maximum(draws[:, 30], 1), draws[:, 30] > 0
+            ),
+            "dropped_share_30_ci95": ci(
+                draws[:, 14] / np.maximum(draws[:, 30], 1), draws[:, 30] > 0
+            ),
+        }
+        for rule, offset in (
+            ("distance", 18),
+            ("group 8", 21),
+            ("activity", 24),
+            ("day", 27),
+        ):
+            rule_values = {
+                "trips_ci95": ci(draws[:, offset], valid_person),
+                "minutes_ci95": ci(draws[:, offset + 1], valid_person),
+                "km_ci95": ci(draws[:, offset + 2], valid_person),
+                "trip_share_ci95": ci(
+                    draws[:, offset] / np.maximum(trips, 1), valid_trips
+                ),
+                "minute_share_ci95": ci(
+                    draws[:, offset + 1] / np.maximum(draws[:, 16], 1),
+                    draws[:, 16] > 0,
+                ),
+                "km_share_ci95": ci(
+                    draws[:, offset + 2] / np.maximum(draws[:, 17], 1),
+                    draws[:, 17] > 0,
+                ),
+            }
+            rule_intervals[(category, mode, rule)] = rule_values
+    return activity_intervals, rule_intervals
+
+
+def scope_diagnostics(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    survey_name: str,
+    sample_pct: float | None,
+    n_reps: int = 200,
+    seed: int = 0,
+) -> dict[str, object]:
+    """Summarise weekday scope behavior and coverage, section 9.9.
+
+    Trip weights are ``POND_JOUR``/``POIDS_JOUR``. Distance-rule km use the
+    step-11 corrected trip distance; activity km use raw crow-fly distance.
+    """
+    sample_sql = _sample_sql(sample_pct, "t.ident_men")
+    person_weekdays = _scope_person_weekday_rows(
+        con, survey_name=survey_name, sample_pct=sample_pct
+    )
+    if not person_weekdays:
+        raise ValueError(f"{survey_name} scope-diagnostics roster is empty")
+    activity_expressions = {}
+    for threshold in (5, 15, 30):
+        activity_expressions[f"outward_{threshold}"] = f"""
+            coalesce(s.mode_group IN ('walk', 'cycle') AND (
+                s.destination_motive IN (7.7, 7.8)
+                OR (s.destination_motive = 7.6 AND s.stay_min < {threshold})
+            ), FALSE)
+        """
+    con.sql(f"""
+        CREATE OR REPLACE TEMP VIEW scope_diag_trips AS
+        WITH activity_flags AS (
+            SELECT s.*,
+                {activity_expressions["outward_5"]} AS outward_5,
+                {activity_expressions["outward_15"]} AS outward_15,
+                {activity_expressions["outward_30"]} AS outward_30
+            FROM scope_trips s
+        ), activity_chain AS (
+            SELECT *,
+                lag(outward_5, 1, FALSE) OVER day_order AS prior_5,
+                lag(outward_15, 1, FALSE) OVER day_order AS prior_15,
+                lag(outward_30, 1, FALSE) OVER day_order AS prior_30
+            FROM activity_flags
+            WINDOW day_order AS (PARTITION BY day_id ORDER BY num_dep)
+        )
+        SELECT
+            t.day_id, t.num_dep, t.ident_dep, t.ident_men,
+            t.pond_jour AS weight, t.population_category, t.mode_group,
+            t.mobloc, t.duration_min, t.distance_km, e.crow_fly_km,
+            s.origin_purpose, s.destination_purpose, s.destination_motive,
+            s.motive, s.moridom, s.is_round, s.starts_at_residence,
+            s.ends_at_residence, s.stay_min, s.next_departure,
+            coalesce(s.mode_group IN ('walk', 'cycle')
+                AND s.motive IN (7.6, 7.7, 7.8), FALSE) AS activity_trip,
+            coalesce(s.mode_group IN ('walk', 'cycle')
+                AND s.destination_motive IN (7.6, 7.7, 7.8), FALSE)
+                AS activity_destination_trip,
+            coalesce(s.mobloc IS DISTINCT FROM 1, TRUE) AS drop_distance,
+            coalesce(s.mobloc = 1 AND s.motive IN (8.1, 8.2, 8.3, 8.4), FALSE)
+                AS drop_group8,
+            coalesce(s.destination_purpose IN ('1.1', '1.2', '1.3'), FALSE)
+                AS return_home,
+            coalesce(s.mode_group IN ('walk', 'cycle') AND (
+                s.destination_motive IN (7.7, 7.8)
+                OR (s.destination_motive = 7.6 AND s.stay_min < 5)
+            ), FALSE) AS outward_5,
+            coalesce(s.mode_group IN ('walk', 'cycle') AND (
+                s.destination_motive IN (7.7, 7.8)
+                OR (s.destination_motive = 7.6 AND s.stay_min < 15)
+            ), FALSE) AS outward_15,
+            coalesce(s.mode_group IN ('walk', 'cycle') AND (
+                s.destination_motive IN (7.7, 7.8)
+                OR (s.destination_motive = 7.6 AND s.stay_min < 30)
+            ), FALSE) AS outward_30,
+            c.prior_5, c.prior_15, c.prior_30
+        FROM trip_legs t
+        JOIN activity_chain c USING (day_id, num_dep)
+        JOIN scope_trips s USING (day_id, num_dep)
+        LEFT JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
+        WHERE t.typejour = 1 AND t.pond_jour > 0 AND ({sample_sql})
+    """)
+    con.sql("""
+        CREATE OR REPLACE TEMP VIEW scope_diag_days AS
+        SELECT day_id,
+            any_value(ident_men) AS ident_men,
+            any_value(population_category) AS population_category,
+            any_value(weight) AS weight,
+            count(*) AS n_trips,
+            first(origin_purpose ORDER BY num_dep) AS first_origin,
+            first(moridom ORDER BY num_dep) AS first_moridom,
+            first(destination_purpose ORDER BY num_dep DESC) AS last_destination,
+            first(destination_motive ORDER BY num_dep DESC) AS last_destination_motive,
+            first(starts_at_residence ORDER BY num_dep) AS starts_at_residence,
+            first(ends_at_residence ORDER BY num_dep DESC) AS ends_at_residence,
+            count(*) FILTER (WHERE mobloc = 1) AS local_trips,
+            count(*) FILTER (WHERE mobloc IS DISTINCT FROM 1) AS nonlocal_trips,
+            coalesce(sum(duration_min) FILTER (
+                WHERE mobloc IS DISTINCT FROM 1
+                    AND duration_min IS NOT NULL AND isfinite(duration_min)
+            ), 0.0) AS nonlocal_minutes,
+            coalesce(sum(distance_km) FILTER (
+                WHERE mobloc IS DISTINCT FROM 1
+                    AND distance_km IS NOT NULL AND isfinite(distance_km)
+            ), 0.0) AS nonlocal_km
+        FROM scope_diag_trips
+        GROUP BY day_id
+    """)
+
+    con.sql("""
+        CREATE OR REPLACE TEMP VIEW scope_diag_day_flags AS
+        WITH classified AS (
+            SELECT *,
+                coalesce(
+                    CASE WHEN first_origin IS NULL
+                            OR first_origin IN ('', '9999')
+                        THEN first_moridom IN (1, 2)
+                        ELSE TRUE
+                    END, FALSE
+                ) AS origin_known,
+                coalesce(
+                    CASE WHEN first_origin IS NULL
+                            OR first_origin IN ('', '9999')
+                        THEN first_moridom = 1
+                        ELSE first_origin IN ('1.1', '1.2', '1.3')
+                    END, FALSE
+                ) AS starts_home,
+                coalesce(last_destination NOT IN ('', '9999'), FALSE)
+                    AS destination_known,
+                coalesce(last_destination IN ('1.1', '1.2', '1.3'), FALSE)
+                    AS ends_home,
+                first_origin IS NOT NULL AND first_origin NOT IN ('', '9999')
+                    AND first_moridom IN (1, 2) AS agreement_observed
+            FROM scope_diag_days
+        ), reasons AS (
+            SELECT *,
+                CASE
+                    WHEN n_trips = 0 THEN 'closed'
+                    WHEN NOT origin_known OR NOT destination_known
+                        THEN 'purpose_missing'
+                    WHEN NOT starts_home AND NOT ends_home THEN 'both'
+                    WHEN NOT starts_home THEN 'first_not_home'
+                    WHEN NOT ends_home THEN 'last_not_home'
+                    ELSE 'closed'
+                END AS open_reason,
+                coalesce(
+                    (first_origin IN ('1.1', '1.2', '1.3'))
+                    = (first_moridom = 1), FALSE
+                ) AS origin_moridom_agrees
+            FROM classified
+        )
+        SELECT * FROM reasons
+    """)
+    open_rows = con.sql("""
+        SELECT population_category, grouping(population_category) AS overall,
+            sum(weight) AS tripday_weight,
+            sum(weight) FILTER (WHERE open_reason = 'first_not_home')
+                AS first_not_home_weight,
+            sum(weight) FILTER (WHERE open_reason = 'last_not_home')
+                AS last_not_home_weight,
+            sum(weight) FILTER (WHERE open_reason = 'both') AS both_weight,
+            sum(weight) FILTER (WHERE open_reason = 'purpose_missing')
+                AS purpose_missing_weight,
+            sum(weight) FILTER (
+                WHERE last_destination_motive IN (1.4, 1.5)
+            ) AS study_childcare_weight,
+            sum(weight) FILTER (
+                WHERE agreement_observed AND origin_moridom_agrees
+            ) AS agreement_weight,
+            sum(weight) FILTER (WHERE agreement_observed)
+                AS agreement_base_weight,
+            sum(weight) FILTER (WHERE open_reason = 'closed') AS closed_weight,
+            sum(weight) FILTER (WHERE nonlocal_trips > 0) AS nonlocal_day_weight,
+            sum(weight * nonlocal_trips) AS nonlocal_trip_weight,
+            sum(weight * nonlocal_minutes) AS nonlocal_minute_weight,
+            sum(weight * nonlocal_km) AS nonlocal_km_weight,
+            sum(weight) FILTER (WHERE local_trips = 0) AS no_local_day_weight
+        FROM scope_diag_day_flags
+        GROUP BY GROUPING SETS ((population_category), ())
+    """).fetchall()
+    person_weekdays_by_category: dict[str, float] = {}
+    for _, household, category, weight in person_weekdays:
+        person_weekdays_by_category[category] = (
+            person_weekdays_by_category.get(category, 0.0) + weight
+        )
+    person_weekdays_by_category["overall"] = sum(
+        weight for _, _, _, weight in person_weekdays
+    )
+    tripday_household_rows = con.sql("""
+        SELECT ident_men, population_category, sum(weight) AS tripday_weight,
+            sum(weight) FILTER (WHERE open_reason = 'first_not_home')
+                AS first_not_home_weight,
+            sum(weight) FILTER (WHERE open_reason = 'last_not_home')
+                AS last_not_home_weight,
+            sum(weight) FILTER (WHERE open_reason = 'both') AS both_weight,
+            sum(weight) FILTER (WHERE open_reason = 'purpose_missing')
+                AS purpose_missing_weight,
+            sum(weight) FILTER (
+                WHERE last_destination_motive IN (1.4, 1.5)
+            ) AS study_childcare_weight,
+            sum(weight) FILTER (
+                WHERE agreement_observed AND origin_moridom_agrees
+            ) AS agreement_weight,
+            sum(weight) FILTER (WHERE agreement_observed)
+                AS agreement_base_weight,
+            sum(weight) FILTER (WHERE open_reason = 'closed') AS closed_weight,
+            sum(weight) FILTER (WHERE nonlocal_trips > 0) AS nonlocal_day_weight,
+            sum(weight * nonlocal_trips) AS nonlocal_trip_weight,
+            sum(weight * nonlocal_minutes) AS nonlocal_minute_weight,
+            sum(weight * nonlocal_km) AS nonlocal_km_weight,
+            sum(weight) FILTER (WHERE local_trips = 0) AS no_local_day_weight
+        FROM scope_diag_day_flags
+        GROUP BY ident_men, population_category
+    """).fetchall()
+    bootstrap_rows, negative_cell_count, negative_draw_count = (
+        _bootstrap_scope_day_shares(
+            person_weekdays,
+            tripday_household_rows,
+            n_reps=n_reps,
+            seed=seed,
+        )
+    )
+    open_days = []
+    for row in open_rows:
+        category = "overall" if row[1] else row[0] or "unknown"
+        tripday_weight = float(row[2] or 0)
+        person_weight = person_weekdays_by_category.get(category, 0.0)
+        bootstrap = bootstrap_rows[category]
+        estimable = bootstrap["estimable"]
+        row_data = {
+            "population_category": category,
+            "person_weekdays_weight": person_weight,
+            "tripday_weight": tripday_weight,
+            "closed_trip_share": (
+                float(row[10] or 0) / tripday_weight
+                if estimable and tripday_weight
+                else float("nan")
+            ),
+            "closed_trip_share_ci95": bootstrap["ci95"].get("closed_trip_share"),
+            "tripday_share": (
+                tripday_weight / person_weight
+                if estimable and person_weight
+                else float("nan")
+            ),
+            "tripday_share_ci95": bootstrap["ci95"].get("tripday_share"),
+            "no_trip_share": (
+                bootstrap["point"]["no_trip_share"] if estimable else float("nan")
+            ),
+            "no_trip_share_ci95": bootstrap["ci95"].get("no_trip_share"),
+            "estimable": estimable,
+            "negative_bootstrap_draws": bootstrap["negative_draws"],
+        }
+        for key, index in (
+            ("first_not_home", 3),
+            ("last_not_home", 4),
+            ("both", 5),
+            ("purpose_missing", 6),
+            ("ends_study_childcare", 7),
+        ):
+            numerator = float(row[index] or 0)
+            row_data[f"{key}_share"] = (
+                numerator / person_weight
+                if estimable and person_weight
+                else float("nan")
+            )
+            row_data[f"{key}_trip_share"] = (
+                numerator / tripday_weight
+                if estimable and tripday_weight
+                else float("nan")
+            )
+            row_data[f"{key}_share_ci95"] = bootstrap["ci95"].get(f"{key}_share")
+            row_data[f"{key}_trip_share_ci95"] = bootstrap["ci95"].get(
+                f"{key}_trip_share"
+            )
+        row_data["origin_moridom_agreement"] = (
+            float(row[8] / row[9]) if estimable and row[9] else float("nan")
+        )
+        row_data["origin_moridom_agreement_ci95"] = bootstrap["ci95"].get(
+            "origin_moridom_agreement"
+        )
+        open_days.append(row_data)
+
+    activity_ci, rule_ci = _bootstrap_scope_trip_metrics(
+        con, person_weekdays, n_reps=n_reps, seed=seed
+    )
+    day_weights = person_weekdays_by_category
+    activity_rows = con.sql("""
+        WITH grouped AS (
+            SELECT population_category, mode_group,
+                grouping(population_category) AS overall,
+                grouping(mode_group) AS all_modes,
+                count(*) FILTER (WHERE activity_trip) AS n_trips,
+                coalesce(sum(weight) FILTER (WHERE activity_trip), 0.0)
+                    AS weighted_trips,
+                sum(weight * duration_min) FILTER (
+                    WHERE activity_trip AND duration_min IS NOT NULL
+                        AND isfinite(duration_min)
+                ) AS duration_weighted,
+                sum(weight) FILTER (
+                    WHERE activity_trip AND duration_min IS NOT NULL
+                        AND isfinite(duration_min)
+                ) AS duration_weight,
+                sum(weight * crow_fly_km) FILTER (
+                    WHERE activity_trip AND crow_fly_km IS NOT NULL
+                        AND isfinite(crow_fly_km)
+                ) AS crow_fly_weighted,
+                sum(weight) FILTER (
+                    WHERE activity_trip AND crow_fly_km IS NOT NULL
+                        AND isfinite(crow_fly_km)
+                ) AS crow_fly_weight,
+                sum(weight) FILTER (WHERE activity_destination_trip)
+                    AS stay_weight,
+                sum(weight) FILTER (WHERE activity_destination_trip
+                    AND next_departure IS NULL) AS no_next_weight,
+                sum(weight) FILTER (WHERE activity_destination_trip
+                    AND next_departure IS NOT NULL AND stay_min < 5)
+                    AS stay_under_5_weight,
+                sum(weight) FILTER (WHERE activity_destination_trip
+                    AND next_departure IS NOT NULL
+                    AND stay_min >= 5 AND stay_min < 15)
+                    AS stay_5_15_weight,
+                sum(weight) FILTER (WHERE activity_destination_trip
+                    AND next_departure IS NOT NULL
+                    AND stay_min >= 15 AND stay_min < 30)
+                    AS stay_15_30_weight,
+                sum(weight) FILTER (WHERE activity_destination_trip
+                    AND next_departure IS NOT NULL AND stay_min >= 30)
+                    AS stay_30_plus_weight,
+                sum(weight) FILTER (WHERE activity_destination_trip
+                    AND next_departure IS NOT NULL AND stay_min IS NULL)
+                    AS stay_unavailable_weight,
+                sum(weight) FILTER (
+                    WHERE NOT drop_distance AND NOT drop_group8
+                    AND (outward_5 OR (return_home AND prior_5)))
+                    AS dropped_5_weight,
+                sum(weight) FILTER (
+                    WHERE NOT drop_distance AND NOT drop_group8
+                    AND (outward_15 OR (return_home AND prior_15)))
+                    AS dropped_15_weight,
+                sum(weight) FILTER (
+                    WHERE NOT drop_distance AND NOT drop_group8
+                    AND (outward_30 OR (return_home AND prior_30)))
+                    AS dropped_30_weight,
+                sum(weight) AS all_trip_weight,
+                sum(weight) FILTER (
+                    WHERE NOT drop_distance AND NOT drop_group8
+                ) AS threshold_base_weight
+            FROM scope_diag_trips
+            GROUP BY GROUPING SETS (
+                (population_category, mode_group),
+                (population_category), (mode_group), ()
+            )
+        )
+        SELECT CASE WHEN overall = 1 THEN 'overall'
+                    ELSE coalesce(population_category, 'unknown') END,
+            CASE WHEN all_modes = 1 THEN 'all modes'
+                    ELSE coalesce(mode_group, 'unknown') END,
+            n_trips, weighted_trips, duration_weighted, duration_weight,
+            crow_fly_weighted, crow_fly_weight, stay_weight,
+            no_next_weight, stay_under_5_weight, stay_5_15_weight,
+            stay_15_30_weight, stay_30_plus_weight, stay_unavailable_weight,
+            dropped_5_weight, dropped_15_weight, dropped_30_weight,
+            all_trip_weight, threshold_base_weight
+        FROM grouped
+    """).fetchall()
+    activity = []
+    for row in activity_rows:
+        category, mode = row[0], row[1]
+        day_weight = day_weights.get(category, day_weights["overall"])
+        stay_weight = float(row[8] or 0)
+        threshold_base_weight = float(row[19] or 0)
+        activity_drops = {
+            threshold: float(row[index] or 0)
+            for threshold, index in ((5, 15), (15, 16), (30, 17))
+        }
+        activity.append(
+            {
+                "population_category": category,
+                "mode_group": mode,
+                "n_trips": int(row[2] or 0),
+                "trips_per_day": float(row[3] or 0) / day_weight,
+                "mean_duration_min": (
+                    float(row[4] / row[5]) if row[5] else float("nan")
+                ),
+                "mean_crow_fly_km": (
+                    float(row[6] / row[7]) if row[7] else float("nan")
+                ),
+                "stay_under_5_share": float(row[10] or 0) / stay_weight
+                if stay_weight
+                else float("nan"),
+                "stay_5_15_share": float(row[11] or 0) / stay_weight
+                if stay_weight
+                else float("nan"),
+                "stay_15_30_share": float(row[12] or 0) / stay_weight
+                if stay_weight
+                else float("nan"),
+                "stay_30_plus_share": float(row[13] or 0) / stay_weight
+                if stay_weight
+                else float("nan"),
+                "no_next_share": float(row[9] or 0) / stay_weight
+                if stay_weight
+                else float("nan"),
+                "stay_unavailable_share": float(row[14] or 0) / stay_weight
+                if stay_weight
+                else float("nan"),
+                "dropped_share_5": activity_drops[5] / threshold_base_weight
+                if threshold_base_weight
+                else float("nan"),
+                "dropped_share_15": activity_drops[15] / threshold_base_weight
+                if threshold_base_weight
+                else float("nan"),
+                "dropped_share_30": activity_drops[30] / threshold_base_weight
+                if threshold_base_weight
+                else float("nan"),
+                **activity_ci.get((category, mode), {}),
+            }
+        )
+
+    grouped_rule_rows = con.sql("""
+        WITH grouped AS (
+            SELECT population_category, mode_group,
+                grouping(population_category) AS overall,
+                grouping(mode_group) AS all_modes,
+                sum(weight) AS all_trips,
+                sum(weight * duration_min) FILTER (
+                    WHERE duration_min IS NOT NULL AND isfinite(duration_min)
+                ) AS all_minutes,
+                sum(weight * distance_km) FILTER (
+                    WHERE distance_km IS NOT NULL AND isfinite(distance_km)
+                ) AS all_km,
+                sum(weight) FILTER (WHERE drop_distance) AS distance_trips,
+                sum(weight * duration_min) FILTER (WHERE drop_distance
+                    AND duration_min IS NOT NULL AND isfinite(duration_min))
+                    AS distance_minutes,
+                sum(weight * distance_km) FILTER (WHERE drop_distance
+                    AND distance_km IS NOT NULL AND isfinite(distance_km))
+                    AS distance_km,
+                sum(weight) FILTER (WHERE NOT drop_distance AND drop_group8)
+                    AS group8_trips,
+                sum(weight * duration_min) FILTER (WHERE NOT drop_distance
+                    AND drop_group8 AND duration_min IS NOT NULL
+                    AND isfinite(duration_min)) AS group8_minutes,
+                sum(weight * distance_km) FILTER (WHERE NOT drop_distance
+                    AND drop_group8 AND distance_km IS NOT NULL
+                    AND isfinite(distance_km)) AS group8_km,
+                sum(weight) FILTER (WHERE NOT drop_distance AND NOT drop_group8
+                    AND (outward_15 OR (return_home AND prior_15)))
+                    AS activity_trips,
+                sum(weight * duration_min) FILTER (WHERE NOT drop_distance
+                    AND NOT drop_group8 AND (outward_15
+                        OR (return_home AND prior_15))
+                    AND duration_min IS NOT NULL AND isfinite(duration_min))
+                    AS activity_minutes,
+                sum(weight * distance_km) FILTER (WHERE NOT drop_distance
+                    AND NOT drop_group8 AND (outward_15
+                        OR (return_home AND prior_15))
+                    AND distance_km IS NOT NULL AND isfinite(distance_km))
+                    AS activity_km,
+                sum(weight) FILTER (WHERE NOT drop_distance AND NOT drop_group8
+                    AND NOT (outward_15 OR (return_home AND prior_15))
+                    AND NOT is_round) AS day_trips,
+                sum(weight * duration_min) FILTER (WHERE NOT drop_distance
+                    AND NOT drop_group8
+                    AND NOT (outward_15 OR (return_home AND prior_15))
+                    AND NOT is_round AND duration_min IS NOT NULL
+                    AND isfinite(duration_min)) AS day_minutes,
+                sum(weight * distance_km) FILTER (WHERE NOT drop_distance
+                    AND NOT drop_group8
+                    AND NOT (outward_15 OR (return_home AND prior_15))
+                    AND NOT is_round AND distance_km IS NOT NULL
+                    AND isfinite(distance_km)) AS day_km,
+                sum(weight) FILTER (
+                    WHERE NOT drop_distance AND NOT drop_group8
+                    AND (outward_5 OR (return_home AND prior_5)))
+                    AS activity_5_trips,
+                sum(weight) FILTER (
+                    WHERE NOT drop_distance AND NOT drop_group8
+                    AND (outward_15 OR (return_home AND prior_15)))
+                    AS activity_15_trips,
+                sum(weight) FILTER (
+                    WHERE NOT drop_distance AND NOT drop_group8
+                    AND (outward_30 OR (return_home AND prior_30)))
+                    AS activity_30_trips
+            FROM scope_diag_trips
+            GROUP BY GROUPING SETS (
+                (population_category, mode_group),
+                (population_category), (mode_group), ()
+            )
+        )
+        SELECT CASE WHEN overall = 1 THEN 'overall'
+                    ELSE coalesce(population_category, 'unknown') END,
+            CASE WHEN all_modes = 1 THEN 'all modes'
+                    ELSE coalesce(mode_group, 'unknown') END,
+            all_trips, all_minutes, all_km,
+            distance_trips, distance_minutes, distance_km,
+            group8_trips, group8_minutes, group8_km,
+            activity_trips, activity_minutes, activity_km,
+            day_trips, day_minutes, day_km,
+            activity_5_trips, activity_15_trips, activity_30_trips
+        FROM grouped
+    """).fetchall()
+    rule_drops = []
+    rule_indices = (
+        ("distance", 5),
+        ("group 8", 8),
+        ("activity", 11),
+        ("day", 14),
+    )
+    for row in grouped_rule_rows:
+        category, mode = row[0], row[1]
+        all_trips, all_minutes, all_km = (float(row[i] or 0) for i in (2, 3, 4))
+        for rule, index in rule_indices:
+            trips, minutes, km = (
+                float(row[index + offset] or 0) for offset in range(3)
+            )
+            rule_drops.append(
+                {
+                    "population_category": category,
+                    "mode_group": mode,
+                    "rule": rule,
+                    "trips": trips,
+                    "minutes": minutes,
+                    "km": km,
+                    "trip_share": trips / all_trips if all_trips else float("nan"),
+                    "minute_share": minutes / all_minutes
+                    if all_minutes
+                    else float("nan"),
+                    "km_share": km / all_km if all_km else float("nan"),
+                    **rule_ci.get((category, mode, rule), {}),
+                }
+            )
+        for threshold, index in ((5, 17), (15, 18), (30, 19)):
+            rule_drops.append(
+                {
+                    "population_category": category,
+                    "mode_group": mode,
+                    "rule": f"activity_{threshold}",
+                    "trips": float(row[index] or 0),
+                    "minutes": float("nan"),
+                    "km": float("nan"),
+                    "trip_share": float(row[index] or 0) / all_trips
+                    if all_trips
+                    else float("nan"),
+                    "minute_share": float("nan"),
+                    "km_share": float("nan"),
+                    "trip_share_ci95": activity_ci.get((category, mode), {}).get(
+                        f"dropped_share_{threshold}_ci95"
+                    ),
+                    "minute_share_ci95": None,
+                    "km_share_ci95": None,
+                }
+            )
+
+    coverage_rows = con.sql("""
+        SELECT population_category, grouping(population_category) AS overall,
+            sum(weight) AS total_weight,
+            sum(weight) FILTER (WHERE nonlocal_trips > 0) AS nonlocal_day_weight,
+            sum(weight) FILTER (WHERE local_trips = 0) AS no_local_day_weight,
+            sum(weight * nonlocal_trips) AS nonlocal_trip_weight,
+            sum(weight * nonlocal_minutes) AS nonlocal_minute_weight,
+            sum(weight * nonlocal_km) AS nonlocal_km_weight
+        FROM scope_diag_days
+        GROUP BY GROUPING SETS ((population_category), ())
+    """).fetchall()
+    coverage = [
+        {
+            "population_category": category,
+            "days_with_nonlocal_share_ci95": bootstrap_rows[category]["ci95"].get(
+                "days_with_nonlocal_share"
+            ),
+            "days_with_nonlocal_share": (
+                float(row[3] or 0) / person_weekdays_by_category.get(category, 0.0)
+                if bootstrap_rows[category]["estimable"]
+                else float("nan")
+            ),
+            "days_with_nonlocal_trip_share_ci95": bootstrap_rows[category]["ci95"].get(
+                "days_with_nonlocal_trip_share"
+            ),
+            "days_with_nonlocal_trip_share": (
+                float(row[3] or 0) / float(row[2]) if row[2] else float("nan")
+            ),
+            "nonlocal_trips_per_day_ci95": bootstrap_rows[category]["ci95"].get(
+                "nonlocal_trips_per_day"
+            ),
+            "nonlocal_trips_per_day": (
+                float(row[5] or 0) / person_weekdays_by_category.get(category, 0.0)
+            ),
+            "nonlocal_minutes_per_day_ci95": bootstrap_rows[category]["ci95"].get(
+                "nonlocal_minutes_per_day"
+            ),
+            "nonlocal_minutes_per_day": (
+                float(row[6] or 0) / person_weekdays_by_category.get(category, 0.0)
+            ),
+            "nonlocal_km_per_day_ci95": bootstrap_rows[category]["ci95"].get(
+                "nonlocal_km_per_day"
+            ),
+            "nonlocal_km_per_day": (
+                float(row[7] or 0) / person_weekdays_by_category.get(category, 0.0)
+            ),
+            "days_out_no_local_share_ci95": bootstrap_rows[category]["ci95"].get(
+                "days_out_no_local_share"
+            ),
+            "days_out_no_local_share": (
+                float(row[4] or 0) / person_weekdays_by_category.get(category, 0.0)
+                if bootstrap_rows[category]["estimable"]
+                else float("nan")
+            ),
+            "days_out_no_local_trip_share_ci95": bootstrap_rows[category]["ci95"].get(
+                "days_out_no_local_trip_share"
+            ),
+            "days_out_no_local_trip_share": (
+                float(row[4] or 0) / float(row[2]) if row[2] else float("nan")
+            ),
+            "person_weekdays_weight": person_weekdays_by_category.get(category, 0.0),
+            "tripday_weight": float(row[2] or 0),
+        }
+        for row in coverage_rows
+        for category in ("overall" if row[1] else row[0] or "unknown",)
+    ]
+    return {
+        "open_days": open_days,
+        "activity": activity,
+        "rule_drops": rule_drops,
+        "coverage": coverage,
+        "away_reason_recorded": False,
+        "partial_coverage": survey_name == "ENTD 2008",
+        "negative_point_cells": negative_cell_count,
+        "negative_bootstrap_cell_draws": negative_draw_count,
+        "bootstrap_replicates": n_reps,
+    }
+
+
 def _raw_motive_shares_emp2019(con: duckdb.DuckDBPyConnection) -> dict:
     """Weighted weekday shares of EMP 2019's raw destination
     (`MMOTIFDES`) and origin (`MOTPREC`) motive codes."""
@@ -542,6 +1638,8 @@ def load_frames(
     sample_pct: float | None = None,
     scope: scope_module.Scope = scope_module.REFERENCE_SCOPE,
     activity_stay_min: float | None = None,
+    n_reps: int = 200,
+    seed: int = 0,
 ) -> SurveyFrames:
     """Build one survey's step-12 frames with explicit motive/density inputs."""
     config = config or load_energy_config(config_path)
@@ -590,12 +1688,17 @@ def load_frames(
             con, activity_stay_min=activity_stay_min
         )
         _PERSON_EXT_BY_SURVEY[survey.SURVEY_NAME](con)
-        _create_frames_tables(
-            con, sample_pct=sample_pct, selected_scope=scope
-        )
+        _create_frames_tables(con, sample_pct=sample_pct, selected_scope=scope)
         days = con.sql("SELECT * FROM vr_days").fetchnumpy()
         trips = con.sql("SELECT * FROM vr_trips").fetchnumpy()
         official_data = _official_scope_data(con, survey, sample_pct)
+        scope_data = scope_diagnostics(
+            con,
+            survey_name=survey.SURVEY_NAME,
+            sample_pct=sample_pct,
+            n_reps=n_reps,
+            seed=seed,
+        )
         c7_scopes = {
             "reference": scope_module.REFERENCE_SCOPE,
             "sdes": scope_module.SDES_SCOPE,
@@ -611,6 +1714,7 @@ def load_frames(
             "distance_doc": distance_doc(con),
             "official_scope_data": official_data,
             "c7_data": c7_data,
+            "scope_diagnostics": scope_data,
         }
         if survey is emp2019:
             aux["sequence_motive_summary"] = emp2019.sequence_motive_summary(
@@ -1499,7 +2603,11 @@ def _ratio_cell(
     n_a: int,
     n_b: int,
     decimals: int = 2,
+    *,
+    allowed: bool = True,
 ) -> str:
+    if not allowed:
+        return "-"
     ratio = _ratio_metric(metric_a, metric_b)
     return "-" if ratio is None else _metric_cell(ratio, min(n_a, n_b), decimals)
 
@@ -1526,6 +2634,7 @@ def _format_c6_overall(
     *,
     n_reps: int,
     seed: int,
+    include_selected_scope_ratio: bool,
 ) -> list[str]:
     lines = [
         "#### Overall speed and distance",
@@ -1547,14 +2656,29 @@ def _format_c6_overall(
             b = _speed_report_sample(
                 pair[1], measure, selected_b, n_reps=n_reps, seed=offset + 1
             )
+            allow_ratio = scope != "B" or include_selected_scope_ratio
+            km_ratio = _ratio_cell(
+                a.km_per_trip,
+                b.km_per_trip,
+                a.n_trips,
+                b.n_trips,
+                allowed=allow_ratio,
+            )
+            speed_ratio = _ratio_cell(
+                a.speed_kmh,
+                b.speed_kmh,
+                a.n_trips,
+                b.n_trips,
+                allowed=allow_ratio,
+            )
             lines.append(
                 f"| {scope} | {measure} | {a.n_trips} | {b.n_trips} | "
                 f"{_metric_cell(a.km_per_trip, a.n_trips)} | "
                 f"{_metric_cell(b.km_per_trip, b.n_trips)} | "
-                f"{_ratio_cell(a.km_per_trip, b.km_per_trip, a.n_trips, b.n_trips)} | "
+                f"{km_ratio} | "
                 f"{_metric_cell(a.speed_kmh, a.n_trips)} | "
                 f"{_metric_cell(b.speed_kmh, b.n_trips)} | "
-                f"{_ratio_cell(a.speed_kmh, b.speed_kmh, a.n_trips, b.n_trips)} |"
+                f"{speed_ratio} |"
             )
     lines += [
         "",
@@ -1570,6 +2694,7 @@ def _format_c6_residence(
     *,
     n_reps: int,
     seed: int,
+    include_selected_scope_ratio: bool,
 ) -> list[str]:
     class_values = {
         scope: (_residence_classes(pair[0]), _residence_classes(pair[1]))
@@ -1636,16 +2761,25 @@ def _format_c6_residence(
                     else "-"
                 )
                 km_ratio = _ratio_cell(
-                    a.km_per_trip, b.km_per_trip, a.n_trips, b.n_trips
+                    a.km_per_trip,
+                    b.km_per_trip,
+                    a.n_trips,
+                    b.n_trips,
+                    allowed=scope != "B" or include_selected_scope_ratio,
                 )
                 minutes_ratio = _ratio_cell(
                     a.minutes_per_trip,
                     b.minutes_per_trip,
                     a.n_trips,
                     b.n_trips,
+                    allowed=scope != "B" or include_selected_scope_ratio,
                 )
                 speed_ratio = _ratio_cell(
-                    a.speed_kmh, b.speed_kmh, a.n_trips, b.n_trips
+                    a.speed_kmh,
+                    b.speed_kmh,
+                    a.n_trips,
+                    b.n_trips,
+                    allowed=scope != "B" or include_selected_scope_ratio,
                 )
                 lines.append(
                     f"| {scope} | {label} | {measure} | {a.n_trips} | "
@@ -1669,6 +2803,7 @@ def _format_c6_zero_share(
     *,
     n_reps: int,
     seed: int,
+    include_selected_scope_ratio: bool,
 ) -> list[str]:
     lines = [
         "#### Same-commune trips (crow-fly = 0 km)",
@@ -1691,12 +2826,20 @@ def _format_c6_zero_share(
         a, b = estimates
         if a.zero_km_share is None or b.zero_km_share is None:
             raise ValueError("crow-fly estimates must include zero-distance shares")
+        allow_ratio = scope != "B" or include_selected_scope_ratio
+        ratio = _ratio_cell(
+            a.zero_km_share,
+            b.zero_km_share,
+            a.n_trips,
+            b.n_trips,
+            allowed=allow_ratio,
+        )
         lines.append(
             f"| {scope} | {a.n_trips} | "
             f"{_metric_cell(a.zero_km_share, a.n_trips, 3)} | "
             f"{b.n_trips} | "
             f"{_metric_cell(b.zero_km_share, b.n_trips, 3)} | "
-            f"{_ratio_cell(a.zero_km_share, b.zero_km_share, a.n_trips, b.n_trips)} |"
+            f"{ratio} |"
         )
     return lines
 
@@ -1709,6 +2852,7 @@ def _format_c6_mode_bands(
     by_density: bool,
     n_reps: int,
     seed: int,
+    include_ratio: bool,
 ) -> list[str]:
     title = (
         "Car-driver speed by crow-fly band and INSEE density"
@@ -1741,11 +2885,18 @@ def _format_c6_mode_bands(
             b = _speed_report_sample(
                 sample_b, "crow-fly", selected_b, n_reps=n_reps, seed=offset + 1
             )
+            ratio = _ratio_cell(
+                a.speed_kmh,
+                b.speed_kmh,
+                a.n_trips,
+                b.n_trips,
+                allowed=include_ratio,
+            )
             lines.append(
                 f"| {band_label} | {density_label or '-'} | {a.n_trips} | "
                 f"{_metric_cell(a.speed_kmh, a.n_trips)} | {b.n_trips} | "
                 f"{_metric_cell(b.speed_kmh, b.n_trips)} | "
-                f"{_ratio_cell(a.speed_kmh, b.speed_kmh, a.n_trips, b.n_trips)} |"
+                f"{ratio} |"
             )
     return lines
 
@@ -1756,11 +2907,12 @@ def _format_c6_standardized(
     *,
     n_reps: int,
     seed: int,
+    include_ratio: bool,
 ) -> list[str]:
     common_cells, n_a, n_b, speed_a, speed_b = _standardized_car_speed(
         sample_a, sample_b, n_reps=n_reps, seed=seed
     )
-    ratio = _ratio_metric(speed_a, speed_b)
+    ratio = _ratio_metric(speed_a, speed_b) if include_ratio else None
     ratio_cell = "-" if ratio is None else _metric_cell(ratio, min(n_a, n_b))
     change = (
         "-"
@@ -1794,6 +2946,7 @@ def _format_c6(
     *,
     n_reps: int,
     seed: int,
+    include_selected_scope_ratio: bool = True,
 ) -> list[str]:
     """Render C6 speed estimates from the existing trip scopes and weights."""
     samples = {
@@ -1810,14 +2963,35 @@ def _format_c6(
         "is the selected step-12 weekday scope. Estimates use trip "
         "weights; distance-specific metrics use trips with valid distance "
         "and positive duration. 2008/2019 ratios use 90% bootstrap intervals; "
-        "year estimates use 95% intervals. Cells with fewer than 50 trips "
+        + (
+            "ratios for selected scope B are omitted because ENTD 2008 has "
+            "partial day-table coverage. "
+            if not include_selected_scope_ratio
+            else ""
+        )
+        + "year estimates use 95% intervals. Cells with fewer than 50 trips "
         "suppress estimates.",
         "",
-        *_format_c6_overall(samples, n_reps=n_reps, seed=seed),
+        *_format_c6_overall(
+            samples,
+            n_reps=n_reps,
+            seed=seed,
+            include_selected_scope_ratio=include_selected_scope_ratio,
+        ),
         "",
-        *_format_c6_zero_share(samples, n_reps=n_reps, seed=seed + 500),
+        *_format_c6_zero_share(
+            samples,
+            n_reps=n_reps,
+            seed=seed + 500,
+            include_selected_scope_ratio=include_selected_scope_ratio,
+        ),
         "",
-        *_format_c6_residence(samples, n_reps=n_reps, seed=seed),
+        *_format_c6_residence(
+            samples,
+            n_reps=n_reps,
+            seed=seed,
+            include_selected_scope_ratio=include_selected_scope_ratio,
+        ),
         "",
         *_format_c6_mode_bands(
             samples["B"][0],
@@ -1826,6 +3000,7 @@ def _format_c6(
             by_density=True,
             n_reps=n_reps,
             seed=seed + 10_000,
+            include_ratio=include_selected_scope_ratio,
         ),
         "",
         *_format_c6_mode_bands(
@@ -1835,6 +3010,7 @@ def _format_c6(
             by_density=False,
             n_reps=n_reps,
             seed=seed + 20_000,
+            include_ratio=include_selected_scope_ratio,
         ),
         "",
         *_format_c6_mode_bands(
@@ -1844,6 +3020,7 @@ def _format_c6(
             by_density=False,
             n_reps=n_reps,
             seed=seed + 30_000,
+            include_ratio=include_selected_scope_ratio,
         ),
         "",
         *_format_c6_standardized(
@@ -1851,6 +3028,7 @@ def _format_c6(
             samples["B"][1],
             n_reps=n_reps,
             seed=seed + 40_000,
+            include_ratio=include_selected_scope_ratio,
         ),
     ]
     return lines
@@ -1943,7 +3121,7 @@ def _c7_comparison(
                     )
                     ratio = (
                         _budget_ratio(metric_2008, metric_2019)
-                        if metric_2008 is not None
+                        if metric_2008 is not None and scope != "daytable"
                         else None
                     )
                     rows.append(
@@ -1985,7 +3163,8 @@ def _format_c7(
         "one drawn weekend day elsewhere, nominally weighted 1× or 2× "
         "`PONDKI` in `POIDS_JOUR`. The selector/weight checks fail outside "
         "the verified groups, so no ENTD weekend weights or weekend/7-day "
-        "estimates are used. Per-traveller "
+        "estimates are used. The ENTD 2008 day-table sensitivity has partial "
+        "coverage, so its 2019/2008 ratios are omitted. Per-traveller "
         "means include only described days with at least one in-scope trip. "
         "Ratios are independent-survey household-bootstrap 90% intervals; "
         "verdicts use ±10% and ±15%. Cells below 50 respondents are hidden.",
@@ -2004,9 +3183,15 @@ def _format_c7(
         )
         value_2019 = _suppress(n_2019, _num(row["estimate_2019"], 2))
         ratio = row["ratio"]
-        ratio_cell = "not comparable"
+        partial_coverage = row["scope"] == "alldays-allpurp-daytable"
+        scope_cell = row["scope"] + (" (partial coverage)" if partial_coverage else "")
+        ratio_cell = (
+            "not comparable (partial coverage)"
+            if partial_coverage
+            else "not comparable"
+        )
         verdict_10 = verdict_15 = "not comparable"
-        if ratio is not None:
+        if ratio is not None and not partial_coverage:
             estimate, ci = ratio
             threshold_n = min(n_2008, n_2019)
             ratio_cell = _suppress(threshold_n, _ci_cell(estimate, ci, 3))
@@ -2017,7 +3202,7 @@ def _format_c7(
                 threshold_n, _equivalence_verdict(ci, equivalence_margin)
             )
         lines.append(
-            f"| {row['scope']} | {row['period']} | {row['basis']} | "
+            f"| {scope_cell} | {row['period']} | {row['basis']} | "
             f"{row['measure']} | {n_2008 if n_2008 is not None else '-'} | "
             f"{value_2008} | {n_2019} | {value_2019} | {ratio_cell} | "
             f"{verdict_10} | {verdict_15} |"
@@ -2821,6 +4006,32 @@ def _num(value: float, decimals: int = 1) -> str:
     return "-" if value is None or not np.isfinite(value) else f"{value:.{decimals}f}"
 
 
+def _estimate_ci(
+    value: float,
+    interval: tuple[float, float] | None,
+    formatter: Callable[[float], str],
+) -> str:
+    if not np.isfinite(value):
+        return "not estimable"
+    estimate = formatter(value)
+    if interval is None:
+        return f"{estimate} (95% CI unavailable)"
+    return f"{estimate} (95% CI {formatter(interval[0])} to {formatter(interval[1])})"
+
+
+def _row_estimate_ci(row: dict, key: str, formatter: Callable[[float], str]) -> str:
+    return _estimate_ci(row[key], row[f"{key}_ci95"], formatter)
+
+
+def _row_share_pair(row: dict, key: str) -> str:
+    return " / ".join(
+        (
+            _row_estimate_ci(row, f"{key}_share", _pct),
+            _row_estimate_ci(row, f"{key}_trip_share", _pct),
+        )
+    )
+
+
 def _suppress(n: int, text: str) -> str:
     """Step-11 suppression: keep the true n, blank the value below
     ``MIN_CELL_N`` respondents."""
@@ -3002,6 +4213,171 @@ def _format_a3(results: dict) -> list[str]:
     return lines
 
 
+def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[str]:
+    lines = [
+        "### Open days",
+        "",
+        "Weekday person-days. Person-weekday totals use 5 × the EMP Kish-roster "
+        "`pond_indC` sum or the ENTD reference-weekday `POIDS_JOUR` total. "
+        "Described trip-days use `POND_JOUR`/`POIDS_JOUR`; days without a "
+        "described trip are the difference. Percentages below show "
+        "person-weekday shares first and trip-day shares second. Intervals "
+        "are 95% household-bootstrap intervals.",
+        "",
+        "| Survey | Population category | Trip-days / person-weekdays | "
+        "No-trip weekdays | First trip not from residence "
+        "(person-weekdays / trip-days) | Last trip not to residence "
+        "(person-weekdays / trip-days) | Both (person-weekdays / trip-days) | "
+        "Purpose missing (person-weekdays / trip-days) | Last trip to "
+        "study/childcare (person-weekdays / trip-days) | "
+        "Origin-purpose / `MORIDOM` agreement | Negative bootstrap draws |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for survey_name, diagnostics in diagnostics_by_survey.items():
+        for row in diagnostics["open_days"]:
+            cells = [
+                survey_name,
+                row["population_category"],
+                _row_estimate_ci(row, "tripday_share", _pct),
+                _row_estimate_ci(row, "no_trip_share", _pct),
+                _row_share_pair(row, "first_not_home"),
+                _row_share_pair(row, "last_not_home"),
+                _row_share_pair(row, "both"),
+                _row_share_pair(row, "purpose_missing"),
+                _row_share_pair(row, "ends_study_childcare"),
+                _row_estimate_ci(row, "origin_moridom_agreement", _pct),
+                f"{row['negative_bootstrap_draws']} / "
+                f"{diagnostics['bootstrap_replicates']}",
+            ]
+            lines.append("| " + " | ".join(cells) + " |")
+        lines += [
+            "",
+            f"> {survey_name}: {diagnostics['negative_point_cells']} "
+            "negative point-estimate population cells; "
+            f"{diagnostics['negative_bootstrap_cell_draws']} negative "
+            "bootstrap cell-draws. Negative totals are non-estimable and "
+            "are never clipped.",
+            "",
+        ]
+    lines += [
+        "",
+        "### Walking/cycling as the activity",
+        "",
+        "Walking/cycling activity trips (walking or cycling mode, purposes "
+        "7.6–7.8). Stay shares are among these trips with an activity "
+        "destination; threshold-drop shares are of all trips after the "
+        "distance and group-8 rules.",
+        "",
+        "| Survey | Population category | Mode | n | Trips/day | "
+        "Mean duration (min) | Mean crow-fly (km) | <5 min | 5–15 min | "
+        "15–30 min | ≥30 min | No next trip | Dropped at 5 min | "
+        "Dropped at 15 min | Dropped at 30 min |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for survey_name, diagnostics in diagnostics_by_survey.items():
+        for row in diagnostics["activity"]:
+            cells = [
+                survey_name,
+                row["population_category"],
+                row["mode_group"],
+                str(row["n_trips"]),
+                _row_estimate_ci(row, "trips_per_day", lambda value: _num(value, 3)),
+                _row_estimate_ci(row, "mean_duration_min", _num),
+                _row_estimate_ci(row, "mean_crow_fly_km", lambda value: _num(value, 2)),
+                _row_estimate_ci(row, "stay_under_5_share", _pct),
+                _row_estimate_ci(row, "stay_5_15_share", _pct),
+                _row_estimate_ci(row, "stay_15_30_share", _pct),
+                _row_estimate_ci(row, "stay_30_plus_share", _pct),
+                _row_estimate_ci(row, "no_next_share", _pct),
+                _row_estimate_ci(row, "dropped_share_5", _pct),
+                _row_estimate_ci(row, "dropped_share_15", _pct),
+                _row_estimate_ci(row, "dropped_share_30", _pct),
+            ]
+            lines.append("| " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "### What each rule removes",
+        "",
+        "Sequential rule removals (trip/minute/km shares use all observed "
+        "trips/minutes/km as the denominator).",
+        "",
+        "| Survey | Population category | Mode group | Rule | Trips | "
+        "Minutes | Km | Trips share | Minutes share | Km share |",
+        "|---|---|---|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for survey_name, diagnostics in diagnostics_by_survey.items():
+        for row in diagnostics["rule_drops"]:
+            if "trips_ci95" in row:
+                trips = _row_estimate_ci(row, "trips", lambda value: _num(value, 1))
+                minutes = _row_estimate_ci(row, "minutes", lambda value: _num(value, 1))
+                km = _row_estimate_ci(row, "km", lambda value: _num(value, 1))
+            else:
+                trips = _num(row["trips"], 1)
+                minutes = _num(row["minutes"], 1)
+                km = _num(row["km"], 1)
+            cells = [
+                survey_name,
+                row["population_category"],
+                row["mode_group"],
+                row["rule"],
+                trips,
+                minutes,
+                km,
+                _row_estimate_ci(row, "trip_share", _pct),
+                _row_estimate_ci(row, "minute_share", _pct),
+                _row_estimate_ci(row, "km_share", _pct),
+            ]
+            lines.append("| " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "### Coverage of the day table",
+        "",
+        "Day-table coverage. ENTD 2008 is **partial coverage**: the survey "
+        "documentation does not establish systematic recording of trips "
+        "beyond 80 km. Neither survey's available immobility variables "
+        "identify away-from-home days comparably; those shares are "
+        "unavailable rather than inferred from voyage dates.",
+        "",
+        "| Survey | Population category | Days with non-local row "
+        "(person-weekdays / trip-days) | Non-local trips/day | Minutes/day | Km/day | "
+        "Days out with no local trip (person-weekdays / trip-days) | "
+        "No-trip days flagged away |",
+        "|---|---|---:|---:|---:|---:|---:|---|",
+    ]
+    for survey_name, diagnostics in diagnostics_by_survey.items():
+        for row in diagnostics["coverage"]:
+            cells = [
+                survey_name,
+                row["population_category"],
+                " / ".join(
+                    (
+                        _row_estimate_ci(row, "days_with_nonlocal_share", _pct),
+                        _row_estimate_ci(
+                            row, "days_with_nonlocal_trip_share", _pct
+                        ),
+                    )
+                ),
+                _row_estimate_ci(
+                    row, "nonlocal_trips_per_day", lambda value: _num(value, 3)
+                ),
+                _row_estimate_ci(row, "nonlocal_minutes_per_day", _num),
+                _row_estimate_ci(
+                    row, "nonlocal_km_per_day", lambda value: _num(value, 2)
+                ),
+                " / ".join(
+                    (
+                        _row_estimate_ci(row, "days_out_no_local_share", _pct),
+                        _row_estimate_ci(
+                            row, "days_out_no_local_trip_share", _pct
+                        ),
+                    )
+                ),
+                "not recorded",
+            ]
+            lines.append("| " + " | ".join(cells) + " |")
+    return lines
+
+
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the step-12 report."""
     selected_scope = results["scope"]
@@ -3028,11 +4404,17 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             else ""
         ),
         "",
+        "## Scope",
+        "",
+        *_format_scope_diagnostics(results["scope_diagnostics"]),
+        "",
         "## Choices made",
         "",
         f"- Main analyses use {selected_scope.label} (`{selected_scope.id}`). "
         "C5 always uses All days · all purposes · local (≤ 80 km); "
-        "C7 compares the reference, SDES and day-table scopes.",
+        "C7 compares the reference, SDES and day-table scopes. ENTD 2008 "
+        "day-table results are partial coverage, so no 2019/2008 ratio is "
+        "reported for that scope.",
         *[f"- {choice}" for choice in results["choices"]],
         "",
         *_format_a1(results),
@@ -3181,6 +4563,8 @@ def run(
         sample_pct=sample_pct,
         scope=scope,
         activity_stay_min=activity_stay_min,
+        n_reps=n_reps,
+        seed=seed,
     )
     frames_2019 = load_frames(
         emp2019,
@@ -3190,6 +4574,8 @@ def run(
         sample_pct=sample_pct,
         scope=scope,
         activity_stay_min=activity_stay_min,
+        n_reps=n_reps,
+        seed=seed,
     )
     frames_2019_grid = frames_2019
     results: dict = {
@@ -3204,6 +4590,10 @@ def run(
         "n_trips_2008": len(frames_2008.trips["pond_jour"]),
         "n_days_2019": len(frames_2019.days["pond_jour"]),
         "n_trips_2019": len(frames_2019.trips["pond_jour"]),
+        "scope_diagnostics": {
+            "ENTD 2008": frames_2008.aux["scope_diagnostics"],
+            "EMP 2019": frames_2019.aux["scope_diagnostics"],
+        },
         "official_scope_2008": _official_scope_estimates(
             frames_2008, n_reps=n_reps, seed=seed
         ),
@@ -3245,6 +4635,7 @@ def run(
         out_dir,
         n_reps=n_reps,
         seed=seed,
+        allow_year_ratio=scope.distance != "daytable",
     )
     results["extra_sections"].append(
         measurement_checks(
@@ -3278,6 +4669,7 @@ def run(
             frames_2019,
             n_reps=n_reps,
             seed=seed,
+            include_selected_scope_ratio=scope.distance != "daytable",
         )
     )
     results["c7_rows"] = _c7_comparison(
@@ -3479,11 +4871,12 @@ def _format_b2(
     distance_description: str = "step 11's corrected distances",
     equivalence_margin: float | None = None,
     secondary_equivalence_margin: float | None = None,
+    allow_year_ratio: bool = True,
 ) -> list[str]:
     equivalence_columns = equivalence_margin is not None
     if equivalence_columns != (secondary_equivalence_margin is not None):
         raise ValueError("both equivalence margins must be provided together")
-    if equivalence_columns:
+    if equivalence_columns and allow_year_ratio:
         assert equivalence_margin is not None
         assert secondary_equivalence_margin is not None
     lines = [
@@ -3508,6 +4901,9 @@ def _format_b2(
         lines[2] += (
             " Daily-time ratios are 2019/2008 with 90% household-bootstrap "
             "CIs; equivalence requires the full interval inside the margin."
+            if allow_year_ratio
+            else " Daily-time ratios are omitted: ENTD 2008 day-table "
+            "coverage is partial."
         )
         lines[4] = lines[4][:-1] + (
             f" | Time ratio {label_b}/{label_a} | 90% CI | "
@@ -3547,6 +4943,8 @@ def _format_b2(
         ]
         if equivalence_columns:
             if row.time_ratio is None or row.time_ratio_ci90 is None:
+                cells.extend(("-", "-", "-", "-"))
+            elif not allow_year_ratio:
                 cells.extend(("-", "-", "-", "-"))
             else:
                 ci = row.time_ratio_ci90
@@ -4355,6 +5753,7 @@ def _density_grid_comparison_lines(
     seed: int,
     equivalence_margin: float,
     secondary_equivalence_margin: float,
+    allow_year_ratio: bool = True,
 ) -> list[str]:
     """Compare trips/day and time/day within each shared residence grid class."""
     lines = [
@@ -4365,7 +5764,12 @@ def _density_grid_comparison_lines(
         "n is the number of person-days. Differences use household-bootstrap "
         "95% CIs; daily-time ratios use 90% CIs. Equivalence is established "
         "only when the full ratio interval is within the margin. "
-        "Households are resampled independently. "
+        + (
+            "Ratios are omitted because ENTD 2008 day-table coverage is partial. "
+            if not allow_year_ratio
+            else ""
+        )
+        + "Households are resampled independently. "
         "ENTD 2008 classes come from the SDES 2020-zoning supplement.",
         "",
         "| Density grid class | Population category | Measure | n 2008 | "
@@ -4399,7 +5803,7 @@ def _density_grid_comparison_lines(
             category = "all categories" if row.group == "overall" else row.group
             delta_ci = _ci_cell(row.mean_b - row.mean_a, row.delta_ci, 2)
             ratio_cell = ci_cell = verdict_cell = verdict_secondary_cell = "-"
-            if row.metric == "time/day (min)":
+            if row.metric == "time/day (min)" and allow_year_ratio:
                 mask_a = np.ones(len(subset_2008.days["pond_jour"]), dtype=bool)
                 mask_b = np.ones(len(subset_2019.days["pond_jour"]), dtype=bool)
                 if row.group != "overall":
@@ -4444,6 +5848,7 @@ def _run_part_b(
     *,
     n_reps: int,
     seed: int,
+    allow_year_ratio: bool,
 ) -> None:
     """Part B decompositions and figures; extended one item at a time
     (B2, B3, B1, B4, B5, B6, B7). Sections are appended in report order
@@ -4563,6 +5968,7 @@ def _run_part_b(
         seed=seed,
         equivalence_margin=results["equivalence_margin"],
         secondary_equivalence_margin=results["secondary_equivalence_margin"],
+        allow_year_ratio=allow_year_ratio,
     )
     results["pair4_lines"] = pair4_lines
     motive_order = tuple([*MOTIVE_GROUP_LABELS.values(), "unknown"])
@@ -4578,6 +5984,7 @@ def _run_part_b(
             ),
             equivalence_margin=results["equivalence_margin"],
             secondary_equivalence_margin=results["secondary_equivalence_margin"],
+            allow_year_ratio=allow_year_ratio,
         ),
         _format_b2(
             results["b2_rows_corrected"],
@@ -4592,6 +5999,7 @@ def _run_part_b(
             ),
             equivalence_margin=results["equivalence_margin"],
             secondary_equivalence_margin=results["secondary_equivalence_margin"],
+            allow_year_ratio=allow_year_ratio,
         ),
         _format_shift_share(
             results["b3_mode"],
@@ -4644,6 +6052,7 @@ def _run_part_b(
             ),
             equivalence_margin=results["equivalence_margin"],
             secondary_equivalence_margin=results["secondary_equivalence_margin"],
+            allow_year_ratio=allow_year_ratio,
         ),
         _format_pair_results(
             results["pair2"],
