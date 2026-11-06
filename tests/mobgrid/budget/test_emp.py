@@ -56,6 +56,14 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     md_path = out_dir.with_suffix(".md")
     assert md_path.is_file()
     report = md_path.read_text(encoding="utf-8")
+    assert (
+        "Round-trip days · destination purposes · local (≤ 80 km)"
+        in report
+    )
+    assert (
+        "*Scope: Round-trip days · destination purposes · local (≤ 80 km)*"
+        in report
+    )
     assert "Mean daily energy and time by main-mode group" in report
     assert "Calibrated v0 and P0" in report
     assert "car_passenger_household" in report

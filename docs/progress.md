@@ -17,9 +17,14 @@ Read this file at the start of every task and update it at the end.
   SDES and day-table scopes. The retired needs scope and its dedicated
   filters were removed. Focused synthetic scope/report tests: 40 passed;
   targeted Ruff passed. No real-data reports or full test suite were run.
-- Next: step c, scope labels in report tables/figures/choices and scope
-  columns in CSVs; then step d, step-12 scope diagnostics and ENTD coverage
-  handling.
+- Step c is complete: Markdown table headings and figure captions carry the
+  selected scope words; step 12's Choices made names the selected scope,
+  C5's fixed SDES scope, and the three C7 scopes. The report pipelines emit
+  Markdown and PNGs, not CSVs, so there were no report CSVs to add a scope
+  column to. Focused synthetic report tests: 5 passed; targeted Ruff passed.
+- Next: step d, step-12 Scope diagnostics (open days, walking/cycling
+  activity, sequential rule drops and day-table coverage), including the
+  documented ENTD 2008 partial-coverage handling.
 - Neither survey's documented immobility reasons identify a comparable
   away-from-home category. Count days without trips as zero in both surveys;
   do not use voyage dates. Verify and report any survey-specific away

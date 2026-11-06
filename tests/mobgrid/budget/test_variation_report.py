@@ -856,6 +856,20 @@ def test_cli_writes_report_on_synthetic_data(
     assert exit_code == 0
     md_path = out_dir.with_suffix(".md")
     report = md_path.read_text(encoding="utf-8")
+    assert (
+        "Round-trip days · destination purposes · local (≤ 80 km)"
+        in report
+    )
+    assert (
+        "*Scope: Round-trip days · destination purposes · local (≤ 80 km)*"
+        in report
+    )
+    assert "All days · all purposes · local (≤ 80 km)" in report
+    assert (
+        "### C5. Official-scope replication — "
+        "All days · all purposes · local (≤ 80 km)"
+    ) in report
+    assert "### C7. Budgets per person" in report
     assert "Choices made" in report
     assert "A1. Recall lag" in report
     assert "A2. Motive crosswalk" in report
