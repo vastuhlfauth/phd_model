@@ -2,7 +2,24 @@
 
 Read this file at the start of every task and update it at the end.
 
-_Last updated: 2026-11-04 by Copilot (C7/C8 report additions; real-data regeneration left to the user)_
+### Step 11/12: three-switch scope frame (2026-11-06)
+
+- The described-day chain is every `K_DEPLOC` row for the person and day,
+  including non-local rows; the voyage module is not joined to that chain.
+  The all-distance setting is renamed `daytable` and does not mean total
+  mobility. The voyage dates may only flag days without trips spent away.
+- Section 9.9 was subsequently updated. EMP's public voyage table has
+  weekday and month rather than complete voyage dates; ENTD's voyage
+  dictionary lists start and end days, but its `K_VOYAGE` input is absent.
+  ENTD's documentation defines a local-mobility field and does not establish
+  systematic coverage beyond 80 km. Details are in the survey data pages.
+- Both dictionaries identify departure and arrival times: EMP `MORIHDEP` /
+  `MDESHARR`, ENTD `V2_MORIHDEP` / `V2_MDESHARR`.
+- Implementation remains outstanding: scope filters, away-day handling,
+  estimators, CLIs, diagnostics, labels and tests were not changed. No
+  tests, reports or real-data computations were run.
+
+_Last updated: 2026-11-06 by Copilot (three-switch scope data-coverage open point)_
 
 ### Step 12: C7 budgets and C8 compensation (2026-11-04, branch `step/variation`)
 
@@ -2234,6 +2251,14 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
+- [x] Step 11/12 (section 9.9): the described-day chain uses all `K_DEPLOC`
+  rows, including non-local rows, without joining voyage trips (decision
+  of 6 November 2026).
+- [ ] Step 11/12: establish a usable ENTD `K_VOYAGE` input and validate
+  its date linkage; EMP public voyage dates do not give complete dates.
+  The ENTD local-mobility documentation does not establish systematic
+  beyond-80-km coverage: label `daytable` partial and suppress its
+  cross-year ratio.
 - [ ] Step 7 (`mobgrid/energy`): PT crush load per seat (LF_max) by
   vehicle type, `config/energy.yaml` `pt_ride.load_factor_max`
   [TO CONFIRM: against operators' vehicle data], section 9.5
