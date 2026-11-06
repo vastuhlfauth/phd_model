@@ -446,6 +446,9 @@ def _scope_person_weekday_rows(
         """).fetchall()
     else:
         raise ValueError(f"Unknown survey for scope diagnostics: {survey_name}")
+    categories = {
+        str(person_id): category for person_id, category in categories.items()
+    }
     return [
         (
             str(person_id),

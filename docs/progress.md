@@ -35,6 +35,11 @@ Read this file at the start of every task and update it at the end.
   `--compare` to fail when formatting the temporal section. Added a synthetic
   regression test around `run_compare`; two focused tests and targeted Ruff
   checks passed.
+- Follow-up: scope diagnostics now normalise category-map person ids to
+  text before looking up the text roster ids. Numeric ids previously
+  misclassified the roster as unknown and caused bootstrap category
+  `KeyError`s. Regression tests cover numeric and text ids in both surveys;
+  six focused tests and targeted Ruff checks passed. No real-data run.
 - Neither survey's documented immobility reasons identify a comparable
   away-from-home category. Count days without trips as zero in both surveys;
   do not use voyage dates. Verify and report any survey-specific away

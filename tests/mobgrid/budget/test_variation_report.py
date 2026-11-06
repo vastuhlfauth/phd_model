@@ -64,6 +64,42 @@ def test_scope_cli_defaults_to_reference_and_scope_all_runs_eight(
     assert len({path for path, _ in calls}) == len(scope.ALL_SCOPES)
 
 
+@pytest.mark.parametrize("survey_name", ["EMP 2019", "ENTD 2008"])
+@pytest.mark.parametrize("id_type", ["BIGINT", "VARCHAR"])
+def test_scope_roster_categories_preserve_numeric_and_text_person_ids(
+    survey_name: str, id_type: str
+) -> None:
+    """Section 9.9: roster and trip-day category weights must agree."""
+    con = duckdb.connect()
+    try:
+        con.execute(f"""
+            CREATE TABLE k_individu (
+                IDENT_IND {id_type}, IDENT_MEN VARCHAR,
+                pond_indC DOUBLE, PONDKI DOUBLE
+            );
+            INSERT INTO k_individu VALUES ('1', 'h1', 2.0, 2.0);
+            CREATE TABLE tcm_ind_kish (
+                IDENT_IND {id_type}, SITUA VARCHAR, AGE INTEGER
+            );
+            INSERT INTO tcm_ind_kish VALUES ('1', '3', 25);
+            CREATE TABLE q_tcm_individu AS SELECT * FROM tcm_ind_kish;
+        """)
+        roster = variation_report._scope_person_weekday_rows(
+            con, survey_name, sample_pct=None
+        )
+        assert roster == [("1", "h1", "other_inactive", 10.0)]
+        bootstrap, negative_cells, _ = variation_report._bootstrap_scope_day_shares(
+            roster,
+            [("h1", "other_inactive", 5.0, *([0.0] * 13))],
+            n_reps=3,
+            seed=0,
+        )
+        assert bootstrap["other_inactive"]["point"]["no_trip_share"] == 0.5
+        assert negative_cells == 0
+    finally:
+        con.close()
+
+
 def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
     con = duckdb.connect()
     con.sql("""
