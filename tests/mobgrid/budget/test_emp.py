@@ -13,6 +13,7 @@ runs as part of the default suite.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -353,6 +354,68 @@ def test_daytable_temporal_comparison_does_not_report_cross_year_ratios() -> Non
     assert "partial coverage" in report
     assert "no 2019/2008 ratios" in report
     assert "Ratio 2019/2008" not in report
+
+
+def test_run_compare_keeps_selected_scope_for_temporal_section(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    variation_config = SimpleNamespace(
+        equivalence_margin=0.15,
+        secondary_equivalence_margin=0.10,
+    )
+    results = {
+        "variation_config": variation_config,
+        "mode_stats": [],
+        "population_stats": [],
+        "density_constancy_summary": [],
+        "density_equivalence": [],
+        "income_equivalence": [],
+        "robustness_rows": [],
+        "declared_vs_modelled_walk_wait": [],
+        "non_traveler_share_unweighted": 0.0,
+        "non_traveler_share_weighted": 0.0,
+        "non_traveler_n": 0,
+        "n_respondents": 0,
+        "v0_overall": SimpleNamespace(speed_kmh=0.0, n=0),
+        "p0_overall": SimpleNamespace(
+            p0_w=0.0, implied_flat_speed_kmh=0.0, n=0
+        ),
+        "mean_kh": 0.0,
+        "mean_cp": 0.0,
+        "mean_time_min": 0.0,
+        "population_time_stats": [],
+        "population_time_stats_weekday": [],
+        "person_budget_weekday_population": {},
+    }
+    monkeypatch.setattr(emp, "run", lambda *args, **kwargs: results)
+    monkeypatch.setattr(emp, "_group_table_two_surveys", lambda *args: [])
+    monkeypatch.setattr(
+        emp, "_format_equivalence_side_by_side", lambda *args, **kwargs: []
+    )
+    monkeypatch.setattr(emp, "_format_weekday_comparison", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        emp,
+        "_figure_compare_energy_time",
+        lambda *args: tmp_path / "compare_energy.png",
+    )
+    monkeypatch.setattr(
+        emp,
+        "_figure_compare_time_by_category",
+        lambda *args: tmp_path / "compare_time.png",
+    )
+    selected_scope = scope.Scope.parse("alldays-allpurp-daytable")
+
+    report_path = emp.run_compare(
+        tmp_path / "comparison",
+        scope=selected_scope,
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "Not reported: ENTD 2008 day-table results have partial coverage" in report
+    assert (
+        "Scope: All days · all purposes · all trips in the day's trip table"
+        in report
+    )
 
 
 def test_suppressed_person_budget_cell_keeps_true_n() -> None:

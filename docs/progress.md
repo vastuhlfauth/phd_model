@@ -31,6 +31,10 @@ Read this file at the start of every task and update it at the end.
   ratios are suppressed; unavailable away-from-home flags are reported as
   not recorded. Four focused synthetic tests and targeted Ruff checks
   passed. No real-data reports or full test suite were run.
+- Follow-up: fixed a comparison-report variable-shadowing bug that caused
+  `--compare` to fail when formatting the temporal section. Added a synthetic
+  regression test around `run_compare`; two focused tests and targeted Ruff
+  checks passed.
 - Neither survey's documented immobility reasons identify a comparable
   away-from-home category. Count days without trips as zero in both surveys;
   do not use voyage dates. Verify and report any survey-specific away

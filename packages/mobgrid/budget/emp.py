@@ -4286,10 +4286,10 @@ def run_compare(
         for r in results_2019_proxy["robustness_rows"]
         if r.variant == "declared (base case)" and r.statistic == "mean"
     }
-    for scope in ("core", "full"):
-        r8, r9 = rows_2008.get(scope), rows_2019.get(scope)
+    for robustness_scope in ("core", "full"):
+        r8, r9 = rows_2008.get(robustness_scope), rows_2019.get(robustness_scope)
         lines.append(
-            f"| {scope} | "
+            f"| {robustness_scope} | "
             + (f"{r8.energy_kh_ratio:.2f}" if r8 else "-")
             + " | "
             + (f"{r9.energy_kh_ratio:.2f}" if r9 else "-")
