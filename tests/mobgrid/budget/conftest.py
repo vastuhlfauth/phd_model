@@ -22,7 +22,7 @@ _K_DEPLOC_HEADER = (
     "DUREE,MDISTTOT_fin,MACCOMPM,MACCOMPHM,mtp,DENSITECOM_ORI,DENSITECOM_DES,"
     "MMOTIFDES,MOT_SEQ_COMPL,STATUTCOM_UU_ORI,STATUTCOM_UU_DES,MTEMPSMAP,"
     "MTPSATTENT,NEW_VAC_SCOL,dVO_ORIDES,MDISTTOT_decl,indic_dist_corr,MOTPREC,"
-    "dist_ign,IDENT_SEQ"
+    "dist_ign,IDENT_SEQ,MORIHDEP,MDESHARR"
 )
 _UU = "C,C,5,2"  # STATUTCOM_UU_ORI, STATUTCOM_UU_DES, MTEMPSMAP, MTPSATTENT
 
@@ -64,9 +64,9 @@ _K_DEPLOC_ROWS = [
     # train (TER, 20 km)
     f"D11,M11,11,1,100.0,1,1,1,30,20.0,NA,NA,5.9,2,2,1.1,9.1,{_UU},0,16.0,20.0,0,1.1,NA",
     # walk, needs-only
-    f"D12,M12,12,1,100.0,1,1,1,20,1.5,NA,NA,1.1,1,1,9.1,9.1,{_UU},0,1.2,1.5,0,1.1,NA",
+    f"D12,M12,12,1,100.0,1,1,1,20,1.5,NA,NA,1.1,1,1,1.1,9.1,{_UU},0,1.2,1.5,0,1.1,NA",
     # cycle, needs-only
-    f"D13,M13,13,1,100.0,1,1,1,15,3.0,NA,NA,2.1,1,1,9.1,9.1,{_UU},0,2.4,3.0,0,1.1,NA",
+    f"D13,M13,13,1,100.0,1,1,1,15,3.0,NA,NA,2.1,1,1,1.1,9.1,{_UU},0,2.4,3.0,0,1.1,NA",
 ]
 
 _TCM_IND_KISH_HEADER = "IDENT_IND;AGE;AGE6;SITUA;SEXE"
@@ -148,7 +148,10 @@ def write_synthetic_emp_zip(path: Path) -> None:
             "\n".join(
                 [
                     _K_DEPLOC_HEADER,
-                    *[f"{row},SEQ-{row.split(',')[2]}" for row in _K_DEPLOC_ROWS],
+                    *[
+                        f"{row},SEQ-{row.split(',')[2]},08:00,08:30"
+                        for row in _K_DEPLOC_ROWS
+                    ],
                 ]
             ),
         )
@@ -187,7 +190,8 @@ _ENTD_K_DEPLOC_HEADER = (
     "IDENT_DEP;IDENT_IND;IDENT_MEN;IDENT_JOUR;POIDS_JOUR;V2_TYPJOUR;V2_DLOCAL;"
     "NODEP;V2_MORIDOM;v2_mduree;V2_DUREE;distcor;V2_MDISTTOT;V2_MACCOMPM;"
     "V2_MACCOMPHM;V2_MTP;V2_MMOTIFDES;V2_MMOTIFORI;v2_moricom_UU2010;"
-    "v2_mdescom_UU2010;V2_MTEMPSMAP;V2_MTPSATTENT;V2_VAC_SCOL;V2_DVO_LOC"
+    "v2_mdescom_UU2010;V2_MTEMPSMAP;V2_MTPSATTENT;V2_VAC_SCOL;V2_DVO_LOC;"
+    "V2_MORIHDEP;V2_MDESHARR"
 )
 _ENTD_K_DEPLOC_ROWS = [
     # Respondent 1, weekday, two trips: out to work (walk), back home
@@ -197,29 +201,29 @@ _ENTD_K_DEPLOC_ROWS = [
     # lieu habituel", converted to 9.1): the sequence-purpose rule.
     # Declared duration/distance fall back to V2_DUREE/V2_MDISTTOT
     # (v2_mduree/distcor blank).
-    "D1;1;M1;J1;100;1;1;1;1;;20;;1.5;;;1.10;9.91;;C;C;5;2;0;1.2",
-    "D2;1;M1;J1;100;1;1;2;2;;20;;1.5;;;1.10;1.1;9.91;C;C;5;2;0;1.2",
+    "D1;1;M1;J1;100;1;1;1;1;;20;;1.5;;;1.10;9.91;;C;C;5;2;0;1.2;;",
+    "D2;1;M1;J1;100;1;1;2;2;;20;;1.5;;;1.10;1.1;9.91;C;C;5;2;0;1.2;;",
     # Respondent 2, Saturday, one cycling trip, sport (7.76 -> 7.6,
     # excluded from the needs-only scope); distcor/v2_mduree filled
     # (different from the V2_DUREE/V2_MDISTTOT fallback, for the
     # fill-rate/mean-change report).
-    "D3;2;M2;J2;200;2;1;1;1;14;15;2.8;3.0;;;2.20;7.76;;C;C;7;0;1;2.2",
+    "D3;2;M2;J2;200;2;1;1;1;14;15;2.8;3.0;;;2.20;7.76;;C;C;7;0;1;2.2;;",
     # Respondent 3: POIDS_JOUR = 0 (weekday trip outside the reference
     # day, `docs/data/entd2008.md`'s "Keys, days and weights"): dropped.
-    "D4;3;M3;J3;0;1;1;1;1;;25;;5.0;;;3.30;9.91;;C;C;7;0;0;4.0",
+    "D4;3;M3;J3;0;1;1;1;1;;25;;5.0;;;3.30;9.91;;C;C;7;0;0;4.0;;",
     # Respondent 4: car passenger, carpool (MACCOMPHM > 0, MACCOMPM = 0).
-    "D5;4;M4;J4;150;1;1;1;1;;25;;5.0;0;3;3.32;9.91;;C;C;7;0;0;4.0",
+    "D5;4;M4;J4;150;1;1;1;1;;25;;5.0;0;3;3.32;9.91;;C;C;7;0;0;4.0;;",
     # Respondent 5: urban bus, rural trip end (uu_status 'R' -> always
     # 'very_sparse' under the proxy, whatever the residence size).
-    "D6;5;M5;J5;120;1;1;1;1;;30;;4.0;;;5.50;9.91;;R;R;10;5;0;3.2",
+    "D6;5;M5;J5;120;1;1;1;1;;30;;4.0;;;5.50;9.91;;R;R;10;5;0;3.2;;",
     # Respondent 6: TGV, suburb trip end, medium residence size (tuu_res
     # '5' -> 'intermediate' under the proxy); -1 is abroad, not local.
-    "D7;6;M6;J6;180;1;-1;1;1;;90;;120.0;;;6.60;9.91;;B;B;15;5;0;96.0",
+    "D7;6;M6;J6;180;1;-1;1;1;;90;;120.0;;;6.60;9.91;;B;B;15;5;0;96.0;;",
     # Respondent 8: a second, needs-only-scoped cycling trip (purpose
     # 9.91, unlike respondent 2's sport trip), so P0 calibration
     # (``daily_energy.calibrate_p0``, needs-only scoped) has a cycle
     # trip to calibrate from.
-    "D8;8;M8;J8;100;1;1;1;1;;15;;3.0;;;2.20;9.91;;C;C;7;0;0;2.4",
+    "D8;8;M8;J8;100;1;1;1;1;;15;;3.0;;;2.20;9.91;;C;C;7;0;0;2.4;;",
 ]
 
 #: `MDATENQ2V`/`V2_DATESEMREF` (step 12's A1: trips are collected at the

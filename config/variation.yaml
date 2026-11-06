@@ -2,6 +2,11 @@
 equivalence_margin: 0.15
 secondary_equivalence_margin: 0.10
 
+# Section 9.9: a sport trip is an activity trip when the next trip departs
+# less than this many minutes after arrival.
+scope:
+  activity_stay_min: 15
+
 # Section C measurement checks; durations in minutes, distances in km.
 measurement:
   rounding_draws: 20

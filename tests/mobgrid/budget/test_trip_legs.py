@@ -18,31 +18,6 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config" / "energy.yaml"
 
 
-def test_needs_scope_requires_local_mobility_and_excludes_recreational_motives() -> (
-    None
-):
-    con = duckdb.connect()
-    con.sql("""
-        CREATE TABLE trips (
-            id VARCHAR, mobloc INTEGER, motive DOUBLE
-        );
-        INSERT INTO trips VALUES
-            ('local_work', 1, 9.1),
-            ('nonlocal_work', 0, 9.1),
-            ('abroad_work', -1, 9.1),
-            ('local_sport', 1, 7.6);
-    """)
-
-    kept = con.sql(f"""
-        SELECT id FROM trips
-        WHERE {trip_legs.NEEDS_ONLY_WHERE_SQL}
-        ORDER BY id
-    """).fetchnumpy()["id"].tolist()
-
-    assert kept == ["local_work"]
-    con.close()
-
-
 @pytest.mark.parametrize(
     ("uu_status", "tuu_res", "expected"),
     [

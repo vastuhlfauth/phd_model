@@ -11,13 +11,51 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pytest
-from mobgrid.budget import variation_report
+from mobgrid.budget import scope, variation_report
 from mobgrid.budget.variation_report import SurveyFrames
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config" / "energy.yaml"
 
 N_REPS = 3
+
+
+def test_scope_cli_defaults_to_reference_and_scope_all_runs_eight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+
+    def fake_run(out_dir, config_path, **kwargs):
+        calls.append((out_dir, kwargs["scope"].id))
+        return {"figures": []}
+
+    monkeypatch.setattr(variation_report, "run", fake_run)
+    monkeypatch.setattr(variation_report, "write_markdown", lambda *args: None)
+
+    assert variation_report.main(
+        [
+            "--out",
+            str(tmp_path / "step12"),
+            "--entd2008-zoning-data-path",
+            "zoning",
+        ]
+    ) == 0
+    assert calls[-1][1] == "round-dest-local"
+
+    calls.clear()
+    assert variation_report.main(
+        [
+            "--out",
+            str(tmp_path / "step12"),
+            "--entd2008-zoning-data-path",
+            "zoning",
+            "--scope",
+            "all",
+        ]
+    ) == 0
+    assert [scope_id for _, scope_id in calls] == [s.id for s in scope.ALL_SCOPES]
+    assert calls[0][0] == tmp_path / "scopes" / calls[0][1] / "step12"
+    assert len({path for path, _ in calls}) == len(scope.ALL_SCOPES)
 
 
 def _frames(days: dict, trips: dict, aux: dict | None = None) -> SurveyFrames:
@@ -474,23 +512,24 @@ def test_distance_bands_separate_missing_and_sort_figure_numerically() -> None:
     assert labels == [label for label in order if label in labels]
 
 
-def test_frame_aggregation_keeps_missing_distance_days(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_frame_aggregation_keeps_missing_distance_days() -> None:
     """Section 9.9: N/T include all trips, L/v only distance-known trips."""
-    monkeypatch.setattr(variation_report.trip_legs, "NEEDS_ONLY_WHERE_SQL", "TRUE")
     with duckdb.connect() as con:
         con.sql("""
             CREATE TABLE trip_legs AS SELECT
-                day_id, ident_dep, distance_km, duration_min,
+                day_id, ident_dep, num_dep, distance_km, duration_min,
                 day_id AS ident_ind, day_id AS ident_men,
                 CASE WHEN day_id = 'a' THEN 1.0 ELSE 3.0 END AS pond_jour,
                 'employed' AS population_category, 'dense' AS residence_density,
                 'q1' AS income_quintile, 40 AS age, 'walk' AS mode_group,
-                2 AS motive, 1 AS typejour
-            FROM (VALUES ('a', 'd1', 6.0, 10.0), ('a', 'd2', NULL, 30.0),
-                         ('b', 'd3', NULL, 20.0))
-                v(day_id, ident_dep, distance_km, duration_min);
+                2 AS motive, 1 AS typejour, 1 AS mobloc
+            FROM (VALUES ('a', 'd1', 1, 6.0, 10.0),
+                         ('a', 'd2', 2, NULL, 30.0),
+                         ('b', 'd3', 1, NULL, 20.0))
+                v(day_id, ident_dep, num_dep, distance_km, duration_min);
+            CREATE TABLE scope_trips AS SELECT day_id, num_dep,
+                TRUE AS is_round, TRUE AS is_destination, 1 AS mobloc
+                FROM trip_legs;
             CREATE VIEW vr_person AS SELECT DISTINCT ident_ind, 1 AS sex,
                 1 AS recall_lag, 'lundi' AS described_weekday_name,
                 'janvier' AS described_month_name, FALSE AS is_idf,
@@ -499,7 +538,11 @@ def test_frame_aggregation_keeps_missing_distance_days(
                 NULL::DOUBLE AS crow_fly_km, NULL::DOUBLE AS declared_km,
                 0 AS vac_scol FROM trip_legs;
         """)
-        variation_report._create_frames_tables(con, sample_pct=None)
+        variation_report._create_frames_tables(
+            con,
+            sample_pct=None,
+            selected_scope=scope.Scope.parse("alldays-allpurp-daytable"),
+        )
         frames = SurveyFrames(
             "synthetic",
             {
@@ -830,8 +873,7 @@ def test_cli_writes_report_on_synthetic_data(
     assert "MDISTTOT_fin" in report
     assert "Time ratio 2019/2008" in report
     assert "Equivalent at ±15%" in report
-    assert "All trips (all motives and distances)" in report
-    assert "Non-local needs trips/day removed" in report
+    assert "alldays-allpurp-daytable" in report
     assert "Equivalent at ±10%" in report
     assert "## C. Measurement checks" in report
     assert "C1. Rounding bounds" in report
@@ -882,7 +924,7 @@ def test_cli_writes_report_on_synthetic_data(
     assert "zero-local-trip diagnostic" in report.lower()
     assert "SDES 2008" in report and "SDES 2019" in report
     assert "C7. Budgets per person, per traveller and per week" in report
-    assert "All trips sensitivity" in report
+    assert "round-dest-local" in report
     assert "ENTD weekend design calls" in report
     assert "C8a. ENTD 2008 paired weekday/weekend analysis — deferred" in report
     assert "C8b. EMP 2019 weekday frequency and intensity" in report
@@ -1019,30 +1061,6 @@ def _ledger_inputs(*, trips_2019: int = 1) -> tuple[SurveyFrames, SurveyFrames, 
         )
     ]
     return a, b, results
-
-
-def test_local_scope_removal_is_weighted_over_former_needs_days() -> None:
-    con = variation_report.duckdb.connect()
-    con.sql("""
-        CREATE TABLE trip_legs (
-            day_id VARCHAR, pond_jour DOUBLE, typejour INTEGER, mobloc INTEGER,
-            motive DOUBLE, duration_min DOUBLE
-        );
-        INSERT INTO trip_legs VALUES
-            ('a', 2, 1, 1, 9.1, 10),
-            ('a', 2, 1, 0, 9.1, 20),
-            ('b', 1, 1, 0, 9.1, 30),
-            ('c', 1, 1, 1, 7.6, 40),
-            ('weekend', 5, 2, 0, 9.1, 50);
-    """)
-
-    result = variation_report._local_scope_removal(con)
-
-    assert result["n_days"] == 2
-    assert result["weighted_days"] == pytest.approx(3.0)
-    assert result["trips_per_day_removed"] == pytest.approx(1.0)
-    assert result["minutes_per_day_removed"] == pytest.approx(70.0 / 3.0)
-    con.close()
 
 
 def test_measurement_ledger_reuses_results_and_preserves_effect_signs(
@@ -1685,14 +1703,20 @@ def test_c7_comparison_has_weekday_ratio_and_marks_entd_weekends_unavailable() -
         {},
         {},
         aux={
-            "c7_data": {scope: sample_2008 for scope in ("sdes", "needs", "all_trips")}
+            "c7_data": {
+                scope_id: sample_2008
+                for scope_id in ("sdes", "reference", "daytable")
+            }
         },
     )
     frames_2019 = _frames(
         {},
         {},
         aux={
-            "c7_data": {scope: sample_2019 for scope in ("sdes", "needs", "all_trips")}
+            "c7_data": {
+                scope_id: sample_2019
+                for scope_id in ("sdes", "reference", "daytable")
+            }
         },
     )
 
@@ -1700,7 +1724,7 @@ def test_c7_comparison_has_weekday_ratio_and_marks_entd_weekends_unavailable() -
     weekday = next(
         row
         for row in rows
-        if row["scope"].startswith("SDES")
+        if row["scope"] == scope.SDES_SCOPE.id
         and row["period"] == "weekday"
         and row["basis"] == "per person"
         and row["measure"] == "Trips/day"
@@ -1708,7 +1732,7 @@ def test_c7_comparison_has_weekday_ratio_and_marks_entd_weekends_unavailable() -
     saturday = next(
         row
         for row in rows
-        if row["scope"].startswith("SDES")
+        if row["scope"] == scope.SDES_SCOPE.id
         and row["period"] == "Saturday"
         and row["basis"] == "per person"
         and row["measure"] == "Trips/day"

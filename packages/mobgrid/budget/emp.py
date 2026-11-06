@@ -29,7 +29,16 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mobgrid.budget import daily_energy, emp2019, entd2008, trip_legs, variation
+from mobgrid.budget import (
+    daily_energy,
+    emp2019,
+    entd2008,
+    trip_legs,
+    variation,
+)
+from mobgrid.budget import (
+    scope as scope_module,
+)
 from mobgrid.energy.rates import (
     MET_MINUTE_KJ_PER_KG,
     EnergyConfig,
@@ -56,7 +65,7 @@ P0_REFERENCE_W = 52.5
 
 
 def _compute_cycle_decomposition(
-    con: duckdb.DuckDBPyConnection, config: EnergyConfig
+    con: duckdb.DuckDBPyConnection, config: EnergyConfig, *, where_sql: str
 ) -> dict:
     """Point 3 (section 9.9, step 11 round 5): the post-fix decomposition
     of mean cycle-day energy into ride work, unloaded pedalling, stops,
@@ -69,9 +78,8 @@ def _compute_cycle_decomposition(
     differ by rate set. Every component is summed to one row per cycle
     day *before* being weighted (``pond_jour`` is a day weight, repeated
     on every leg of that day; weighting leg rows directly would count
-    each day's weight once per leg). Restricted to needs-only legs
-    (``emp2019.NEEDS_ONLY_WHERE_SQL``), matching the main "cycle" group's
-    own, now needs-only-scoped ``total_energy_kh_kj``.
+    each day's weight once per leg). Restricted to the selected scope,
+    matching the main "cycle" group's own scoped day totals.
     """
     bike = config.bike
     mass = config.reference_mass_kg
@@ -98,7 +106,7 @@ def _compute_cycle_decomposition(
         FROM trip_legs
         WHERE day_id IN
             (SELECT day_id FROM day_summary WHERE day_mode_group = 'cycle')
-            AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
+            AND ({where_sql})
     """).fetchnumpy()
     cycle_mask = rows["mode_group"] == "cycle"
     walk_mask = rows["mode_group"] == "walk"
@@ -155,7 +163,7 @@ def _compute_cycle_decomposition(
 
 
 def _compute_motive_decomposition(
-    con: duckdb.DuckDBPyConnection, mode_group: str
+    con: duckdb.DuckDBPyConnection, mode_group: str, *, where_sql: str
 ) -> list[tuple]:
     """Section 9.9 point 1 follow-up ("decompose energy per motive"): one
     row per harmonised trip motive among ``mode_group``'s trips -- n,
@@ -169,6 +177,7 @@ def _compute_motive_decomposition(
             avg(distance_km) AS mean_distance_km, avg(duration_min) AS mean_duration_min
         FROM trip_legs
         WHERE mode_group = '{mode_group}' AND energy_kh_kj IS NOT NULL
+            AND ({where_sql})
         GROUP BY 1 ORDER BY energy_kh_sum DESC
     """).fetchall()
 
@@ -182,8 +191,6 @@ def _compute_motive_energy_matrix(
     cycling-only motive table to every mode). Top-level (``floor``) only
     -- a dozen or so sub-codes per mode would make an unreadable stacked
     bar legend. ``where_sql`` filters ``trip_legs`` directly (e.g.
-    ``emp2019.NEEDS_ONLY_WHERE_SQL``, for the "final decomposition"
-    panel): unlike every other needs-only query in this module, this one
     is never joined through ``day_summary``, so it needs its own filter."""
     rows = con.sql(f"""
         SELECT mode_group, floor(motive) AS top_motive,
@@ -226,7 +233,7 @@ def _day_rows(con: duckdb.DuckDBPyConnection) -> dict:
 
 
 def _person_budget_day_rows(con: duckdb.DuckDBPyConnection) -> dict:
-    """Fetch local needs-scope day totals, including days with no energy."""
+    """Fetch selected-scope day totals, including days with no energy."""
     return con.sql(
         "SELECT population_category, home_density, income_quintile, ident_men, "
         "typejour, pond_jour, total_time_min FROM day_summary"
@@ -238,7 +245,7 @@ def _income_quintile_report(con: duckdb.DuckDBPyConnection, days: dict, survey) 
     quintiles. ``trip_legs.income_quintile_summary`` gives the cut
     points and each label's share of *individual* weight (the
     respondent roster the quintiles are cut on); this adds the share of
-    *day* weight (``days``, the same needs-only ``day_summary`` rows
+    *day* weight (``days``, the same selected-scope ``day_summary`` rows
     every other table in this report reads) -- the two bases should
     agree closely if the quintile cut and the day sample have a similar
     income composition, a check on the quintiling itself, not just a
@@ -458,11 +465,17 @@ def _build_base(
     survey,
     config: EnergyConfig,
     *,
-    where_sql: str = "TRUE",
+    selected_scope: scope_module.Scope,
+    activity_stay_min: float,
     density_source: str | None = None,
 ) -> None:
     survey.build_trip_legs(con, config, density_source=density_source)
-    daily_energy.create_day_summary(con, where_sql=where_sql)
+    scope_module.create_scope_views_from_trip_legs(
+        con, activity_stay_min=activity_stay_min
+    )
+    daily_energy.create_day_summary(
+        con, where_sql=selected_scope.trip_filter_sql()
+    )
 
 
 def run(
@@ -475,6 +488,7 @@ def run(
     density_source: str | None = None,
     variation_config_path: Path = DEFAULT_VARIATION_CONFIG_PATH,
     make_figures: bool = True,
+    scope: scope_module.Scope = scope_module.REFERENCE_SCOPE,
 ) -> dict:
     """Run the full re-estimation; return every computed statistic and
     figure path, used by ``write_markdown`` and the test suite.
@@ -501,18 +515,12 @@ def run(
     gained the new parameter; this report/figure pipeline is updated in
     part B).
 
-    Section 9.9's scope (2026-10-20 project decision): every table and
-    figure below is restricted to commuting/needs-fulfilment travel
-    (``emp2019.NEEDS_ONLY_WHERE_SQL`` excludes sport/stroll/promenade-
-    destination trips -- section 9.9 point 1 follow-up), the report's
-    one base filter, not an optional variant. A separate, diagnostic
-    pass on the full (unfiltered-by-motive) dataset provides the
-    evidence for this scope decision (the motive breakdown, F9) and a
-    few checks that must *not* be scoped to it (non-traveller share,
-    data-quality corrections, children-as-car-drivers).
+    Every result table uses ``scope``; full-survey diagnostics that are
+    independent of the selected trip scope remain unfiltered.
     """
     config = load_energy_config(config_path)
     variation_config = variation.load_variation_config(variation_config_path)
+    where_sql = scope.trip_filter_sql()
     out_dir.mkdir(parents=True, exist_ok=True)
     data_path = data_path or survey.DEFAULT_DATA_PATH
     density_source = density_source or survey.DEFAULT_DENSITY_SOURCE
@@ -542,7 +550,8 @@ def run(
         con,
         survey,
         config,
-        where_sql=emp2019.NEEDS_ONLY_WHERE_SQL,
+        selected_scope=scope,
+        activity_stay_min=variation_config.scope.activity_stay_min,
         density_source=density_source,
     )
     days = _day_rows(con)
@@ -552,17 +561,17 @@ def run(
     # Children as car drivers (round 4's point 4): the mtp code (already
     # harmonised to EMP 2019's, `trips_norm`) behind every
     # day_mode_group='car_driver' day of a children_6_17 respondent.
-    # Computed here, against the still needs-only-scoped `day_summary`/
+    # Computed here, against the selected-scope `day_summary`/
     # `trip_legs` (same scope as `mode_stats`'s table above, not the
     # later full, pre-exclusion `day_summary` rebuild used by the
     # motive-share diagnostics below): otherwise the two reported
     # figures silently differed (56/148 full-scope days vs. 50/140
-    # needs-only, in the table).
+    # selected scope, in the table).
     children_car_driver_mtp = con.sql(f"""
         SELECT mtp, count(*), min(age), max(age)
         FROM trip_legs
         WHERE mode_group = 'car_driver' AND population_category = 'children_6_17'
-            AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
+            AND ({where_sql})
         GROUP BY 1 ORDER BY 1
     """).fetchall()
     children_car_driver_n = con.sql("""
@@ -577,7 +586,7 @@ def run(
     # fell out of scope, or ended with null energy, between "days with
     # trips" and `n_days` here). Days-with-trips/with-energy are read
     # off a full (pre-motive-scope) `day_summary` rebuild, then the view
-    # is rebuilt back to the needs-only scope so every later
+    # is rebuilt back to the selected scope so every later
     # computation (this function's own, and the diagnostics below) sees
     # what it expects.
     n_respondents = survey.respondent_n(con)
@@ -589,7 +598,7 @@ def run(
     days_with_trips_by_type = con.sql(
         "SELECT typejour, count(*) FROM day_summary GROUP BY 1 ORDER BY 1"
     ).fetchall()
-    daily_energy.create_day_summary(con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL)
+    daily_energy.create_day_summary(con, where_sql=where_sql)
 
     mode_stats = _group_stats(days, "day_mode_group", n_reps=n_reps, seed=seed)
     population_stats = _group_stats(
@@ -663,16 +672,16 @@ def run(
     ratio_cp = max(cp_means) / min(cp_means) if cp_means else float("nan")
 
     v0_overall = daily_energy.calibrate_v0_kmh(
-        con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL
+        con, where_sql=where_sql
     )[0]
     v0_by_age_band = daily_energy.calibrate_v0_kmh(
-        con, by_age_band=True, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL
+        con, by_age_band=True, where_sql=where_sql
     )
     p0_overall = daily_energy.calibrate_p0(
-        con, config, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL
+        con, config, where_sql=where_sql
     )[0]
     p0_by_age_band = daily_energy.calibrate_p0(
-        con, config, by_age_band=True, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL
+        con, config, by_age_band=True, where_sql=where_sql
     )
 
     trips_mean, trips_ci = daily_energy.bootstrap_mean_ci(
@@ -724,18 +733,19 @@ def run(
     minutes_per_trip_by_category_income = _scalar_by_combined_key(
         days, "income_quintile", minutes_per_trip, n_reps=n_reps, seed=seed
     )
-    motive_by_population = _trips_by_group_and_motive(con, "population_category")
-    motive_by_density = _trips_by_group_and_motive(con, "home_density")
-
-    # Section 9.9 point 2: direct producer-weighted sums of local,
-    # needs-scope trip-days over the full respondent roster.
-    person = _person_universe(survey, con, density_source)
-    daily_energy.create_day_summary(
-        con,
-        where_sql=f"({emp2019.NEEDS_ONLY_WHERE_SQL}) AND mobloc = 1",
+    motive_by_population = _trips_by_group_and_motive(
+        con, "population_category", where_sql=scope.trip_filter_sql("t")
     )
+    motive_by_density = _trips_by_group_and_motive(
+        con, "home_density", where_sql=scope.trip_filter_sql("t")
+    )
+
+    # Direct producer-weighted sums of selected-scope trip-days over the
+    # full respondent roster.
+    person = _person_universe(survey, con, density_source)
+    daily_energy.create_day_summary(con, where_sql=where_sql)
     person_budget_days = _person_budget_day_rows(con)
-    daily_energy.create_day_summary(con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL)
+    daily_energy.create_day_summary(con, where_sql=where_sql)
     (
         person_budget_weekday_population,
         person_budget_weekday_category_density,
@@ -776,7 +786,7 @@ def run(
             con,
             "SELECT pond_jour AS weight, energy_kh_kj AS energy_kh, "
             "energy_cp_kj AS energy_cp, duration_min AS time_min FROM trip_legs "
-            f"WHERE mode_group = '{group}' AND ({emp2019.NEEDS_ONLY_WHERE_SQL})",
+            f"WHERE mode_group = '{group}' AND ({where_sql})",
         )
     carpool_n, carpool_household_n, carpool_share = con.sql(f"""
         SELECT
@@ -790,7 +800,7 @@ def run(
                 / sum(CASE WHEN mode_group IN
                     ('car_passenger_household', 'car_passenger_carpool')
                     THEN pond_jour ELSE 0 END)
-        FROM trip_legs WHERE ({emp2019.NEEDS_ONLY_WHERE_SQL})
+        FROM trip_legs WHERE ({where_sql})
     """).fetchone()
     walk_trips_by_day_group = dict(
         con.sql(f"""
@@ -801,29 +811,27 @@ def run(
         JOIN trip_legs t ON t.day_id = d.day_id
         WHERE d.day_mode_group IN
             ('car_driver', 'car_passenger_household', 'car_passenger_carpool')
-            AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
+            AND ({scope.trip_filter_sql("t")})
         GROUP BY d.day_mode_group
     """).fetchall()
     )
 
     # F8 robustness (section 9.9): re-run the pipeline under each
-    # variant, always within the needs-only scope.
+    # variant, within the selected scope.
     robustness_rows, robustness_ci = _run_robustness(
         con,
         survey,
         config,
         n_reps=n_reps,
         seed=seed,
-        base_where_sql=emp2019.NEEDS_ONLY_WHERE_SQL,
+        base_where_sql=where_sql,
         density_source=density_source,
     )
-    # Restore the needs-only base for the figures below.
-    daily_energy.create_day_summary(con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL)
+    daily_energy.create_day_summary(con, where_sql=where_sql)
 
-    # Cycle group, weekdays only (kept from round 4's point 3), same
-    # needs-only scope.
+    # Cycle group, weekdays only, same selected scope.
     daily_energy.create_day_summary(
-        con, where_sql=f"({emp2019.NEEDS_ONLY_WHERE_SQL}) AND (typejour = 1)"
+        con, where_sql=f"({where_sql}) AND (typejour = 1)"
     )
     days_weekday = _day_rows(con)
     cycle_weekday_stats = next(
@@ -836,9 +844,11 @@ def run(
         ),
         None,
     )
-    daily_energy.create_day_summary(con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL)
+    daily_energy.create_day_summary(con, where_sql=where_sql)
 
-    cycle_decomposition = _compute_cycle_decomposition(con, config)
+    cycle_decomposition = _compute_cycle_decomposition(
+        con, config, where_sql=where_sql
+    )
 
     f4_paths, f4_panels = (
         _figure_f4_mean_by_mode(con, out_dir, n_reps=n_reps, seed=seed)
@@ -896,62 +906,18 @@ def run(
         else []
     )
 
-    # ---- Diagnostics: full, unfiltered-by-motive dataset -- the
-    # evidence behind the needs-only scope above, plus checks that must
-    # *not* be scoped to it. ----
-    daily_energy.create_day_summary(con)
-
-    # Section 9.9 point 1 follow-up: trip/energy share of the excluded,
-    # non-needs motives, by main-mode group (justifies the scope
-    # decision above), plus the all-modes energy-by-motive figure (F9).
-    excluded_codes_sql = ", ".join(
-        f"{code:g}" for code in emp2019.NEEDS_EXCLUDED_MOTIVE_CODES
-    )
-    excluded_trip_shares = con.sql(f"""
-        SELECT d.day_mode_group,
-            sum(t.pond_jour * (t.motive IN ({excluded_codes_sql}))::int)
-                / sum(t.pond_jour) AS trip_share,
-            count(*) FILTER (WHERE t.motive IN ({excluded_codes_sql})) AS n_excluded,
-            count(*) AS n_total
-        FROM trip_legs t JOIN day_summary d ON d.day_id = t.day_id
-        WHERE d.total_energy_kh_kj IS NOT NULL
-        GROUP BY 1 ORDER BY 1
-    """).fetchall()
-    excluded_energy_shares = con.sql(f"""
-        WITH excluded_leg_energy AS (
-            SELECT day_id,
-                sum(energy_kh_kj)
-                    FILTER (WHERE motive IN ({excluded_codes_sql})) AS excluded_kh,
-                sum(energy_cp_kj)
-                    FILTER (WHERE motive IN ({excluded_codes_sql})) AS excluded_cp
-            FROM trip_legs GROUP BY 1
-        )
-        SELECT d.day_mode_group,
-            sum(d.pond_jour * coalesce(e.excluded_kh, 0))
-                / sum(d.pond_jour * d.total_energy_kh_kj) AS excluded_energy_share_kh,
-            sum(d.pond_jour * coalesce(e.excluded_cp, 0))
-                / sum(d.pond_jour * d.total_energy_cp_kj) AS excluded_energy_share_cp
-        FROM day_summary d LEFT JOIN excluded_leg_energy e ON e.day_id = d.day_id
-        WHERE d.total_energy_kh_kj IS NOT NULL
-        GROUP BY 1 ORDER BY 1
-    """).fetchall()
-
-    motive_matrix_before = _compute_motive_energy_matrix(con)
-    motive_matrix_after = _compute_motive_energy_matrix(
-        con, where_sql=emp2019.NEEDS_ONLY_WHERE_SQL
-    )
+    motive_matrix = _compute_motive_energy_matrix(con, where_sql=where_sql)
     if make_figures:
-        figures.append(
-            _figure_f9_motive_energy(motive_matrix_before, motive_matrix_after, out_dir)
-        )
+        figures.append(_figure_f9_motive_energy(motive_matrix, out_dir))
 
     # Point 2: data-quality correction counts (upper-bound speed flags,
     # corrected by mode's median speed, not dropped).
-    quality_counts = con.sql("""
+    daily_energy.create_day_summary(con, where_sql=where_sql)
+    quality_counts = con.sql(f"""
         SELECT mode_group,
             count(*) FILTER (WHERE speed_flagged_upper) AS n_corrected,
             count(*) AS n_total
-        FROM trip_legs GROUP BY 1 ORDER BY 1
+        FROM trip_legs WHERE ({where_sql}) GROUP BY 1 ORDER BY 1
     """).fetchall()
 
     # Declared walking/waiting minutes (`MTEMPSMAP`/`MTPSATTENT`, ENTD
@@ -966,7 +932,7 @@ def run(
     # regardless of mode, but not part of car's own energy -- adding it
     # here used to double the car figure, 17.6-19.2 modelled minutes
     # against a 9/10-minute default cap).
-    declared_vs_modelled_walk_wait = con.sql("""
+    declared_vs_modelled_walk_wait = con.sql(f"""
         SELECT mode_group,
             avg(declared_walk_min) AS declared_walk_min,
             avg(declared_wait_min) AS declared_wait_min,
@@ -985,12 +951,14 @@ def run(
         WHERE mode_group IN
             ('car_driver', 'car_passenger_household', 'car_passenger_carpool',
              'urban_pt', 'train')
+            AND ({where_sql})
         GROUP BY 1 ORDER BY 1
     """).fetchall()
 
-    # Cycling energy by motive (section 9.9 point 1 follow-up, user note:
-    # "7.6,7.7,7.8 might have large impact on bike"), full dataset.
-    cycle_motive_decomposition = _compute_motive_decomposition(con, "cycle")
+    # Cycling energy by selected-scope motive.
+    cycle_motive_decomposition = _compute_motive_decomposition(
+        con, "cycle", where_sql=where_sql
+    )
 
     non_traveler = survey.non_traveler_summary(con)
     # Weekday surveyed-day mix among travellers, now read directly from
@@ -1055,6 +1023,7 @@ def run(
         "config": config,
         "variation_config": variation_config,
         "survey_name": survey.SURVEY_NAME,
+        "scope": scope,
         "density_source": density_source,
         "n_days": len(days["day_mode_group"]),
         "mode_stats": mode_stats,
@@ -1119,8 +1088,6 @@ def run(
         "walk_trips_by_day_group": walk_trips_by_day_group,
         "f4_panels": f4_panels,
         "robustness_rows": robustness_rows,
-        "excluded_trip_shares": excluded_trip_shares,
-        "excluded_energy_shares": excluded_energy_shares,
         "quality_counts": quality_counts,
         "declared_vs_modelled_walk_wait": declared_vs_modelled_walk_wait,
         "cycle_decomposition": cycle_decomposition,
@@ -1162,7 +1129,7 @@ def _run_robustness(
     """F8: re-run the pipeline under each robustness variant (section 9.9).
 
     ``base_where_sql`` is ANDed into every variant's own ``day_summary``
-    filter (the needs-only scope, for the whole sweep).
+    filter (the selected scope, for the whole sweep).
     Returns the compressed ratio/CV table (every variant, scope and
     statistic) and, for the base case and the two terminal-leg extremes,
     full bootstrap group stats for the figure ("group means +/- CI for
@@ -1468,15 +1435,14 @@ def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
 
 
 def _trips_by_group_and_motive(
-    con: duckdb.DuckDBPyConnection, group_col: str
+    con: duckdb.DuckDBPyConnection, group_col: str, *, where_sql: str
 ) -> tuple[list[str], list[float], np.ndarray]:
     """(groups, top_motives, matrix): weighted mean trips per day of
     each top-level motive, by ``group_col`` (``population_category`` or
     ``home_density``) -- the per-motive decomposition of F1 panels
     (B)/(C): for a fixed group, summing the segments over
     ``top_motives`` reproduces that group's existing mean-trips/day bar
-    height exactly. A missing/refused motive (kept, not excluded, by
-    ``NEEDS_ONLY_WHERE_SQL``, since it cannot be classified) gets its
+    height exactly. A missing/refused motive gets its
     own ``-1.0`` sentinel code, labelled "not recorded". Excludes the
     'unknown' population category, as elsewhere in this report."""
     denom = dict(
@@ -1491,7 +1457,7 @@ def _trips_by_group_and_motive(
             sum(t.pond_jour) AS weighted_n
         FROM trip_legs t
         JOIN day_summary d ON d.day_id = t.day_id
-        WHERE d.{group_col} != 'unknown' AND ({emp2019.NEEDS_ONLY_WHERE_SQL})
+        WHERE d.{group_col} != 'unknown' AND ({where_sql})
         GROUP BY 1, 2
     """).fetchall()
     groups = sorted(denom)
@@ -2588,59 +2554,44 @@ def _figure_f8_robustness(
 
 
 def _figure_f9_motive_energy(
-    before: tuple[list[str], list[float], np.ndarray],
-    after: tuple[list[str], list[float], np.ndarray],
+    matrix_data: tuple[list[str], list[float], np.ndarray],
     out_dir: Path,
 ) -> Path:
     """F9: stacked bar of weighted KH energy by top-level motive, one bar
     per mode group, each normalised to 100% (section 9.9 point 1
     follow-up, "a graph with a stacked bar of energy values per
-    motive"). (A) the full, pre-exclusion dataset (every motive,
-    including `NEEDS_EXCLUDED_MOTIVE_CODES`): the evidence behind this
-    report's needs-only scope. (B) the final, needs-only-scoped dataset
-    ("the final decomposition"): motive 7 (leisure) shrinks to its
-    remaining, non-excluded sub-codes (7.1-7.5) and motive 8
-    (holidays/second home) disappears entirely, since every one of its
-    sub-codes is excluded.
+    motive"), for the selected scope.
     """
-    # One shared top-motive -> colour mapping across both panels (a
-    # motive missing from one panel keeps the same colour it would have
-    # had, so the two panels stay visually comparable).
-    all_top_motives = sorted(set(before[1]) | set(after[1]))
+    mode_groups, top_motives, matrix = matrix_data
     cmap = plt.get_cmap("tab10")
     colour_by_motive = {
-        motive: cmap(i % 10) for i, motive in enumerate(all_top_motives)
+        motive: cmap(i % 10) for i, motive in enumerate(top_motives)
     }
 
-    fig, axes = plt.subplots(1, 2, figsize=(18, 6))
-    for ax, (mode_groups, top_motives, matrix), title in (
-        (axes[0], before, "(A) Full dataset (evidence for the scope decision)"),
-        (axes[1], after, "(B) Final decomposition (needs-only scope)"),
-    ):
-        totals = matrix.sum(axis=1, keepdims=True)
-        shares = (
-            np.divide(matrix, totals, out=np.zeros_like(matrix), where=totals > 0)
-            * 100.0
+    totals = matrix.sum(axis=1, keepdims=True)
+    shares = (
+        np.divide(matrix, totals, out=np.zeros_like(matrix), where=totals > 0)
+        * 100.0
+    )
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = np.arange(len(mode_groups))
+    bottom = np.zeros(len(mode_groups))
+    for j, top_motive in enumerate(top_motives):
+        label = emp2019.TOP_LEVEL_MOTIVE_LABEL_BY_CODE.get(
+            top_motive, f"code {top_motive:g}"
         )
-        x = np.arange(len(mode_groups))
-        bottom = np.zeros(len(mode_groups))
-        for j, top_motive in enumerate(top_motives):
-            label = emp2019.TOP_LEVEL_MOTIVE_LABEL_BY_CODE.get(
-                top_motive, f"code {top_motive:g}"
-            )
-            ax.bar(
-                x,
-                shares[:, j],
-                bottom=bottom,
-                label=f"{top_motive:g} {label}",
-                color=colour_by_motive[top_motive],
-            )
-            bottom += shares[:, j]
-        ax.set_xticks(x)
-        ax.set_xticklabels(mode_groups, rotation=30, ha="right")
-        ax.set_ylabel("Share of weighted energy, % (kh)")
-        ax.set_title(title, fontsize=10)
-        ax.legend(fontsize=6, bbox_to_anchor=(1.02, 1), loc="upper left")
+        ax.bar(
+            x,
+            shares[:, j],
+            bottom=bottom,
+            label=f"{top_motive:g} {label}",
+            color=colour_by_motive[top_motive],
+        )
+        bottom += shares[:, j]
+    ax.set_xticks(x)
+    ax.set_xticklabels(mode_groups, rotation=30, ha="right")
+    ax.set_ylabel("Share of weighted energy, % (kh)")
+    ax.legend(fontsize=7, bbox_to_anchor=(1.02, 1), loc="upper left")
     fig.suptitle(
         "F9. Energy by top-level motive, all modes (100% stacked, section 9.9 point 1)"
     )
@@ -3020,12 +2971,10 @@ def _format_group_table_by_panel(
 
 
 def _format_motive_table(
-    rows: list[tuple], *, mode_label: str = "cycling"
+    rows: list[tuple],
 ) -> list[str]:
     """Trip/energy share by harmonised trip motive (section 9.9 point 1
-    follow-up, "decompose energy per motive"), largest energy share
-    first, plus a needs-excluded (`NEEDS_EXCLUDED_MOTIVE_CODES`)
-    rollup row -- the evidence behind this report's needs-only scope."""
+    follow-up, "decompose energy per motive"), largest energy share first."""
     total_weighted_n = sum(row[2] for row in rows)
     total_energy_kh = sum(row[3] for row in rows)
     total_energy_cp = sum(row[4] for row in rows)
@@ -3034,9 +2983,6 @@ def _format_motive_table(
         "energy share (cp) | mean distance (km) | mean duration (min) |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    excluded_weighted_n = 0.0
-    excluded_energy_kh = 0.0
-    excluded_energy_cp = 0.0
     for motive, n, weighted_n, energy_kh, energy_cp, mean_dist, mean_dur in rows:
         label = (
             "missing/refused"
@@ -3049,22 +2995,6 @@ def _format_motive_table(
             f"{energy_kh / total_energy_kh:.1%} | "
             f"{energy_cp / total_energy_cp:.1%} | {mean_dist:.2f} | {mean_dur:.1f} |"
         )
-        if motive in emp2019.NEEDS_EXCLUDED_MOTIVE_CODES:
-            excluded_weighted_n += weighted_n
-            excluded_energy_kh += energy_kh
-            excluded_energy_cp += energy_cp
-    excluded_codes = ", ".join(f"{c:g}" for c in emp2019.NEEDS_EXCLUDED_MOTIVE_CODES)
-    lines += [
-        "",
-        f"**Excluded from the main report's scope** (motives {excluded_codes}: "
-        + ", ".join(
-            emp2019.MOTIVE_LABEL_BY_CODE[c] for c in emp2019.NEEDS_EXCLUDED_MOTIVE_CODES
-        )
-        + f"), among {mode_label} trips: "
-        f"{excluded_weighted_n / total_weighted_n:.1%} of weighted trips, "
-        f"{excluded_energy_kh / total_energy_kh:.1%} of weighted energy (kh), "
-        f"{excluded_energy_cp / total_energy_cp:.1%} (cp).",
-    ]
     return lines
 
 
@@ -3214,7 +3144,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "The reference constant (section 9.9, 27 October 2026 decision): "
         "is mean daily travel time the same across density classes of "
         "residence, within each population category? Day with trips, "
-        "needs scope. Cells of fewer than 50 persons blank. The 95% CI "
+        "selected scope. Cells of fewer than 50 persons blank. The 95% CI "
         "column (bootstrap over households) gives time the same "
         "treatment energy already has (section 9.9's income update).",
         "",
@@ -3248,7 +3178,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         '(`docs/data/entd2008.md`\'s "Income variables"): is mean daily '
         "travel time the same across income quintiles, within each "
         "population category, as income is treated as density is? Day "
-        "with trips, needs scope. `'unknown'` (missing/refused income) "
+        "with trips, selected scope. `'unknown'` (missing/refused income) "
         "is its own class, excluded from the constancy summary (not an "
         "ordered quantile).",
         "",
@@ -3372,7 +3302,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "## Per-person budget, days without trips included (section 9.9 point 2b)",
         "",
-        "Direct producer-weighted sum of local, needs-scope day values over "
+        "Direct producer-weighted sum of selected-scope day values over "
         "the full respondent roster. EMP 2019 weekdays use "
         "Σ pond_jour × value ÷ 5 ÷ Σ pond_indC; ENTD 2008 uses the weighted "
         "reference-weekday total ÷ Σ POIDS_JOUR for the full Kish roster. "
@@ -3455,37 +3385,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         *_format_group_table(results["mode_stats"]),
         "",
-        "## Section 9.9's scope: commuting and travel for needs fulfilment",
-        "",
-        "Every table and figure above and below is restricted to local "
-        "trips (`mobloc = 1`, including ENTD 2008 `V2_DLOCAL = 1`) that "
-        "fulfil needs (2026-10-20 project decision, not an optional variant): "
-        "trips whose harmonised trip motive is "
-        'sport (7.6), a destination-less stroll (7.7, "se promener sans '
-        'destination precise"), going to a place to walk/ride (7.8, a '
-        "destination exists, but the movement itself is the point), or "
-        "any top-level motive group 8 purpose (8.1-8.4: holidays, "
-        "second/occasional residence, other private reasons -- none of "
-        "them a needs-fulfilment destination) are excluded from every "
-        "day's energy/time sums and from day classification; a day whose "
-        "only trips were these becomes a non-traveller for this analysis. "
-        "A missing/refused motive is kept, not excluded. See F9 and the "
-        "table below for the evidence behind this decision, computed on "
-        "the full, pre-exclusion dataset.",
-        "",
-        "| Group | excluded trip share | n excluded / n total | excluded "
-        "share of day energy (kh) | excluded share of day energy (cp) |",
-        "|---|---|---|---|---|",
     ]
-    excluded_energy_by_group = {
-        row[0]: (row[1], row[2]) for row in results["excluded_energy_shares"]
-    }
-    for mode, trip_share, n_excluded, n_total in results["excluded_trip_shares"]:
-        energy_kh, energy_cp = excluded_energy_by_group.get(mode, (float("nan"),) * 2)
-        lines.append(
-            f"| {mode} | {trip_share:.1%} | {n_excluded:,} / {n_total:,} | "
-            f"{energy_kh:.1%} | {energy_cp:.1%} |"
-        )
     lines += [
         "",
         "## Data-quality correction: implausible door-to-door speeds",
@@ -3687,11 +3587,8 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "residence (codes 1.1-1.3), which take the origin motive from "
         "`MOTPREC`, harmonised with ENTD 2008. This is a trip-level table; "
         "`MOT_SEQ_COMPL` is only used on unique sequences in the step-12 "
-        "sequence-level option. Full, pre-exclusion "
-        "dataset (unlike every other table in this report): this is the "
-        "evidence behind the needs-only scope above, not itself scoped "
-        "to it; see also F9 for the same breakdown, every mode, "
-        "top-level motive only.",
+        "sequence-level option. This trip-level table uses the selected "
+        "scope; F9 shows every mode at the top-level motive only.",
         "",
         *_format_motive_table(results["cycle_motive_decomposition"]),
     ]
@@ -4136,7 +4033,7 @@ def _format_temporal_equivalence(
         "`inconclusive`. Cells with fewer than 50 weekday respondents in "
         "either year are suppressed.",
         "",
-        "### Daily time, weekday days with trips (needs scope)",
+        "### Daily time, weekday days with trips (selected scope)",
         "",
         *_format_temporal_ratio_table(
             _temporal_day_ratio_rows(
@@ -4182,6 +4079,7 @@ def run_compare(
     emp2019_data_path: Path | None = None,
     entd2008_data_path: Path | None = None,
     variation_config_path: Path = DEFAULT_VARIATION_CONFIG_PATH,
+    scope: scope_module.Scope = scope_module.REFERENCE_SCOPE,
 ) -> Path:
     """Section 9.9's "Change between 2008 and 2019": runs EMP 2019 (grid
     and proxy density) and ENTD 2008 (proxy, its only option), then
@@ -4204,6 +4102,7 @@ def run_compare(
             density_source="proxy",
             variation_config_path=variation_config_path,
             make_figures=False,
+            scope=scope,
         )
         results_2019_grid = run(
             Path(tmp) / "emp2019_grid",
@@ -4215,6 +4114,7 @@ def run_compare(
             density_source="grid",
             variation_config_path=variation_config_path,
             make_figures=False,
+            scope=scope,
         )
         results_2008 = run(
             Path(tmp) / "entd2008_proxy",
@@ -4226,6 +4126,7 @@ def run_compare(
             density_source="proxy",
             variation_config_path=variation_config_path,
             make_figures=False,
+            scope=scope,
         )
 
     lines = [
@@ -4577,7 +4478,7 @@ def _figure_compare_time_by_category(
     reference constant): mean with 95% CI and a median marker, the same
     treatment `compare_energy_time`'s energy panels already give energy
     (section 9.9's income update). Three panels, left to right: (A) all
-    days, day with trips, needs scope; (B) weekday only, day with
+    days, day with trips, selected scope; (B) weekday only, day with
     trips; (C) weekday only, per person (days without trips included,
     direct producer-weighted sum over the full respondent roster; no
     median marker for a per-person total). (B)/(C) share the
@@ -4716,6 +4617,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument(
+        "--scope",
+        choices=["all", *(selected.id for selected in scope_module.ALL_SCOPES)],
+        default=scope_module.REFERENCE_SCOPE.id,
+    )
+    parser.add_argument(
         "--survey",
         choices=["emp2019", "entd2008"],
         default="emp2019",
@@ -4758,33 +4664,46 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.compare:
-        md_path = run_compare(
-            args.out,
+    survey = {"emp2019": emp2019, "entd2008": entd2008}[args.survey]
+    selected_scopes = (
+        scope_module.ALL_SCOPES
+        if args.scope == "all"
+        else (scope_module.Scope.parse(args.scope),)
+    )
+    for selected_scope in selected_scopes:
+        out_dir = (
+            scope_module.output_dir_for(args.out, selected_scope)
+            if args.scope == "all"
+            else args.out
+        )
+        if args.compare:
+            md_path = run_compare(
+                out_dir,
+                args.config,
+                n_reps=args.bootstrap_reps,
+                seed=args.seed,
+                emp2019_data_path=args.emp2019_data_path,
+                entd2008_data_path=args.entd2008_data_path,
+                variation_config_path=args.variation_config,
+                scope=selected_scope,
+            )
+            print(f"Wrote {md_path}")
+            continue
+
+        results = run(
+            out_dir,
+            survey,
+            args.data_path,
             args.config,
             n_reps=args.bootstrap_reps,
             seed=args.seed,
-            emp2019_data_path=args.emp2019_data_path,
-            entd2008_data_path=args.entd2008_data_path,
+            density_source=args.density,
             variation_config_path=args.variation_config,
+            scope=selected_scope,
         )
-        print(f"Wrote {md_path}")
-        return 0
-
-    survey = {"emp2019": emp2019, "entd2008": entd2008}[args.survey]
-    results = run(
-        args.out,
-        survey,
-        args.data_path,
-        args.config,
-        n_reps=args.bootstrap_reps,
-        seed=args.seed,
-        density_source=args.density,
-        variation_config_path=args.variation_config,
-    )
-    md_path = args.out.with_suffix(".md")
-    write_markdown(md_path, args.out, results)
-    print(f"Wrote {len(results['figures'])} figures to {args.out} and {md_path}")
+        md_path = out_dir.with_suffix(".md")
+        write_markdown(md_path, out_dir, results)
+        print(f"Wrote {len(results['figures'])} figures to {out_dir} and {md_path}")
     return 0
 
 

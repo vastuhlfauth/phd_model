@@ -191,32 +191,6 @@ MOTIVE_LABEL_BY_CODE = {
     9.5: "other professional reason",
 }
 
-#: Section 9.9's scope (2026-10-20 project decision): the re-estimation
-#: covers local commuting and travel for needs fulfilment, not non-local
-#: trips or recreational movement for its own sake. Trips whose harmonised
-#: motive (`motive`) is sport (7.6),
-#: a destination-less stroll (7.7, the same purpose as `is_loop_trip`),
-#: "going to a place to walk/ride" (7.8, destination exists, but the
-#: movement itself is the point), or any top-level motive group 8
-#: purpose (8.1-8.4: holidays, second/occasional residence, other
-#: private reasons -- none of them a needs-fulfilment destination) are
-#: excluded from every day/energy computation in step 11's report -- the
-#: whole report's base scope, not an optional variant. Local means
-#: `mobloc = 1` in both surveys; ENTD's `V2_DLOCAL = -1` (abroad) is not
-#: included.
-NEEDS_EXCLUDED_MOTIVE_CODES = (7.6, 7.7, 7.8, 8.1, 8.2, 8.3, 8.4)
-
-#: SQL fragment for the motive-only part of section 9.9's reference scope.
-NEEDS_MOTIVE_WHERE_SQL = (
-    "(motive IS NULL OR motive NOT IN ("
-    + ", ".join(f"{code:g}" for code in NEEDS_EXCLUDED_MOTIVE_CODES)
-    + "))"
-)
-
-#: SQL fragment for ``day_summary``'s candidate-trip filter and every
-#: other per-leg query that must match the reference scope.
-NEEDS_ONLY_WHERE_SQL = f"(mobloc = 1 AND {NEEDS_MOTIVE_WHERE_SQL})"
-
 #: Top-level (integer) motive group labels, `emp2019-categories.pdf`'s
 #: "Motif" table section headers, used by the all-modes "energy by
 #: motive" figure (one stacked bar per mode, 9 segments instead of

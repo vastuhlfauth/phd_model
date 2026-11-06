@@ -10,9 +10,16 @@ Read this file at the start of every task and update it at the end.
   weights in point estimates and household-bootstrap replicates.
 - Synthetic scope and estimator tests: 33 passed; targeted Ruff and Pylance
   signature compatibility checks passed. No real-data reports were run.
-- Not yet connected to survey loaders or reports. Next: step b, scope CLI
-  selection and wiring, including C5's producer scope; then labels and
-  diagnostics (steps c and d).
+- Step b is complete: the EMP 2019, ENTD 2008, comparison and step-12 CLIs
+  accept `--scope` (reference by default) and `--scope all`; the eight runs
+  are isolated under `scopes/<id>/`. General trip/day analyses use the
+  selected scope; C5 remains on the SDES scope, and C7 compares the reference,
+  SDES and day-table scopes. The retired needs scope and its dedicated
+  filters were removed. Focused synthetic scope/report tests: 40 passed;
+  targeted Ruff passed. No real-data reports or full test suite were run.
+- Next: step c, scope labels in report tables/figures/choices and scope
+  columns in CSVs; then step d, step-12 scope diagnostics and ENTD coverage
+  handling.
 - Neither survey's documented immobility reasons identify a comparable
   away-from-home category. Count days without trips as zero in both surveys;
   do not use voyage dates. Verify and report any survey-specific away

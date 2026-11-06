@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import product
+from pathlib import Path
 
 import duckdb
 
@@ -60,6 +61,35 @@ class Scope:
         if self.distance == "local":
             predicates.append("mobloc = 1")
         return " AND ".join(predicates) if predicates else "TRUE"
+
+    def trip_filter_sql(self, alias: str = "trip_legs") -> str:
+        """SQL predicate selecting matching trips from a trip-level table."""
+        return (
+            "EXISTS (SELECT 1 FROM scope_trips AS scoped_trip "
+            f"WHERE scoped_trip.day_id = {alias}.day_id "
+            f"AND scoped_trip.num_dep = {alias}.num_dep "
+            f"AND ({self.where_sql}))"
+        )
+
+
+def create_scope_views_from_trip_legs(
+    con: duckdb.DuckDBPyConnection, *, activity_stay_min: float
+) -> None:
+    """Create the scope chain from the survey-normalised and energy trip views."""
+    con.sql("""
+        CREATE OR REPLACE VIEW scope_input AS
+        SELECT t.day_id, t.num_dep, n.origin_purpose, n.destination_purpose,
+            n.destination_motive, t.motive, t.moridom, t.mode_group, t.mobloc,
+            n.departure_time, n.arrival_time
+        FROM trip_legs t
+        JOIN trips_norm n ON n.ident_dep = t.ident_dep
+    """)
+    create_scope_views(con, activity_stay_min=activity_stay_min)
+
+
+def output_dir_for(base_dir: Path, selected_scope: Scope) -> Path:
+    """Return the isolated output directory for one ``--scope all`` run."""
+    return base_dir.parent / "scopes" / selected_scope.id / base_dir.name
 
 
 ALL_SCOPES = tuple(

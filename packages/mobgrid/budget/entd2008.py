@@ -473,6 +473,11 @@ def build_trips_norm(
             (TRY_CAST(d.V2_DLOCAL AS DOUBLE) = 1)::INT AS mobloc,
             d.NODEP AS num_dep,
             CAST(d.V2_MORIDOM AS DOUBLE) AS moridom,
+            CAST(d.V2_MMOTIFORI AS VARCHAR) AS origin_purpose,
+            CAST(d.V2_MMOTIFDES AS VARCHAR) AS destination_purpose,
+            d.motifdes_converted AS destination_motive,
+            TRY_CAST(d.V2_MORIHDEP AS TIME) AS departure_time,
+            TRY_CAST(d.V2_MDESHARR AS TIME) AS arrival_time,
             coalesce(try_cast(d.v2_mduree AS DOUBLE), d.V2_DUREE) AS duration_min,
             coalesce(try_cast(d.distcor AS DOUBLE), d.V2_MDISTTOT)
                 AS distance_km_declared,

@@ -24,6 +24,14 @@ class MeasurementConfig(BaseModel):
     short_distance_km: Annotated[float, Field(gt=0)]
 
 
+class ScopeConfig(BaseModel):
+    """Threshold for identifying walking/cycling-as-activity trips."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    activity_stay_min: Annotated[float, Field(gt=0, lt=24 * 60)]
+
+
 class VariationConfig(BaseModel):
     """Equivalence margins and measurement checks for the step-12 report."""
 
@@ -32,6 +40,7 @@ class VariationConfig(BaseModel):
     equivalence_margin: Annotated[float, Field(gt=0, lt=1)]
     secondary_equivalence_margin: Annotated[float, Field(gt=0, lt=1)]
     measurement: MeasurementConfig
+    scope: ScopeConfig
 
 
 def load_variation_config(path: str | Path) -> VariationConfig:

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from mobgrid.budget import daily_energy, emp, emp2019
+from mobgrid.budget import daily_energy, emp, emp2019, entd2008, scope
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config" / "energy.yaml"
@@ -68,9 +68,8 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert "no code-side failure mode to report here" in report
     assert "Trips per day and minutes per trip" in report
     assert "Per-person budget, days without trips included" in report
-    assert "Direct producer-weighted sum of local" in report
+    assert "Direct producer-weighted sum of selected-scope" in report
     assert "zero local trips is" in report
-    assert "local trips (`mobloc = 1`, including ENTD 2008 `V2_DLOCAL = 1`)" in report
     assert "±15% verdict" in report
     assert "±10% verdict" in report
 
@@ -212,6 +211,49 @@ def test_cli_compare_writes_report_and_figure(
     assert "Ratio 2019/2008" in report
     assert "Within-survey equivalence: density proxy" in report
     assert "Within-survey equivalence: income quintile" in report
+
+
+def test_scope_cli_defaults_to_reference_and_selects_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+
+    def fake_run(out_dir, survey, data_path, config_path, **kwargs):
+        calls.append((out_dir, survey, kwargs["scope"].id))
+        return {"figures": []}
+
+    monkeypatch.setattr(emp, "run", fake_run)
+    monkeypatch.setattr(emp, "write_markdown", lambda *args: None)
+
+    assert emp.main(["--out", str(tmp_path / "report")]) == 0
+    assert calls[-1][2] == "round-dest-local"
+
+    assert emp.main(
+        ["--out", str(tmp_path / "report"), "--survey", "entd2008",
+         "--scope", "alldays-allpurp-daytable"]
+    ) == 0
+    assert calls[-1][1] is entd2008
+    assert calls[-1][2] == "alldays-allpurp-daytable"
+
+
+def test_scope_all_cli_runs_each_scope_in_separate_report_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+
+    def fake_run_compare(out_path, config_path, **kwargs):
+        calls.append((out_path, kwargs["scope"].id))
+        return out_path.with_suffix(".md")
+
+    monkeypatch.setattr(emp, "run_compare", fake_run_compare)
+
+    assert emp.main(
+        ["--out", str(tmp_path / "compare"), "--compare", "--scope", "all"]
+    ) == 0
+
+    assert [scope_id for _, scope_id in calls] == [s.id for s in scope.ALL_SCOPES]
+    assert calls[0][0] == tmp_path / "scopes" / calls[0][1] / "compare"
+    assert len({path for path, _ in calls}) == len(scope.ALL_SCOPES)
 
 
 def test_weekday_person_table_uses_the_temporal_ratio_base() -> None:

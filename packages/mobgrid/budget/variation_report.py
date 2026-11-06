@@ -4,7 +4,7 @@
 --entd2008-zoning-data-path data/raw/entd2008/ENTD2008_avec_zonages_EMP``
 reuses the step-11 survey loaders and ``trip_legs`` reconstruction, with a
 harmonised return-home motive rule and optional ENTD 2008 zoning supplement,
-extracts weekday person-days with trips in the needs scope with their day
+extracts weekday person-days with trips in the selected scope with their day
 weights, and writes the step-12 report: the
 survey-method checks of Part A (recall lag, motive crosswalk, distances,
 durations, calendar) and the decompositions of Part B (composition,
@@ -41,6 +41,9 @@ from mobgrid.budget import (
     entd2008,
     trip_legs,
     variation,
+)
+from mobgrid.budget import (
+    scope as scope_module,
 )
 from mobgrid.energy.rates import EnergyConfig, load_energy_config
 
@@ -125,8 +128,8 @@ MODE7_LABELS = (
 
 #: B4's harmonised motive groups: the top-level (integer) motive code of
 #: the step-11 harmonised nomenclature (`trip_legs.
-#: TOP_LEVEL_MOTIVE_LABEL_BY_CODE`); group 8 and the non-needs part of 7
-#: are outside the needs scope by construction.
+#: TOP_LEVEL_MOTIVE_LABEL_BY_CODE`); group 8 and walking/cycling-as-
+#: activity rules are evaluated by the three-switch scope module.
 MOTIVE_GROUP_LABELS = {
     1: "home/study/childcare",
     2: "shopping",
@@ -134,7 +137,7 @@ MOTIVE_GROUP_LABELS = {
     4: "administrative errand",
     5: "visits",
     6: "accompany/pick up",
-    7: "leisure (needs scope)",
+    7: "leisure",
     8: "holidays/second home",
     9: "professional",
 }
@@ -174,7 +177,6 @@ class SurveyFrames:
     days: dict[str, np.ndarray]
     trips: dict[str, np.ndarray]
     aux: dict
-    all_trips: SurveyFrames | None = None
 
 
 @dataclass(frozen=True)
@@ -359,15 +361,9 @@ def _create_frames_tables(
     con: duckdb.DuckDBPyConnection,
     *,
     sample_pct: float | None,
-    scope: str = "needs",
+    selected_scope: scope_module.Scope,
 ) -> None:
-    """Materialise weekday trip/day tables for the needs or all-trips scope."""
-    if scope == "needs":
-        scope_sql = trip_legs.NEEDS_ONLY_WHERE_SQL
-    elif scope == "all":
-        scope_sql = "TRUE"
-    else:
-        raise ValueError(f"unknown variation-report scope: {scope!r}")
+    """Materialise weekday trip/day tables for the selected scope."""
     mode7_sql = """
         CASE t.mode_group
             WHEN 'cycle' THEN 'bike'
@@ -395,7 +391,7 @@ def _create_frames_tables(
         LEFT JOIN vr_person p ON p.ident_ind = t.ident_ind
         LEFT JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
         WHERE t.typejour = 1 AND t.pond_jour > 0
-            AND ({scope_sql})
+            AND ({selected_scope.trip_filter_sql("t")})
             AND ({_sample_sql(sample_pct)})
     """)
     con.sql("""
@@ -426,54 +422,6 @@ def _create_frames_tables(
         FROM vr_trips
         GROUP BY day_id
     """)
-
-
-def _needs_scope_removal(con: duckdb.DuckDBPyConnection) -> dict:
-    """A2's scope check: the weighted share of weekday trips and time
-    excluded from the local-needs reference scope."""
-    row = con.sql(f"""
-        SELECT
-            sum(pond_jour) FILTER (
-                WHERE NOT ({trip_legs.NEEDS_ONLY_WHERE_SQL})
-            ) / sum(pond_jour),
-            sum(pond_jour * duration_min) FILTER (
-                WHERE NOT ({trip_legs.NEEDS_ONLY_WHERE_SQL})
-            ) / sum(pond_jour * duration_min)
-        FROM trip_legs
-        WHERE typejour = 1 AND pond_jour > 0
-    """).fetchone()
-    return {
-        "share_trips_removed": float(row[0] or 0.0),
-        "share_time_removed": float(row[1] or 0.0),
-    }
-
-
-def _local_scope_removal(con: duckdb.DuckDBPyConnection) -> dict[str, float | int]:
-    """Weighted non-local need trips and minutes removed per prior-scope day."""
-    row = con.sql(f"""
-        WITH old_scope_days AS (
-            SELECT day_id, any_value(pond_jour) AS weight,
-                count(*) FILTER (WHERE mobloc IS DISTINCT FROM 1)
-                    AS removed_trips,
-                coalesce(sum(duration_min) FILTER (
-                    WHERE mobloc IS DISTINCT FROM 1
-                ), 0) AS removed_minutes
-            FROM trip_legs
-            WHERE typejour = 1 AND pond_jour > 0
-                AND ({trip_legs.NEEDS_MOTIVE_WHERE_SQL})
-            GROUP BY day_id
-        )
-        SELECT count(*), sum(weight),
-            sum(weight * removed_trips) / nullif(sum(weight), 0),
-            sum(weight * removed_minutes) / nullif(sum(weight), 0)
-        FROM old_scope_days
-    """).fetchone()
-    return {
-        "n_days": int(row[0] or 0),
-        "weighted_days": float(row[1] or 0.0),
-        "trips_per_day_removed": float(row[2] or 0.0),
-        "minutes_per_day_removed": float(row[3] or 0.0),
-    }
 
 
 def _raw_motive_shares_emp2019(con: duckdb.DuckDBPyConnection) -> dict:
@@ -592,9 +540,15 @@ def load_frames(
     density_source: str | None = None,
     zoning_data_path: Path | None = None,
     sample_pct: float | None = None,
+    scope: scope_module.Scope = scope_module.REFERENCE_SCOPE,
+    activity_stay_min: float | None = None,
 ) -> SurveyFrames:
     """Build one survey's step-12 frames with explicit motive/density inputs."""
     config = config or load_energy_config(config_path)
+    if activity_stay_min is None:
+        activity_stay_min = variation.load_variation_config(
+            ROOT / "config" / "variation.yaml"
+        ).scope.activity_stay_min
     data_path = data_path or survey.DEFAULT_DATA_PATH
     density_source = density_source or survey.DEFAULT_DENSITY_SOURCE
     interim_dir = (
@@ -632,22 +586,27 @@ def load_frames(
             )
         else:
             survey.build_trip_legs(con, config, density_source=density_source)
+        scope_module.create_scope_views_from_trip_legs(
+            con, activity_stay_min=activity_stay_min
+        )
         _PERSON_EXT_BY_SURVEY[survey.SURVEY_NAME](con)
-        _create_frames_tables(con, sample_pct=sample_pct)
+        _create_frames_tables(
+            con, sample_pct=sample_pct, selected_scope=scope
+        )
         days = con.sql("SELECT * FROM vr_days").fetchnumpy()
         trips = con.sql("SELECT * FROM vr_trips").fetchnumpy()
-        _create_frames_tables(con, sample_pct=sample_pct, scope="all")
-        all_days = con.sql("SELECT * FROM vr_days").fetchnumpy()
-        all_trips = con.sql("SELECT * FROM vr_trips").fetchnumpy()
         official_data = _official_scope_data(con, survey, sample_pct)
+        c7_scopes = {
+            "reference": scope_module.REFERENCE_SCOPE,
+            "sdes": scope_module.SDES_SCOPE,
+            "daytable": scope_module.Scope.parse("alldays-allpurp-daytable"),
+        }
         c7_data = {
-            scope: _c7_scope_data(con, survey, scope, sample_pct)
-            for scope in ("sdes", "needs", "all_trips")
+            scope_id: _c7_scope_data(con, survey, selected, sample_pct)
+            for scope_id, selected in c7_scopes.items()
         }
         motive_shares, distance_doc = _AUX_BY_SURVEY[survey.SURVEY_NAME]
         aux = {
-            "needs_scope_removal": _needs_scope_removal(con),
-            "local_scope_removal": _local_scope_removal(con),
             "raw_motive_shares": motive_shares(con),
             "distance_doc": distance_doc(con),
             "official_scope_data": official_data,
@@ -674,18 +633,11 @@ def load_frames(
         con.close()
     days = {k: _plain_array(v) for k, v in days.items()}
     trips = {k: _plain_array(v) for k, v in trips.items()}
-    all_trips_frames = SurveyFrames(
-        name=survey.SURVEY_NAME,
-        days={k: _plain_array(v) for k, v in all_days.items()},
-        trips={k: _plain_array(v) for k, v in all_trips.items()},
-        aux={},
-    )
     return SurveyFrames(
         name=survey.SURVEY_NAME,
         days=days,
         trips=trips,
         aux=aux,
-        all_trips=all_trips_frames,
     )
 
 
@@ -779,24 +731,17 @@ def _official_scope_data(
 def _c7_scope_data(
     con: duckdb.DuckDBPyConnection,
     survey: ModuleType,
-    scope: str,
+    selected_scope: scope_module.Scope,
     sample_pct: float | None,
 ) -> PeriodBudgetSample:
     """Extract section 9.9 rosters and trip/minute totals for a C7 scope."""
-    if scope == "sdes":
-        scope_sql = "mobloc = 1"
+    if selected_scope.id == scope_module.SDES_SCOPE.id:
         age_filter = "AND age >= 6"
         roster_age_filter = "WHERE age >= 6"
-    elif scope == "needs":
-        scope_sql = trip_legs.NEEDS_ONLY_WHERE_SQL
-        age_filter = ""
-        roster_age_filter = ""
-    elif scope == "all_trips":
-        scope_sql = "TRUE"
-        age_filter = ""
-        roster_age_filter = ""
     else:
-        raise ValueError(f"unknown C7 scope: {scope!r}")
+        age_filter = ""
+        roster_age_filter = ""
+    scope_sql = selected_scope.trip_filter_sql()
 
     if survey is emp2019:
         roster_sql = f"""
@@ -1862,7 +1807,7 @@ def _format_c6(
         "duration (minutes), multiplied by 60; it is not the mean of trip "
         "speeds. The household bootstrap is independent by survey. Scope A "
         "is ages 6+, Monday–Friday, local trips, all motives (SDES); scope B "
-        "is the existing step-12 weekday needs scope. Estimates use trip "
+        "is the selected step-12 weekday scope. Estimates use trip "
         "weights; distance-specific metrics use trips with valid distance "
         "and positive duration. 2008/2019 ratios use 90% bootstrap intervals; "
         "year estimates use 95% intervals. Cells with fewer than 50 trips "
@@ -1940,9 +1885,9 @@ def _c7_comparison(
     seed: int,
 ) -> list[dict]:
     scopes = (
-        ("sdes", "SDES: age 6+, local, all motives"),
-        ("needs", "Needs: local, needs motives"),
-        ("all_trips", "All trips sensitivity"),
+        ("reference", scope_module.REFERENCE_SCOPE.id),
+        ("sdes", scope_module.SDES_SCOPE.id),
+        ("daytable", "alldays-allpurp-daytable"),
     )
     periods = (
         ("weekday", "weekday", (1,), 1.0, 5.0),
@@ -2030,9 +1975,9 @@ def _format_c7(
     lines = [
         "### C7. Budgets per person, per traveller and per week",
         "",
-        "The SDES scope is ages 6+, local trips, all motives; the needs scope "
-        "is local trips with needs motives. All trips are retained as a "
-        "sensitivity row. EMP 2019 uses the full respondent roster: weekday "
+        "The rows are the reference scope, the SDES replication scope, and "
+        "the all-days/all-purposes day-table sensitivity. EMP 2019 uses the "
+        "full respondent roster: weekday "
         "totals /5, Saturday and Sunday /1, and 7-day totals /7. ENTD 2008 "
         "uses the full Kish roster and `POIDS_JOUR`; its weekday denominator "
         "is the sum of reference-weekday weights. ENTD weekend design calls "
@@ -2081,7 +2026,7 @@ def _format_c7(
 
 
 def _c8b_summary(frames: SurveyFrames) -> dict:
-    """Relate complete EMP weekday-out flags to needs-scope intensity."""
+    """Relate complete EMP weekday-out flags to selected-scope intensity."""
     data = frames.aux["emp_weekday_out"]
     people, weekdays_out, weekdays_observed = data
     complete = weekdays_observed == 5
@@ -2210,7 +2155,7 @@ def _format_c8(frames_2019: SurveyFrames) -> list[str]:
         "",
         "Weekday-out counts use complete five-weekday `IMMODEP_A`–`G` records "
         "(`0` = went out, `1` = immobile). Intensity uses all trips on the "
-        "respondent's described weekday in the local needs scope; respondents "
+        "respondent's described weekday in the selected scope; respondents "
         "without a recorded in-scope trip that day are not in the intensity "
         "table. Frequency is the count of weekdays out during the preceding "
         "week. Category × density CVs compare "
@@ -2694,7 +2639,7 @@ class RoundingRow:
 
 def duration_rounding_table(frames: SurveyFrames) -> list[RoundingRow]:
     """A4's table: declared-duration rounding by mode (weekday trips,
-    needs scope, day weights), plus an all-modes row."""
+    selected scope, day weights), plus an all-modes row."""
     trips = frames.trips
     w = trips["pond_jour"].astype(float)
     duration = trips["duration_min"].astype(float)
@@ -2802,7 +2747,7 @@ def _format_a4(results: dict) -> list[str]:
         "",
         "Weighted share of published survey trip durations that are exact "
         "multiples of 5, 10, 15 and 30 minutes, by year and trip mode "
-        "(weekday trips, needs scope).",
+        "(weekday trips, selected scope).",
         "",
         "| Mode | n 2008 | x5 | x10 | x15 | x30 | n 2019 | x5 | x10 | x15 | x30 |",
         "|---|---|---|---|---|---|---|---|---|---|---|",
@@ -2913,7 +2858,7 @@ def _format_a1(results: dict) -> list[str]:
         "interview); ENTD 2008 describes the last weekday before the "
         "second visit (`MDATENQ2V` - `V2_DATESEMREF`: lag 1 except after "
         "a weekend, where the calendar lag is 3). Weekday described days "
-        "with trips, needs scope, day weights.",
+        "with trips, selected scope, day weights.",
         "",
         "| Lag (days) | n | Weighted share | Trips/day | Min/trip | "
         "Time/day (min) | Trips < 5 min | Trips < 1 km |",
@@ -2973,7 +2918,7 @@ def _format_a2(results: dict) -> list[str]:
         "Step 11's code-by-code conversion "
         "(`docs/data/entd2008.md`'s \"Purposes\" table), with each code's "
         "weighted share of weekday trips in its own survey. Shares are of "
-        "raw trip codes before the needs scope; `return home` codes are "
+        "raw trip codes before the selected scope; `return home` codes are "
         "re-assigned to the outward motive downstream, as in step 11.",
         "",
     ]
@@ -2992,37 +2937,6 @@ def _format_a2(results: dict) -> list[str]:
                 f"{_pct(row.share_2019)} | {row.flag} |"
             )
         lines.append("")
-    removal_2008 = results["needs_removal_2008"]
-    removal_2019 = results["needs_removal_2019"]
-    local_2008 = results["local_scope_removal_2008"]
-    local_2019 = results["local_scope_removal_2019"]
-    lines += [
-        "### Needs scope",
-        "",
-        "Weighted share of weekday trips and time excluded from the reference "
-        "scope (non-local trips and motives 7.6-7.8 and 8.x):",
-        "",
-        "| Survey | Trips removed | Time removed |",
-        "|---|---|---|",
-        f"| ENTD 2008 | {_pct(removal_2008['share_trips_removed'])} | "
-        f"{_pct(removal_2008['share_time_removed'])} |",
-        f"| EMP 2019 | {_pct(removal_2019['share_trips_removed'])} | "
-        f"{_pct(removal_2019['share_time_removed'])} |",
-        "",
-        "The local-trip rule's additional removal relative to the former "
-        "motive-only scope, averaged over that scope's weekday person-days "
-        "with trips (including days with no local trips):",
-        "",
-        "| Survey | Days | Non-local needs trips/day removed | "
-        "Non-local needs min/day removed |",
-        "|---|---:|---:|---:|",
-        f"| ENTD 2008 | {local_2008['n_days']} | "
-        f"{_num(local_2008['trips_per_day_removed'], 2)} | "
-        f"{_num(local_2008['minutes_per_day_removed'])} |",
-        f"| EMP 2019 | {local_2019['n_days']} | "
-        f"{_num(local_2019['trips_per_day_removed'], 2)} | "
-        f"{_num(local_2019['minutes_per_day_removed'])} |",
-    ]
     return lines
 
 
@@ -3094,9 +3008,8 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "# Step 12: what explains the variation of daily travel time",
         "",
         "Generated by `python -m mobgrid.budget.variation_report`. Unit of "
-        "analysis: weekday person-days with at least one local trip in the "
-        "needs "
-        "scope, day weights (`POND_JOUR`/`POIDS_JOUR`), as in step 11. "
+        "analysis: weekday person-days with at least one trip in the "
+        "selected scope, day weights (`POND_JOUR`/`POIDS_JOUR`), as in step 11. "
         "Bootstrap intervals resample households within each survey, "
         f"independently ({results['n_reps']} replicates). Cells of fewer "
         f"than {MIN_CELL_N} respondents print their true n with `-` for "
@@ -3155,9 +3068,6 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
 #: ambiguous, choose, write the choice in the report under 'Choices
 #: made', and continue").
 BASE_CHOICES = [
-    "The reference needs scope includes local trips only (`mobloc = 1`; "
-    "ENTD 2008 `V2_DLOCAL = 1`). Non-local needs trips are excluded; the "
-    "all-trips sensitivity in B2 keeps them and every motive.",
     "ENTD 2008's recall lag uses the second visit (`MDATENQ2V`, when "
     "trips are collected) minus the described reference weekday "
     "(`V2_DATESEMREF`); the first visit (`DATENQ`) precedes the "
@@ -3177,7 +3087,7 @@ BASE_CHOICES = [
     "2020-zoning SDES supplement, EMP 2019's published grid). The SDES "
     "tables contain no commune codes, so C2 crow-fly distances are not "
     "recomputed.",
-    "The motive crosswalk reports raw code shares before the needs "
+    "The motive crosswalk reports raw code shares before the selected "
     "scope and before the return-trip motive reassignment, so both "
     "surveys' code inventories are visible.",
     "Declared distances are excluded from C6 because EMP 2019's declared "
@@ -3223,6 +3133,7 @@ def run(
     entd2008_data_path: Path | None = None,
     entd2008_zoning_data_path: Path | None = None,
     sample_pct: float | None = None,
+    scope: scope_module.Scope = scope_module.REFERENCE_SCOPE,
 ) -> dict:
     """Compute every step-12 statistic and figure; returns the results
     dict consumed by ``write_markdown`` and the tests."""
@@ -3232,6 +3143,10 @@ def run(
         raise ValueError(
             "ENTD 2008's 2020-zoning data path is required for the grid comparison"
         )
+    variation_config = variation.load_variation_config(
+        ROOT / "config" / "variation.yaml"
+    )
+    activity_stay_min = variation_config.scope.activity_stay_min
     frames_2008 = load_frames(
         entd2008,
         entd2008_data_path,
@@ -3239,6 +3154,8 @@ def run(
         density_source="grid",
         zoning_data_path=entd2008_zoning_data_path,
         sample_pct=sample_pct,
+        scope=scope,
+        activity_stay_min=activity_stay_min,
     )
     frames_2019 = load_frames(
         emp2019,
@@ -3246,15 +3163,15 @@ def run(
         config,
         density_source="grid",
         sample_pct=sample_pct,
+        scope=scope,
+        activity_stay_min=activity_stay_min,
     )
     frames_2019_grid = frames_2019
-    variation_config = variation.load_variation_config(
-        ROOT / "config" / "variation.yaml"
-    )
     results: dict = {
         "n_reps": n_reps,
         "seed": seed,
         "sample_pct": sample_pct,
+        "scope": scope,
         "equivalence_margin": variation_config.equivalence_margin,
         "secondary_equivalence_margin": (variation_config.secondary_equivalence_margin),
         "choices": list(BASE_CHOICES),
@@ -3282,10 +3199,6 @@ def run(
             side: motive_crosswalk(frames_2008, frames_2019, side)
             for side in ("destination", "origin")
         },
-        "needs_removal_2008": frames_2008.aux["needs_scope_removal"],
-        "needs_removal_2019": frames_2019.aux["needs_scope_removal"],
-        "local_scope_removal_2008": frames_2008.aux["local_scope_removal"],
-        "local_scope_removal_2019": frames_2019.aux["local_scope_removal"],
         # A3
         "distance_doc_2008": frames_2008.aux["distance_doc"],
         "distance_doc_2019": frames_2019.aux["distance_doc"],
@@ -4422,7 +4335,7 @@ def _density_grid_comparison_lines(
     lines = [
         "## B6.5. 2008 -> 2019 by INSEE density grid",
         "",
-        "Weekday person-days with needs-scope trips, by residence density grid "
+        "Weekday person-days with selected-scope trips, by residence density grid "
         "class and population category. Measures are trips/day and minutes/day; "
         "n is the number of person-days. Differences use household-bootstrap "
         "95% CIs; daily-time ratios use 90% CIs. Equivalence is established "
@@ -4540,29 +4453,6 @@ def _run_part_b(
         seed=seed,
         include_time_ratio=True,
     )
-    all_2008 = frames_2008.all_trips
-    all_2019 = frames_2019.all_trips
-    if all_2008 is None or all_2019 is None:
-        raise ValueError("all-trips sensitivity frames were not loaded")
-    all_crow_2008 = common_distance_frames(all_2008, "crow_fly_km")
-    all_crow_2019 = common_distance_frames(all_2019, "crow_fly_km")
-    all_trip_rows = b2_decompositions(
-        all_crow_2008,
-        all_crow_2019,
-        n_reps=n_reps,
-        seed=seed,
-        categories=(),
-        include_time_ratio=True,
-    )
-    results["b2_all_trips_row"] = B2Row(
-        group="All trips (all motives and distances)",
-        n_a=all_trip_rows[0].n_a,
-        n_b=all_trip_rows[0].n_b,
-        result=all_trip_rows[0].result,
-        unavailable_reason=all_trip_rows[0].unavailable_reason,
-        time_ratio=all_trip_rows[0].time_ratio,
-        time_ratio_ci90=all_trip_rows[0].time_ratio_ci90,
-    )
     results["b2_rows_corrected"] = b2_decompositions(
         frames_2008,
         frames_2019,
@@ -4654,7 +4544,7 @@ def _run_part_b(
     results["extra_sections"] += [
         _format_b1(results["b1_rows"], "2008", "2019"),
         _format_b2(
-            [*results["b2_rows"], results["b2_all_trips_row"]],
+            results["b2_rows"],
             "2008",
             "2019",
             distance_description=(
@@ -5172,7 +5062,7 @@ def measurement_checks(
     lines = [
         "## C. Measurement checks",
         "",
-        "Weekday person-days with needs-scope trips, day weights; the same "
+        "Weekday person-days with selected-scope trips, day weights; the same "
         "denominator as B2. Section 9.9. Small-cell suppression is unchanged.",
         "",
         "### C1. Rounding bounds",
@@ -5307,7 +5197,7 @@ def measurement_checks(
         "",
         "EMP 2019's raw destination motive is replaced by its raw origin motive "
         "for returns to home or a residence (codes 1.1-1.3), matching ENTD "
-        "2008's rule. This reassigned motive drives both needs scope and motive "
+        "2008's rule. This reassigned motive drives motive groups and selected-scope "
         "groups. Each category denominator includes days with zero trips for "
         "that motive. n counts all category person-days, not just motive users. "
         "Short-trip rows use strict < thresholds; missing crow-fly distances "
@@ -5722,7 +5612,7 @@ def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
     lines = [
         "### C4. Measurement ledger",
         "",
-        "Weekday person-days with needs-scope trips, day weights (section 9.9). "
+        "Weekday person-days with selected-scope trips, day weights (section 9.9). "
         "T = minutes/day, N = trips/day, M = weighted total minutes/trips "
         "(not an average of person-day ratios). Brackets below are ordered "
         "T; N; M. Unavailable estimates print `-`.",
@@ -5812,6 +5702,11 @@ def main(argv: list[str] | None = None) -> int:
         description="Step-12 travel-time variation report (Parts A, B and C)."
     )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT_DIR)
+    parser.add_argument(
+        "--scope",
+        choices=["all", *(selected.id for selected in scope_module.ALL_SCOPES)],
+        default=scope_module.REFERENCE_SCOPE.id,
+    )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--bootstrap-reps", type=int, default=200)
     parser.add_argument("--seed", type=int, default=0)
@@ -5831,19 +5726,31 @@ def main(argv: list[str] | None = None) -> int:
         "(stable hash), for smoke runs.",
     )
     args = parser.parse_args(argv)
-    results = run(
-        args.out,
-        args.config,
-        n_reps=args.bootstrap_reps,
-        seed=args.seed,
-        emp2019_data_path=args.emp2019_data_path,
-        entd2008_data_path=args.entd2008_data_path,
-        entd2008_zoning_data_path=args.entd2008_zoning_data_path,
-        sample_pct=args.sample_households,
+    selected_scopes = (
+        scope_module.ALL_SCOPES
+        if args.scope == "all"
+        else (scope_module.Scope.parse(args.scope),)
     )
-    md_path = args.out.with_suffix(".md")
-    write_markdown(md_path, args.out, results)
-    print(f"Wrote {md_path} and {len(results['figures'])} figures to {args.out}")
+    for selected_scope in selected_scopes:
+        out_dir = (
+            scope_module.output_dir_for(args.out, selected_scope)
+            if args.scope == "all"
+            else args.out
+        )
+        results = run(
+            out_dir,
+            args.config,
+            n_reps=args.bootstrap_reps,
+            seed=args.seed,
+            emp2019_data_path=args.emp2019_data_path,
+            entd2008_data_path=args.entd2008_data_path,
+            entd2008_zoning_data_path=args.entd2008_zoning_data_path,
+            sample_pct=args.sample_households,
+            scope=selected_scope,
+        )
+        md_path = out_dir.with_suffix(".md")
+        write_markdown(md_path, out_dir, results)
+        print(f"Wrote {md_path} and {len(results['figures'])} figures to {out_dir}")
     return 0
 
 
