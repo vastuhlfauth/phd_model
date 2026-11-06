@@ -907,6 +907,7 @@ def bootstrap_person_value_replicates(
     *,
     person_weight_scale: float = 1.0,
     period_divisor: float = 1.0,
+    open_days: np.ndarray | None = None,
     n_reps: int = 200,
     seed: int = 0,
 ) -> tuple[float, np.ndarray]:
@@ -915,13 +916,18 @@ def bootstrap_person_value_replicates(
     The numerator is ``sum(weight_t * value_t)``. The denominator is the
     full respondent weight, multiplied by the producer's denominator scale
     and the number of days represented by the period. A household draw is
-    applied to both samples, so respondents with no local trip contribute
-    zero to the numerator without leaving the denominator.
+    applied to both samples. Open days are excluded from the numerator and
+    their day weights are subtracted from the denominator (section 9.9).
+    Respondents without trips remain in the denominator.
     """
     if len(household_p) != len(weight_p):
         raise ValueError("person-budget inputs must have equal lengths")
     if len(household_t) != len(weight_t) or len(weight_t) != len(value_t):
         raise ValueError("trip-day inputs must have equal lengths")
+    if open_days is None:
+        open_days = np.zeros(len(weight_t), dtype=bool)
+    elif len(open_days) != len(weight_t) or open_days.dtype != np.dtype(bool):
+        raise ValueError("open_days must be a boolean array matching trip-day inputs")
     if len(weight_p) == 0 or n_reps < 0:
         raise ValueError(
             "person-budget bootstrap requires people and non-negative reps"
@@ -941,10 +947,12 @@ def bootstrap_person_value_replicates(
     if not np.isfinite(value_t).all() or np.any(value_t < 0):
         raise ValueError("person-budget values must be finite and non-negative")
 
-    point = float(
-        np.sum(weight_t * value_t)
-        / (np.sum(weight_p) * person_weight_scale * period_divisor)
+    denominator = np.sum(weight_p) * person_weight_scale * period_divisor - np.sum(
+        weight_t[open_days]
     )
+    if denominator <= 0:
+        raise ValueError("person-budget denominator after open days must be positive")
+    point = float(np.sum(weight_t[~open_days] * value_t[~open_days]) / denominator)
     households = np.unique(np.concatenate([household_p, household_t]))
     hh_index = {household: i for i, household in enumerate(households)}
     idx_p = np.array([hh_index[household] for household in household_p])
@@ -956,12 +964,14 @@ def bootstrap_person_value_replicates(
             rng.integers(0, len(households), size=len(households)),
             minlength=len(households),
         )
-        denominator = (
-            np.sum(weight_p * multiplicity[idx_p])
-            * person_weight_scale
-            * period_divisor
+        denominator = np.sum(
+            weight_p * multiplicity[idx_p]
+        ) * person_weight_scale * period_divisor - np.sum(
+            weight_t[open_days] * multiplicity[idx_t[open_days]]
         )
-        numerator = np.sum(weight_t * value_t * multiplicity[idx_t])
+        numerator = np.sum(
+            weight_t[~open_days] * value_t[~open_days] * multiplicity[idx_t[~open_days]]
+        )
         reps[rep] = numerator / denominator if denominator > 0 else np.nan
     return point, reps
 
@@ -980,6 +990,7 @@ def person_budget_by_group(
     day_types: tuple[str, ...] = ("weekday",),
     person_weight_scale: float = 1.0,
     period_divisor: float = 1.0,
+    t_is_open: np.ndarray | None = None,
     min_cell_n: int = 50,
     n_reps: int = 200,
     seed: int = 0,
@@ -1006,6 +1017,10 @@ def person_budget_by_group(
         raise ValueError("min_cell_n must be positive and n_reps non-negative")
     if not day_types:
         raise ValueError("person-budget day_types must not be empty")
+    if t_is_open is not None and (
+        len(t_is_open) != len(t_weight) or t_is_open.dtype != np.dtype(bool)
+    ):
+        raise ValueError("t_is_open must be a boolean array matching trip-day inputs")
 
     results: dict[str, PersonBudgetRow] = {}
     for group in (*groups, None):
@@ -1035,6 +1050,7 @@ def person_budget_by_group(
             t_value[mask_t],
             person_weight_scale=person_weight_scale,
             period_divisor=period_divisor,
+            open_days=t_is_open[mask_t] if t_is_open is not None else None,
             n_reps=n_reps,
             seed=seed,
         )

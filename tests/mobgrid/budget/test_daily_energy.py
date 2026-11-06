@@ -259,6 +259,55 @@ def test_bootstrap_person_value_replicates_match_direct_estimator() -> None:
     assert np.all(finite_reps >= 0)
 
 
+@pytest.mark.parametrize("divisor", [1.0, 5.0, 7.0])
+def test_person_estimator_subtracts_open_day_weight(divisor: float) -> None:
+    point, reps = daily_energy.bootstrap_person_value_replicates(
+        np.array(["h1", "h2"]),
+        np.array([3.0, 2.0]),
+        np.array(["h1", "h2"]),
+        np.array([2.0, 1.0]),
+        np.array([30.0, 90.0]),
+        period_divisor=divisor,
+        open_days=np.array([False, True]),
+        n_reps=30,
+        seed=3,
+    )
+    assert point == pytest.approx(60.0 / (5.0 * divisor - 1.0))
+    assert np.all(reps[np.isfinite(reps)] >= 0)
+
+
+def test_person_budget_filters_open_days_by_period_and_group() -> None:
+    result = daily_energy.person_budget_by_group(
+        np.array(["a", "a"]),
+        np.array(["h1", "h2"]),
+        np.array([3.0, 2.0]),
+        np.array(["a", "a", "a"]),
+        np.array(["weekday", "weekday", "saturday"]),
+        np.array(["h1", "h2", "h2"]),
+        np.array([2.0, 1.0, 2.0]),
+        np.array([30.0, 90.0, 50.0]),
+        groups=["a"],
+        period_divisor=5.0,
+        min_cell_n=1,
+        n_reps=0,
+        t_is_open=np.array([False, True, True]),
+    )
+    assert result["a"].budget == pytest.approx(60.0 / 24.0)
+
+
+def test_person_estimator_rejects_nonpositive_closed_day_denominator() -> None:
+    with pytest.raises(ValueError, match="denominator"):
+        daily_energy.bootstrap_person_value_replicates(
+            np.array(["h1"]),
+            np.array([1.0]),
+            np.array(["h1"]),
+            np.array([1.0]),
+            np.array([30.0]),
+            open_days=np.array([True]),
+            n_reps=0,
+        )
+
+
 def test_person_budget_by_group_all_week_sums_local_days_over_seven() -> None:
     p_group = np.array(["a", "a"])
     p_household = np.array(["h1", "h2"])
