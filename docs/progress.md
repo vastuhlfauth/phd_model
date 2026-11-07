@@ -2,6 +2,11 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11/12 figure finishing (2026-11-07)
+
+- The hand-written ENTD 2008 data page now states the observed cross-survey
+  coverage comparison and the `daytable` caveat requested for its tables.
+
 ### Step 11/12: report fixes, 4 of 4 (2026-11-07)
 
 - Scope words now appear in the report title and scope line, not every
