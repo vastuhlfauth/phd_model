@@ -6656,7 +6656,9 @@ def measurement_checks(
         "",
         "### C1. Rounding bounds",
         "",
-        f"{config.rounding_draws} draws per variant; change = simulated minus "
+        f"{config.rounding_draws} "
+        f"draw{'s' if config.rounding_draws != 1 else ''} per variant; "
+        "change = simulated minus "
         "observed ENTD 2008 minutes per day with trips. The mean and full "
         "simulation range are sensitivity bounds, not confidence intervals. "
         "Levels are 1, 5, 15 and 30 min, assigned by the largest multiple "

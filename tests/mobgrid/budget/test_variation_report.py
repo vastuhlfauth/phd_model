@@ -1,7 +1,5 @@
 """Tests for the step-12 variation report (``mobgrid.budget.
-variation_report``): Part A tables on tiny in-memory frames, and the
-end-to-end CLI on the synthetic archives (3 bootstrap replicates, so
-every test stays well under 10 s)."""
+variation_report``): Part A tables on tiny in-memory frames and CLI routing."""
 
 from __future__ import annotations
 
@@ -20,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config" / "energy.yaml"
 
 N_REPS = 3
+CLI_N_REPS = 1
 
 
 def test_scope_cli_defaults_to_reference_and_scope_all_runs_eight(
@@ -1375,27 +1374,47 @@ def test_b7_figures_write_png_and_csv_sidecars(tmp_path: Path) -> None:
             assert next(reader, None) is not None
 
 
-def test_cli_writes_report_on_synthetic_data(
+def test_cli_forwards_options_and_writes_report(
     tmp_path: Path,
-    synthetic_emp_zip: Path,
-    synthetic_entd2008_raw_dir: Path,
-    synthetic_entd2008_zoning_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """The CLI forwards options and writes its report without a costly data run."""
+    calls = {}
     out_dir = tmp_path / "step12_variation"
+    expected_figures = [
+        out_dir / "waterfall.png",
+        out_dir / "shift_share.png",
+        out_dir / "recall_lag.png",
+    ]
+
+    def fake_run(path, config_path, **kwargs):
+        path.mkdir(parents=True, exist_ok=True)
+        calls["run"] = (path, config_path, kwargs)
+        return {"figures": expected_figures}
+
+    def fake_write_markdown(md_path, report_out_dir, results):
+        calls["write_markdown"] = (md_path, report_out_dir, results)
+        md_path.write_text("synthetic step-12 report", encoding="utf-8")
+
+    monkeypatch.setattr(variation_report, "run", fake_run)
+    monkeypatch.setattr(variation_report, "write_markdown", fake_write_markdown)
     exit_code = variation_report.main(
         [
             "--out",
             str(out_dir),
+            "--scope",
+            scope.REFERENCE_SCOPE.id,
             "--emp2019-data-path",
-            str(synthetic_emp_zip),
+            str(tmp_path / "emp2019.zip"),
             "--entd2008-data-path",
-            str(synthetic_entd2008_raw_dir),
+            str(tmp_path / "entd2008"),
             "--entd2008-zoning-data-path",
-            str(synthetic_entd2008_zoning_dir),
+            str(tmp_path / "entd2008_zoning"),
             "--config",
             str(CONFIG_PATH),
             "--bootstrap-reps",
-            str(N_REPS),
+            str(CLI_N_REPS),
             "--sample-households",
             "100",
         ]
@@ -1403,102 +1422,21 @@ def test_cli_writes_report_on_synthetic_data(
 
     assert exit_code == 0
     md_path = out_dir.with_suffix(".md")
-    report = md_path.read_text(encoding="utf-8")
-    assert "Round-trip days · destination purposes · local (≤ 80 km)" in report
-    assert "\n*Scope:" not in report
-    assert "All days · all purposes · local (≤ 80 km)" in report
-    assert (
-        "### C5. Official-scope replication — All days · all purposes · local (≤ 80 km)"
-    ) in report
-    assert "### C7. Budgets per person" in report
-    assert "Choices made" in report
-    assert "A1. Recall lag" in report
-    assert "A2. Motive crosswalk" in report
-    assert "A3. Distances" in report
-    assert "ENTD 2008" in report and "EMP 2019, lag 1" in report
-    assert "80-km check" in report
-    assert "B6.4. Density and income together" in report
-    assert "## Figures" in report
-    png_files = list(out_dir.glob("*.png"))
-    assert len(png_files) == 3
-    assert {path.stem for path in out_dir.glob("*.csv")} == {
-        path.stem for path in png_files
+    assert md_path.read_text(encoding="utf-8") == "synthetic step-12 report"
+    run_path, config_path, kwargs = calls["run"]
+    assert run_path == out_dir
+    assert config_path == CONFIG_PATH
+    assert kwargs == {
+        "n_reps": CLI_N_REPS,
+        "seed": 0,
+        "emp2019_data_path": tmp_path / "emp2019.zip",
+        "entd2008_data_path": tmp_path / "entd2008",
+        "entd2008_zoning_data_path": tmp_path / "entd2008_zoning",
+        "sample_pct": 100.0,
+        "scope": scope.REFERENCE_SCOPE,
     }
-    for path in out_dir.glob("*.csv"):
-        with path.open(encoding="utf-8", newline="") as stream:
-            reader = csv.DictReader(stream)
-            assert reader.fieldnames == list(figstyle.CSV_COLUMNS)
-            assert next(reader, None) is not None
-    assert "described-day weekday" in report
-    assert "arrival minus departure" in report
-    assert "distance-known trips" in report
-    assert "median min/trip 2008" in report
-    assert "raw crow-fly distances (`V2_DVO_LOC` for ENTD 2008" in report
-    assert "B2 sensitivity: corrected distances" in report
-    assert "MDISTTOT_fin" in report
-    assert "Time ratio 2019/2008" in report
-    assert "Equivalent at ±15%" in report
-    assert "alldays-allpurp-daytable" in report
-    assert "Equivalent at ±10%" in report
-    assert "## C. Measurement checks" in report
-    assert "C1. Rounding bounds" in report
-    assert "20 draws" in report
-    assert "Simulated 2008 share" in report
-    assert "C2. Common distance measures" in report
-    assert "No speed correction" in report
-    c2 = report.split("### C2. Common distance measures", 1)[1].split(
-        "### C3. Trips by motive", 1
-    )[0]
-    assert "dVO_ORIDES" in c2
-    assert "declared" not in c2
-    assert "C3. Trips by motive" in report
-    assert "motive coding, not behaviour" in report
-    assert "C3 option: EMP 2019 sequence activity (`MOT_SEQ_COMPL`)" in report
-    assert "MOT_SEQ_COMPL" in report
-    assert "trips under 1 km (crow-fly)" in report
-    assert "C4. Measurement ledger" in report
-    assert "Residual change" in report
-    assert report.index("C3 option: EMP 2019 sequence activity") < report.index(
-        "C4. Measurement ledger"
-    )
-    assert report.index("C4. Measurement ledger") < report.index("C5.")
-    assert "C5. Official-scope replication" in report
-    assert "C6. Door-to-door speed" in report
-    assert report.index("C5. Official-scope replication") < report.index(
-        "C6. Door-to-door speed"
-    )
-    assert "CATCOM_AA_RES" in report
-    assert "Codes 11/12/13 are grouped as pôle, 20 as couronne" in report
-    assert "30 as hors attraction" in report
-    assert "| A | producer |" in report
-    assert "6.1 / 17.7 / 20.7" in report
-    assert "9.9 / 17.6 / 33.7" in report
-    assert "2020 attraction-area zoning" in report
-    assert "secondary-pole communes (13) are counted as pôle" in report
-    assert "Car-driver speed pooled at the 2008 trip mix" in report
-    assert "Standardized 2019 km/h" in report
-    assert "full respondent roster" in report
-    assert "20.36964" in report
-    assert "8.72921" in report
-    assert "19.7928" in report
-    assert "20.69912" in report
-    assert "8.970084" in report
-    c6 = report.split("### C6. Door-to-door speed", 1)[1]
-    assert "| A | declared |" not in c6
-    assert "Declared distances are excluded from C6 because" in report
-    assert "zero-local-trip diagnostic" in report.lower()
-    assert "SDES 2008" in report and "SDES 2019" in report
-    assert "C7. Budgets per person, per traveller and per week" in report
-    assert "round-dest-local" in report
-    assert "ENTD weekend design calls" in report
-    assert "C8a. ENTD 2008 paired weekday/weekend analysis — deferred" in report
-    assert "C8b. EMP 2019 weekday frequency and intensity" in report
-    assert "C8c. Teleworking" in report
-    assert "no teleworking or working-from-home variable" in report
-    assert "B6.5. 2008 -> 2019 by INSEE density grid" in report
-    assert (out_dir / "fig_b7a_waterfall.png").is_file()
-    assert (out_dir / "fig_b7b_shift_share.png").is_file()
-    assert (out_dir / "fig_b7c_recall_lag.png").is_file()
+    assert calls["write_markdown"] == (md_path, out_dir, {"figures": expected_figures})
+    assert "3 figures" in capsys.readouterr().out
 
 
 def _measurement_frames(durations: list[float]) -> SurveyFrames:

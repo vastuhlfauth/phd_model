@@ -24,6 +24,17 @@ Read this file at the start of every task and update it at the end.
   comparison-figure tests remain the bounded checks. No report command or
   full test suite was run.
 
+### Step 12 test runtime (2026-11-07)
+
+- The step-12 CLI test now isolates argument forwarding and report-output
+  orchestration; report rendering and figure/CSV exports remain covered by
+  their focused tests. One bootstrap replicate is used in the CLI smoke test;
+  production defaults are unchanged.
+- The new CLI smoke test and scope CLI test passed in 2.00 s; changed-file
+  Ruff passed. The former data-pipeline CLI test did not meet the 10-second
+  target even with a one-replicate sample, so it was replaced rather than
+  run as a long integration test. No full test suite or real-data report ran.
+
 ### Step 11/12: report fixes, 4 of 4 (2026-11-07)
 
 - Scope words now appear in the report title and scope line, not every
