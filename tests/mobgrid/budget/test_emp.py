@@ -16,7 +16,6 @@ import csv
 import re
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -29,11 +28,64 @@ _REAL_DATA_AVAILABLE = emp2019.DEFAULT_ZIP_PATH.is_file()
 
 def test_time_day_reader_does_not_require_energy() -> None:
     """Section 9.9: time/trips use every in-scope day; energy retains its n."""
-    con = Mock()
-    emp._day_rows(con, include_unknown_energy=True)
-    assert "IS NOT NULL" not in con.sql.call_args.args[0]
-    emp._day_rows(con)
-    assert "total_energy_kh_kj IS NOT NULL" in con.sql.call_args.args[0]
+    import duckdb
+
+    con = duckdb.connect()
+    con.sql("""
+        CREATE TABLE day_summary AS
+        SELECT 'walking_only' AS day_mode_group, 'employed' AS population_category,
+            'dense' AS home_density, 'q1' AS income_quintile,
+            CAST(i AS VARCHAR) AS ident_men, 1 AS typejour,
+            1.0 AS pond_jour, 10.0 AS total_time_min,
+            CASE WHEN i < 10 THEN NULL ELSE 100.0 END AS total_energy_kh_kj,
+            CASE WHEN i < 10 THEN NULL ELSE 90.0 END AS total_energy_cp_kj,
+            2 AS trips_per_day
+        FROM range(80) AS v(i)
+    """)
+    assert len(emp._day_rows(con, include_unknown_energy=True)["pond_jour"]) == 80
+    assert len(emp._day_rows(con)["pond_jour"]) == 70
+    con.close()
+
+
+def test_scope_label_is_only_appended_to_report_title() -> None:
+    """Section 9.9: same-scope section headings do not repeat scope words."""
+    lines = ["# Report", "## Time", "### Energy", "**Scope:** reference"]
+    assert emp._append_scope_to_headings(lines, "Reference") == [
+        "# Report — Reference",
+        "## Time",
+        "### Energy",
+        "**Scope:** reference",
+    ]
+
+
+def test_comparison_energy_ratios_exclude_masked_unknown_days() -> None:
+    """Section 9.9: DuckDB NULL masks must not enter energy-known ratios."""
+    household = np.array([f"M{i // 2}" for i in range(80)])
+    weight = np.ones(80)
+    known = np.arange(80) >= 10
+    samples = []
+    for scale in (1.0, 1.2):
+        energy = np.arange(1.0, 81.0) * scale
+        energy[~known] = 10000.0
+        samples.append(
+            {
+                "ident_men": household,
+                "pond_jour": weight,
+                "population_category": np.full(80, "employed"),
+                "energy": np.ma.array(energy, mask=~known),
+            }
+        )
+    ratio, ci = daily_energy.bootstrap_ratio_ci(
+        household[known],
+        weight[known],
+        samples[0]["energy"].compressed(),
+        household[known],
+        weight[known],
+        samples[1]["energy"].compressed(),
+    )
+    assert emp._comparison_ratio_intervals(
+        *samples, "population_category", "energy", n_reps=200, seed=0
+    )["employed"] == (ratio, *ci)
 
 
 @pytest.mark.parametrize("age_table", ["tcm_ind_kish", "q_tcm_individu"])
@@ -197,7 +249,7 @@ def test_cli_writes_figures_and_report_on_synthetic_data(
     assert any("f10_constancy" in p.name for p in png_files)
 
     assert "Round-trip days · destination purposes · local (≤ 80 km)" in report
-    assert "*Scope: Round-trip days · destination purposes · local (≤ 80 km)*" in report
+    assert report.count(scope.REFERENCE_SCOPE.label) == 2
     assert "Mean daily energy and time by main-mode group" in report
     assert "Calibrated v0 and P0" in report
     assert "car_passenger_household" in report
@@ -734,7 +786,8 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
     report = report_path.read_text(encoding="utf-8")
     assert scope.DAYTABLE_COVERAGE_NOTE in report
     assert (
-        "Scope: All days · all purposes · all trips in the day's trip table" in report
+        "**Scope:** All days · all purposes · all trips in the day's trip table"
+        in report
     )
 
 

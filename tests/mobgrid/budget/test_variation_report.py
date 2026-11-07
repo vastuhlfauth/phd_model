@@ -296,6 +296,162 @@ def test_c7_reports_daytable_ratio_with_observed_coverage_note() -> None:
     assert scope.DAYTABLE_COVERAGE_NOTE in report
 
 
+def test_return_legs_are_attributed_to_the_preceding_activity_mode() -> None:
+    """Section 9.9: a car return dropped with a walk belongs in its column."""
+    con = duckdb.connect()
+    con.sql("""
+        CREATE TABLE scope_diag_trips AS
+        SELECT * FROM (VALUES
+            ('employed', 'walk', TRUE, TRUE, FALSE, FALSE, 'car_driver'),
+            ('employed', 'cycle', TRUE, TRUE, FALSE, FALSE, 'cycle'),
+            ('employed', 'walk', TRUE, TRUE, TRUE, FALSE, 'walk'),
+            ('retired', 'walk', TRUE, FALSE, FALSE, FALSE, 'walk'))
+        AS v(population_category, prior_mode, return_home, prior_15,
+            drop_distance, drop_group8, mode_group)
+    """)
+    counts = variation_report._scope_return_leg_counts(con)
+    assert counts[("employed", "walk")] == 1
+    assert counts[("employed", "cycle")] == 1
+    assert counts[("employed", "all modes")] == 2
+    assert counts[("overall", "all modes")] == 2
+    con.close()
+
+
+def test_compact_scope_tables_and_detail_csv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Section 9.9: aggregate tables, retained detail, and scope heading placement."""
+    import csv
+
+    rules = []
+    for category, mode, share in (
+        ("overall", "all modes", 0.1),
+        ("employed", "all modes", 0.2),
+        ("employed", "walk", 0.8),
+    ):
+        for rule in (
+            "distance",
+            "group 8",
+            "activity",
+            "day",
+            "activity_5",
+            "activity_15",
+            "activity_30",
+        ):
+            rules.append(
+                {
+                    "population_category": category,
+                    "mode_group": mode,
+                    "rule": rule,
+                    "trips": 10.0,
+                    "minutes": 20.0,
+                    "km": 30.0,
+                    "trip_share": share,
+                    "minute_share": share,
+                    "km_share": share,
+                }
+            )
+    activities = [
+        {
+            "population_category": "overall",
+            "mode_group": mode,
+            "n_trips": n,
+            "return_legs_dropped": returns,
+            "trips_per_day": 0.1,
+            "mean_duration_min": 10.0,
+            "mean_crow_fly_km": 1.0,
+            **dict.fromkeys(
+                (
+                    "stay_under_5_share",
+                    "stay_5_15_share",
+                    "stay_15_30_share",
+                    "stay_30_plus_share",
+                    "no_next_share",
+                    "dropped_share_5",
+                    "dropped_share_15",
+                    "dropped_share_30",
+                ),
+                0.1,
+            ),
+        }
+        for mode, n, returns in (
+            ("walk", 2, 1),
+            ("cycle", 2, 1),
+            ("all modes", 4, 2),
+            ("car_driver", 0, 0),
+        )
+    ]
+    for row in [*rules, *activities]:
+        row.update(
+            {
+                f"{key}_ci95": None
+                for key, value in row.items()
+                if isinstance(value, float)
+            }
+        )
+    diagnostics = {
+        "open_days": [],
+        "activity": activities,
+        "rule_drops": rules,
+        "coverage": [],
+        "negative_point_cells": 0,
+        "negative_bootstrap_cell_draws": 0,
+        "bootstrap_replicates": 200,
+    }
+    for name in ("_format_a1", "_format_a2", "_format_a3", "_format_a4", "_format_a5"):
+        monkeypatch.setattr(variation_report, name, lambda results: [])
+    results = {
+        "scope": scope.REFERENCE_SCOPE,
+        "n_reps": 200,
+        "n_days_2008": 60,
+        "n_days_2019": 60,
+        "n_trips_2008": 120,
+        "n_trips_2019": 120,
+        "scope_diagnostics": {"ENTD 2008": diagnostics, "EMP 2019": diagnostics},
+        "choices": [],
+        "extra_sections": [
+            [
+                "## B2. Time",
+                "### C5. Official-scope replication",
+                "### C7. Budgets per person",
+            ]
+        ],
+        "figures": [tmp_path / "synthetic.png"],
+    }
+    md_path = tmp_path / "report.md"
+    variation_report.write_markdown(md_path, tmp_path, results)
+    report = md_path.read_text(encoding="utf-8")
+    assert report.splitlines()[0].endswith(scope.REFERENCE_SCOPE.label)
+    assert "## B2. Time\n" in report
+    assert "## Scope\n" in report
+    assert "### C5. Official-scope replication — " + scope.SDES_SCOPE.label in report
+    assert "### C7. Budgets per person — Scopes:" in report
+    assert "\n*Scope:" not in report
+    activity = report.split("### Walking/cycling as the activity")[1].split(
+        "### What each rule removes"
+    )[0]
+    assert "| car_driver |" not in activity
+    assert "Return legs dropped" in activity
+    removals = report.split("### What each rule removes")[1].split(
+        "### Coverage of the day table"
+    )[0]
+    assert removals.count("all modes and population categories") == 2
+    assert "By population category (all modes)" in removals
+    assert "activity_5" not in removals
+    assert "80.0%" not in removals
+    assert "10.0%" in removals and "20.0%" in removals
+    csv_path = tmp_path / "report_scope_rules_round-dest-local.csv"
+    assert csv_path.name in report
+    with csv_path.open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    assert len(rows) == 2 * len(rules)
+    assert {row["scope"] for row in rows} == {"round-dest-local"}
+    assert any(
+        row["mode_group"] == "walk" and row["rule"] == "activity_30" for row in rows
+    )
+
+
 def _frames(days: dict, trips: dict, aux: dict | None = None) -> SurveyFrames:
     return SurveyFrames(
         name="synthetic",
@@ -1247,7 +1403,7 @@ def test_cli_writes_report_on_synthetic_data(
     md_path = out_dir.with_suffix(".md")
     report = md_path.read_text(encoding="utf-8")
     assert "Round-trip days · destination purposes · local (≤ 80 km)" in report
-    assert "*Scope: Round-trip days · destination purposes · local (≤ 80 km)*" in report
+    assert "\n*Scope:" not in report
     assert "All days · all purposes · local (≤ 80 km)" in report
     assert (
         "### C5. Official-scope replication — All days · all purposes · local (≤ 80 km)"

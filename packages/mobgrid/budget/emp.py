@@ -3756,8 +3756,6 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             relative = path
         lines.append(f"![{path.stem}]({relative.as_posix()})")
         lines.append("")
-        lines.append(f"*Scope: {selected_scope.label}*")
-        lines.append("")
 
     lines += [
         "## Modelling notes and simplifications",
@@ -3794,9 +3792,9 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
 
 
 def _append_scope_to_headings(lines: list[str], scope_label: str) -> list[str]:
-    """Include the selected scope in every report table/figure heading."""
+    """Section 9.9: include the report scope in its title, not each heading."""
     return [
-        f"{line} — {scope_label}" if line.startswith("#") else line for line in lines
+        f"{line} — {scope_label}" if line.startswith("# ") else line for line in lines
     ]
 
 
@@ -3863,8 +3861,8 @@ def _comparison_ratio_intervals(
     """Household-bootstrap 2019/2008 ratios and 90% percentile intervals."""
     samples = []
     for days, day_mask in ((days_2008, day_mask_2008), (days_2019, day_mask_2019)):
-        values = np.asarray(days[value_column], dtype=float)
-        weights = np.asarray(days["pond_jour"], dtype=float)
+        values = np.ma.asarray(days[value_column], dtype=float).filled(np.nan)
+        weights = np.ma.asarray(days["pond_jour"], dtype=float).filled(np.nan)
         groups = (
             np.full(len(values), "All")
             if group_column == "All"
@@ -4629,11 +4627,7 @@ def run_compare(
         f"![{time_by_category_path.stem}]"
         f"({time_by_category_path.relative_to(out_path.parent).as_posix()})",
         "",
-        f"*Scope: {scope.label}*",
-        "",
         f"![{figure_path.stem}]({figure_path.relative_to(out_path.parent).as_posix()})",
-        "",
-        f"*Scope: {scope.label}*",
         "",
     ]
 

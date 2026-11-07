@@ -24,6 +24,7 @@ smoke runs only.
 from __future__ import annotations
 
 import argparse
+import csv
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -934,7 +935,8 @@ def scope_diagnostics(
             SELECT *,
                 lag(outward_5, 1, FALSE) OVER day_order AS prior_5,
                 lag(outward_15, 1, FALSE) OVER day_order AS prior_15,
-                lag(outward_30, 1, FALSE) OVER day_order AS prior_30
+                lag(outward_30, 1, FALSE) OVER day_order AS prior_30,
+                lag(mode_group) OVER day_order AS prior_mode
             FROM activity_flags
             WINDOW day_order AS (PARTITION BY day_id ORDER BY num_dep)
         )
@@ -967,7 +969,7 @@ def scope_diagnostics(
                 s.destination_motive IN (7.7, 7.8)
                 OR (s.destination_motive = 7.6 AND s.stay_min < 30)
             ), FALSE) AS outward_30,
-            c.prior_5, c.prior_15, c.prior_30
+            c.prior_5, c.prior_15, c.prior_30, c.prior_mode
         FROM trip_legs t
         JOIN activity_chain c USING (day_id, num_dep)
         JOIN scope_trips s USING (day_id, num_dep)
@@ -1258,6 +1260,7 @@ def scope_diagnostics(
         FROM grouped
     """).fetchall()
     activity = []
+    return_leg_counts = _scope_return_leg_counts(con)
     for row in activity_rows:
         category, mode = row[0], row[1]
         day_weight = day_weights.get(category, day_weights["overall"])
@@ -1272,6 +1275,7 @@ def scope_diagnostics(
                 "population_category": category,
                 "mode_group": mode,
                 "n_trips": int(row[2] or 0),
+                "return_legs_dropped": return_leg_counts.get((category, mode), 0),
                 "trips_per_day": float(row[3] or 0) / day_weight,
                 "mean_duration_min": (
                     float(row[4] / row[5]) if row[5] else float("nan")
@@ -4241,7 +4245,86 @@ def _format_a3(results: dict) -> list[str]:
     return lines
 
 
-def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[str]:
+def _scope_return_leg_counts(
+    con: duckdb.DuckDBPyConnection,
+) -> dict[tuple[str, str], int]:
+    """Count returns removed at 15 minutes, by preceding activity (section 9.9)."""
+    rows = con.sql("""
+        SELECT
+            CASE WHEN grouping(population_category) = 1 THEN 'overall'
+                ELSE coalesce(population_category, 'unknown') END,
+            CASE WHEN grouping(prior_mode) = 1 THEN 'all modes'
+                ELSE prior_mode END,
+            count(*)
+        FROM scope_diag_trips
+        WHERE NOT drop_distance AND NOT drop_group8
+            AND return_home AND prior_15 AND prior_mode IN ('walk', 'cycle')
+        GROUP BY GROUPING SETS (
+            (population_category, prior_mode), (population_category),
+            (prior_mode), ()
+        )
+    """).fetchall()
+    return {(category, mode): count for category, mode, count in rows}
+
+
+def _write_scope_rule_csv(
+    md_path: Path,
+    diagnostics_by_survey: dict[str, dict],
+    selected_scope: scope_module.Scope,
+) -> Path:
+    """Export every section 9.9 rule cell and its unrounded bootstrap interval."""
+    path = md_path.with_name(f"{md_path.stem}_scope_rules_{selected_scope.id}.csv")
+    metrics = ("trips", "minutes", "km", "trip_share", "minute_share", "km_share")
+    columns = ["survey", "scope", "population_category", "mode_group", "rule"]
+    for metric in metrics:
+        columns += [metric, f"{metric}_ci_low", f"{metric}_ci_high"]
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=columns)
+        writer.writeheader()
+        for survey, diagnostics in diagnostics_by_survey.items():
+            for row in diagnostics["rule_drops"]:
+                record = {
+                    "survey": survey,
+                    "scope": selected_scope.id,
+                    **{
+                        key: row[key]
+                        for key in ("population_category", "mode_group", "rule")
+                    },
+                }
+                for metric in metrics:
+                    record[metric] = row[metric]
+                    interval = row.get(f"{metric}_ci95")
+                    record[f"{metric}_ci_low"] = (
+                        interval[0] if interval is not None else ""
+                    )
+                    record[f"{metric}_ci_high"] = (
+                        interval[1] if interval is not None else ""
+                    )
+                writer.writerow(record)
+    return path
+
+
+def _format_scope_rule_rows(
+    rows: list[dict], *, survey: str | None = None
+) -> list[str]:
+    """Render aggregated trip/minute/km removal shares, section 9.9."""
+    lines = []
+    for row in rows:
+        cells = [survey, row["population_category"]] if survey is not None else []
+        cells += [
+            row["rule"],
+            *(
+                _row_estimate_ci(row, metric, _pct)
+                for metric in ("trip_share", "minute_share", "km_share")
+            ),
+        ]
+        lines.append("| " + " | ".join(cells) + " |")
+    return lines
+
+
+def _format_scope_diagnostics(
+    diagnostics_by_survey: dict[str, dict], *, rule_csv_name: str | None = None
+) -> list[str]:
     lines = [
         "### Open days",
         "",
@@ -4294,21 +4377,26 @@ def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[st
         "Walking/cycling activity trips (walking or cycling mode, purposes "
         "7.6–7.8). Stay shares are among these trips with an activity "
         "destination; threshold-drop shares are of all trips after the "
-        "distance and group-8 rules.",
+        "distance and group-8 rules. Return legs dropped at 15 minutes "
+        "are unweighted counts, in any mode, attributed to the preceding "
+        "walking/cycling activity.",
         "",
-        "| Survey | Population category | Mode | n | Trips/day | "
+        "| Survey | Population category | Mode | n | Return legs dropped | Trips/day | "
         "Mean duration (min) | Mean crow-fly (km) | <5 min | 5–15 min | "
         "15–30 min | ≥30 min | No next trip | Dropped at 5 min | "
         "Dropped at 15 min | Dropped at 30 min |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for survey_name, diagnostics in diagnostics_by_survey.items():
         for row in diagnostics["activity"]:
+            if row["mode_group"] not in ("walk", "cycle", "all modes"):
+                continue
             cells = [
                 survey_name,
                 row["population_category"],
                 row["mode_group"],
                 str(row["n_trips"]),
+                str(row["return_legs_dropped"]),
                 _row_estimate_ci(row, "trips_per_day", lambda value: _num(value, 3)),
                 _row_estimate_ci(row, "mean_duration_min", _num),
                 _row_estimate_ci(row, "mean_crow_fly_km", lambda value: _num(value, 2)),
@@ -4328,34 +4416,49 @@ def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[st
         "",
         "Sequential rule removals (trip/minute/km shares use all observed "
         "trips/minutes/km as the denominator).",
-        "",
-        "| Survey | Population category | Mode group | Rule | Trips | "
-        "Minutes | Km | Trips share | Minutes share | Km share |",
-        "|---|---|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     for survey_name, diagnostics in diagnostics_by_survey.items():
-        for row in diagnostics["rule_drops"]:
-            if "trips_ci95" in row:
-                trips = _row_estimate_ci(row, "trips", lambda value: _num(value, 1))
-                minutes = _row_estimate_ci(row, "minutes", lambda value: _num(value, 1))
-                km = _row_estimate_ci(row, "km", lambda value: _num(value, 1))
-            else:
-                trips = _num(row["trips"], 1)
-                minutes = _num(row["minutes"], 1)
-                km = _num(row["km"], 1)
-            cells = [
-                survey_name,
-                row["population_category"],
-                row["mode_group"],
-                row["rule"],
-                trips,
-                minutes,
-                km,
-                _row_estimate_ci(row, "trip_share", _pct),
-                _row_estimate_ci(row, "minute_share", _pct),
-                _row_estimate_ci(row, "km_share", _pct),
-            ]
-            lines.append("| " + " | ".join(cells) + " |")
+        lines += [
+            "",
+            f"#### {survey_name}: all modes and population categories",
+            "",
+            "| Rule | Trips share | Minutes share | Km share |",
+            "|---|---:|---:|---:|",
+            *_format_scope_rule_rows(
+                [
+                    row
+                    for row in diagnostics["rule_drops"]
+                    if row["population_category"] == "overall"
+                    and row["mode_group"] == "all modes"
+                    and not row["rule"].startswith("activity_")
+                ]
+            ),
+        ]
+    lines += [
+        "",
+        "#### By population category (all modes)",
+        "",
+        "| Survey | Population category | Rule | Trips share | "
+        "Minutes share | Km share |",
+        "|---|---|---|---:|---:|---:|",
+    ]
+    for survey_name, diagnostics in diagnostics_by_survey.items():
+        lines += _format_scope_rule_rows(
+            [
+                row
+                for row in diagnostics["rule_drops"]
+                if row["population_category"] != "overall"
+                and row["mode_group"] == "all modes"
+                and not row["rule"].startswith("activity_")
+            ],
+            survey=survey_name,
+        )
+    if rule_csv_name is not None:
+        lines += [
+            "",
+            f"Mode × category detail and activity-threshold sensitivities: "
+            f"[CSV]({rule_csv_name}).",
+        ]
     lines += [
         "",
         "### Coverage of the day table",
@@ -4404,6 +4507,9 @@ def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[st
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the step-12 report."""
     selected_scope = results["scope"]
+    rule_csv = _write_scope_rule_csv(
+        md_path, results["scope_diagnostics"], selected_scope
+    )
     lines = [
         "# Step 12: what explains the variation of daily travel time",
         "",
@@ -4429,11 +4535,13 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "## Scope",
         "",
-        *_format_scope_diagnostics(results["scope_diagnostics"]),
+        *_format_scope_diagnostics(
+            results["scope_diagnostics"], rule_csv_name=rule_csv.name
+        ),
         "",
         "## Choices made",
         "",
-        f"- Main analyses use {selected_scope.label} (`{selected_scope.id}`). "
+        "- Main analyses use the report scope. "
         "C5 always uses All days · all purposes · local (≤ 80 km); "
         "C7 compares the reference, SDES and day-table scopes. Day-table "
         "2019/2008 ratios are reported with the observed-coverage caveat.",
@@ -4460,8 +4568,6 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
                 relative = path
             lines.append(f"![{path.stem}]({relative.as_posix()})")
             lines.append("")
-            lines.append(f"*Scope: {selected_scope.label}*")
-            lines.append("")
             if path.stem == "fig_b7a_waterfall":
                 lines += [
                     "B7a allocates the behavioural remainder proportionally "
@@ -4481,14 +4587,12 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         f"{scope_module.Scope.parse('alldays-allpurp-daytable').label}"
     )
     for line in lines:
-        if line.startswith("#"):
-            if line.startswith("### C5."):
-                label = scope_module.SDES_SCOPE.label
-            elif line.startswith("### C7."):
-                label = f"Scopes: {c7_scopes}"
-            else:
-                label = selected_scope.label
-            line = f"{line} — {label}"
+        if line.startswith("# "):
+            line = f"{line} — {selected_scope.label}"
+        elif line.startswith("### C5."):
+            line = f"{line} — {scope_module.SDES_SCOPE.label}"
+        elif line.startswith("### C7."):
+            line = f"{line} — Scopes: {c7_scopes}"
         labelled_lines.append(line)
     md_path.write_text("\n".join(labelled_lines) + "\n", encoding="utf-8")
 

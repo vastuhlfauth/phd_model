@@ -2,6 +2,42 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11/12: report fixes, 4 of 4 (2026-11-07)
+
+- Scope words now appear in the report title and scope line, not every
+  heading or figure caption. Figures retain their own scope subtitles.
+  C5 and C7 headings continue naming their different/multiple scopes.
+- What each rule removes now starts with one all-mode/all-category share
+  table per survey, followed by one population-category table with all
+  modes combined. These use the existing aggregate bootstrap cells, not
+  averages of subgroup shares.
+- Complete mode/category rule detail and `activity_5/15/30` rows go to
+  `<report>_scope_rules_<scope-id>.csv` beside the step-12 Markdown report,
+  with full-precision values and separate confidence-limit columns.
+- Walking/cycling diagnostics retain walk, cycle and all-modes rows.
+  A return-leg count column attributes every mode's dropped return to the
+  preceding walk/cycle activity, instead of printing other-mode zero rows.
+- Nineteen focused synthetic tests passed, including the full synthetic
+  step-12 CLI and SQL scope diagnostics (101.94 seconds for the selected
+  run); changed-file Ruff and signature compatibility checks passed.
+  The final repository-wide Ruff check reports four pre-existing findings
+  in `docs/article/figures/fig_long_run.py` (I001 and three E501); that
+  unrelated article figure was left unchanged.
+  Pylance found no errors in the changed scope/report helpers. Full
+  real-data report runs were not performed.
+- A coupled energy-sample regression also confirms that DuckDB NULL masks
+  are excluded, rather than treating their underlying array values as
+  energy-known observations in comparison figure ratios.
+- Four code fixes are committed separately. The generated ENTD data-page line
+  remains the one blocked sub-item described under fix 3. No generated
+  outputs were edited, and no long job or download was started.
+- Regenerate the four reference-scope reports in the user's terminal:
+  `uv run python -m mobgrid.budget.emp --out docs\data\step11_budget`
+  `uv run python -m mobgrid.budget.emp --survey entd2008 --out docs\data\step11_budget_entd2008`
+  `uv run python -m mobgrid.budget.emp --compare --out docs\data\step11_compare`
+  `uv run python -m mobgrid.budget.variation_report --out docs\data\step12_variation --entd2008-zoning-data-path data\raw\entd2008\ENTD2008_avec_zonages_EMP`
+  Add `--scope all` to each command to regenerate all eight scope variants.
+
 ### Step 11/12: report fixes, 3 of 4 (2026-11-07)
 
 - Day-table scopes now print 2019/2008 ratios in the comparison, B2,
@@ -56,9 +92,10 @@ Read this file at the start of every task and update it at the end.
 - Validation uses the existing `.venv` Python because `uv` is not on PATH.
   Nine focused synthetic tests passed; changed-file Ruff and signature
   compatibility checks passed.
-  DuckDB synthetic SQL execution is blocked by a missing optional pandas
-  dependency; no packages were downloaded. No real-data reports or full
-  test suite run. Next: fix 2, apply and audit ages 6+ in every scope.
+  An initial dictionary-registered DuckDB test fixture required optional
+  pandas; native SQL fixtures avoid that unnecessary dependency. No
+  packages were downloaded, and no real-data reports or full test suite
+  run. Next: fix 2, apply and audit ages 6+ in every scope.
 
 ### Step 11/12: report figure styling and exports (2026-11-06)
 
