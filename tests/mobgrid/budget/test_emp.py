@@ -16,6 +16,7 @@ import csv
 import re
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -24,6 +25,84 @@ from mobgrid.budget import daily_energy, emp, emp2019, entd2008, scope
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config" / "energy.yaml"
 _REAL_DATA_AVAILABLE = emp2019.DEFAULT_ZIP_PATH.is_file()
+
+
+def test_time_day_reader_does_not_require_energy() -> None:
+    """Section 9.9: time/trips use every in-scope day; energy retains its n."""
+    con = Mock()
+    emp._day_rows(con, include_unknown_energy=True)
+    assert "IS NOT NULL" not in con.sql.call_args.args[0]
+    emp._day_rows(con)
+    assert "total_energy_kh_kj IS NOT NULL" in con.sql.call_args.args[0]
+
+
+def test_person_ratio_matches_c7_and_figure_intervals() -> None:
+    """Section 9.9: shared roster denominator and seed for person ratios."""
+    from mobgrid.budget import variation_report
+
+    results = []
+    frames = []
+    for year in range(2):
+        households = np.array([f"M{i // 2}" for i in range(80)])
+        weight = np.linspace(1.0, 2.0, 80)
+        minutes = np.linspace(10.0, 90.0 + year * 10.0, 80)
+        divisor = 1.0 if year == 0 else 5.0
+        days = {
+            "ident_men": households,
+            "pond_jour": weight,
+            "total_time_min": minutes,
+            "population_category": np.full(80, "employed"),
+        }
+        persons = {
+            "household": np.append(households, "immobile"),
+            "weight": np.ones(81),
+            "category": np.full(81, "employed"),
+            "period_divisor": divisor,
+        }
+        results.append(
+            {
+                "_weekday_person_rows": persons,
+                "_weekday_person_budget_days": days,
+            }
+        )
+        sample = variation_report.PeriodBudgetSample(
+            person_household=persons["household"],
+            person_weight=persons["weight"],
+            day_household=households,
+            day_person=np.arange(80).astype(str),
+            day_weight=weight,
+            day_type=np.ones(80, dtype=int),
+            trips=np.full(80, 2.0),
+            total_time_min=minutes,
+            time_trips=np.full(80, 2.0),
+        )
+        frames.append(
+            variation_report.SurveyFrames(
+                name=str(year),
+                days={},
+                trips={},
+                aux={
+                    "c7_data": dict.fromkeys(("reference", "sdes", "daytable"), sample)
+                },
+            )
+        )
+    row = next(
+        row
+        for row in emp._temporal_person_budget_rows(*results, n_reps=200, seed=0)
+        if row.category == "employed"
+    )
+    c7 = next(
+        row
+        for row in variation_report._c7_comparison(*frames, n_reps=200, seed=0)
+        if row["scope"] == "round-dest-local"
+        and row["period"] == "weekday"
+        and row["basis"] == "per person"
+        and row["measure"] == "Minutes/day"
+    )
+    assert (row.ratio, row.ci) == c7["ratio"]
+    assert emp._person_budget_ratio_intervals(*results, n_reps=200, seed=0)[
+        "employed"
+    ] == (row.ratio, *row.ci)
 
 
 def test_cli_writes_figures_and_report_on_synthetic_data(
@@ -214,9 +293,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         ],
         ratio_intervals=ratios,
     )
-    with energy_path.with_suffix(".csv").open(
-        encoding="utf-8", newline=""
-    ) as stream:
+    with energy_path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     headline = next(
         row
@@ -575,8 +652,10 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
         "mean_cp": 0.0,
         "mean_time_min": 0.0,
         "population_time_stats": [],
+        "mode_time_stats": [],
         "population_time_stats_weekday": [],
         "person_budget_weekday_population": {},
+        "all_days": {"typejour": np.array([], dtype=int)},
     }
     monkeypatch.setattr(emp, "run", lambda *args, **kwargs: results)
     monkeypatch.setattr(emp, "_group_table_two_surveys", lambda *args: [])
@@ -584,15 +663,19 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
         emp, "_format_equivalence_side_by_side", lambda *args, **kwargs: []
     )
     monkeypatch.setattr(emp, "_format_weekday_comparison", lambda *args, **kwargs: [])
+    monkeypatch.setattr(emp, "_comparison_ratio_intervals", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        emp, "_person_budget_ratio_intervals", lambda *args, **kwargs: {}
+    )
     monkeypatch.setattr(
         emp,
         "_figure_compare_energy_time",
-        lambda *args: tmp_path / "compare_energy.png",
+        lambda *args, **kwargs: tmp_path / "compare_energy.png",
     )
     monkeypatch.setattr(
         emp,
         "_figure_compare_time_by_category",
-        lambda *args: tmp_path / "compare_time.png",
+        lambda *args, **kwargs: tmp_path / "compare_time.png",
     )
     selected_scope = scope.Scope.parse("alldays-allpurp-daytable")
 

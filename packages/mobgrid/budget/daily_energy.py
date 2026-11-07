@@ -364,26 +364,48 @@ def bootstrap_ratio_ci(
     *,
     n_reps: int = 200,
     seed: int = 0,
+    denominator_a: tuple[np.ndarray, np.ndarray] | None = None,
+    denominator_b: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[float, tuple[float, float]]:
-    """Ratio of weighted means B/A with independent household bootstrap
-    samples, paired replicate by replicate for the percentile 90% CI."""
+    """Section 9.9 survey ratio B/A and its 90% percentile household CI.
+
+    By default each survey estimates a weighted day mean. Explicit
+    household/weight denominators support minutes/trip and per-person
+    budgets (period scaling must already be in those weights). Both surveys
+    always use independent streams spawned from the same report seed.
+    """
     if n_reps <= 0:
         raise ValueError("n_reps must be positive")
     seed_a, seed_b = np.random.SeedSequence(seed).spawn(2)
-    point_a, reps_a = _weighted_mean_bootstrap_replicates(
-        household_a,
-        weight_a,
-        value_a,
-        n_reps=n_reps,
-        rng=np.random.default_rng(seed_a),
-    )
-    point_b, reps_b = _weighted_mean_bootstrap_replicates(
-        household_b,
-        weight_b,
-        value_b,
-        n_reps=n_reps,
-        rng=np.random.default_rng(seed_b),
-    )
+
+    def estimate(
+        household: np.ndarray,
+        weight: np.ndarray,
+        value: np.ndarray,
+        denominator: tuple[np.ndarray, np.ndarray] | None,
+        survey_seed: np.random.SeedSequence,
+    ) -> tuple[float, np.ndarray]:
+        if denominator is None:
+            return _weighted_mean_bootstrap_replicates(
+                household,
+                weight,
+                value,
+                n_reps=n_reps,
+                rng=np.random.default_rng(survey_seed),
+            )
+        denominator_household, denominator_weight = denominator
+        return bootstrap_person_value_replicates(
+            denominator_household,
+            denominator_weight,
+            household,
+            weight,
+            value,
+            n_reps=n_reps,
+            seed=survey_seed,
+        )
+
+    point_a, reps_a = estimate(household_a, weight_a, value_a, denominator_a, seed_a)
+    point_b, reps_b = estimate(household_b, weight_b, value_b, denominator_b, seed_b)
     return bootstrap_replicate_ratio_ci(point_a, reps_a, point_b, reps_b)
 
 
@@ -909,7 +931,7 @@ def bootstrap_person_value_replicates(
     period_divisor: float = 1.0,
     open_days: np.ndarray | None = None,
     n_reps: int = 200,
-    seed: int = 0,
+    seed: int | np.random.SeedSequence = 0,
 ) -> tuple[float, np.ndarray]:
     """Direct producer-weighted per-person value and household replicates.
 

@@ -223,13 +223,16 @@ def _weighted_query(
     return len(rows["weight"]), float(rows["weight"].sum()), mean_kh, mean_cp
 
 
-def _day_rows(con: duckdb.DuckDBPyConnection) -> dict:
+def _day_rows(
+    con: duckdb.DuckDBPyConnection, *, include_unknown_energy: bool = False
+) -> dict:
     """Fetch every classified-day column needed by the figures/report."""
     return con.sql(
         "SELECT day_mode_group, population_category, home_density, "
         "income_quintile, ident_men, typejour, "
         "pond_jour, total_time_min, total_energy_kh_kj, total_energy_cp_kj, "
-        "trips_per_day FROM day_summary WHERE total_energy_kh_kj IS NOT NULL"
+        "trips_per_day FROM day_summary"
+        + ("" if include_unknown_energy else " WHERE total_energy_kh_kj IS NOT NULL")
     ).fetchnumpy()
 
 
@@ -561,7 +564,8 @@ def run(
         activity_stay_min=variation_config.scope.activity_stay_min,
         density_source=density_source,
     )
-    days = _day_rows(con)
+    days = _day_rows(con, include_unknown_energy=True)
+    energy_days = _day_rows(con)
     n_days_within_scope = con.sql("SELECT count(*) FROM day_summary").fetchone()[0]
     income_quintile_report = _income_quintile_report(con, days, survey)
 
@@ -607,12 +611,14 @@ def run(
     ).fetchall()
     daily_energy.create_day_summary(con, where_sql=where_sql)
 
-    mode_stats = _group_stats(days, "day_mode_group", n_reps=n_reps, seed=seed)
+    mode_stats = _group_stats(energy_days, "day_mode_group", n_reps=n_reps, seed=seed)
     population_stats = _group_stats(
-        days, "population_category", n_reps=n_reps, seed=seed
+        energy_days, "population_category", n_reps=n_reps, seed=seed
     )
-    density_stats = _group_stats(days, "home_density", n_reps=n_reps, seed=seed)
-    category_density_stats = _category_density_stats(days, n_reps=n_reps, seed=seed)
+    density_stats = _group_stats(energy_days, "home_density", n_reps=n_reps, seed=seed)
+    category_density_stats = _category_density_stats(
+        energy_days, n_reps=n_reps, seed=seed
+    )
     density_constancy_summary = _density_constancy_summary(category_density_stats)
 
     # Section 9.9's income update: household income per consumption
@@ -620,9 +626,11 @@ def run(
     # (`trip_legs.weighted_quintile_view_sql`); the same category x key
     # table/constancy-summary machinery as density, plus a time-with-CI
     # column giving time the same treatment energy already has.
-    income_stats = _group_stats(days, "income_quintile", n_reps=n_reps, seed=seed)
+    income_stats = _group_stats(
+        energy_days, "income_quintile", n_reps=n_reps, seed=seed
+    )
     category_income_stats = _category_by_key_stats(
-        days, "income_quintile", n_reps=n_reps, seed=seed
+        energy_days, "income_quintile", n_reps=n_reps, seed=seed
     )
     income_constancy_summary = _income_constancy_summary(category_income_stats)
     density_equivalence = _equivalence_stats(
@@ -649,10 +657,10 @@ def run(
     )
 
     mean_kh, var_kh = daily_energy.weighted_mean_variance(
-        days["pond_jour"], days["total_energy_kh_kj"]
+        energy_days["pond_jour"], energy_days["total_energy_kh_kj"]
     )
     mean_cp, var_cp = daily_energy.weighted_mean_variance(
-        days["pond_jour"], days["total_energy_cp_kj"]
+        energy_days["pond_jour"], energy_days["total_energy_cp_kj"]
     )
     gamma_kh = daily_energy.gamma_moments_fit(mean_kh, var_kh)
     gamma_cp = daily_energy.gamma_moments_fit(mean_cp, var_cp)
@@ -1027,7 +1035,7 @@ def run(
         "survey_name": survey.SURVEY_NAME,
         "scope": scope,
         "density_source": density_source,
-        "n_days": len(days["day_mode_group"]),
+        "n_days": len(energy_days["day_mode_group"]),
         "mode_stats": mode_stats,
         "population_stats": population_stats,
         "population_time_stats": population_time_stats,
@@ -3836,62 +3844,6 @@ def _group_table_two_surveys(
     return lines
 
 
-def _bootstrap_group_means(
-    days: dict,
-    group_column: str,
-    value_column: str,
-    *,
-    n_reps: int,
-    seed: int,
-    day_mask: np.ndarray | None = None,
-) -> dict[str, tuple[float, np.ndarray]]:
-    """Return each group's point mean and household-bootstrap replicates."""
-    values = np.asarray(days[value_column], dtype=float)
-    weights = np.asarray(days["pond_jour"], dtype=float)
-    households = np.asarray(days["ident_men"])
-    groups = (
-        np.full(len(values), "All")
-        if group_column == "All"
-        else np.asarray(days[group_column]).astype(str)
-    )
-    mask = np.isfinite(values) & np.isfinite(weights) & (weights > 0)
-    if day_mask is not None:
-        mask &= day_mask
-    values, weights, households, groups = (
-        array[mask] for array in (values, weights, households, groups)
-    )
-    if not len(values):
-        return {}
-    group_values, group_codes = np.unique(groups, return_inverse=True)
-    _, household_codes = np.unique(households, return_inverse=True)
-    n_households = int(household_codes.max()) + 1
-    weighted_n = np.bincount(group_codes, weights=weights, minlength=len(group_values))
-    point = (
-        np.bincount(group_codes, weights=weights * values, minlength=len(group_values))
-        / weighted_n
-    )
-    replicates = np.empty((n_reps, len(group_values)), dtype=float)
-    rng = np.random.default_rng(seed)
-    for replicate in range(n_reps):
-        sampled = rng.integers(0, n_households, size=n_households)
-        multiplicity = np.bincount(sampled, minlength=n_households)
-        replicate_weights = weights * multiplicity[household_codes]
-        denominator = np.bincount(
-            group_codes, weights=replicate_weights, minlength=len(group_values)
-        )
-        numerator = np.bincount(
-            group_codes,
-            weights=replicate_weights * values,
-            minlength=len(group_values),
-        )
-        with np.errstate(divide="ignore", invalid="ignore"):
-            replicates[replicate] = numerator / denominator
-    return {
-        str(group): (float(point[i]), replicates[:, i])
-        for i, group in enumerate(group_values)
-    }
-
-
 def _comparison_ratio_intervals(
     days_2008: dict,
     days_2019: dict,
@@ -3904,34 +3856,38 @@ def _comparison_ratio_intervals(
     day_mask_2019: np.ndarray | None = None,
 ) -> dict[str, tuple[float, float, float]]:
     """Household-bootstrap 2019/2008 ratios and 90% percentile intervals."""
-    means_2008 = _bootstrap_group_means(
-        days_2008,
-        group_column,
-        value_column,
-        n_reps=n_reps,
-        seed=seed,
-        day_mask=day_mask_2008,
-    )
-    means_2019 = _bootstrap_group_means(
-        days_2019,
-        group_column,
-        value_column,
-        n_reps=n_reps,
-        seed=seed + 1,
-        day_mask=day_mask_2019,
-    )
+    samples = []
+    for days, day_mask in ((days_2008, day_mask_2008), (days_2019, day_mask_2019)):
+        values = np.asarray(days[value_column], dtype=float)
+        weights = np.asarray(days["pond_jour"], dtype=float)
+        groups = (
+            np.full(len(values), "All")
+            if group_column == "All"
+            else np.asarray(days[group_column]).astype(str)
+        )
+        mask = np.isfinite(values) & np.isfinite(weights) & (weights > 0)
+        if day_mask is not None:
+            mask &= day_mask
+        samples.append(
+            {
+                group: (
+                    days["ident_men"][selected],
+                    weights[selected],
+                    values[selected],
+                )
+                for group in np.unique(groups[mask])
+                if (selected := mask & (groups == group)).any()
+            }
+        )
     intervals: dict[str, tuple[float, float, float]] = {}
-    for group in means_2008.keys() & means_2019.keys():
-        point_a, reps_a = means_2008[group]
-        point_b, reps_b = means_2019[group]
-        if point_a <= 0 or point_b <= 0:
+    for group in samples[0].keys() & samples[1].keys():
+        a, b = samples[0][group], samples[1][group]
+        if np.average(a[2], weights=a[1]) <= 0 or np.average(b[2], weights=b[1]) <= 0:
             continue
-        ratio = point_b / point_a
-        valid = np.isfinite(reps_a) & np.isfinite(reps_b) & (reps_a > 0)
-        ratio_replicates = reps_b[valid] / reps_a[valid]
-        if len(ratio_replicates):
-            low, high = np.percentile(ratio_replicates, [5, 95])
-            intervals[group] = (float(ratio), float(low), float(high))
+        ratio, (low, high) = daily_energy.bootstrap_ratio_ci(
+            *a, *b, n_reps=n_reps, seed=seed
+        )
+        intervals[group] = (ratio, low, high)
     return intervals
 
 
@@ -3940,41 +3896,11 @@ def _person_budget_ratio_intervals(
 ) -> dict[str, tuple[float, float, float]]:
     """Bootstrap 2019/2008 ratios for the weekday per-person time budget."""
     intervals: dict[str, tuple[float, float, float]] = {}
-    for category in daily_energy.POPULATION_CATEGORIES:
-        replicate_sets = []
-        points = []
-        for offset, results in enumerate((results_2008, results_2019)):
-            persons = results["_weekday_person_rows"]
-            days = results["_weekday_person_budget_days"]
-            person_mask = persons["category"] == category
-            day_mask = days["population_category"] == category
-            if not person_mask.any() or not day_mask.any():
-                break
-            point, replicates = daily_energy.bootstrap_person_value_replicates(
-                persons["household"][person_mask],
-                persons["weight"][person_mask],
-                days["ident_men"][day_mask],
-                days["pond_jour"][day_mask],
-                days["total_time_min"][day_mask],
-                person_weight_scale=1.0,
-                period_divisor=float(persons["period_divisor"]),
-                n_reps=n_reps,
-                seed=seed + offset,
-            )
-            points.append(point)
-            replicate_sets.append(replicates)
-        if len(points) != 2 or points[0] <= 0 or points[1] <= 0:
-            continue
-        reps_2008, reps_2019 = replicate_sets
-        valid = np.isfinite(reps_2008) & np.isfinite(reps_2019) & (reps_2008 > 0)
-        ratios = reps_2019[valid] / reps_2008[valid]
-        if len(ratios):
-            low, high = np.percentile(ratios, [5, 95])
-            intervals[category] = (
-                float(points[1] / points[0]),
-                float(low),
-                float(high),
-            )
+    for row in _temporal_person_budget_rows(
+        results_2008, results_2019, n_reps=n_reps, seed=seed
+    ):
+        if row.ratio is not None and row.ci is not None:
+            intervals[row.category] = (row.ratio, *row.ci)
     return intervals
 
 
@@ -4098,7 +4024,7 @@ def _temporal_day_ratio_rows(
     days_2008 = results_2008["_weekday_days"]
     days_2019 = results_2019["_weekday_days"]
     rows = []
-    for index, category in enumerate((*daily_energy.POPULATION_CATEGORIES, "overall")):
+    for category in (*daily_energy.POPULATION_CATEGORIES, "overall"):
         mask_2008 = (
             np.ones(len(days_2008["pond_jour"]), dtype=bool)
             if category == "overall"
@@ -4121,7 +4047,7 @@ def _temporal_day_ratio_rows(
             days_2019["pond_jour"][mask_2019],
             days_2019["total_time_min"][mask_2019],
             n_reps=n_reps,
-            seed=seed + index,
+            seed=seed,
         )
         rows.append(TemporalRatioRow(category, "-", n_2008, n_2019, ratio, ci))
     return rows
@@ -4131,7 +4057,7 @@ def _temporal_person_budget_rows(
     results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
 ) -> list[TemporalRatioRow]:
     rows = []
-    for index, category in enumerate((*daily_energy.POPULATION_CATEGORIES, "overall")):
+    for category in (*daily_energy.POPULATION_CATEGORIES, "overall"):
         year_data = []
         for results in (results_2008, results_2019):
             days = results["_weekday_person_budget_days"]
@@ -4153,29 +4079,39 @@ def _temporal_person_budget_rows(
         if min(n_2008, n_2019) < MIN_CELL_N:
             rows.append(TemporalRatioRow(category, "-", n_2008, n_2019, None, None))
             continue
-        seed_2008, seed_2019 = np.random.SeedSequence(seed + index).spawn(2)
-        point_2008, reps_2008 = daily_energy.bootstrap_person_value_replicates(
+        denominator_2008 = (
             persons_2008["household"][person_mask_2008],
-            persons_2008["weight"][person_mask_2008],
+            persons_2008["weight"][person_mask_2008] * persons_2008["period_divisor"],
+        )
+        denominator_2019 = (
+            persons_2019["household"][person_mask_2019],
+            persons_2019["weight"][person_mask_2019] * persons_2019["period_divisor"],
+        )
+        ratio, ci = daily_energy.bootstrap_ratio_ci(
             days_2008["ident_men"][day_mask_2008],
             days_2008["pond_jour"][day_mask_2008],
             days_2008["total_time_min"][day_mask_2008],
-            period_divisor=persons_2008["period_divisor"],
-            n_reps=n_reps,
-            seed=int(seed_2008.generate_state(1)[0]),
-        )
-        point_2019, reps_2019 = daily_energy.bootstrap_person_value_replicates(
-            persons_2019["household"][person_mask_2019],
-            persons_2019["weight"][person_mask_2019],
             days_2019["ident_men"][day_mask_2019],
             days_2019["pond_jour"][day_mask_2019],
             days_2019["total_time_min"][day_mask_2019],
-            period_divisor=persons_2019["period_divisor"],
             n_reps=n_reps,
-            seed=int(seed_2019.generate_state(1)[0]),
+            seed=seed,
+            denominator_a=denominator_2008,
+            denominator_b=denominator_2019,
         )
-        ratio, ci = daily_energy.bootstrap_replicate_ratio_ci(
-            point_2008, reps_2008, point_2019, reps_2019
+        point_2008 = float(
+            np.sum(
+                days_2008["pond_jour"][day_mask_2008]
+                * days_2008["total_time_min"][day_mask_2008]
+            )
+            / denominator_2008[1].sum()
+        )
+        point_2019 = float(
+            np.sum(
+                days_2019["pond_jour"][day_mask_2019]
+                * days_2019["total_time_min"][day_mask_2019]
+            )
+            / denominator_2019[1].sum()
         )
         rows.append(
             TemporalRatioRow(
@@ -4198,7 +4134,6 @@ def _temporal_density_ratio_rows(
     days_2008 = results_2008["_weekday_days"]
     days_2019 = results_2019["_weekday_days"]
     rows = []
-    index = 0
     for category in daily_energy.POPULATION_CATEGORIES:
         for density in trip_legs.DENSITY_LABELS:
             mask_2008 = (days_2008["population_category"] == category) & (
@@ -4221,12 +4156,11 @@ def _temporal_density_ratio_rows(
                     days_2019["pond_jour"][mask_2019],
                     days_2019["total_time_min"][mask_2019],
                     n_reps=n_reps,
-                    seed=seed + index,
+                    seed=seed,
                 )
                 rows.append(
                     TemporalRatioRow(category, density, n_2008, n_2019, ratio, ci)
                 )
-            index += 1
     return rows
 
 
@@ -4727,13 +4661,17 @@ def _figure_compare_energy_time(
     by_2008 = {s.group: s for s in stats_2008}
     by_2019 = {s.group: s for s in stats_2019}
     all_groups = (*daily_energy.DAY_MODE_GROUPS, "multimodal", "other")
-    groups = [g for g in all_groups if g in by_2008 or g in by_2019]
-    x = np.arange(len(groups))
-    width = 0.35
     time_by_year = (
         {group.group: group for group in time_stats_2008 or []},
         {group.group: group for group in time_stats_2019 or []},
     )
+    groups = [
+        g
+        for g in all_groups
+        if g in by_2008 or g in by_2019 or g in time_by_year[0] or g in time_by_year[1]
+    ]
+    x = np.arange(len(groups))
+    width = 0.35
 
     fig, (ax_energy_kh, ax_energy_cp, ax_time) = plt.subplots(1, 3, figsize=(19, 6))
     for ax, rate_key in ((ax_energy_kh, "kh"), (ax_energy_cp, "cp")):
@@ -4870,12 +4808,15 @@ def _figure_compare_energy_time(
     ):
         for i, group in enumerate(groups):
             ratio = ratio_intervals.get((group, metric))
+            sample_2008, sample_2019 = (
+                time_by_year if metric == "time" else (by_2008, by_2019)
+            )
             if (
                 ratio is None
-                or group not in by_2008
-                or group not in by_2019
-                or by_2008[group].n < MIN_CELL_N
-                or by_2019[group].n < MIN_CELL_N
+                or group not in sample_2008
+                or group not in sample_2019
+                or sample_2008[group].n < MIN_CELL_N
+                or sample_2019[group].n < MIN_CELL_N
             ):
                 continue
             point, low, high = ratio
@@ -4883,15 +4824,10 @@ def _figure_compare_energy_time(
                 mean_a = getattr(by_2008[group], f"mean_energy_{metric}_kj")
                 mean_b = getattr(by_2019[group], f"mean_energy_{metric}_kj")
             else:
-                mean_a = by_2008[group].mean_time_min
-                mean_b = by_2019[group].mean_time_min
-            ax.text(
-                i,
-                max(mean_a, mean_b) * 1.04,
-                f"×{point:.2f} [{low:.2f}, {high:.2f}]",
-                ha="center",
-                va="bottom",
-                fontsize=8,
+                mean_a = sample_2008[group].mean
+                mean_b = sample_2019[group].mean
+            figstyle.annotate_ratio(
+                ax, i, max(mean_a, mean_b) * 1.04, (point, low, high)
             )
         label_transform = ax.get_yaxis_transform()
         for value, year, color, va in (
@@ -5053,13 +4989,8 @@ def _figure_compare_time_by_category(
                 and by_2019[category].n >= MIN_CELL_N
             ):
                 values = [by_2008[category].mean, by_2019[category].mean]
-                ax.text(
-                    index,
-                    max(values) * 1.04,
-                    f"×{point:.2f} [{low:.2f}, {high:.2f}]",
-                    ha="center",
-                    va="bottom",
-                    fontsize=8,
+                figstyle.annotate_ratio(
+                    ax, index, max(values) * 1.04, (point, low, high)
                 )
         ax.set_xticks(x)
         ax.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
@@ -5142,13 +5073,11 @@ def _figure_compare_time_by_category(
         ):
             continue
         point, low, high = ratio
-        ax_person.text(
+        figstyle.annotate_ratio(
+            ax_person,
             index,
             max(row_2008.budget, row_2019.budget) * 1.04,
-            f"×{point:.2f} [{low:.2f}, {high:.2f}]",
-            ha="center",
-            va="bottom",
-            fontsize=8,
+            (point, low, high),
         )
     ax_person.set_xticks(x)
     ax_person.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)

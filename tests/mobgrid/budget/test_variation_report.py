@@ -658,6 +658,85 @@ def _trip_frames(
     return _frames(days, trips)
 
 
+def test_2019_2008_ratio_is_identical_in_b2_c7_comparison_and_csv(
+    tmp_path: Path,
+) -> None:
+    """Section 9.9: one household interval, including energy-unknown days."""
+    import csv
+
+    from mobgrid.budget import daily_energy, emp
+
+    a = _trip_frames({"walk": 15.0, "car_driver": 25.0}, n_days=80)
+    b = _trip_frames({"walk": 18.0, "car_driver": 32.0}, n_days=80)
+    for index, frames in enumerate((a, b)):
+        frames.days["pond_jour"] = np.linspace(1.0, 3.0, 80)
+        frames.days["total_time_min"] += np.arange(80) * (0.3 + index * 0.1)
+        frames.days["typejour"] = np.ones(80, dtype=int)
+        frames.days["day_mode_group"] = np.full(80, "multimodal")
+        frames.days["home_density"] = np.full(80, "dense")
+        frames.days["income_quintile"] = np.full(80, "q1")
+        frames.days["total_energy_kh_kj"] = np.full(80, 100.0)
+        frames.days["total_energy_cp_kj"] = np.full(80, 90.0)
+        frames.days["total_energy_kh_kj"][:10] = np.nan
+        frames.days["total_energy_cp_kj"][:10] = np.nan
+        sample = variation_report.PeriodBudgetSample(
+            person_household=np.append(frames.days["ident_men"], "immobile"),
+            person_weight=np.ones(81),
+            day_household=frames.days["ident_men"],
+            day_person=np.arange(80).astype(str),
+            day_weight=frames.days["pond_jour"],
+            day_type=frames.days["typejour"],
+            trips=frames.days["trips_per_day"],
+            total_time_min=frames.days["total_time_min"],
+            time_trips=frames.days["trips_per_day"],
+        )
+        frames.aux["c7_data"] = dict.fromkeys(("reference", "sdes", "daytable"), sample)
+    b2 = variation_report.b2_decompositions(
+        a, b, n_reps=200, seed=0, include_time_ratio=True, categories=()
+    )[0]
+    comparison = emp._temporal_day_ratio_rows(
+        {"_weekday_days": a.days}, {"_weekday_days": b.days}, n_reps=200, seed=0
+    )[-1]
+    c7 = next(
+        row
+        for row in variation_report._c7_comparison(a, b, n_reps=200, seed=0)
+        if row["scope"] == "round-dest-local"
+        and row["period"] == "weekday"
+        and row["basis"] == "per traveller"
+        and row["measure"] == "Minutes/day"
+    )
+    expected = (b2.time_ratio, b2.time_ratio_ci90)
+    assert (comparison.ratio, comparison.ci) == expected
+    assert c7["ratio"] == expected
+    intervals = emp._comparison_ratio_intervals(
+        a.days, b.days, "population_category", "total_time_min", n_reps=200, seed=0
+    )
+    assert intervals["employed"] == (expected[0], *expected[1])
+    stats = [
+        daily_energy.ScalarGroupStats("employed", 80, 80.0, 50.0, (40.0, 60.0), 50.0)
+    ]
+    emp.figstyle.set_context(scope="Reference", survey="2008 vs 2019", days="weekday")
+    path = emp._figure_compare_time_by_category(
+        stats,
+        stats,
+        stats,
+        stats,
+        {},
+        {},
+        tmp_path,
+        ratio_intervals={("weekday", "employed"): intervals["employed"]},
+    )
+    with path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
+        row = next(
+            row
+            for row in csv.DictReader(stream)
+            if row["subgroup"] == "2019/2008" and row["ratio"]
+        )
+    assert tuple(
+        float(row[key]) for key in ("ratio", "ratio_ci_low", "ratio_ci_high")
+    ) == (expected[0], *expected[1])
+
+
 def test_shift_share_identity_and_report_section() -> None:
     frames_a = _trip_frames({"walk": 15.0, "car_driver": 25.0})
     frames_b = _trip_frames({"walk": 18.0, "car_driver": 32.0})
@@ -1123,9 +1202,7 @@ def test_b7_figures_write_png_and_csv_sidecars(tmp_path: Path) -> None:
 
     for path in figures:
         assert path is not None and path.is_file()
-        with path.with_suffix(".csv").open(
-            encoding="utf-8", newline=""
-        ) as stream:
+        with path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
             reader = csv.DictReader(stream)
             assert reader.fieldnames == list(figstyle.CSV_COLUMNS)
             assert next(reader, None) is not None

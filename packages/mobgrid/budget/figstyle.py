@@ -143,6 +143,22 @@ def set_context(
     )
 
 
+def annotate_ratio(
+    ax: Any, x: float, y: float, ratio: tuple[float, float, float]
+) -> None:
+    """Annotate a survey ratio while retaining full precision for its CSV."""
+    point, low, high = ratio
+    text = ax.text(
+        x,
+        y,
+        f"×{point:.3f} [{low:.3f}, {high:.3f}]",
+        ha="center",
+        va="bottom",
+        fontsize=8,
+    )
+    setattr(text, "_figure_ratio_values", ratio)
+
+
 def _quantity_range(label: str) -> tuple[float, float] | None:
     text = label.casefold()
     if "%" in text or "share" in text:
@@ -308,8 +324,7 @@ def _apply_style(fig: Any, *, survey: str | None) -> None:
             for index in selected:
                 x, y = float(x_values[index]), float(y_values[index])
                 if any(
-                    np.isclose(x, text_x, atol=0.04)
-                    and np.isclose(y, text_y, atol=0.5)
+                    np.isclose(x, text_x, atol=0.04) and np.isclose(y, text_y, atol=0.5)
                     for text_x, text_y in existing_text_positions
                 ):
                     continue
@@ -516,9 +531,7 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
                         continue
                     group = _nearest_group(ax, float(points[0, 0]))
                     label = container.get_label()
-                    row = row_for(
-                        group, label if label in ("2008", "2019") else ""
-                    )
+                    row = row_for(group, label if label in ("2008", "2019") else "")
                     row["ci_low"] = float(np.min(points[:, 1]))
                     row["ci_high"] = float(np.max(points[:, 1]))
 
@@ -540,9 +553,12 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
                 row = row_for(
                     _nearest_group(ax, float(text.get_position()[0])), "2019/2008"
                 )
-                row["ratio"] = float(ratio_match.group(1))
-                row["ratio_ci_low"] = float(ratio_match.group(2))
-                row["ratio_ci_high"] = float(ratio_match.group(3))
+                values = getattr(
+                    text,
+                    "_figure_ratio_values",
+                    tuple(float(ratio_match.group(i)) for i in (1, 2, 3)),
+                )
+                row["ratio"], row["ratio_ci_low"], row["ratio_ci_high"] = values
 
         for image in ax.images:
             values = np.asarray(image.get_array())

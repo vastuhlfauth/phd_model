@@ -2413,16 +2413,21 @@ def _ratio_metric(metric_a: SpeedMetric, metric_b: SpeedMetric) -> SpeedMetric |
         or metric_b.estimate <= 0
         or len(metric_a.replicates) == 0
         or len(metric_a.replicates) != len(metric_b.replicates)
+        or not (
+            np.isfinite(metric_a.replicates)
+            & np.isfinite(metric_b.replicates)
+            & (metric_a.replicates > 0)
+        ).any()
     ):
         return None
+    ratio, interval = daily_energy.bootstrap_replicate_ratio_ci(
+        metric_a.estimate, metric_a.replicates, metric_b.estimate, metric_b.replicates
+    )
     with np.errstate(divide="ignore", invalid="ignore"):
         ratios = metric_b.replicates / metric_a.replicates
-    finite = ratios[np.isfinite(ratios) & (ratios > 0)]
-    if len(finite) == 0:
-        return None
     return SpeedMetric(
-        metric_b.estimate / metric_a.estimate,
-        tuple(float(v) for v in np.percentile(finite, [5.0, 95.0])),
+        ratio,
+        interval,
         ratios,
     )
 
@@ -3038,25 +3043,41 @@ def _format_c6(
     return lines
 
 
-def _budget_ratio(
-    metric_2008: BudgetMetric, metric_2019: BudgetMetric
-) -> tuple[float, tuple[float, float]] | None:
-    if (
-        not np.isfinite(metric_2008.estimate)
-        or not np.isfinite(metric_2019.estimate)
-        or metric_2008.estimate <= 0
-        or metric_2019.estimate <= 0
-        or len(metric_2008.replicates) == 0
-        or len(metric_2008.replicates) != len(metric_2019.replicates)
-    ):
-        return None
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ratios = metric_2019.replicates / metric_2008.replicates
-    finite = ratios[np.isfinite(ratios) & (ratios > 0)]
-    if len(finite) == 0:
-        return None
-    interval = tuple(float(value) for value in np.percentile(finite, [5.0, 95.0]))
-    return metric_2019.estimate / metric_2008.estimate, interval
+def _c7_ratio_inputs(
+    sample: PeriodBudgetSample,
+    basis: str,
+    metric: str,
+    day_types: tuple[int, ...],
+    divisor: float,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    tuple[np.ndarray, np.ndarray] | None,
+]:
+    """Section 9.9 numerator and denominator for the shared survey ratio."""
+    mask = np.isin(sample.day_type, day_types)
+    if basis == "per_traveller" or metric == "minutes_per_trip":
+        mask &= sample.trips > 0
+    values = sample.trips if metric == "trips_per_day" else sample.total_time_min
+    mask &= (
+        np.isfinite(values) & np.isfinite(sample.day_weight) & (sample.day_weight > 0)
+    )
+    denominator = None
+    if metric == "minutes_per_trip":
+        mask &= np.isfinite(sample.time_trips) & (sample.time_trips > 0)
+        denominator = (
+            sample.day_household[mask],
+            sample.day_weight[mask] * sample.time_trips[mask],
+        )
+    elif basis == "per_person":
+        denominator = (sample.person_household, sample.person_weight * divisor)
+    return (
+        sample.day_household[mask],
+        sample.day_weight[mask],
+        values[mask],
+        denominator,
+    )
 
 
 def _c7_comparison(
@@ -3123,11 +3144,29 @@ def _c7_comparison(
                         if estimate_2008 is not None
                         else None
                     )
-                    ratio = (
-                        _budget_ratio(metric_2008, metric_2019)
-                        if metric_2008 is not None and scope != "daytable"
-                        else None
-                    )
+                    ratio = None
+                    if (
+                        metric_2008 is not None
+                        and scope != "daytable"
+                        and np.isfinite(metric_2008.estimate)
+                        and np.isfinite(metric_2019.estimate)
+                        and metric_2008.estimate > 0
+                        and metric_2019.estimate > 0
+                    ):
+                        a = _c7_ratio_inputs(
+                            sample_2008, basis, metric_key, day_types, divisor_2008
+                        )
+                        b = _c7_ratio_inputs(
+                            sample_2019, basis, metric_key, day_types, divisor_2019
+                        )
+                        ratio = daily_energy.bootstrap_ratio_ci(
+                            *a[:3],
+                            *b[:3],
+                            denominator_a=a[3],
+                            denominator_b=b[3],
+                            n_reps=n_reps,
+                            seed=seed,
+                        )
                     rows.append(
                         {
                             "scope": scope_label,
@@ -4684,7 +4723,7 @@ def run(
         frames_2008,
         frames_2019,
         n_reps=n_reps,
-        seed=seed + 50_000,
+        seed=seed,
     )
     results["extra_sections"].append(
         _format_c7(

@@ -2,6 +2,27 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11/12: report fixes, 1 of 4 (2026-11-07)
+
+- B2, C7, the comparison tables and figure annotations use the shared
+  `daily_energy.bootstrap_ratio_ci`: independent household draws within
+  each survey, one report seed, 200 replicates by default, 90% percentile
+  intervals. Per-person and minutes/trip denominators use the same helper;
+  the duplicate C7 and figure-bootstrap implementations were removed.
+- Time and trip summaries include all in-scope days with trips, including
+  those without an energy estimate. Energy tables retain energy-known
+  days and their sample counts. Figure CSV ratios retain full precision
+  rather than being reconstructed from rounded annotation text.
+- Synthetic regression tests compare identical point estimates and
+  intervals across B2, C7, comparison and a figure CSV, and across
+  per-person comparison/C7/figure inputs. No generated data pages edited.
+- Validation uses the existing `.venv` Python because `uv` is not on PATH.
+  Nine focused synthetic tests passed; changed-file Ruff and signature
+  compatibility checks passed.
+  DuckDB synthetic SQL execution is blocked by a missing optional pandas
+  dependency; no packages were downloaded. No real-data reports or full
+  test suite run. Next: fix 2, apply and audit ages 6+ in every scope.
+
 ### Step 11/12: report figure styling and exports (2026-11-06)
 
 - Added a shared figure style/export helper and routed step-11 survey,
