@@ -36,6 +36,39 @@ def test_time_day_reader_does_not_require_energy() -> None:
     assert "total_energy_kh_kj IS NOT NULL" in con.sql.call_args.args[0]
 
 
+@pytest.mark.parametrize("age_table", ["tcm_ind_kish", "q_tcm_individu"])
+def test_age_eligibility_removes_children_and_missing_ages_in_every_scope(
+    age_table: str,
+) -> None:
+    """Section 9.9: the age-6+ universe precedes all three scope switches."""
+    import duckdb
+
+    con = duckdb.connect()
+    con.sql("""
+        CREATE TABLE survey_all_respondents AS
+        SELECT * FROM (VALUES ('young'), ('six'), ('adult'), ('missing'), ('unlinked'))
+            AS v(IDENT_IND);
+        CREATE TABLE survey_all_trips AS SELECT * FROM survey_all_respondents;
+    """)
+    con.sql(f"""
+        CREATE TABLE {age_table} AS
+        SELECT * FROM (VALUES ('young', 5), ('six', 6), ('adult', 35),
+            ('missing', NULL)) AS v(IDENT_IND, AGE)
+    """)
+    scope.create_age_eligible_survey_views(con, age_table=age_table)
+    assert con.sql("SELECT IDENT_IND FROM k_individu ORDER BY 1").fetchall() == [
+        ("adult",),
+        ("six",),
+    ]
+    assert con.sql("SELECT IDENT_IND FROM k_deploc ORDER BY 1").fetchall() == [
+        ("adult",),
+        ("six",),
+    ]
+    audit = scope.age_eligibility_summary(con)
+    assert audit == {"respondents": 5, "eligible": 2, "under_6": 1, "missing_age": 2}
+    con.close()
+
+
 def test_person_ratio_matches_c7_and_figure_intervals() -> None:
     """Section 9.9: shared roster denominator and seed for person ratios."""
     from mobgrid.budget import variation_report
@@ -646,6 +679,12 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
         "non_traveler_share_weighted": 0.0,
         "non_traveler_n": 0,
         "n_respondents": 0,
+        "age_eligibility": {
+            "respondents": 0,
+            "eligible": 0,
+            "under_6": 0,
+            "missing_age": 0,
+        },
         "v0_overall": SimpleNamespace(speed_kmh=0.0, n=0),
         "p0_overall": SimpleNamespace(p0_w=0.0, implied_flat_speed_kmh=0.0, n=0),
         "mean_kh": 0.0,

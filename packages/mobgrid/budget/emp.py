@@ -1108,6 +1108,7 @@ def run(
         "children_car_driver_n": children_car_driver_n,
         "quirk_fill_rates": quirk_fill_rates,
         "n_respondents": n_respondents,
+        "age_eligibility": scope_module.age_eligibility_summary(con),
         "n_days_with_trips": n_days_with_trips,
         "n_days_with_energy": n_days_with_energy,
         "n_days_within_scope": n_days_within_scope,
@@ -3168,6 +3169,11 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         variables_used_line,
         "",
+        "## Choices made",
+        "",
+        "- "
+        + scope_module.age_eligibility_choice(survey_name, results["age_eligibility"]),
+        "",
         "**Sample flow** (persons and days kept apart, section 9.9's "
         '"Change between 2008 and 2019"; one described day per respondent '
         "in EMP 2019, up to three in ENTD 2008, weekday/Saturday/Sunday):",
@@ -4341,6 +4347,19 @@ def run_compare(
         "# Step 11 (`mobgrid/budget`): 2008-2019 comparison (section 9.9)",
         "",
         f"**Scope:** {scope.label} (`{scope.id}`).",
+        "",
+        "## Choices made",
+        "",
+        *(
+            "- "
+            + scope_module.age_eligibility_choice(
+                survey_name, result["age_eligibility"]
+            )
+            for survey_name, result in (
+                (entd2008.SURVEY_NAME, results_2008),
+                (emp2019.SURVEY_NAME, results_2019_proxy),
+            )
+        ),
         *(
             [
                 "",

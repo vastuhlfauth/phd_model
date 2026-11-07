@@ -26,7 +26,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 
-from mobgrid.budget import trip_legs
+from mobgrid.budget import scope, trip_legs
 from mobgrid.budget.trip_legs import (  # noqa: F401 -- re-exported, shared constants
     CAR_SPEED_UPPER_KMH,
     CYCLE_SPEED_UPPER_KMH,
@@ -152,9 +152,13 @@ def extract_tables(
 
 
 def register_views(con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]) -> None:
-    """Register the extracted CSVs as DuckDB views."""
+    """Register CSV views for residents aged 6+, retaining the age audit."""
     for name, path in csv_paths.items():
         view_name = name.removesuffix(".csv")
+        view_name = {
+            "k_individu": "survey_all_respondents",
+            "k_deploc": "survey_all_trips",
+        }.get(view_name, view_name)
         posix_path = path.as_posix()
         if name in _COMMA_QUOTED_NAMES:
             con.sql(
@@ -167,6 +171,7 @@ def register_views(con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]) -
                 f"CREATE OR REPLACE VIEW {view_name} AS SELECT * FROM read_csv("
                 f"'{posix_path}', delim=';', nullstr='NA', strict_mode=false)"
             )
+    scope.create_age_eligible_survey_views(con, age_table="tcm_ind_kish")
 
 
 def build_respondent_income(con: duckdb.DuckDBPyConnection) -> None:

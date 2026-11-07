@@ -1719,6 +1719,7 @@ def load_frames(
             "official_scope_data": official_data,
             "c7_data": c7_data,
             "scope_diagnostics": scope_data,
+            "age_eligibility": scope_module.age_eligibility_summary(con),
         }
         if survey is emp2019:
             aux["sequence_motive_summary"] = emp2019.sequence_motive_summary(
@@ -1843,12 +1844,6 @@ def _c7_scope_data(
     sample_pct: float | None,
 ) -> PeriodBudgetSample:
     """Extract section 9.9 rosters and trip/minute totals for a C7 scope."""
-    if selected_scope.id == scope_module.SDES_SCOPE.id:
-        age_filter = "AND age >= 6"
-        roster_age_filter = "WHERE age >= 6"
-    else:
-        age_filter = ""
-        roster_age_filter = ""
     scope_sql = selected_scope.trip_filter_sql()
 
     if survey is emp2019:
@@ -1862,9 +1857,7 @@ def _c7_scope_data(
             )
             SELECT ident_men, person_weight
             FROM roster
-            {roster_age_filter}
-                {"AND" if roster_age_filter else "WHERE"}
-                ({_sample_sql(sample_pct)})
+            WHERE ({_sample_sql(sample_pct)})
         """
     else:
         roster_sql = f"""
@@ -1877,9 +1870,7 @@ def _c7_scope_data(
             )
             SELECT ident_men, person_weight
             FROM roster
-            {roster_age_filter}
-                {"AND" if roster_age_filter else "WHERE"}
-                ({_sample_sql(sample_pct)})
+            WHERE ({_sample_sql(sample_pct)})
         """
 
     people = con.sql(roster_sql).fetchnumpy()
@@ -1894,7 +1885,7 @@ def _c7_scope_data(
             coalesce(sum(duration_min), 0.0) AS total_time_min
         FROM trip_legs
         WHERE pond_jour > 0
-            AND ({scope_sql}) {age_filter}
+            AND ({scope_sql})
             AND ({_sample_sql(sample_pct)})
         GROUP BY day_id
     """).fetchnumpy()
@@ -4632,7 +4623,15 @@ def run(
         "scope": scope,
         "equivalence_margin": variation_config.equivalence_margin,
         "secondary_equivalence_margin": (variation_config.secondary_equivalence_margin),
-        "choices": list(BASE_CHOICES),
+        "choices": [
+            *BASE_CHOICES,
+            *(
+                scope_module.age_eligibility_choice(
+                    frames.name, frames.aux["age_eligibility"]
+                )
+                for frames in (frames_2008, frames_2019)
+            ),
+        ],
         "n_days_2008": len(frames_2008.days["pond_jour"]),
         "n_trips_2008": len(frames_2008.trips["pond_jour"]),
         "n_days_2019": len(frames_2019.days["pond_jour"]),

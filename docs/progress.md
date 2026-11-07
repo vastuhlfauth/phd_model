@@ -2,6 +2,25 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11/12: report fixes, 2 of 4 (2026-11-07)
+
+- Survey registration now applies the same residents-aged-6+ universe to
+  both surveys' respondent and trip views, before every scope switch.
+  This also covers diagnostic, per-person and C7 rosters, without an
+  SDES-only age branch. Unfiltered views remain available for age audits.
+- Both survey reports, the comparison and step 12 now print age-exclusion
+  counts under Choices made, separating under-6 and missing-age respondents.
+- A read-only count of the cached respondent CSVs (not a report run)
+  confirms ENTD: 18,632 before, 18,542 after; all 90 exclusions are ages
+  under 6, zero missing ages. EMP: 13,825 before and after, zero under-6
+  or missing-age exclusions. There is no unexplained remainder.
+- Two synthetic SQL acceptance tests cover both age tables, age exactly
+  six, children below six, missing ages and unmatched demographics.
+  Eleven focused synthetic tests passed; changed-file Ruff and scope
+  Pylance diagnostics passed. No generated data pages edited or real-data
+  reports run.
+- Next: fix 3, report day-table ratios with the coverage caveat.
+
 ### Step 11/12: report fixes, 1 of 4 (2026-11-07)
 
 - B2, C7, the comparison tables and figure annotations use the shared

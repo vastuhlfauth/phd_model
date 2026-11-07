@@ -9,6 +9,59 @@ from pathlib import Path
 import duckdb
 
 
+def create_age_eligible_survey_views(
+    con: duckdb.DuckDBPyConnection, *, age_table: str
+) -> None:
+    """Apply section 9.9's SDES resident-age rule before any scope switch."""
+    if age_table not in ("tcm_ind_kish", "q_tcm_individu"):
+        raise ValueError(f"unsupported respondent age table: {age_table!r}")
+    con.sql(f"""
+        CREATE OR REPLACE VIEW respondent_age_audit AS
+        SELECT i.IDENT_IND, TRY_CAST(a.AGE AS INTEGER) AS age
+        FROM survey_all_respondents i
+        LEFT JOIN {age_table} a ON a.IDENT_IND = i.IDENT_IND
+    """)
+    con.sql("""
+        CREATE OR REPLACE VIEW k_individu AS
+        SELECT i.* FROM survey_all_respondents i
+        WHERE EXISTS (
+            SELECT 1 FROM respondent_age_audit a
+            WHERE a.IDENT_IND = i.IDENT_IND AND a.age >= 6
+        );
+        CREATE OR REPLACE VIEW k_deploc AS
+        SELECT t.* FROM survey_all_trips t
+        WHERE EXISTS (
+            SELECT 1 FROM k_individu i WHERE i.IDENT_IND = t.IDENT_IND
+        )
+    """)
+
+
+def age_eligibility_summary(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+    """Count respondent exclusions by age, in years (section 9.9)."""
+    row = con.sql("""
+        SELECT count(*), count(*) FILTER (WHERE age >= 6),
+            count(*) FILTER (WHERE age < 6), count(*) FILTER (WHERE age IS NULL)
+        FROM respondent_age_audit
+    """).fetchone()
+    if row is None:
+        raise RuntimeError("respondent age audit returned no summary")
+    return dict(
+        zip(("respondents", "eligible", "under_6", "missing_age"), row, strict=True)
+    )
+
+
+def age_eligibility_choice(survey: str, audit: dict[str, int]) -> str:
+    """Describe the common age universe and every excluded respondent."""
+    removed = audit["under_6"] + audit["missing_age"]
+    return (
+        f"{survey}: residents aged 6+ in every scope; {removed:,} respondents "
+        f"removed ({audit['under_6']:,} aged under 6; "
+        f"{audit['missing_age']:,} age missing, including unmatched demographics). "
+        f"{audit['respondents']:,} respondents before, {audit['eligible']:,} after; "
+        "the difference is fully accounted for by these age exclusions."
+    )
+
+
 @dataclass(frozen=True)
 class Scope:
     """Three independent switches for a described-day survey result."""

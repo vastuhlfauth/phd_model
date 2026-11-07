@@ -21,7 +21,7 @@ from pathlib import Path
 
 import duckdb
 
-from mobgrid.budget import trip_legs
+from mobgrid.budget import scope, trip_legs
 
 #: Repository root, three levels above this file (packages/mobgrid/budget).
 ROOT = Path(__file__).resolve().parents[3]
@@ -351,9 +351,13 @@ def extract_zoning_tables(zoning_dir: Path, out_dir: Path) -> dict[str, Path]:
 def register_views(con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]) -> None:
     """Register the four extracted CSVs as DuckDB views, `;`-delimited,
     with every code column forced to VARCHAR (`docs/data/entd2008.md`'s
-    "Format")."""
+    "Format"). The respondent and trip views use the common age-6+ universe."""
     for name, path in csv_paths.items():
         view_name = RAW_FILES[name]
+        view_name = {
+            "k_individu": "survey_all_respondents",
+            "k_deploc": "survey_all_trips",
+        }.get(view_name, view_name)
         posix_path = path.as_posix()
         types = _CODE_COLUMN_TYPES.get(name, {})
         types_sql = ", ".join(f"'{col}': '{t}'" for col, t in types.items())
@@ -362,6 +366,7 @@ def register_views(con: duckdb.DuckDBPyConnection, csv_paths: dict[str, Path]) -
             f"'{posix_path}', delim=';', nullstr='', strict_mode=false, "
             f"types={{{types_sql}}})"
         )
+    scope.create_age_eligible_survey_views(con, age_table="q_tcm_individu")
 
 
 def register_zoning_views(
