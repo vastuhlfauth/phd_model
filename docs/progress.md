@@ -2,6 +2,24 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11/12: report fixes, 3 of 4 (2026-11-07)
+
+- Day-table scopes now print 2019/2008 ratios in the comparison, B2,
+  C6 and C7 instead of suppressing them based on documentation wording.
+  The shared note follows the temporal/C7 tables and the coverage table:
+  "The ENTD 2008 documentation does not guarantee coverage beyond 80 km;
+  observed coverage is similar (Scope section)."
+- This follows section 9.9's empirical coverage check, supplied in the
+  request: non-local rows on 3.6%/3.2% of person-weekdays (ENTD/EMP),
+  0.079/0.073 trips/day and 7.1/8.0 minutes/day.
+- Thirteen focused synthetic tests and changed-file Ruff passed. No
+  generated reports or real-data report computations were run.
+- Blocked sub-item: no producer/template for `docs/data/entd2008.md` was
+  found in the repository; it is an existing data-description page, not
+  emitted by the report CLIs. Following the code-only instruction, that
+  generated-output line was not edited and no output-text patcher added.
+- Next: fix 4, heading placement and compact scope diagnostic tables.
+
 ### Step 11/12: report fixes, 2 of 4 (2026-11-07)
 
 - Survey registration now applies the same residents-aged-6+ universe to

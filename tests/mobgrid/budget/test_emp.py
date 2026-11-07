@@ -644,7 +644,15 @@ def test_temporal_equivalence_uses_three_state_verdicts() -> None:
     assert lines[4].endswith("| inconclusive | different |")
 
 
-def test_daytable_temporal_comparison_does_not_report_cross_year_ratios() -> None:
+def test_daytable_temporal_comparison_reports_ratios_with_coverage_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Section 9.9: observed coverage, not wording, permits day-table ratios."""
+    monkeypatch.setattr(
+        emp,
+        "_format_temporal_equivalence",
+        lambda *args, **kwargs: ["| Ratio 2019/2008 | 1.102 [1.082, 1.130] |"],
+    )
     lines = emp._format_scope_temporal_comparison(
         scope.Scope.parse("alldays-allpurp-daytable"),
         {},
@@ -654,9 +662,8 @@ def test_daytable_temporal_comparison_does_not_report_cross_year_ratios() -> Non
     )
 
     report = "\n".join(lines)
-    assert "partial coverage" in report
-    assert "no 2019/2008 ratios" in report
-    assert "Ratio 2019/2008" not in report
+    assert "Ratio 2019/2008" in report
+    assert scope.DAYTABLE_COVERAGE_NOTE in report
 
 
 def test_run_compare_keeps_selected_scope_for_temporal_section(
@@ -702,6 +709,7 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
         emp, "_format_equivalence_side_by_side", lambda *args, **kwargs: []
     )
     monkeypatch.setattr(emp, "_format_weekday_comparison", lambda *args, **kwargs: [])
+    monkeypatch.setattr(emp, "_format_temporal_equivalence", lambda *args, **kwargs: [])
     monkeypatch.setattr(emp, "_comparison_ratio_intervals", lambda *args, **kwargs: {})
     monkeypatch.setattr(
         emp, "_person_budget_ratio_intervals", lambda *args, **kwargs: {}
@@ -724,7 +732,7 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
     )
 
     report = report_path.read_text(encoding="utf-8")
-    assert "Not reported: ENTD 2008 day-table results have partial coverage" in report
+    assert scope.DAYTABLE_COVERAGE_NOTE in report
     assert (
         "Scope: All days · all purposes · all trips in the day's trip table" in report
     )

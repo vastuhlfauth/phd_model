@@ -245,7 +245,7 @@ def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
         variation_report._format_scope_diagnostics({"ENTD 2008": diagnostics})
     )
     assert "### Coverage of the day table" in rendered
-    assert "partial coverage" in rendered
+    assert scope.DAYTABLE_COVERAGE_NOTE in rendered
     assert "95% CI" in rendered
     assert "person-weekdays / trip-days" in rendered
     assert "negative point-estimate population cells" in rendered
@@ -270,7 +270,7 @@ def test_scope_diagnostics_does_not_clip_negative_person_weekday_cells() -> None
     assert negative_draws == 3
 
 
-def test_c7_marks_entd_daytable_partial_and_suppresses_ratio() -> None:
+def test_c7_reports_daytable_ratio_with_observed_coverage_note() -> None:
     report = "\n".join(
         variation_report._format_c7(
             [
@@ -291,9 +291,9 @@ def test_c7_marks_entd_daytable_partial_and_suppresses_ratio() -> None:
         )
     )
 
-    assert "alldays-allpurp-daytable (partial coverage)" in report
-    assert "not comparable (partial coverage)" in report
-    assert "1.020" not in report
+    assert "alldays-allpurp-daytable" in report
+    assert "1.020 [1.010, 1.030]" in report
+    assert scope.DAYTABLE_COVERAGE_NOTE in report
 
 
 def _frames(days: dict, trips: dict, aux: dict | None = None) -> SurveyFrames:
@@ -708,6 +708,15 @@ def test_2019_2008_ratio_is_identical_in_b2_c7_comparison_and_csv(
     expected = (b2.time_ratio, b2.time_ratio_ci90)
     assert (comparison.ratio, comparison.ci) == expected
     assert c7["ratio"] == expected
+    daytable = next(
+        row
+        for row in variation_report._c7_comparison(a, b, n_reps=200, seed=0)
+        if row["scope"] == "alldays-allpurp-daytable"
+        and row["period"] == "weekday"
+        and row["basis"] == "per traveller"
+        and row["measure"] == "Minutes/day"
+    )
+    assert daytable["ratio"] == expected
     intervals = emp._comparison_ratio_intervals(
         a.days, b.days, "population_category", "total_time_min", n_reps=200, seed=0
     )

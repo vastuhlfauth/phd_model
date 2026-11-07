@@ -8,6 +8,11 @@ from pathlib import Path
 
 import duckdb
 
+DAYTABLE_COVERAGE_NOTE = (
+    "The ENTD 2008 documentation does not guarantee coverage beyond 80 km; "
+    "observed coverage is similar (Scope section)."
+)
+
 
 def create_age_eligible_survey_views(
     con: duckdb.DuckDBPyConnection, *, age_table: str

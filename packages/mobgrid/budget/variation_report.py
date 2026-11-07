@@ -3138,7 +3138,6 @@ def _c7_comparison(
                     ratio = None
                     if (
                         metric_2008 is not None
-                        and scope != "daytable"
                         and np.isfinite(metric_2008.estimate)
                         and np.isfinite(metric_2019.estimate)
                         and metric_2008.estimate > 0
@@ -3197,8 +3196,7 @@ def _format_c7(
         "one drawn weekend day elsewhere, nominally weighted 1× or 2× "
         "`PONDKI` in `POIDS_JOUR`. The selector/weight checks fail outside "
         "the verified groups, so no ENTD weekend weights or weekend/7-day "
-        "estimates are used. The ENTD 2008 day-table sensitivity has partial "
-        "coverage, so its 2019/2008 ratios are omitted. Per-traveller "
+        "estimates are used. Per-traveller "
         "means include only described days with at least one in-scope trip. "
         "Ratios are independent-survey household-bootstrap 90% intervals; "
         "verdicts use ±10% and ±15%. Cells below 50 respondents are hidden.",
@@ -3217,15 +3215,10 @@ def _format_c7(
         )
         value_2019 = _suppress(n_2019, _num(row["estimate_2019"], 2))
         ratio = row["ratio"]
-        partial_coverage = row["scope"] == "alldays-allpurp-daytable"
-        scope_cell = row["scope"] + (" (partial coverage)" if partial_coverage else "")
-        ratio_cell = (
-            "not comparable (partial coverage)"
-            if partial_coverage
-            else "not comparable"
-        )
+        scope_cell = row["scope"]
+        ratio_cell = "not comparable"
         verdict_10 = verdict_15 = "not comparable"
-        if ratio is not None and not partial_coverage:
+        if ratio is not None:
             estimate, ci = ratio
             threshold_n = min(n_2008, n_2019)
             ratio_cell = _suppress(threshold_n, _ci_cell(estimate, ci, 3))
@@ -3241,6 +3234,7 @@ def _format_c7(
             f"{value_2008} | {n_2019} | {value_2019} | {ratio_cell} | "
             f"{verdict_10} | {verdict_15} |"
         )
+    lines += ["", scope_module.DAYTABLE_COVERAGE_NOTE]
     return lines
 
 
@@ -4366,9 +4360,7 @@ def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[st
         "",
         "### Coverage of the day table",
         "",
-        "Day-table coverage. ENTD 2008 is **partial coverage**: the survey "
-        "documentation does not establish systematic recording of trips "
-        "beyond 80 km. Neither survey's available immobility variables "
+        "Neither survey's available immobility variables "
         "identify away-from-home days comparably; those shares are "
         "unavailable rather than inferred from voyage dates.",
         "",
@@ -4405,6 +4397,7 @@ def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[st
                 "not recorded",
             ]
             lines.append("| " + " | ".join(cells) + " |")
+    lines += ["", scope_module.DAYTABLE_COVERAGE_NOTE]
     return lines
 
 
@@ -4442,9 +4435,8 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         f"- Main analyses use {selected_scope.label} (`{selected_scope.id}`). "
         "C5 always uses All days · all purposes · local (≤ 80 km); "
-        "C7 compares the reference, SDES and day-table scopes. ENTD 2008 "
-        "day-table results are partial coverage, so no 2019/2008 ratio is "
-        "reported for that scope.",
+        "C7 compares the reference, SDES and day-table scopes. Day-table "
+        "2019/2008 ratios are reported with the observed-coverage caveat.",
         *[f"- {choice}" for choice in results["choices"]],
         "",
         *_format_a1(results),
@@ -4681,7 +4673,7 @@ def run(
         out_dir,
         n_reps=n_reps,
         seed=seed,
-        allow_year_ratio=scope.distance != "daytable",
+        allow_year_ratio=True,
     )
     results["extra_sections"].append(
         measurement_checks(
@@ -4715,7 +4707,7 @@ def run(
             frames_2019,
             n_reps=n_reps,
             seed=seed,
-            include_selected_scope_ratio=scope.distance != "daytable",
+            include_selected_scope_ratio=True,
         )
     )
     results["c7_rows"] = _c7_comparison(
