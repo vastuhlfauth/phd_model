@@ -148,6 +148,8 @@ def test_bootstrap_group_stats_point_estimate_matches_direct_computation() -> No
     assert by_group["a"].median_energy_kh_kj == pytest.approx(100.0)
     assert by_group["b"].median_energy_kh_kj == pytest.approx(300.0)
     assert by_group["a"].median_time_min == pytest.approx(10.0)
+    assert (by_group["a"].p25_time_min, by_group["a"].median_time_min,
+            by_group["a"].p75_time_min) == pytest.approx((10.0, 10.0, 20.0))
     # The CI must bracket the point estimate it is centred on.
     assert by_group["a"].mean_energy_kh_ci[0] <= by_group["a"].mean_energy_kh_kj
     assert by_group["a"].mean_energy_kh_ci[1] >= by_group["a"].mean_energy_kh_kj
@@ -169,7 +171,18 @@ def test_bootstrap_scalar_group_stats_matches_direct_weighted_mean() -> None:
     assert by_group["a"].n == 2
     assert by_group["a"].weighted_n == pytest.approx(2.0)
     assert by_group["a"].median == pytest.approx(10.0)
+    assert (by_group["a"].p25, by_group["a"].median, by_group["a"].p75) == (
+        10.0,
+        10.0,
+        20.0,
+    )
     assert by_group["a"].mean_ci[0] <= by_group["a"].mean <= by_group["a"].mean_ci[1]
+
+
+def test_weighted_quantiles_use_day_weight_thresholds() -> None:
+    assert daily_energy._weighted_quantiles(
+        np.array([1.0, 2.0, 3.0, 4.0]), np.array([1.0, 1.0, 2.0, 4.0])
+    ) == (2.0, 3.0, 4.0)
 
 
 def test_person_budget_by_group_uses_full_roster_denominator() -> None:

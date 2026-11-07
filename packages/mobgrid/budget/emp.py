@@ -2052,21 +2052,25 @@ def _figure_f4_mean_by_mode(
         x = np.arange(len(present))
         width = 0.35
         for offset, rate_key in zip((-width / 2, width / 2), ("kh", "cp"), strict=True):
-            means, lowers, uppers, medians = [], [], [], []
+            means, lowers, uppers, p25s, medians, p75s = [], [], [], [], [], []
             for group in present:
                 stat = stats[group]
                 if stat.n < MIN_CELL_N:
                     means.append(np.nan)
                     lowers.append(0.0)
                     uppers.append(0.0)
+                    p25s.append(np.nan)
                     medians.append(np.nan)
+                    p75s.append(np.nan)
                     continue
                 mean = getattr(stat, f"mean_energy_{rate_key}_kj")
                 ci = getattr(stat, f"mean_energy_{rate_key}_ci")
                 means.append(mean)
                 lowers.append(max(mean - ci[0], 0.0))
                 uppers.append(max(ci[1] - mean, 0.0))
+                p25s.append(getattr(stat, f"p25_energy_{rate_key}_kj"))
                 medians.append(getattr(stat, f"median_energy_{rate_key}_kj"))
+                p75s.append(getattr(stat, f"p75_energy_{rate_key}_kj"))
             ax.bar(
                 x + offset,
                 means,
@@ -2075,13 +2079,14 @@ def _figure_f4_mean_by_mode(
                 label=rate_key,
                 capsize=2,
             )
-            ax.scatter(
+            figstyle.plot_quartiles(
+                ax,
                 x + offset,
+                p25s,
                 medians,
-                marker="D",
+                p75s,
                 color="black",
-                s=14,
-                zorder=3,
+                size=14,
                 label=f"{rate_key} median" if ax is axes.flat[0] else None,
             )
             for xi, mean in zip(x + offset, means, strict=True):
@@ -2148,8 +2153,8 @@ def _figure_f4_mean_by_mode(
     for ax in axes.flat[len(panels) :]:
         ax.axis("off")
     fig.suptitle(
-        "F4a. Mean daily energy by main-mode group, 95% CI, n, median "
-        "marker, mean bar values, and labelled reference lines (Koelbl & "
+        "F4a. Mean daily energy by main-mode group, 95% CI, n, quartile "
+        "bars, median marker, mean bar values, and labelled reference lines (Koelbl & "
         "Helbing 615 kJ, this panel's own computed mean, overall median; "
         "section 9.9)"
     )
@@ -2173,27 +2178,32 @@ def _figure_f4_mean_by_mode(
     ):
         present = [g for g in groups if g in stats]
         x = np.arange(len(present))
-        means, lowers, uppers, medians = [], [], [], []
+        means, lowers, uppers, p25s, medians, p75s = [], [], [], [], [], []
         for group in present:
             stat = time_stats.get(group)
             if stat is None or stat.n < MIN_CELL_N:
                 means.append(np.nan)
                 lowers.append(0.0)
                 uppers.append(0.0)
+                p25s.append(np.nan)
                 medians.append(np.nan)
+                p75s.append(np.nan)
                 continue
             means.append(stat.mean)
             lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
             uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+            p25s.append(stat.p25)
             medians.append(stat.median)
+            p75s.append(stat.p75)
         ax.bar(x, means, yerr=[lowers, uppers], color="tab:gray", capsize=2)
-        ax.scatter(
+        figstyle.plot_quartiles(
+            ax,
             x,
+            p25s,
             medians,
-            marker="D",
+            p75s,
             color="black",
-            s=14,
-            zorder=3,
+            size=14,
             label="median" if ax is axes.flat[0] else None,
         )
         for xi, mean in zip(x, means, strict=True):
@@ -2221,7 +2231,8 @@ def _figure_f4_mean_by_mode(
         ax.axis("off")
     fig.suptitle(
         "F4b. Mean daily travel time by main-mode group, 95% CI, n, "
-        "median marker (section 9.9's income update: the same treatment "
+        "quartile bars and median marker (section 9.9's income update: "
+        "the same treatment "
         "energy already has)"
     )
     fig.tight_layout()
@@ -2735,8 +2746,8 @@ def _format_category_key_table(
     if time_ci_stats is not None:
         header += " | 95% CI"
         sep += "|---"
-    header += " | median time (min) |"
-    sep += "|---|"
+    header += " | p25 time (min) | median time (min) | p75 time (min) |"
+    sep += "|---|---|---|"
     lines = [header, sep]
     for category in daily_energy.POPULATION_CATEGORIES:
         for key in key_order:
@@ -2746,7 +2757,7 @@ def _format_category_key_table(
                 row = f"| {category} | {key} | {n} | -"
                 if time_ci_stats is not None:
                     row += " | -"
-                row += " | - |"
+                row += " | - | - | - |"
                 lines.append(row)
                 continue
             row = f"| {category} | {key} | {stat.n} | {stat.mean_time_min:.1f}"
@@ -2757,7 +2768,10 @@ def _format_category_key_table(
                     if ci_stat is not None
                     else " | -"
                 )
-            row += f" | {stat.median_time_min:.1f} |"
+            row += (
+                f" | {stat.p25_time_min:.1f} | {stat.median_time_min:.1f} | "
+                f"{stat.p75_time_min:.1f} |"
+            )
             lines.append(row)
     return lines
 
@@ -2911,19 +2925,22 @@ def _format_scalar_group_table(
     (trips/day, minutes/trip, section 9.9 point 2): one row per group,
     n < 50 blank."""
     lines = [
-        f"| Group | n | weighted n | mean {label} | 95% CI | median {label} |",
-        "|---|---|---|---|---|---|",
+        f"| Group | n | weighted n | mean {label} | 95% CI | p25 {label} | "
+        f"median {label} | p75 {label} |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for stat in sorted(stats, key=lambda s: -s.weighted_n):
         if stat.n < MIN_CELL_N:
             lines.append(
-                f"| {stat.group} | {stat.n} | {stat.weighted_n:,.0f} | - | - | - |"
+                f"| {stat.group} | {stat.n} | {stat.weighted_n:,.0f} | "
+                "- | - | - | - | - |"
             )
             continue
         lines.append(
             f"| {stat.group} | {stat.n} | {stat.weighted_n:,.0f} | "
             f"{stat.mean:.{decimals}f} | [{stat.mean_ci[0]:.{decimals}f}, "
-            f"{stat.mean_ci[1]:.{decimals}f}] | {stat.median:.{decimals}f} |"
+            f"{stat.mean_ci[1]:.{decimals}f}] | {stat.p25:.{decimals}f} | "
+            f"{stat.median:.{decimals}f} | {stat.p75:.{decimals}f} |"
         )
     return lines
 
@@ -2994,38 +3011,45 @@ def _format_scalar_category_key_table(
     95% CI + median of one arbitrary scalar (trips/day, minutes/trip),
     n < 50 blank."""
     lines = [
-        f"| Category | {key_label} | n | mean {label} | 95% CI | median {label} |",
-        "|---|---|---|---|---|---|",
+        f"| Category | {key_label} | n | mean {label} | 95% CI | p25 {label} | "
+        f"median {label} | p75 {label} |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for category in daily_energy.POPULATION_CATEGORIES:
         for key in key_order:
             stat = category_key_stats.get((category, key))
             if stat is None or stat.n < MIN_CELL_N:
                 n = stat.n if stat else 0
-                lines.append(f"| {category} | {key} | {n} | - | - | - |")
+                lines.append(f"| {category} | {key} | {n} | - | - | - | - | - |")
                 continue
             lines.append(
                 f"| {category} | {key} | {stat.n} | {stat.mean:.{decimals}f} | "
                 f"[{stat.mean_ci[0]:.{decimals}f}, {stat.mean_ci[1]:.{decimals}f}] | "
-                f"{stat.median:.{decimals}f} |"
+                f"{stat.p25:.{decimals}f} | {stat.median:.{decimals}f} | "
+                f"{stat.p75:.{decimals}f} |"
             )
     return lines
 
 
 def _format_group_table(stats: list[daily_energy.GroupStats]) -> list[str]:
     lines = [
-        "| Group | n | weighted n | mean time (min) | median time (min) | "
-        "mean energy kh (kJ) | median energy kh (kJ) | 95% CI | "
-        "mean energy compendium (kJ) | median energy compendium (kJ) | 95% CI |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Group | n | weighted n | mean time (min) | p25 time (min) | "
+        "median time (min) | p75 time (min) | mean energy kh (kJ) | "
+        "p25 energy kh (kJ) | median energy kh (kJ) | p75 energy kh (kJ) | "
+        "95% CI | mean energy compendium (kJ) | p25 energy compendium (kJ) | "
+        "median energy compendium (kJ) | p75 energy compendium (kJ) | 95% CI |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for stat in sorted(stats, key=lambda s: -s.weighted_n):
         lines.append(
             f"| {stat.group} | {stat.n} | {stat.weighted_n:,.0f} | "
-            f"{stat.mean_time_min:.1f} | {stat.median_time_min:.1f} | "
-            f"{stat.mean_energy_kh_kj:.1f} | {stat.median_energy_kh_kj:.1f} | "
+            f"{stat.mean_time_min:.1f} | {stat.p25_time_min:.1f} | "
+            f"{stat.median_time_min:.1f} | {stat.p75_time_min:.1f} | "
+            f"{stat.mean_energy_kh_kj:.1f} | {stat.p25_energy_kh_kj:.1f} | "
+            f"{stat.median_energy_kh_kj:.1f} | {stat.p75_energy_kh_kj:.1f} | "
             f"[{stat.mean_energy_kh_ci[0]:.1f}, {stat.mean_energy_kh_ci[1]:.1f}] | "
-            f"{stat.mean_energy_cp_kj:.1f} | {stat.median_energy_cp_kj:.1f} | "
+            f"{stat.mean_energy_cp_kj:.1f} | {stat.p25_energy_cp_kj:.1f} | "
+            f"{stat.median_energy_cp_kj:.1f} | {stat.p75_energy_cp_kj:.1f} | "
             f"[{stat.mean_energy_cp_ci[0]:.1f}, {stat.mean_energy_cp_ci[1]:.1f}] |"
         )
     return lines
@@ -3815,12 +3839,16 @@ def _group_table_two_surveys(
     )
     lines = [
         f"| Group | n ({label_a}) | n ({label_b}) | mean time ({label_a}) | "
-        f"mean time ({label_b}) | mean kh ({label_a}) [CI] | "
-        f"mean kh ({label_b}) [CI] | median kh ({label_a}) | "
-        f"median kh ({label_b}) | mean cp ({label_a}) [CI] | "
-        f"mean cp ({label_b}) [CI] | median cp ({label_a}) | "
-        f"median cp ({label_b}) |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        f"mean time ({label_b}) | p25 time ({label_a}) | median time ({label_a}) | "
+        f"p75 time ({label_a}) | p25 time ({label_b}) | median time ({label_b}) | "
+        f"p75 time ({label_b}) | mean kh ({label_a}) [CI] | "
+        f"mean kh ({label_b}) [CI] | p25 kh ({label_a}) | "
+        f"median kh ({label_a}) | p75 kh ({label_a}) | p25 kh ({label_b}) | "
+        f"median kh ({label_b}) | p75 kh ({label_b}) | mean cp ({label_a}) [CI] | "
+        f"mean cp ({label_b}) [CI] | p25 cp ({label_a}) | median cp ({label_a}) | "
+        f"p75 cp ({label_a}) | p25 cp ({label_b}) | median cp ({label_b}) | "
+        f"p75 cp ({label_b}) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for group in groups:
         a, b = by_a.get(group), by_b.get(group)
@@ -3837,12 +3865,25 @@ def _group_table_two_surveys(
         lines.append(
             f"| {group} | {a.n if a else 0} | {b.n if b else 0} | "
             f"{_cell(a, 'mean_time_min')} | {_cell(b, 'mean_time_min')} | "
+            f"{_cell(a, 'p25_time_min')} | {_cell(a, 'median_time_min')} | "
+            f"{_cell(a, 'p75_time_min')} | {_cell(b, 'p25_time_min')} | "
+            f"{_cell(b, 'median_time_min')} | {_cell(b, 'p75_time_min')} | "
             f"{_cell(a, 'mean_energy_kh_kj')} {_ci_cell(a, 'mean_energy_kh_ci')} | "
             f"{_cell(b, 'mean_energy_kh_kj')} {_ci_cell(b, 'mean_energy_kh_ci')} | "
-            f"{_cell(a, 'median_energy_kh_kj')} | {_cell(b, 'median_energy_kh_kj')} | "
+            f"{_cell(a, 'p25_energy_kh_kj')} | "
+            f"{_cell(a, 'median_energy_kh_kj')} | "
+            f"{_cell(a, 'p75_energy_kh_kj')} | "
+            f"{_cell(b, 'p25_energy_kh_kj')} | "
+            f"{_cell(b, 'median_energy_kh_kj')} | "
+            f"{_cell(b, 'p75_energy_kh_kj')} | "
             f"{_cell(a, 'mean_energy_cp_kj')} {_ci_cell(a, 'mean_energy_cp_ci')} | "
             f"{_cell(b, 'mean_energy_cp_kj')} {_ci_cell(b, 'mean_energy_cp_ci')} | "
-            f"{_cell(a, 'median_energy_cp_kj')} | {_cell(b, 'median_energy_cp_kj')} |"
+            f"{_cell(a, 'p25_energy_cp_kj')} | "
+            f"{_cell(a, 'median_energy_cp_kj')} | "
+            f"{_cell(a, 'p75_energy_cp_kj')} | "
+            f"{_cell(b, 'p25_energy_cp_kj')} | "
+            f"{_cell(b, 'median_energy_cp_kj')} | "
+            f"{_cell(b, 'p75_energy_cp_kj')} |"
         )
     return lines
 
@@ -4686,21 +4727,25 @@ def _figure_compare_energy_time(
                 figstyle.SURVEY_COLOURS["EMP 2019"],
             ),
         ):
-            means, lowers, uppers, medians = [], [], [], []
+            means, lowers, uppers, p25s, medians, p75s = [], [], [], [], [], []
             for group in groups:
                 stat = by_year.get(group)
                 if stat is None or stat.n < MIN_CELL_N:
                     means.append(np.nan)
                     lowers.append(0.0)
                     uppers.append(0.0)
+                    p25s.append(np.nan)
                     medians.append(np.nan)
+                    p75s.append(np.nan)
                     continue
                 mean = getattr(stat, f"mean_energy_{rate_key}_kj")
                 ci = getattr(stat, f"mean_energy_{rate_key}_ci")
                 means.append(mean)
                 lowers.append(max(mean - ci[0], 0.0))
                 uppers.append(max(ci[1] - mean, 0.0))
+                p25s.append(getattr(stat, f"p25_energy_{rate_key}_kj"))
                 medians.append(getattr(stat, f"median_energy_{rate_key}_kj"))
+                p75s.append(getattr(stat, f"p75_energy_{rate_key}_kj"))
             ax.bar(
                 x + offset,
                 means,
@@ -4710,13 +4755,13 @@ def _figure_compare_energy_time(
                 color=color,
                 capsize=2,
             )
-            ax.scatter(
+            figstyle.plot_quartiles(
+                ax,
                 x + offset,
+                p25s,
                 medians,
-                marker="D",
+                p75s,
                 color=color,
-                s=18,
-                zorder=3,
                 label=f"{label} median",
             )
             for index, group in enumerate(groups):
@@ -4750,19 +4795,23 @@ def _figure_compare_energy_time(
             figstyle.SURVEY_COLOURS["EMP 2019"],
         ),
     ):
-        times, lowers, uppers, medians = [], [], [], []
+        times, lowers, uppers, p25s, medians, p75s = [], [], [], [], [], []
         for group in groups:
             stat = time_stats.get(group)
             if stat is None or stat.n < MIN_CELL_N:
                 times.append(np.nan)
                 lowers.append(0.0)
                 uppers.append(0.0)
+                p25s.append(np.nan)
                 medians.append(np.nan)
+                p75s.append(np.nan)
                 continue
             times.append(stat.mean)
             lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
             uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+            p25s.append(stat.p25)
             medians.append(stat.median)
+            p75s.append(stat.p75)
         ax_time.bar(
             x + offset,
             times,
@@ -4772,13 +4821,13 @@ def _figure_compare_energy_time(
             color=color,
             capsize=2,
         )
-        ax_time.scatter(
+        figstyle.plot_quartiles(
+            ax_time,
             x + offset,
+            p25s,
             medians,
-            marker="D",
+            p75s,
             color=color,
-            s=18,
-            zorder=3,
             label=f"{label} median",
         )
         for index, group in enumerate(groups):
@@ -4931,20 +4980,32 @@ def _figure_compare_time_by_category(
                 figstyle.SURVEY_COLOURS["EMP 2019"],
             ),
         ):
-            means, lowers, uppers, medians, ns = [], [], [], [], []
+            means, lowers, uppers, p25s, medians, p75s, ns = (
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+            )
             for category in categories:
                 stat = by_year.get(category)
                 if stat is None or stat.n < MIN_CELL_N:
                     means.append(np.nan)
                     lowers.append(0.0)
                     uppers.append(0.0)
+                    p25s.append(np.nan)
                     medians.append(np.nan)
+                    p75s.append(np.nan)
                     ns.append(0)
                     continue
                 means.append(stat.mean)
                 lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
                 uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+                p25s.append(stat.p25)
                 medians.append(stat.median)
+                p75s.append(stat.p75)
                 ns.append(stat.n)
             ax.bar(
                 x + offset,
@@ -4955,13 +5016,14 @@ def _figure_compare_time_by_category(
                 color=color,
                 capsize=2,
             )
-            ax.scatter(
+            figstyle.plot_quartiles(
+                ax,
                 x + offset,
+                p25s,
                 medians,
-                marker="D",
+                p75s,
                 color="black",
-                s=14,
-                zorder=3,
+                size=14,
                 label=f"{label} median",
             )
             for xi, mean, n in zip(x + offset, means, ns, strict=True):

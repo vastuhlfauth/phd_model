@@ -159,6 +159,47 @@ def annotate_ratio(
     setattr(text, "_figure_ratio_values", ratio)
 
 
+def plot_quartiles(
+    ax: Any,
+    x: Any,
+    p25: Any,
+    median: Any,
+    p75: Any,
+    *,
+    color: Any,
+    label: str | None = None,
+    marker: str = "D",
+    size: float = 18,
+    zorder: int = 3,
+) -> Any:
+    """Draw a weighted interquartile bar and median marker, retaining values
+    for the figure CSV."""
+    x_values = np.asarray(x, dtype=float)
+    quantiles = np.column_stack(
+        [np.asarray(values, dtype=float) for values in (p25, median, p75)]
+    )
+    valid = np.isfinite(quantiles).all(axis=1)
+    ax.vlines(
+        x_values[valid],
+        quantiles[valid, 0],
+        quantiles[valid, 2],
+        color=color,
+        linewidth=1.2,
+        zorder=zorder - 1,
+    )
+    points = ax.scatter(
+        x_values,
+        quantiles[:, 1],
+        marker=marker,
+        color=color,
+        s=size,
+        zorder=zorder,
+        label=label,
+    )
+    setattr(points, "_figure_quantile_values", quantiles)
+    return points
+
+
 def _quantity_range(label: str) -> tuple[float, float] | None:
     text = label.casefold()
     if "%" in text or "share" in text:
@@ -508,12 +549,15 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
                 continue
             if not any(len(path.vertices) == 5 for path in paths):
                 continue
-            for x_value, y_value in offsets:
+            quantiles = getattr(collection, "_figure_quantile_values", None)
+            for index, (x_value, y_value) in enumerate(offsets):
                 if np.isfinite(x_value) and np.isfinite(y_value):
                     group = _nearest_group(ax, float(x_value))
-                    row_for(group, _year_series(ax, float(x_value)))["median"] = float(
-                        y_value
-                    )
+                    row = row_for(group, _year_series(ax, float(x_value)))
+                    row["median"] = float(y_value)
+                    if quantiles is not None:
+                        row["p25"] = float(quantiles[index, 0])
+                        row["p75"] = float(quantiles[index, 2])
 
         for container in ax.containers:
             parts = getattr(container, "lines", None)

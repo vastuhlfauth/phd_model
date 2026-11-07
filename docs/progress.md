@@ -6,6 +6,10 @@ Read this file at the start of every task and update it at the end.
 
 - The hand-written ENTD 2008 data page now states the observed cross-survey
   coverage comparison and the `daytable` caveat requested for its tables.
+- Weighted day p25, median and p75 now come from the same functions as the
+  means; tables, figure quartile bars, and figure CSV sidecars use those
+  shared values. Focused statistics, comparison figure/export and report
+  tests: 31 passed; changed-file Ruff passed.
 
 ### Step 11/12: report fixes, 4 of 4 (2026-11-07)
 

@@ -324,12 +324,19 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
             n=60,
             weighted_n=60.0,
             mean_time_min=60.0,
+            p25_time_min=50.0,
+            median_time_min=58.0,
+            p75_time_min=65.0,
             mean_energy_kh_kj=100.0,
             mean_energy_kh_ci=(90.0, 110.0),
+            p25_energy_kh_kj=80.0,
             median_energy_kh_kj=95.0,
+            p75_energy_kh_kj=115.0,
             mean_energy_cp_kj=90.0,
             mean_energy_cp_ci=(80.0, 100.0),
+            p25_energy_cp_kj=70.0,
             median_energy_cp_kj=85.0,
+            p75_energy_cp_kj=105.0,
         )
     ]
     stats_2019 = [
@@ -338,12 +345,19 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
             n=60,
             weighted_n=60.0,
             mean_time_min=72.0,
+            p25_time_min=60.0,
+            median_time_min=70.0,
+            p75_time_min=80.0,
             mean_energy_kh_kj=120.0,
             mean_energy_kh_ci=(110.0, 130.0),
+            p25_energy_kh_kj=100.0,
             median_energy_kh_kj=115.0,
+            p75_energy_kh_kj=135.0,
             mean_energy_cp_kj=108.0,
             mean_energy_cp_ci=(98.0, 118.0),
+            p25_energy_cp_kj=88.0,
             median_energy_cp_kj=103.0,
+            p75_energy_cp_kj=123.0,
         )
     ]
     ratios = {
@@ -364,7 +378,9 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
                 n=60,
                 mean=60.0,
                 mean_ci=(55.0, 65.0),
+                p25=45.0,
                 median=58.0,
+                p75=70.0,
             )
         ],
         time_stats_2019=[
@@ -373,7 +389,9 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
                 n=60,
                 mean=72.0,
                 mean_ci=(67.0, 77.0),
+                p25=55.0,
                 median=70.0,
+                p75=85.0,
             )
         ],
         ratio_intervals=ratios,
@@ -388,6 +406,37 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         and "time" in row["quantity"].casefold()
     )
     assert float(headline["mean"]) == pytest.approx(63.1)
+    time_row = next(
+        row
+        for row in rows
+        if row["group"] == "Walking only"
+        and row["subgroup"] == "2008"
+        and "time" in row["quantity"].casefold()
+    )
+    assert float(time_row["p25"]) == pytest.approx(45.0)
+    assert float(time_row["median"]) == pytest.approx(58.0)
+    assert float(time_row["p75"]) == pytest.approx(70.0)
+    energy_row = next(
+        row
+        for row in rows
+        if row["group"] == "Walking only"
+        and row["subgroup"] == "2008"
+        and "kh" in row["quantity"].casefold()
+    )
+    assert float(energy_row["p25"]) == pytest.approx(80.0)
+    assert float(energy_row["median"]) == pytest.approx(95.0)
+    assert float(energy_row["p75"]) == pytest.approx(115.0)
+    table_lines = emp._group_table_two_surveys(stats_2008, "2008", stats_2019, "2019")
+    header = table_lines[0].strip("|").split("|")
+    row = table_lines[2].strip("|").split("|")
+    assert len(header) == len(row)
+    table = dict(zip((cell.strip() for cell in header), (cell.strip() for cell in row)))
+    assert table["p25 kh (2008)"] == "80.0"
+    assert table["median kh (2008)"] == "95.0"
+    assert table["p75 kh (2008)"] == "115.0"
+    assert table["p25 time (2008)"] == "50.0"
+    assert table["median time (2008)"] == "58.0"
+    assert table["p75 time (2008)"] == "65.0"
     ratio_row = next(
         row
         for row in rows
@@ -399,12 +448,24 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
 
     time_stats_2008 = [
         SimpleNamespace(
-            group="employed", n=60, mean=60.0, mean_ci=(55.0, 65.0), median=58.0
+            group="employed",
+            n=60,
+            mean=60.0,
+            mean_ci=(55.0, 65.0),
+            p25=45.0,
+            median=58.0,
+            p75=70.0,
         )
     ]
     time_stats_2019 = [
         SimpleNamespace(
-            group="employed", n=60, mean=65.0, mean_ci=(60.0, 70.0), median=63.0
+            group="employed",
+            n=60,
+            mean=65.0,
+            mean_ci=(60.0, 70.0),
+            p25=55.0,
+            median=63.0,
+            p75=75.0,
         )
     ]
     budgets_2008 = [
@@ -429,6 +490,20 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     )
     assert category_path.is_file()
     assert category_path.with_suffix(".csv").is_file()
+    with category_path.with_suffix(".csv").open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        category_rows = list(csv.DictReader(stream))
+    category_row = next(
+        row
+        for row in category_rows
+        if row["group"] == "Employed"
+        and row["subgroup"] == "2008"
+        and row["panel"] == "(A) All days, day with trips"
+    )
+    assert float(category_row["p25"]) == pytest.approx(45.0)
+    assert float(category_row["median"]) == pytest.approx(58.0)
+    assert float(category_row["p75"]) == pytest.approx(70.0)
 
 
 #: The EMP 2019 base-case group table on the synthetic fixture (section

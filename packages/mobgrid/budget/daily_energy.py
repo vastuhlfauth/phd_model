@@ -142,7 +142,7 @@ def create_day_summary(
 
 @dataclass(frozen=True)
 class GroupStats:
-    """Weighted sample size, mean and median energy/time for one group,
+    """Weighted sample size and quartiles for energy/time for one group,
     both rate sets, with a bootstrap 95% confidence interval on the
     energy means."""
 
@@ -150,13 +150,19 @@ class GroupStats:
     n: int
     weighted_n: float
     mean_time_min: float
+    p25_time_min: float
     median_time_min: float
+    p75_time_min: float
     mean_energy_kh_kj: float
     mean_energy_kh_ci: tuple[float, float]
+    p25_energy_kh_kj: float
     median_energy_kh_kj: float
+    p75_energy_kh_kj: float
     mean_energy_cp_kj: float
     mean_energy_cp_ci: tuple[float, float]
+    p25_energy_cp_kj: float
     median_energy_cp_kj: float
+    p75_energy_cp_kj: float
 
 
 def _weighted_group_means(
@@ -172,32 +178,38 @@ def _weighted_group_means(
         return np.where(weight_sum > 0, weighted_sum / weight_sum, np.nan)
 
 
-def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
-    """Weighted median: the value at which the cumulative weight first
-    reaches half the total weight."""
+def _weighted_quantiles(
+    values: np.ndarray, weights: np.ndarray
+) -> tuple[float, float, float]:
+    """Return weighted p25, median and p75 using the first value whose
+    cumulative weight reaches each threshold."""
     if len(values) == 0 or weights.sum() <= 0:
-        return float("nan")
-    order = np.argsort(values)
+        return (float("nan"),) * 3
+    order = np.argsort(values, kind="stable")
     sorted_values = values[order]
     cum_weight = np.cumsum(weights[order])
-    half = cum_weight[-1] / 2.0
-    idx = int(np.searchsorted(cum_weight, half))
-    idx = min(idx, len(sorted_values) - 1)
-    return float(sorted_values[idx])
+    indices = np.searchsorted(
+        cum_weight, cum_weight[-1] * np.array([0.25, 0.5, 0.75])
+    )
+    indices = np.minimum(indices, len(sorted_values) - 1)
+    return tuple(float(value) for value in sorted_values[indices])
 
 
-def _weighted_group_medians(
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+    """Weighted median using the same cumulative-weight rule as the quartiles."""
+    return _weighted_quantiles(values, weights)[1]
+
+
+def _weighted_group_quantiles(
     group_codes: np.ndarray, n_groups: int, weights: np.ndarray, values: np.ndarray
 ) -> np.ndarray:
-    """Per group (0..n_groups-1), the weighted median of ``values``; a
-    per-group loop, not a per-row one (``n_groups`` is small, a dozen at
-    most)."""
-    medians = np.full(n_groups, np.nan)
+    """Per-group p25, median and p75; groups are few, so sort each group."""
+    quantiles = np.full((3, n_groups), np.nan)
     for i in range(n_groups):
         mask = group_codes == i
         if mask.any():
-            medians[i] = _weighted_median(values[mask], weights[mask])
-    return medians
+            quantiles[:, i] = _weighted_quantiles(values[mask], weights[mask])
+    return quantiles
 
 
 def bootstrap_group_stats(
@@ -225,9 +237,9 @@ def bootstrap_group_stats(
     point_time = _weighted_group_means(group_codes, n_groups, weight, time_min)
     point_kh = _weighted_group_means(group_codes, n_groups, weight, energy_kh)
     point_cp = _weighted_group_means(group_codes, n_groups, weight, energy_cp)
-    median_time = _weighted_group_medians(group_codes, n_groups, weight, time_min)
-    median_kh = _weighted_group_medians(group_codes, n_groups, weight, energy_kh)
-    median_cp = _weighted_group_medians(group_codes, n_groups, weight, energy_cp)
+    time_quantiles = _weighted_group_quantiles(group_codes, n_groups, weight, time_min)
+    kh_quantiles = _weighted_group_quantiles(group_codes, n_groups, weight, energy_kh)
+    cp_quantiles = _weighted_group_quantiles(group_codes, n_groups, weight, energy_cp)
 
     rng = np.random.default_rng(seed)
     rep_kh = np.empty((n_reps, n_groups))
@@ -254,13 +266,19 @@ def bootstrap_group_stats(
             n=int(n_by_group[i]),
             weighted_n=float(weighted_n_by_group[i]),
             mean_time_min=float(point_time[i]),
-            median_time_min=float(median_time[i]),
+            p25_time_min=float(time_quantiles[0, i]),
+            median_time_min=float(time_quantiles[1, i]),
+            p75_time_min=float(time_quantiles[2, i]),
             mean_energy_kh_kj=float(point_kh[i]),
             mean_energy_kh_ci=(float(ci_kh[0, i]), float(ci_kh[1, i])),
-            median_energy_kh_kj=float(median_kh[i]),
+            p25_energy_kh_kj=float(kh_quantiles[0, i]),
+            median_energy_kh_kj=float(kh_quantiles[1, i]),
+            p75_energy_kh_kj=float(kh_quantiles[2, i]),
             mean_energy_cp_kj=float(point_cp[i]),
             mean_energy_cp_ci=(float(ci_cp[0, i]), float(ci_cp[1, i])),
-            median_energy_cp_kj=float(median_cp[i]),
+            p25_energy_cp_kj=float(cp_quantiles[0, i]),
+            median_energy_cp_kj=float(cp_quantiles[1, i]),
+            p75_energy_cp_kj=float(cp_quantiles[2, i]),
         )
         for i in range(n_groups)
     ]
@@ -269,7 +287,7 @@ def bootstrap_group_stats(
 @dataclass(frozen=True)
 class ScalarGroupStats:
     """Weighted sample size, mean (with a 95% bootstrap CI over
-    households) and median of one arbitrary scalar, by group: the
+    households) and quartiles of one scalar, by group: the
     shared engine behind every daily-time/trips-per-day/minutes-per-trip
     table of section 9.9's income update (point 2/3), giving time the
     same mean+CI+median treatment ``GroupStats`` already gives energy,
@@ -280,7 +298,9 @@ class ScalarGroupStats:
     weighted_n: float
     mean: float
     mean_ci: tuple[float, float]
+    p25: float
     median: float
+    p75: float
 
 
 @dataclass(frozen=True)
@@ -518,7 +538,7 @@ def bootstrap_scalar_group_stats(
     n_reps: int = 200,
     seed: int = 0,
 ) -> list[ScalarGroupStats]:
-    """Weighted mean (95% bootstrap CI over households) and median of
+    """Weighted mean (95% bootstrap CI over households) and quartiles of
     ``value`` by ``group`` (section 9.9: "mean, median and CI wherever
     energy has them"). Reuses ``bootstrap_group_stats``'s own
     group-mean/median/resampling helpers, generalised to one value
@@ -529,7 +549,7 @@ def bootstrap_scalar_group_stats(
     n_households = len(households)
 
     point = _weighted_group_means(group_codes, n_groups, weight, value)
-    median = _weighted_group_medians(group_codes, n_groups, weight, value)
+    quantiles = _weighted_group_quantiles(group_codes, n_groups, weight, value)
 
     rng = np.random.default_rng(seed)
     rep = np.empty((n_reps, n_groups))
@@ -549,7 +569,9 @@ def bootstrap_scalar_group_stats(
             weighted_n=float(weighted_n_by_group[i]),
             mean=float(point[i]),
             mean_ci=(float(ci[0, i]), float(ci[1, i])),
-            median=float(median[i]),
+            p25=float(quantiles[0, i]),
+            median=float(quantiles[1, i]),
+            p75=float(quantiles[2, i]),
         )
         for i in range(n_groups)
     ]
@@ -830,16 +852,27 @@ def robustness_row(
     ``"median"``)."""
     if statistic not in ("mean", "median"):
         raise ValueError(f"unknown statistic: {statistic!r}")
-    group_stat_fn = (
-        _weighted_group_means if statistic == "mean" else _weighted_group_medians
-    )
     groups, group_codes = np.unique(day_mode_group, return_inverse=True)
     n_groups = len(groups)
     mask = np.isin(groups, groups_of_interest)
     group_labels = groups[mask]
-    stat_kh = group_stat_fn(group_codes, n_groups, weight, energy_kh)[mask]
-    stat_cp = group_stat_fn(group_codes, n_groups, weight, energy_cp)[mask]
-    stat_time = group_stat_fn(group_codes, n_groups, weight, time_min)[mask]
+    if statistic == "median":
+        stat_kh = _weighted_group_quantiles(
+            group_codes, n_groups, weight, energy_kh
+        )[1]
+        stat_cp = _weighted_group_quantiles(
+            group_codes, n_groups, weight, energy_cp
+        )[1]
+        stat_time = _weighted_group_quantiles(
+            group_codes, n_groups, weight, time_min
+        )[1]
+    else:
+        stat_kh = _weighted_group_means(group_codes, n_groups, weight, energy_kh)
+        stat_cp = _weighted_group_means(group_codes, n_groups, weight, energy_cp)
+        stat_time = _weighted_group_means(group_codes, n_groups, weight, time_min)
+    stat_kh = stat_kh[mask]
+    stat_cp = stat_cp[mask]
+    stat_time = stat_time[mask]
     kh_ratio, kh_cv, kh_min, kh_max = _ratio_and_cv(stat_kh, group_labels)
     cp_ratio, cp_cv, cp_min, cp_max = _ratio_and_cv(stat_cp, group_labels)
     time_ratio, time_cv, time_min_g, time_max_g = _ratio_and_cv(stat_time, group_labels)

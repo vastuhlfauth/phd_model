@@ -878,7 +878,9 @@ def test_2019_2008_ratio_is_identical_in_b2_c7_comparison_and_csv(
     )
     assert intervals["employed"] == (expected[0], *expected[1])
     stats = [
-        daily_energy.ScalarGroupStats("employed", 80, 80.0, 50.0, (40.0, 60.0), 50.0)
+        daily_energy.ScalarGroupStats(
+            "employed", 80, 80.0, 50.0, (40.0, 60.0), 40.0, 50.0, 60.0
+        )
     ]
     emp.figstyle.set_context(scope="Reference", survey="2008 vs 2019", days="weekday")
     path = emp._figure_compare_time_by_category(
