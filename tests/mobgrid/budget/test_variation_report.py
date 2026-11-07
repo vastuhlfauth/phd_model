@@ -5,13 +5,15 @@ every test stays well under 10 s)."""
 
 from __future__ import annotations
 
+import csv
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import numpy as np
 import pytest
-from mobgrid.budget import scope, variation_report
+from mobgrid.budget import figstyle, scope, variation_report
 from mobgrid.budget.variation_report import SurveyFrames
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -209,8 +211,7 @@ def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
     all_modes_activity = next(
         row
         for row in diagnostics["activity"]
-        if row["population_category"] == "overall"
-        and row["mode_group"] == "all modes"
+        if row["population_category"] == "overall" and row["mode_group"] == "all modes"
     )
     assert all_modes_activity["dropped_share_15"] == pytest.approx(4 / 5)
 
@@ -1064,6 +1065,72 @@ def test_distance_band_table_shares_sum_to_one() -> None:
     assert by_label["10-20 km"].share_trips == pytest.approx(0.4)
 
 
+def test_b7_figures_write_png_and_csv_sidecars(tmp_path: Path) -> None:
+    point = SimpleNamespace(
+        time_a_min=45.0,
+        time_b_min=50.0,
+        delta_min=5.0,
+        trips_min=3.0,
+        distance_min=1.0,
+        speed_min=0.5,
+        selection_min=0.5,
+    )
+    term = SimpleNamespace(
+        group="walk",
+        mix_min=0.5,
+        within_min=1.0,
+        interaction_min=0.25,
+    )
+    figures = [
+        variation_report._figure_b7_waterfall(
+            {
+                "b2_rows": [SimpleNamespace(result=SimpleNamespace(point=point))],
+                "b1_rows": [
+                    SimpleNamespace(
+                        variant="V2",
+                        point=SimpleNamespace(composition_min=0.5),
+                    )
+                ],
+            },
+            tmp_path,
+        ),
+        variation_report._figure_b7_shift_share(
+            {
+                key: SimpleNamespace(point=SimpleNamespace(terms=(term,)))
+                for key in ("b3_mode", "b4_motive", "b4_distance")
+            },
+            tmp_path,
+        ),
+        variation_report._figure_b7_recall_lag(
+            {
+                "lag_table": [
+                    SimpleNamespace(
+                        label="1",
+                        time_per_day_min=55.0,
+                        trips_per_day=2.0,
+                        minutes_per_trip=27.5,
+                    )
+                ],
+                "entd_overall": SimpleNamespace(
+                    time_per_day_min=45.0,
+                    trips_per_day=1.8,
+                    minutes_per_trip=25.0,
+                ),
+            },
+            tmp_path,
+        ),
+    ]
+
+    for path in figures:
+        assert path is not None and path.is_file()
+        with path.with_suffix(".csv").open(
+            encoding="utf-8", newline=""
+        ) as stream:
+            reader = csv.DictReader(stream)
+            assert reader.fieldnames == list(figstyle.CSV_COLUMNS)
+            assert next(reader, None) is not None
+
+
 def test_cli_writes_report_on_synthetic_data(
     tmp_path: Path,
     synthetic_emp_zip: Path,
@@ -1108,6 +1175,16 @@ def test_cli_writes_report_on_synthetic_data(
     assert "80-km check" in report
     assert "B6.4. Density and income together" in report
     assert "## Figures" in report
+    png_files = list(out_dir.glob("*.png"))
+    assert len(png_files) == 3
+    assert {path.stem for path in out_dir.glob("*.csv")} == {
+        path.stem for path in png_files
+    }
+    for path in out_dir.glob("*.csv"):
+        with path.open(encoding="utf-8", newline="") as stream:
+            reader = csv.DictReader(stream)
+            assert reader.fieldnames == list(figstyle.CSV_COLUMNS)
+            assert next(reader, None) is not None
     assert "described-day weekday" in report
     assert "arrival minus departure" in report
     assert "distance-known trips" in report

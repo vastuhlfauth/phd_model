@@ -2,6 +2,23 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11/12: report figure styling and exports (2026-11-06)
+
+- Added a shared figure style/export helper and routed step-11 survey,
+  comparison, and step-12 figures through it for fixed-width 200-dpi PNGs
+  and same-stem CSV sidecars. Comparison mode charts now include all table
+  mode groups, table-derived overall reference lines, time confidence
+  intervals, and bootstrap ratio annotations.
+- Focused figure/export tests: 3 passed; targeted Ruff passed. The synthetic
+  step-12 CLI sidecar test passed (1 test; 55.8 s). No real-data reports or
+  full test suite were run. ENTD/compare synthetic CLIs remain blocked before
+  plotting by the existing zero-variance gamma fit.
+- Remaining:
+  - Add per-day quartile bars and `p25`/`p75` CSV values.
+  - Synthetic ENTD and comparison CLI tests stop before plotting on the
+    zero-variance gamma fit.
+  - The synthetic step-12 CLI test takes 55.8 s.
+
 ### Step 11/12: scope module (2026-11-06)
 
 - Added the three-switch scope ids and labels and full-day trip/day flags;

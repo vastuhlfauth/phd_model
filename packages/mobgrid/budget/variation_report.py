@@ -40,6 +40,7 @@ from mobgrid.budget import (
     daily_energy,
     emp2019,
     entd2008,
+    figstyle,
     trip_legs,
     variation,
 )
@@ -4355,9 +4356,7 @@ def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[st
                 " / ".join(
                     (
                         _row_estimate_ci(row, "days_with_nonlocal_share", _pct),
-                        _row_estimate_ci(
-                            row, "days_with_nonlocal_trip_share", _pct
-                        ),
+                        _row_estimate_ci(row, "days_with_nonlocal_trip_share", _pct),
                     )
                 ),
                 _row_estimate_ci(
@@ -4370,9 +4369,7 @@ def _format_scope_diagnostics(diagnostics_by_survey: dict[str, dict]) -> list[st
                 " / ".join(
                     (
                         _row_estimate_ci(row, "days_out_no_local_share", _pct),
-                        _row_estimate_ci(
-                            row, "days_out_no_local_trip_share", _pct
-                        ),
+                        _row_estimate_ci(row, "days_out_no_local_trip_share", _pct),
                     )
                 ),
                 "not recorded",
@@ -4548,6 +4545,14 @@ def run(
     """Compute every step-12 statistic and figure; returns the results
     dict consumed by ``write_markdown`` and the tests."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    figstyle.set_context(
+        scope=scope.label,
+        survey="ENTD 2008 vs EMP 2019",
+        days="weekday",
+        basis="per day with trips",
+        section="step 12",
+        replicates=n_reps,
+    )
     config = load_energy_config(config_path)
     if entd2008_zoning_data_path is None:
         raise ValueError(
@@ -5645,7 +5650,7 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
     fig, ax = plt.subplots(figsize=(7, 4))
     level = point.time_a_min
     positions = np.arange(len(steps) + 2)
-    ax.bar(0, point.time_a_min, color="0.6")
+    ax.bar(0, point.time_a_min, color=figstyle.SURVEY_COLOURS["ENTD 2008"])
     ax.text(0, point.time_a_min, f"{point.time_a_min:.1f}", ha="center", va="bottom")
     for i, (label, value) in enumerate(steps, start=1):
         color = "#2a9d8f" if value >= 0 else "#e76f51"
@@ -5659,7 +5664,11 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
             fontsize=8,
         )
         level += value
-    ax.bar(len(steps) + 1, point.time_b_min, color="0.4")
+    ax.bar(
+        len(steps) + 1,
+        point.time_b_min,
+        color=figstyle.SURVEY_COLOURS["EMP 2019"],
+    )
     ax.text(
         len(steps) + 1,
         point.time_b_min,
@@ -5678,7 +5687,7 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
     )
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     path = out_dir / "fig_b7a_waterfall.png"
-    fig.savefig(path, dpi=150)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -5712,7 +5721,7 @@ def _figure_b7_shift_share(results: dict, out_dir: Path) -> Path:
     fig.suptitle("B7b. Shift-share of the 2008 -> 2019 daily-time change")
     fig.tight_layout()
     path = out_dir / "fig_b7b_shift_share.png"
-    fig.savefig(path, dpi=150)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -5732,9 +5741,18 @@ def _figure_b7_recall_lag(results: dict, out_dir: Path) -> Path:
     fig, axes = plt.subplots(1, 3, figsize=(12, 3.6))
     for ax, (attr, label) in zip(axes, panels, strict=True):
         values = [getattr(row, attr) for row in rows]
-        ax.plot(lags, values, marker="o", label="EMP 2019 by lag")
+        ax.plot(
+            lags,
+            values,
+            marker="o",
+            color=figstyle.SURVEY_COLOURS["EMP 2019"],
+            label="EMP 2019 by lag",
+        )
         ax.axhline(
-            getattr(entd, attr), color="#e76f51", linestyle="--", label="ENTD 2008"
+            getattr(entd, attr),
+            color=figstyle.SURVEY_COLOURS["ENTD 2008"],
+            linestyle="--",
+            label="ENTD 2008",
         )
         ax.set_xlabel("Recall lag (days)")
         ax.set_title(label, fontsize=9)
@@ -5743,7 +5761,7 @@ def _figure_b7_recall_lag(results: dict, out_dir: Path) -> Path:
     fig.suptitle("B7c. EMP 2019 by recall lag vs ENTD 2008 (weekday days)")
     fig.tight_layout()
     path = out_dir / "fig_b7c_recall_lag.png"
-    fig.savefig(path, dpi=150)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 

@@ -33,6 +33,7 @@ from mobgrid.budget import (
     daily_energy,
     emp2019,
     entd2008,
+    figstyle,
     trip_legs,
     variation,
 )
@@ -473,9 +474,7 @@ def _build_base(
     scope_module.create_scope_views_from_trip_legs(
         con, activity_stay_min=activity_stay_min
     )
-    daily_energy.create_day_summary(
-        con, where_sql=selected_scope.trip_filter_sql()
-    )
+    daily_energy.create_day_summary(con, where_sql=selected_scope.trip_filter_sql())
 
 
 def run(
@@ -522,6 +521,14 @@ def run(
     variation_config = variation.load_variation_config(variation_config_path)
     where_sql = scope.trip_filter_sql()
     out_dir.mkdir(parents=True, exist_ok=True)
+    if make_figures:
+        figstyle.set_context(
+            scope=scope.label,
+            survey=survey.SURVEY_NAME,
+            days="weekday / Saturday / Sunday",
+            basis="per day with trips",
+            replicates=n_reps,
+        )
     data_path = data_path or survey.DEFAULT_DATA_PATH
     density_source = density_source or survey.DEFAULT_DENSITY_SOURCE
 
@@ -671,15 +678,11 @@ def run(
     ratio_kh = max(kh_means) / min(kh_means) if kh_means else float("nan")
     ratio_cp = max(cp_means) / min(cp_means) if cp_means else float("nan")
 
-    v0_overall = daily_energy.calibrate_v0_kmh(
-        con, where_sql=where_sql
-    )[0]
+    v0_overall = daily_energy.calibrate_v0_kmh(con, where_sql=where_sql)[0]
     v0_by_age_band = daily_energy.calibrate_v0_kmh(
         con, by_age_band=True, where_sql=where_sql
     )
-    p0_overall = daily_energy.calibrate_p0(
-        con, config, where_sql=where_sql
-    )[0]
+    p0_overall = daily_energy.calibrate_p0(con, config, where_sql=where_sql)[0]
     p0_by_age_band = daily_energy.calibrate_p0(
         con, config, by_age_band=True, where_sql=where_sql
     )
@@ -830,9 +833,7 @@ def run(
     daily_energy.create_day_summary(con, where_sql=where_sql)
 
     # Cycle group, weekdays only, same selected scope.
-    daily_energy.create_day_summary(
-        con, where_sql=f"({where_sql}) AND (typejour = 1)"
-    )
+    daily_energy.create_day_summary(con, where_sql=f"({where_sql}) AND (typejour = 1)")
     days_weekday = _day_rows(con)
     cycle_weekday_stats = next(
         (
@@ -846,9 +847,7 @@ def run(
     )
     daily_energy.create_day_summary(con, where_sql=where_sql)
 
-    cycle_decomposition = _compute_cycle_decomposition(
-        con, config, where_sql=where_sql
-    )
+    cycle_decomposition = _compute_cycle_decomposition(con, config, where_sql=where_sql)
 
     f4_paths, f4_panels = (
         _figure_f4_mean_by_mode(con, out_dir, n_reps=n_reps, seed=seed)
@@ -984,6 +983,9 @@ def run(
     population_time_stats = _scalar_by_group(
         days, "population_category", days["total_time_min"], n_reps=n_reps, seed=seed
     )
+    mode_time_stats = _scalar_by_group(
+        days, "day_mode_group", days["total_time_min"], n_reps=n_reps, seed=seed
+    )
     weekday_days = {
         key: days[key][days["typejour"] == 1]
         for key in (
@@ -1029,6 +1031,7 @@ def run(
         "mode_stats": mode_stats,
         "population_stats": population_stats,
         "population_time_stats": population_time_stats,
+        "mode_time_stats": mode_time_stats,
         "population_time_stats_weekday": population_time_stats_weekday,
         "density_stats": density_stats,
         "category_density_stats": category_density_stats,
@@ -1112,6 +1115,7 @@ def run(
         # respondent; EMP 2019's `typejour` marks the same reference
         # weekday).
         "weekday_days": weekday_days,
+        "all_days": days,
         "figures": figures,
     }
 
@@ -1397,18 +1401,26 @@ def _person_budget_tables(
     return by_category, by_category_density, by_category_income
 
 
-def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
+def _frequency_matrix(
+    days: dict,
+) -> tuple[list[str], list[str], np.ndarray, np.ndarray]:
     """(rows, cols, matrix): weighted mean trips per day in each
     (population category, main-mode group) cell -- the same quantity as
     F1 panels (B)/(C), cross-tabulated instead of two separate bar
     charts -- with "overall" margins in both directions (row 0/col 0,
     mean trips/day ignoring the other axis). Excludes the 'unknown'
     population category, as elsewhere in this report."""
-    categories = sorted({c for c in days["population_category"] if c != "unknown"})
-    modes = sorted(set(days["day_mode_group"]))
+    categories = [
+        category
+        for category in daily_energy.POPULATION_CATEGORIES
+        if category in days["population_category"]
+    ]
+    mode_order = (*daily_energy.DAY_MODE_GROUPS, "multimodal", "other")
+    modes = [mode for mode in mode_order if mode in days["day_mode_group"]]
     rows = ["overall", *categories]
     cols = ["overall", *modes]
     matrix = np.zeros((len(rows), len(cols)))
+    n_matrix = np.zeros_like(matrix, dtype=int)
     for i, category in enumerate(rows):
         category_mask = (
             np.ones(len(days["pond_jour"]), dtype=bool)
@@ -1422,6 +1434,11 @@ def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
                 else days["day_mode_group"] == mode
             )
             cell_mask = category_mask & mode_mask
+            n = int(cell_mask.sum())
+            n_matrix[i, j] = n
+            if n < MIN_CELL_N:
+                matrix[i, j] = np.nan
+                continue
             cell_weight = days["pond_jour"][cell_mask]
             matrix[i, j] = (
                 float(
@@ -1431,7 +1448,7 @@ def _frequency_matrix(days: dict) -> tuple[list[str], list[str], np.ndarray]:
                 if cell_weight.sum() > 0
                 else np.nan
             )
-    return rows, cols, matrix
+    return rows, cols, matrix, n_matrix
 
 
 def _trips_by_group_and_motive(
@@ -1512,24 +1529,39 @@ def _figure_f1_trips_per_day(
         for i, motive in enumerate(all_top_motives)
     }
 
-    for ax, cis, (groups, top_motives, matrix), title in (
+    for ax, cis, (groups, top_motives, matrix), title, group_order in (
         (
             ax_pop,
             trips_by_population,
             motive_by_population,
             "(B) By population category, stacked by motive",
+            daily_energy.POPULATION_CATEGORIES,
         ),
         (
             ax_density,
             trips_by_density,
             motive_by_density,
             "(C) By density class, stacked by motive",
+            trip_legs.DENSITY_LABELS,
         ),
     ):
         ci_by_group = {row[0]: row for row in cis}
-        active = [i for i, group in enumerate(groups) if group in ci_by_group]
+        ordered_groups = [
+            group for group in group_order if group in ci_by_group and group in groups
+        ]
+        ordered_groups.extend(
+            group
+            for group in groups
+            if group in ci_by_group and group not in ordered_groups
+        )
+        active = [groups.index(group) for group in ordered_groups]
         groups = [groups[i] for i in active]
         matrix = matrix[active]
+        small_groups = [
+            i for i, group in enumerate(groups) if ci_by_group[group][1] < MIN_CELL_N
+        ]
+        if small_groups:
+            matrix[small_groups, :] = np.nan
         x = np.arange(len(groups))
         bottom = np.zeros(len(groups))
         for j, top_motive in enumerate(top_motives):
@@ -1560,11 +1592,24 @@ def _figure_f1_trips_per_day(
         )
         ax.set_xticks(x)
         ax.set_xticklabels(groups, rotation=30, ha="right")
+        for i, group in enumerate(groups):
+            n = ci_by_group[group][1]
+            sample_label = ax.text(
+                i,
+                0,
+                "n < 50" if n < MIN_CELL_N else f"n={n}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color=figstyle.SECONDARY_TEXT_COLOUR,
+            )
+            if n < MIN_CELL_N:
+                setattr(sample_label, "_figure_n_value", n)
         ax.set_ylabel("Mean trips per day")
         ax.set_title(title)
         ax.legend(fontsize=5, bbox_to_anchor=(1.02, 1), loc="upper left")
 
-    freq_rows, freq_cols, freq_matrix = _frequency_matrix(days)
+    freq_rows, freq_cols, freq_matrix, freq_n_matrix = _frequency_matrix(days)
     image = ax_freq.imshow(freq_matrix, aspect="auto", cmap="viridis")
     ax_freq.set_xticks(range(len(freq_cols)))
     ax_freq.set_xticklabels(freq_cols, rotation=30, ha="right", fontsize=8)
@@ -1572,16 +1617,25 @@ def _figure_f1_trips_per_day(
     ax_freq.set_yticklabels(freq_rows, fontsize=8)
     for i in range(freq_matrix.shape[0]):
         for j in range(freq_matrix.shape[1]):
-            if not np.isnan(freq_matrix[i, j]):
-                ax_freq.text(
+            n = int(freq_n_matrix[i, j])
+            if n < MIN_CELL_N:
+                text = "n < 50"
+            elif not np.isnan(freq_matrix[i, j]):
+                text = f"{freq_matrix[i, j]:.1f}\n(n={n})"
+            else:
+                continue
+            if text:
+                cell_label = ax_freq.text(
                     j,
                     i,
-                    f"{freq_matrix[i, j]:.1f}",
+                    text,
                     ha="center",
                     va="center",
                     fontsize=6,
                     color="white",
                 )
+                if n < MIN_CELL_N:
+                    setattr(cell_label, "_figure_n_value", n)
     ax_freq.set_title(
         "(D) Mean trips per day by population category x main-mode group\n"
         "(row/col 'overall' = marginal, weighted means, as in (B)/(C); a\n"
@@ -1594,7 +1648,7 @@ def _figure_f1_trips_per_day(
     fig.suptitle("F1. Trips per person and day (section 9.9, point 2)")
     fig.tight_layout()
     path = out_dir / "f01_trips_per_day.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -1615,22 +1669,47 @@ def _figure_scalar_by_category_key(
     fig, (ax_density, ax_income) = plt.subplots(1, 2, figsize=(14, 6))
     for ax, stats, key_order, key_title in (
         (ax_density, density_stats, trip_legs.DENSITY_LABELS, "density class"),
-        (ax_income, income_stats, ("q1", "q2", "q3", "q4", "q5"), "income quintile"),
+        (
+            ax_income,
+            income_stats,
+            ("q1", "q2", "q3", "q4", "q5", "unknown"),
+            "income quintile",
+        ),
     ):
         width = 0.8 / len(categories)
         x = np.arange(len(key_order))
         for i, category in enumerate(categories):
             means, lowers, uppers = [], [], []
-            for key in key_order:
+            for key_index, key in enumerate(key_order):
                 stat = stats.get((category, key))
                 if stat is None or stat.n < MIN_CELL_N:
                     means.append(np.nan)
                     lowers.append(0.0)
                     uppers.append(0.0)
+                    if stat is not None:
+                        sample_label = ax.text(
+                            x[key_index] + i * width,
+                            0,
+                            "n < 50",
+                            ha="center",
+                            va="bottom",
+                            fontsize=8,
+                            color=figstyle.SECONDARY_TEXT_COLOUR,
+                        )
+                        setattr(sample_label, "_figure_n_value", stat.n)
                     continue
                 means.append(stat.mean)
                 lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
                 uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+                ax.text(
+                    x[key_index] + i * width,
+                    0,
+                    f"n={stat.n}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color=figstyle.SECONDARY_TEXT_COLOUR,
+                )
             ax.bar(
                 x + i * width,
                 means,
@@ -1647,7 +1726,7 @@ def _figure_scalar_by_category_key(
     fig.suptitle(title)
     fig.tight_layout()
     path = out_dir / filename
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -1704,10 +1783,14 @@ def _figure_f2_time_density_by_category(
     fig.suptitle("F2a. Daily travel time density, overall (section 9.9)")
     fig.tight_layout()
     path_a = out_dir / "f02a_time_density_overall.png"
-    fig.savefig(path_a, dpi=110)
+    figstyle.save_figure(fig, path_a)
     plt.close(fig)
 
-    categories = sorted(set(rows["population_category"]))
+    categories = [
+        category
+        for category in daily_energy.POPULATION_CATEGORIES
+        if category in rows["population_category"]
+    ]
     fig, axes = plt.subplots(2, 3, figsize=(16, 9))
     for ax, category in zip(axes.flat, categories, strict=False):
         category_mask = rows["population_category"] == category
@@ -1729,7 +1812,7 @@ def _figure_f2_time_density_by_category(
     )
     fig.tight_layout()
     path_b = out_dir / "f02b_time_density_by_category.png"
-    fig.savefig(path_b, dpi=110)
+    figstyle.save_figure(fig, path_b)
     plt.close(fig)
     return [path_a, path_b]
 
@@ -1806,7 +1889,7 @@ def _figure_f3_energy_density(
         )
         fig.tight_layout()
         path = out_dir / f"f03a_energy_density_overall{rate_suffix}.png"
-        fig.savefig(path, dpi=110)
+        figstyle.save_figure(fig, path)
         plt.close(fig)
         paths.append(path)
 
@@ -1839,7 +1922,7 @@ def _figure_f3_energy_density(
         )
         fig.tight_layout()
         path = out_dir / f"f03b_energy_density_by_category{rate_suffix}.png"
-        fig.savefig(path, dpi=110)
+        figstyle.save_figure(fig, path)
         plt.close(fig)
         paths.append(path)
 
@@ -1929,12 +2012,17 @@ def _figure_f4_mean_by_mode(
 ) -> tuple[list[Path], list[tuple[str, dict[str, daily_energy.GroupStats]]]]:
     """F4: mean daily energy and time, 95% CI and n on the bars, overall
     and one panel per population category; blank when n < 50."""
-    categories = [
+    present_categories = {
         row[0]
         for row in con.sql(
             "SELECT DISTINCT population_category FROM day_summary "
-            "WHERE population_category != 'unknown' ORDER BY 1"
+            "WHERE population_category != 'unknown'"
         ).fetchall()
+    }
+    categories = [
+        category
+        for category in daily_energy.POPULATION_CATEGORIES
+        if category in present_categories
     ]
     groups = list(daily_energy.DAY_MODE_GROUPS) + ["multimodal", "other"]
     panel_where_sql = [("overall", "TRUE")] + [
@@ -2058,7 +2146,7 @@ def _figure_f4_mean_by_mode(
     )
     fig.tight_layout()
     path_energy = out_dir / "f04a_mean_energy_by_mode.png"
-    fig.savefig(path_energy, dpi=110)
+    figstyle.save_figure(fig, path_energy)
     plt.close(fig)
 
     time_panels = [
@@ -2129,7 +2217,7 @@ def _figure_f4_mean_by_mode(
     )
     fig.tight_layout()
     path_time = out_dir / "f04b_mean_time_by_mode.png"
-    fig.savefig(path_time, dpi=110)
+    figstyle.save_figure(fig, path_time)
     plt.close(fig)
     return [path_energy, path_time], panels
 
@@ -2147,6 +2235,12 @@ def _figure_f5_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
             GROUP BY 1, 2
         """).fetchall()
         values = sorted({row[1] for row in rows if row[1] != "unknown"})
+        value_order = (
+            daily_energy.POPULATION_CATEGORIES
+            if column == "population_category"
+            else trip_legs.DENSITY_LABELS
+        )
+        values = [value for value in value_order if value in values]
         matrix = np.full((len(groups), len(values)), np.nan)
         n_matrix = np.zeros((len(groups), len(values)), dtype=int)
         for mode, value, n, mean_energy in rows:
@@ -2188,7 +2282,7 @@ def _figure_f5_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> Path:
     )
     fig.tight_layout()
     path = out_dir / "f05_heatmaps.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -2300,7 +2394,7 @@ def _figure_f5_time_heatmaps(con: duckdb.DuckDBPyConnection, out_dir: Path) -> P
     )
     fig.tight_layout()
     path = out_dir / "f05b_time_heatmaps.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -2402,7 +2496,7 @@ def _figure_f10_constancy(
     )
     fig.tight_layout()
     path = out_dir / "f10_constancy.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -2438,7 +2532,7 @@ def _figure_f6_v0_p0(
     fig.suptitle("F6. Calibrated v0 and P0 by age band (section 9.9, step 1)")
     fig.tight_layout()
     path = out_dir / "f06_v0_p0.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -2485,7 +2579,7 @@ def _figure_f7_passengers(
     )
     fig.tight_layout()
     path = out_dir / "f07_passengers.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -2548,7 +2642,7 @@ def _figure_f8_robustness(
     )
     fig.tight_layout()
     path = out_dir / "f08_robustness.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -2564,14 +2658,11 @@ def _figure_f9_motive_energy(
     """
     mode_groups, top_motives, matrix = matrix_data
     cmap = plt.get_cmap("tab10")
-    colour_by_motive = {
-        motive: cmap(i % 10) for i, motive in enumerate(top_motives)
-    }
+    colour_by_motive = {motive: cmap(i % 10) for i, motive in enumerate(top_motives)}
 
     totals = matrix.sum(axis=1, keepdims=True)
     shares = (
-        np.divide(matrix, totals, out=np.zeros_like(matrix), where=totals > 0)
-        * 100.0
+        np.divide(matrix, totals, out=np.zeros_like(matrix), where=totals > 0) * 100.0
     )
     fig, ax = plt.subplots(figsize=(10, 6))
     x = np.arange(len(mode_groups))
@@ -2597,7 +2688,7 @@ def _figure_f9_motive_energy(
     )
     fig.tight_layout()
     path = out_dir / "f09_motive_energy.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -2850,9 +2941,7 @@ def _format_person_budget_table(
             if not np.isnan(row.budget_ci[0])
             else "-"
         )
-        lines.append(
-            f"| {category} | {row.n} | {row.budget:.1f} | {ci} |"
-        )
+        lines.append(f"| {category} | {row.n} | {row.budget:.1f} | {ci} |")
     return lines
 
 
@@ -2880,9 +2969,7 @@ def _format_person_budget_key_table(
                 if not np.isnan(row.budget_ci[0])
                 else "-"
             )
-            lines.append(
-                f"| {category} | {key} | {row.n} | {row.budget:.1f} | {ci} |"
-            )
+            lines.append(f"| {category} | {key} | {row.n} | {row.budget:.1f} | {ci} |")
     return lines
 
 
@@ -3324,8 +3411,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             "EMP 2019 also reports the 7-day average, Σ pond_jour × value "
             "over the described week ÷ 7 ÷ Σ pond_indC."
             if results["person_budget_all_week_population"] is not None
-            else "ENTD 2008 reports weekdays only; weekend estimates are "
-            "not used."
+            else "ENTD 2008 reports weekdays only; weekend estimates are not used."
         ),
         "",
         (
@@ -3697,8 +3783,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
 def _append_scope_to_headings(lines: list[str], scope_label: str) -> list[str]:
     """Include the selected scope in every report table/figure heading."""
     return [
-        f"{line} — {scope_label}" if line.startswith("#") else line
-        for line in lines
+        f"{line} — {scope_label}" if line.startswith("#") else line for line in lines
     ]
 
 
@@ -3749,6 +3834,148 @@ def _group_table_two_surveys(
             f"{_cell(a, 'median_energy_cp_kj')} | {_cell(b, 'median_energy_cp_kj')} |"
         )
     return lines
+
+
+def _bootstrap_group_means(
+    days: dict,
+    group_column: str,
+    value_column: str,
+    *,
+    n_reps: int,
+    seed: int,
+    day_mask: np.ndarray | None = None,
+) -> dict[str, tuple[float, np.ndarray]]:
+    """Return each group's point mean and household-bootstrap replicates."""
+    values = np.asarray(days[value_column], dtype=float)
+    weights = np.asarray(days["pond_jour"], dtype=float)
+    households = np.asarray(days["ident_men"])
+    groups = (
+        np.full(len(values), "All")
+        if group_column == "All"
+        else np.asarray(days[group_column]).astype(str)
+    )
+    mask = np.isfinite(values) & np.isfinite(weights) & (weights > 0)
+    if day_mask is not None:
+        mask &= day_mask
+    values, weights, households, groups = (
+        array[mask] for array in (values, weights, households, groups)
+    )
+    if not len(values):
+        return {}
+    group_values, group_codes = np.unique(groups, return_inverse=True)
+    _, household_codes = np.unique(households, return_inverse=True)
+    n_households = int(household_codes.max()) + 1
+    weighted_n = np.bincount(group_codes, weights=weights, minlength=len(group_values))
+    point = (
+        np.bincount(group_codes, weights=weights * values, minlength=len(group_values))
+        / weighted_n
+    )
+    replicates = np.empty((n_reps, len(group_values)), dtype=float)
+    rng = np.random.default_rng(seed)
+    for replicate in range(n_reps):
+        sampled = rng.integers(0, n_households, size=n_households)
+        multiplicity = np.bincount(sampled, minlength=n_households)
+        replicate_weights = weights * multiplicity[household_codes]
+        denominator = np.bincount(
+            group_codes, weights=replicate_weights, minlength=len(group_values)
+        )
+        numerator = np.bincount(
+            group_codes,
+            weights=replicate_weights * values,
+            minlength=len(group_values),
+        )
+        with np.errstate(divide="ignore", invalid="ignore"):
+            replicates[replicate] = numerator / denominator
+    return {
+        str(group): (float(point[i]), replicates[:, i])
+        for i, group in enumerate(group_values)
+    }
+
+
+def _comparison_ratio_intervals(
+    days_2008: dict,
+    days_2019: dict,
+    group_column: str,
+    value_column: str,
+    *,
+    n_reps: int,
+    seed: int,
+    day_mask_2008: np.ndarray | None = None,
+    day_mask_2019: np.ndarray | None = None,
+) -> dict[str, tuple[float, float, float]]:
+    """Household-bootstrap 2019/2008 ratios and 90% percentile intervals."""
+    means_2008 = _bootstrap_group_means(
+        days_2008,
+        group_column,
+        value_column,
+        n_reps=n_reps,
+        seed=seed,
+        day_mask=day_mask_2008,
+    )
+    means_2019 = _bootstrap_group_means(
+        days_2019,
+        group_column,
+        value_column,
+        n_reps=n_reps,
+        seed=seed + 1,
+        day_mask=day_mask_2019,
+    )
+    intervals: dict[str, tuple[float, float, float]] = {}
+    for group in means_2008.keys() & means_2019.keys():
+        point_a, reps_a = means_2008[group]
+        point_b, reps_b = means_2019[group]
+        if point_a <= 0 or point_b <= 0:
+            continue
+        ratio = point_b / point_a
+        valid = np.isfinite(reps_a) & np.isfinite(reps_b) & (reps_a > 0)
+        ratio_replicates = reps_b[valid] / reps_a[valid]
+        if len(ratio_replicates):
+            low, high = np.percentile(ratio_replicates, [5, 95])
+            intervals[group] = (float(ratio), float(low), float(high))
+    return intervals
+
+
+def _person_budget_ratio_intervals(
+    results_2008: dict, results_2019: dict, *, n_reps: int, seed: int
+) -> dict[str, tuple[float, float, float]]:
+    """Bootstrap 2019/2008 ratios for the weekday per-person time budget."""
+    intervals: dict[str, tuple[float, float, float]] = {}
+    for category in daily_energy.POPULATION_CATEGORIES:
+        replicate_sets = []
+        points = []
+        for offset, results in enumerate((results_2008, results_2019)):
+            persons = results["_weekday_person_rows"]
+            days = results["_weekday_person_budget_days"]
+            person_mask = persons["category"] == category
+            day_mask = days["population_category"] == category
+            if not person_mask.any() or not day_mask.any():
+                break
+            point, replicates = daily_energy.bootstrap_person_value_replicates(
+                persons["household"][person_mask],
+                persons["weight"][person_mask],
+                days["ident_men"][day_mask],
+                days["pond_jour"][day_mask],
+                days["total_time_min"][day_mask],
+                person_weight_scale=1.0,
+                period_divisor=float(persons["period_divisor"]),
+                n_reps=n_reps,
+                seed=seed + offset,
+            )
+            points.append(point)
+            replicate_sets.append(replicates)
+        if len(points) != 2 or points[0] <= 0 or points[1] <= 0:
+            continue
+        reps_2008, reps_2019 = replicate_sets
+        valid = np.isfinite(reps_2008) & np.isfinite(reps_2019) & (reps_2008 > 0)
+        ratios = reps_2019[valid] / reps_2008[valid]
+        if len(ratios):
+            low, high = np.percentile(ratios, [5, 95])
+            intervals[category] = (
+                float(points[1] / points[0]),
+                float(low),
+                float(high),
+            )
+    return intervals
 
 
 def _format_weekday_comparison(
@@ -4381,6 +4608,53 @@ def run_compare(
         ),
     ]
 
+    figstyle.set_context(
+        scope=scope.label,
+        survey="ENTD 2008 vs EMP 2019",
+        days="weekday / Saturday / Sunday",
+        basis="per day with trips",
+        replicates=n_reps,
+    )
+    mode_ratio_intervals: dict[tuple[str, str], tuple[float, float, float]] = {}
+    for metric, column in (
+        ("kh", "total_energy_kh_kj"),
+        ("cp", "total_energy_cp_kj"),
+        ("time", "total_time_min"),
+    ):
+        intervals = _comparison_ratio_intervals(
+            results_2008["all_days"],
+            results_2019_proxy["all_days"],
+            "day_mode_group",
+            column,
+            n_reps=n_reps,
+            seed=seed,
+        )
+        mode_ratio_intervals.update(
+            {(group, metric): value for group, value in intervals.items()}
+        )
+    weekday_mask_2008 = results_2008["all_days"]["typejour"] == 1
+    weekday_mask_2019 = results_2019_proxy["all_days"]["typejour"] == 1
+    category_ratio_intervals = _comparison_ratio_intervals(
+        results_2008["all_days"],
+        results_2019_proxy["all_days"],
+        "population_category",
+        "total_time_min",
+        n_reps=n_reps,
+        seed=seed,
+    )
+    weekday_category_ratio_intervals = _comparison_ratio_intervals(
+        results_2008["all_days"],
+        results_2019_proxy["all_days"],
+        "population_category",
+        "total_time_min",
+        n_reps=n_reps,
+        seed=seed,
+        day_mask_2008=weekday_mask_2008,
+        day_mask_2019=weekday_mask_2019,
+    )
+    person_budget_ratio_intervals = _person_budget_ratio_intervals(
+        results_2008, results_2019_proxy, n_reps=n_reps, seed=seed
+    )
     figure_path = _figure_compare_energy_time(
         results_2008["mode_stats"],
         results_2019_proxy["mode_stats"],
@@ -4388,6 +4662,9 @@ def run_compare(
         (results_2008["mean_cp"], results_2019_proxy["mean_cp"]),
         (results_2008["mean_time_min"], results_2019_proxy["mean_time_min"]),
         out_path,
+        time_stats_2008=results_2008["mode_time_stats"],
+        time_stats_2019=results_2019_proxy["mode_time_stats"],
+        ratio_intervals=mode_ratio_intervals,
     )
     time_by_category_path = _figure_compare_time_by_category(
         results_2008["population_time_stats"],
@@ -4397,6 +4674,17 @@ def run_compare(
         results_2008["person_budget_weekday_population"],
         results_2019_proxy["person_budget_weekday_population"],
         out_path,
+        ratio_intervals={
+            ("all", group): value for group, value in category_ratio_intervals.items()
+        }
+        | {
+            ("weekday", group): value
+            for group, value in weekday_category_ratio_intervals.items()
+        }
+        | {
+            ("person", group): value
+            for group, value in person_budget_ratio_intervals.items()
+        },
     )
     lines += [
         "## Figures",
@@ -4425,6 +4713,10 @@ def _figure_compare_energy_time(
     overall_mean_energy_cp: tuple[float, float],
     overall_mean_time_min: tuple[float, float],
     out_dir: Path,
+    *,
+    time_stats_2008: list[daily_energy.ScalarGroupStats] | None = None,
+    time_stats_2019: list[daily_energy.ScalarGroupStats] | None = None,
+    ratio_intervals: dict[tuple[str, str], tuple[float, float, float]] | None = None,
 ) -> Path:
     """One figure: mean daily energy (both rate sets) and time by group,
     2008 vs 2019, with CI (section 9.9's "Outputs of the re-estimation"
@@ -4434,62 +4726,195 @@ def _figure_compare_energy_time(
     the single-survey report."""
     by_2008 = {s.group: s for s in stats_2008}
     by_2019 = {s.group: s for s in stats_2019}
-    groups = [g for g in daily_energy.DAY_MODE_GROUPS if g in by_2008 or g in by_2019]
+    all_groups = (*daily_energy.DAY_MODE_GROUPS, "multimodal", "other")
+    groups = [g for g in all_groups if g in by_2008 or g in by_2019]
     x = np.arange(len(groups))
     width = 0.35
+    time_by_year = (
+        {group.group: group for group in time_stats_2008 or []},
+        {group.group: group for group in time_stats_2019 or []},
+    )
 
     fig, (ax_energy_kh, ax_energy_cp, ax_time) = plt.subplots(1, 3, figsize=(19, 6))
     for ax, rate_key in ((ax_energy_kh, "kh"), (ax_energy_cp, "cp")):
-        for offset, by_year, label in (
-            (-width / 2, by_2008, "2008"),
-            (width / 2, by_2019, "2019"),
+        for offset, by_year, label, color in (
+            (
+                -width / 2,
+                by_2008,
+                "2008",
+                figstyle.SURVEY_COLOURS["ENTD 2008"],
+            ),
+            (
+                width / 2,
+                by_2019,
+                "2019",
+                figstyle.SURVEY_COLOURS["EMP 2019"],
+            ),
         ):
-            means = [
-                getattr(by_year[g], f"mean_energy_{rate_key}_kj")
-                if g in by_year
-                else np.nan
-                for g in groups
-            ]
-            lowers = [
-                getattr(by_year[g], f"mean_energy_{rate_key}_kj")
-                - getattr(by_year[g], f"mean_energy_{rate_key}_ci")[0]
-                if g in by_year
-                else 0.0
-                for g in groups
-            ]
-            uppers = [
-                getattr(by_year[g], f"mean_energy_{rate_key}_ci")[1]
-                - getattr(by_year[g], f"mean_energy_{rate_key}_kj")
-                if g in by_year
-                else 0.0
-                for g in groups
-            ]
+            means, lowers, uppers, medians = [], [], [], []
+            for group in groups:
+                stat = by_year.get(group)
+                if stat is None or stat.n < MIN_CELL_N:
+                    means.append(np.nan)
+                    lowers.append(0.0)
+                    uppers.append(0.0)
+                    medians.append(np.nan)
+                    continue
+                mean = getattr(stat, f"mean_energy_{rate_key}_kj")
+                ci = getattr(stat, f"mean_energy_{rate_key}_ci")
+                means.append(mean)
+                lowers.append(max(mean - ci[0], 0.0))
+                uppers.append(max(ci[1] - mean, 0.0))
+                medians.append(getattr(stat, f"median_energy_{rate_key}_kj"))
             ax.bar(
                 x + offset,
                 means,
                 width,
                 yerr=[lowers, uppers],
                 label=label,
+                color=color,
                 capsize=2,
             )
-    for offset, by_year, label in (
-        (-width / 2, by_2008, "2008"),
-        (width / 2, by_2019, "2019"),
+            ax.scatter(
+                x + offset,
+                medians,
+                marker="D",
+                color=color,
+                s=18,
+                zorder=3,
+                label=f"{label} median",
+            )
+            for index, group in enumerate(groups):
+                stat = by_year.get(group)
+                if stat is None:
+                    continue
+                label_text = ax.text(
+                    x[index] + offset,
+                    0,
+                    "n < 50" if stat.n < MIN_CELL_N else f"n={stat.n}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color=figstyle.SECONDARY_TEXT_COLOUR,
+                )
+                if stat.n < MIN_CELL_N:
+                    setattr(label_text, "_figure_n_value", stat.n)
+    for offset, by_year, time_stats, label, color in (
+        (
+            -width / 2,
+            by_2008,
+            time_by_year[0],
+            "2008",
+            figstyle.SURVEY_COLOURS["ENTD 2008"],
+        ),
+        (
+            width / 2,
+            by_2019,
+            time_by_year[1],
+            "2019",
+            figstyle.SURVEY_COLOURS["EMP 2019"],
+        ),
     ):
-        times = [by_year[g].mean_time_min if g in by_year else np.nan for g in groups]
-        ax_time.bar(x + offset, times, width, label=label)
+        times, lowers, uppers, medians = [], [], [], []
+        for group in groups:
+            stat = time_stats.get(group)
+            if stat is None or stat.n < MIN_CELL_N:
+                times.append(np.nan)
+                lowers.append(0.0)
+                uppers.append(0.0)
+                medians.append(np.nan)
+                continue
+            times.append(stat.mean)
+            lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
+            uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
+            medians.append(stat.median)
+        ax_time.bar(
+            x + offset,
+            times,
+            width,
+            yerr=[lowers, uppers],
+            label=label,
+            color=color,
+            capsize=2,
+        )
+        ax_time.scatter(
+            x + offset,
+            medians,
+            marker="D",
+            color=color,
+            s=18,
+            zorder=3,
+            label=f"{label} median",
+        )
+        for index, group in enumerate(groups):
+            stat = time_stats.get(group)
+            if stat is None:
+                continue
+            label_text = ax_time.text(
+                x[index] + offset,
+                0,
+                "n < 50" if stat.n < MIN_CELL_N else f"n={stat.n}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color=figstyle.SECONDARY_TEXT_COLOUR,
+            )
+            if stat.n < MIN_CELL_N:
+                setattr(label_text, "_figure_n_value", stat.n)
 
-    for ax, overall_values, unit in (
-        (ax_energy_kh, overall_mean_energy_kh, "kJ"),
-        (ax_energy_cp, overall_mean_energy_cp, "kJ"),
-        (ax_time, overall_mean_time_min, "min"),
+    ratio_intervals = ratio_intervals or {}
+    for ax, overall_values, unit, metric in (
+        (ax_energy_kh, overall_mean_energy_kh, "kJ", "kh"),
+        (ax_energy_cp, overall_mean_energy_cp, "kJ", "cp"),
+        (ax_time, overall_mean_time_min, "min", "time"),
     ):
+        for i, group in enumerate(groups):
+            ratio = ratio_intervals.get((group, metric))
+            if (
+                ratio is None
+                or group not in by_2008
+                or group not in by_2019
+                or by_2008[group].n < MIN_CELL_N
+                or by_2019[group].n < MIN_CELL_N
+            ):
+                continue
+            point, low, high = ratio
+            if metric in ("kh", "cp"):
+                mean_a = getattr(by_2008[group], f"mean_energy_{metric}_kj")
+                mean_b = getattr(by_2019[group], f"mean_energy_{metric}_kj")
+            else:
+                mean_a = by_2008[group].mean_time_min
+                mean_b = by_2019[group].mean_time_min
+            ax.text(
+                i,
+                max(mean_a, mean_b) * 1.04,
+                f"×{point:.2f} [{low:.2f}, {high:.2f}]",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
         label_transform = ax.get_yaxis_transform()
         for value, year, color, va in (
-            (overall_values[0], "2008", "tab:blue", "bottom"),
-            (overall_values[1], "2019", "tab:orange", "top"),
+            (
+                overall_values[0],
+                "2008",
+                figstyle.SURVEY_COLOURS["ENTD 2008"],
+                "bottom",
+            ),
+            (
+                overall_values[1],
+                "2019",
+                figstyle.SURVEY_COLOURS["EMP 2019"],
+                "top",
+            ),
         ):
-            ax.axhline(value, color=color, linestyle="--", linewidth=1.0)
+            ax.axhline(
+                value,
+                color=color,
+                linestyle="--",
+                linewidth=1.0,
+                label=f"All ({year})",
+            )
             # Left-anchored (not right): a right-anchored label can
             # render into the neighbouring subplot's own white
             # background and look clipped there, since adjacent panels
@@ -4498,7 +4923,7 @@ def _figure_compare_energy_time(
             ax.text(
                 0.02,
                 value,
-                f"{year}: {value:.0f} {unit}",
+                f"All ({year}): {value:.1f} {unit}",
                 transform=label_transform,
                 color=color,
                 fontsize=8,
@@ -4525,7 +4950,7 @@ def _figure_compare_energy_time(
     )
     fig.tight_layout()
     path = out_dir / "compare_energy_time.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
@@ -4538,6 +4963,8 @@ def _figure_compare_time_by_category(
     budgets_2008_weekday: dict[str, daily_energy.PersonBudgetRow],
     budgets_2019_weekday: dict[str, daily_energy.PersonBudgetRow],
     out_dir: Path,
+    *,
+    ratio_intervals: dict[tuple[str, str], tuple[float, float, float]] | None = None,
 ) -> Path:
     """Daily travel time by population category, 2008 vs 2019 (section
     9.9, 27 October 2026 decision: the time budget's own b_k is now the
@@ -4554,10 +4981,22 @@ def _figure_compare_time_by_category(
     x = np.arange(len(categories))
     width = 0.35
 
-    def _scalar_panel(ax, by_2008, by_2019, title):
+    ratio_intervals = ratio_intervals or {}
+
+    def _scalar_panel(ax, by_2008, by_2019, title, ratio_key):
         for offset, by_year, label, color in (
-            (-width / 2, by_2008, "2008", "tab:blue"),
-            (width / 2, by_2019, "2019", "tab:orange"),
+            (
+                -width / 2,
+                by_2008,
+                "2008",
+                figstyle.SURVEY_COLOURS["ENTD 2008"],
+            ),
+            (
+                width / 2,
+                by_2019,
+                "2019",
+                figstyle.SURVEY_COLOURS["EMP 2019"],
+            ),
         ):
             means, lowers, uppers, medians, ns = [], [], [], [], []
             for category in categories:
@@ -4602,6 +5041,26 @@ def _figure_compare_time_by_category(
                         va="bottom",
                         fontsize=6,
                     )
+        for index, category in enumerate(categories):
+            ratio = ratio_intervals.get((ratio_key, category))
+            if ratio is None:
+                continue
+            point, low, high = ratio
+            if (
+                category in by_2008
+                and category in by_2019
+                and by_2008[category].n >= MIN_CELL_N
+                and by_2019[category].n >= MIN_CELL_N
+            ):
+                values = [by_2008[category].mean, by_2019[category].mean]
+                ax.text(
+                    index,
+                    max(values) * 1.04,
+                    f"×{point:.2f} [{low:.2f}, {high:.2f}]",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                )
         ax.set_xticks(x)
         ax.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
         ax.set_ylabel("Mean daily time, minutes")
@@ -4614,16 +5073,28 @@ def _figure_compare_time_by_category(
         {s.group: s for s in stats_2008},
         {s.group: s for s in stats_2019},
         "(A) All days, day with trips",
+        "all",
     )
     _scalar_panel(
         ax_weekday,
         {s.group: s for s in stats_2008_weekday},
         {s.group: s for s in stats_2019_weekday},
         "(B) Weekday only, day with trips",
+        "weekday",
     )
     for offset, budgets, label, color in (
-        (-width / 2, budgets_2008_weekday, "2008", "tab:blue"),
-        (width / 2, budgets_2019_weekday, "2019", "tab:orange"),
+        (
+            -width / 2,
+            budgets_2008_weekday,
+            "2008",
+            figstyle.SURVEY_COLOURS["ENTD 2008"],
+        ),
+        (
+            width / 2,
+            budgets_2019_weekday,
+            "2019",
+            figstyle.SURVEY_COLOURS["EMP 2019"],
+        ),
     ):
         means, lowers, uppers, ns = [], [], [], []
         for category in categories:
@@ -4658,6 +5129,27 @@ def _figure_compare_time_by_category(
                     va="bottom",
                     fontsize=6,
                 )
+    for index, category in enumerate(categories):
+        ratio = ratio_intervals.get(("person", category))
+        row_2008 = budgets_2008_weekday.get(category)
+        row_2019 = budgets_2019_weekday.get(category)
+        if (
+            ratio is None
+            or row_2008 is None
+            or row_2019 is None
+            or row_2008.n < MIN_CELL_N
+            or row_2019.n < MIN_CELL_N
+        ):
+            continue
+        point, low, high = ratio
+        ax_person.text(
+            index,
+            max(row_2008.budget, row_2019.budget) * 1.04,
+            f"×{point:.2f} [{low:.2f}, {high:.2f}]",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
     ax_person.set_xticks(x)
     ax_person.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
     ax_person.set_ylabel("Mean daily time, minutes")
@@ -4671,7 +5163,7 @@ def _figure_compare_time_by_category(
     )
     fig.tight_layout()
     path = out_dir / "compare_time_by_category.png"
-    fig.savefig(path, dpi=110)
+    figstyle.save_figure(fig, path)
     plt.close(fig)
     return path
 
