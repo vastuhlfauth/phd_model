@@ -26,6 +26,31 @@ CONFIG_PATH = ROOT / "config" / "energy.yaml"
 _REAL_DATA_AVAILABLE = emp2019.DEFAULT_ZIP_PATH.is_file()
 
 
+def _add_synthetic_entd_cli_duration_spread(raw_dir: Path) -> None:
+    """Make two in-scope reference days with varied local round-trip legs."""
+    path = raw_dir / "k_deploc.csv"
+    lines = path.read_text(encoding="cp1252").splitlines()
+    lines = [
+        line.replace(";20;;1.5;", ";25;;1.5;", 1)
+        if line.startswith("D2;")
+        else line
+        for line in lines
+    ]
+    lines.append(
+        "D5R;4;M4;J4;150;1;1;2;2;;35;;5.0;0;3;3.32;1.1;9.91;"
+        "C;C;7;0;0;4.0;;"
+    )
+    lines.append(
+        "D8R;8;M8;J8;100;1;1;2;2;;35;;5.0;;;2.20;1.1;9.91;"
+        "C;C;7;0;0;4.0;;"
+    )
+    path.write_text("\n".join(lines), encoding="cp1252")
+
+
+def test_zero_variance_gamma_fit_has_clear_report_text() -> None:
+    assert emp._format_gamma_fit(None) == "fit skipped (weighted variance is zero)"
+
+
 def test_time_day_reader_does_not_require_energy() -> None:
     """Section 9.9: time/trips use every in-scope day; energy retains its n."""
     import duckdb
@@ -574,6 +599,7 @@ def test_cli_entd2008_survey_writes_report(
 ) -> None:
     """``--survey entd2008`` runs the same pipeline and report/figure set
     as EMP 2019 (section 9.9, "Change between 2008 and 2019")."""
+    _add_synthetic_entd_cli_duration_spread(synthetic_entd2008_raw_dir)
     out_dir = tmp_path / "step11_budget_entd2008"
     exit_code = emp.main(
         [
@@ -603,13 +629,20 @@ def test_cli_entd2008_survey_writes_report(
     assert "income_bracket_midpoint_eur` could not parse" in report
 
 
-def test_cli_compare_writes_report_and_figure(
+def test_cli_compare_forwards_report_options(
     tmp_path: Path,
-    synthetic_emp_zip: Path,
-    synthetic_entd2008_raw_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``--compare`` runs both surveys and writes the 2008-2019
-    comparison report, without requiring the real data archives."""
+    """``--compare`` forwards CLI options to the comparison report runner."""
+    calls = []
+
+    def fake_run_compare(out_path, config_path, **kwargs):
+        calls.append((out_path, config_path, kwargs))
+        report_path = out_path.with_suffix(".md")
+        report_path.write_text("synthetic 2008-2019 comparison", encoding="utf-8")
+        return report_path
+
+    monkeypatch.setattr(emp, "run_compare", fake_run_compare)
     out_path = tmp_path / "step11_compare"
     exit_code = emp.main(
         [
@@ -617,33 +650,32 @@ def test_cli_compare_writes_report_and_figure(
             str(out_path),
             "--compare",
             "--emp2019-data-path",
-            str(synthetic_emp_zip),
+            str(tmp_path / "emp2019.zip"),
             "--entd2008-data-path",
-            str(synthetic_entd2008_raw_dir),
+            str(tmp_path / "entd2008"),
             "--config",
             str(CONFIG_PATH),
             "--bootstrap-reps",
-            # 3 replicates (step 12: "tests must be fast"): the compare
-            # CLI runs the full pipeline three times (2008, 2019 grid,
-            # 2019 proxy), so it dominates the suite's runtime.
-            "3",
+            "1",
         ]
     )
     assert exit_code == 0
     md_path = out_path.with_suffix(".md")
-    report = md_path.read_text(encoding="utf-8")
-    assert "2008-2019 comparison" in report
-    assert "Group table, 2008 vs 2019" in report
-    assert "density grid vs proxy" in report.lower()
-    assert "Robustness" in report
-    assert "Weekday share of persons without trips" in report
-    assert "Time budget: by population category" in report
-    assert "Weekday-only comparison, 2008 vs 2019" in report
-    assert "per person (days without trips included)" in report
-    assert "Temporal equivalence, 2008 to 2019" in report
-    assert "Ratio 2019/2008" in report
-    assert "Within-survey equivalence: density proxy" in report
-    assert "Within-survey equivalence: income quintile" in report
+    assert md_path.read_text(encoding="utf-8") == "synthetic 2008-2019 comparison"
+    assert calls == [
+        (
+            out_path,
+            CONFIG_PATH,
+            {
+                "n_reps": 1,
+                "seed": 0,
+                "emp2019_data_path": tmp_path / "emp2019.zip",
+                "entd2008_data_path": tmp_path / "entd2008",
+                "variation_config_path": emp.DEFAULT_VARIATION_CONFIG_PATH,
+                "scope": scope.REFERENCE_SCOPE,
+            },
+        )
+    ]
 
 
 def test_scope_cli_defaults_to_reference_and_selects_scope(

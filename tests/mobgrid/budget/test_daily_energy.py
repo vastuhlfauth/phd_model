@@ -107,8 +107,10 @@ def test_gamma_moments_fit_recovers_mean_and_variance() -> None:
 def test_gamma_moments_fit_rejects_non_positive_inputs() -> None:
     with pytest.raises(ValueError):
         daily_energy.gamma_moments_fit(0.0, 1.0)
+    with pytest.warns(RuntimeWarning, match="weighted variance is zero"):
+        assert daily_energy.gamma_moments_fit(1.0, 0.0) is None
     with pytest.raises(ValueError):
-        daily_energy.gamma_moments_fit(1.0, 0.0)
+        daily_energy.gamma_moments_fit(1.0, -1.0)
 
 
 def test_weighted_mean_variance_matches_equal_weight_numpy() -> None:

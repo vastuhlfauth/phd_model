@@ -11,6 +11,19 @@ Read this file at the start of every task and update it at the end.
   shared values. Focused statistics, comparison figure/export and report
   tests: 31 passed; changed-file Ruff passed.
 
+### Step 11 figure finishing: gamma-fit handling (2026-11-07)
+
+- A zero weighted variance now skips the method-of-moments gamma fit with a
+  `RuntimeWarning`; the report labels the fit as skipped instead of failing.
+- The ENTD CLI fixture varies durations and adds round-trip legs for both a
+  car-passenger day and a cycling day, so the reference-scope energy fit has
+  realistic spread and calibration inputs.
+- Gamma unit tests passed (2); the ENTD 2008 CLI reached its figures and
+  passed (1, 93.54 s). The full comparison CLI exceeded the 120-second test
+  limit and was stopped; its CLI argument-routing test and existing focused
+  comparison-figure tests remain the bounded checks. No report command or
+  full test suite was run.
+
 ### Step 11/12: report fixes, 4 of 4 (2026-11-07)
 
 - Scope words now appear in the report title and scope line, not every

@@ -3055,6 +3055,12 @@ def _format_group_table(stats: list[daily_energy.GroupStats]) -> list[str]:
     return lines
 
 
+def _format_gamma_fit(fit: tuple[float, float] | None) -> str:
+    if fit is None:
+        return "fit skipped (weighted variance is zero)"
+    return f"shape={fit[0]:.2f}, scale={fit[1]:.1f} kJ"
+
+
 def _format_robustness_table(rows: list[daily_energy.RobustnessRow]) -> list[str]:
     lines = [
         "| Variant | Scope | Statistic | energy ratio (kh) | CV (kh) | "
@@ -3588,10 +3594,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "- Max/min ratio of the day-mode-group means "
         f"({', '.join(daily_energy.DAY_MODE_GROUPS)}): "
         f"{results['ratio_kh']:.2f} (kh), {results['ratio_cp']:.2f} (compendium).",
-        "- Method-of-moments gamma fit (point 5): shape="
-        f"{results['gamma_kh'][0]:.2f}, scale={results['gamma_kh'][1]:.1f} kJ (kh); "
-        f"shape={results['gamma_cp'][0]:.2f}, scale={results['gamma_cp'][1]:.1f} kJ "
-        "(compendium).",
+        "- Method-of-moments gamma fit (point 5): "
+        f"{_format_gamma_fit(results['gamma_kh'])} (kh); "
+        f"{_format_gamma_fit(results['gamma_cp'])} (compendium). "
+        "A zero weighted variance cannot be fit."
         f"- Mean trips per person and day: {results['trips_mean']:.2f} "
         f"(95% CI [{results['trips_ci'][0]:.2f}, {results['trips_ci'][1]:.2f}]).",
         "",

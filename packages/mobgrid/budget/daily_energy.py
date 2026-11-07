@@ -17,6 +17,7 @@ non-travellers differently.
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 
 import duckdb
@@ -577,13 +578,20 @@ def bootstrap_scalar_group_stats(
     ]
 
 
-def gamma_moments_fit(mean: float, variance: float) -> tuple[float, float]:
+def gamma_moments_fit(mean: float, variance: float) -> tuple[float, float] | None:
     """Method-of-moments gamma fit (shape, scale): shape = mean^2/var,
     scale = var/mean (section 9.9 point 5, "gamma-like, as in Koelbl &
     Helbing"). No MLE (``scipy.stats.gamma.fit``) dependency is added for
     this single check; the moment estimator is exact for a true gamma and
     a standard first approximation otherwise."""
-    if mean <= 0 or variance <= 0:
+    if variance == 0:
+        warnings.warn(
+            "Gamma fit skipped: weighted variance is zero.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return None
+    if mean <= 0 or variance < 0:
         raise ValueError("mean and variance must be positive")
     shape = mean**2 / variance
     scale = variance / mean
