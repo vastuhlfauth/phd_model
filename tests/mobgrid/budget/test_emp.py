@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import csv
 import re
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,19 +32,11 @@ def _add_synthetic_entd_cli_duration_spread(raw_dir: Path) -> None:
     path = raw_dir / "k_deploc.csv"
     lines = path.read_text(encoding="cp1252").splitlines()
     lines = [
-        line.replace(";20;;1.5;", ";25;;1.5;", 1)
-        if line.startswith("D2;")
-        else line
+        line.replace(";20;;1.5;", ";25;;1.5;", 1) if line.startswith("D2;") else line
         for line in lines
     ]
-    lines.append(
-        "D5R;4;M4;J4;150;1;1;2;2;;35;;5.0;0;3;3.32;1.1;9.91;"
-        "C;C;7;0;0;4.0;;"
-    )
-    lines.append(
-        "D8R;8;M8;J8;100;1;1;2;2;;35;;5.0;;;2.20;1.1;9.91;"
-        "C;C;7;0;0;4.0;;"
-    )
+    lines.append("D5R;4;M4;J4;150;1;1;2;2;;35;;5.0;0;3;3.32;1.1;9.91;C;C;7;0;0;4.0;;")
+    lines.append("D8R;8;M8;J8;100;1;1;2;2;;35;;5.0;;;2.20;1.1;9.91;C;C;7;0;0;4.0;;")
     path.write_text("\n".join(lines), encoding="cp1252")
 
 
@@ -347,9 +340,7 @@ def test_figstyle_preserves_multipanel_size_without_auto_value_labels(
     )
     path = tmp_path / "multipanel.png"
 
-    emp.figstyle.save_figure(
-        fig, path, preserve_size=True, annotate_values=False
-    )
+    emp.figstyle.save_figure(fig, path, preserve_size=True, annotate_values=False)
     plt.close(fig)
 
     assert path.is_file()
@@ -357,25 +348,277 @@ def test_figstyle_preserves_multipanel_size_without_auto_value_labels(
     assert len(axes[0].texts) == 0
     with path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
-    median_row = next(
-        row for row in rows if row["group"] == "0.0" and row["median"]
-    )
+    median_row = next(row for row in rows if row["group"] == "0.0" and row["median"])
     assert float(median_row["median"]) == pytest.approx(9.0)
     assert float(median_row["p25"]) == pytest.approx(6.0)
     assert float(median_row["p75"]) == pytest.approx(12.0)
 
 
-def test_figstyle_default_still_resizes_multipanel_figures(tmp_path: Path) -> None:
+def test_figstyle_default_preserves_original_artists(tmp_path: Path) -> None:
     import matplotlib.pyplot as plt
 
     fig, axes = plt.subplots(1, 2, figsize=(6, 3))
-    axes[0].bar([0], [10.0])
+    bars = axes[0].bar([0, 1], [10.0, 20.0], color=["tab:blue", "tab:orange"])
+    axes[0].set_ylabel("Mean trips per day")
+    axes[0].set_ylim(0, 25)
+    colors = [bar.get_facecolor() for bar in bars]
+    tick_locator = axes[0].yaxis.get_major_locator()
+    image = axes[1].imshow([[1, 2], [3, 4]])
+    text = axes[1].text(0, 0, "1\n(n=60)", color="white", fontsize=6)
+    colorbar = fig.colorbar(image, ax=axes[1])
+    colorbar_limits = colorbar.ax.get_ylim()
+    emp.figstyle.set_context(
+        scope=scope.REFERENCE_SCOPE.label, survey="EMP 2019", days="weekday"
+    )
     path = tmp_path / "default-size.png"
 
     emp.figstyle.save_figure(fig, path)
     plt.close(fig)
 
-    assert plt.imread(path).shape[:2] == (700, 1400)
+    assert fig.get_size_inches() == pytest.approx((6, 3))
+    assert axes[0].get_ylim() == pytest.approx((0, 25))
+    assert axes[0].yaxis.get_major_locator() is tick_locator
+    assert [bar.get_facecolor() for bar in bars] == colors
+    assert not axes[0].texts
+    assert text.get_color() == "white"
+    assert text.get_fontsize() == 6
+    assert colorbar.ax.get_ylim() == colorbar_limits
+    assert not any("replicates" in item.get_text() for item in fig.texts)
+
+
+def test_comparison_time_reference_values_are_weighted_not_category_averages() -> None:
+    """Section 9.9: horizontal references use each panel's own day universe."""
+    days = {
+        "pond_jour": np.array([1.0, 3.0, 6.0]),
+        "total_time_min": np.array([10.0, 20.0, 100.0]),
+    }
+    weekday = {
+        "pond_jour": np.array([1.0, 3.0]),
+        "total_time_min": np.array([10.0, 20.0]),
+    }
+    results = {
+        "all_days": days,
+        "weekday_days": weekday,
+        "person_budget_weekday_population": {
+            "overall": SimpleNamespace(budget=12.5),
+        },
+    }
+    refs = emp._comparison_time_references(results)
+    assert refs == {
+        "all": (67.0, 100.0),
+        "weekday": (17.5, 20.0),
+        "person": (12.5, None),
+    }
+
+
+@pytest.mark.parametrize("survey_name", ["EMP 2019", "ENTD 2008"])
+def test_all_survey_figures_preserve_original_rendering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, survey_name: str
+) -> None:
+    """Section 9.9: exercise every plot with all modes/categories populated."""
+    import duckdb
+
+    con = duckdb.connect()
+    con.sql("""
+        CREATE TABLE day_summary AS
+        SELECT CAST(i AS VARCHAR) AS day_id, CAST(i // 2 AS VARCHAR) AS ident_men,
+            ['children_6_17', 'employed', 'unemployed', 'retired',
+                'other_inactive'][1 + i // 540] AS population_category,
+            ['walking_only', 'cycle', 'car_driver', 'car_passenger_household',
+                'car_passenger_carpool', 'urban_pt', 'train', 'multimodal',
+                'other'][1 + (i // 60) % 9] AS day_mode_group,
+            ['dense', 'intermediate', 'sparse', 'very_sparse'][1 + i % 4]
+                AS home_density,
+            ['q1', 'q2', 'q3', 'q4', 'q5'][1 + i % 5] AS income_quintile,
+            1 + i % 3 AS typejour, 1.0 + i % 7 AS pond_jour,
+            1 + i % 8 AS trips_per_day,
+            10.0 + (i % 60) * 2 + (i // 60) % 9 AS total_time_min,
+            100.0 + (i % 60) * 12 + (i // 60) % 9 * 20 AS total_energy_kh_kj,
+            80.0 + (i % 60) * 10 + (i // 60) % 9 * 18 AS total_energy_cp_kj
+        FROM range(2700) AS v(i)
+    """)
+    days = emp._day_rows(con)
+    emp.figstyle.set_context(
+        scope=scope.REFERENCE_SCOPE.label,
+        survey=survey_name,
+        days="weekday" if survey_name == "ENTD 2008" else "weekday / Saturday / Sunday",
+        replicates=1,
+    )
+    saved = []
+    save_figure = emp.figstyle.save_figure
+
+    def checked_save(fig, path, **kwargs):
+        size = fig.get_size_inches().copy()
+        limits = [(ax.get_xlim(), ax.get_ylim()) for ax in fig.axes]
+        text_styles = [
+            (text, text.get_fontsize(), text.get_color())
+            for ax in fig.axes
+            for text in ax.texts
+        ]
+        colors = [
+            (patch, patch.get_facecolor()) for ax in fig.axes for patch in ax.patches
+        ]
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = save_figure(fig, path, **kwargs)
+        assert not any(
+            "layout" in str(warning.message).casefold() for warning in caught
+        ), path.name
+        assert fig.get_size_inches() == pytest.approx(size)
+        assert [(ax.get_xlim(), ax.get_ylim()) for ax in fig.axes] == limits
+        for text, fontsize, color in text_styles:
+            assert text.get_fontsize() == fontsize
+            assert text.get_color() == color
+        for patch, color in colors:
+            assert patch.get_facecolor() == color
+        renderer = fig.canvas.get_renderer()
+        for text in fig.texts:
+            bounds = text.get_window_extent(renderer)
+            assert bounds.x0 >= 0 and bounds.x1 <= fig.bbox.width, path.name
+        if len(fig.texts) >= 2:
+            assert (
+                not fig.texts[0]
+                .get_window_extent(renderer)
+                .overlaps(fig.texts[1].get_window_extent(renderer))
+            ), path.name
+        for ax in fig.axes:
+            if ax.images:
+                assert all(
+                    text.get_color() == "white"
+                    for text in ax.texts
+                    if text.get_visible()
+                )
+        saved.append(path)
+        return result
+
+    monkeypatch.setattr(emp.figstyle, "save_figure", checked_save)
+    trips = days["trips_per_day"].astype(float)
+    trips_mean = float(np.average(trips, weights=days["pond_jour"]))
+    population = emp._trips_per_day_by_group(
+        days, "population_category", n_reps=10, seed=0
+    )
+    density = emp._trips_per_day_by_group(days, "home_density", n_reps=10, seed=0)
+
+    def motives(rows):
+        return (
+            [row[0] for row in rows],
+            [1.0, 2.0, 7.0, 9.0],
+            np.asarray([row[2] for row in rows])[:, None]
+            * np.array([0.3, 0.2, 0.1, 0.4]),
+        )
+
+    emp._figure_f1_trips_per_day(
+        days,
+        trips_mean,
+        population,
+        density,
+        motives(population),
+        motives(density),
+        tmp_path,
+    )
+    stores = {}
+    for metric, values, filename, ylabel, title in (
+        (
+            "trips",
+            trips,
+            "f01b_trips_per_day_by_category.png",
+            "Mean trips per day",
+            "F1b. Trips per day by population category x density "
+            "class / income quintile (95% CI, section 9.9 point 2)",
+        ),
+        (
+            "minutes",
+            days["total_time_min"] / trips,
+            "f01c_minutes_per_trip_by_category.png",
+            "Mean minutes per trip",
+            "F1c. Minutes per trip by population category x density "
+            "class / income quintile (95% CI, section 9.9 point 2)",
+        ),
+        ("time", days["total_time_min"], None, None, None),
+    ):
+        density_stats = emp._scalar_by_combined_key(
+            days, "home_density", values, n_reps=1, seed=0
+        )
+        income_stats = emp._scalar_by_combined_key(
+            days, "income_quintile", values, n_reps=1, seed=0
+        )
+        stores[metric] = (density_stats, income_stats)
+        if filename is not None:
+            emp._figure_scalar_by_category_key(
+                density_stats,
+                income_stats,
+                title=title,
+                ylabel=ylabel,
+                filename=filename,
+                out_dir=tmp_path,
+            )
+    emp._figure_f2_time_density_by_category(con, tmp_path)
+    emp._figure_f3_energy_density(con, tmp_path)
+    emp._figure_f4_mean_by_mode(con, tmp_path, n_reps=1, seed=0)
+    emp._figure_f5_heatmaps(con, tmp_path)
+    emp._figure_f5_time_heatmaps(con, tmp_path)
+    emp._figure_f6_v0_p0(
+        [SimpleNamespace(group=str(i), n=60, speed_kmh=3 + i / 5) for i in range(6)],
+        [SimpleNamespace(group=str(i), n=60, p0_w=15 + i * 5) for i in range(6)],
+        emp.load_energy_config(CONFIG_PATH),
+        tmp_path,
+    )
+    emp._figure_f7_passengers(
+        {
+            "car_passenger_household": (100, 25.0, 50.0, 45.0),
+            "car_passenger_carpool": (100, 35.0, 60.0, 55.0),
+        },
+        {
+            "car_driver": 0.2,
+            "car_passenger_household": 0.4,
+            "car_passenger_carpool": 0.6,
+        },
+        tmp_path,
+    )
+    group_stats = emp._group_stats(days, "day_mode_group", n_reps=10, seed=0)
+    emp._figure_f8_robustness(
+        {
+            label: group_stats
+            for label in (
+                "declared (base case)",
+                "declared + 1 min (car/bike/urban PT)",
+                "former defaults, terminal legs x0.5",
+                "former defaults, terminal legs x1",
+                "former defaults, terminal legs x1.5",
+            )
+        },
+        tmp_path,
+    )
+    density_time, income_time = stores["time"]
+
+    def budgets(stats):
+        return {
+            key: SimpleNamespace(
+                n=stat.n,
+                budget=stat.mean * 0.8,
+                budget_ci=tuple(v * 0.8 for v in stat.mean_ci),
+            )
+            for key, stat in stats.items()
+        }
+
+    emp._figure_f10_constancy(
+        density_time,
+        income_time,
+        budgets(density_time),
+        budgets(income_time),
+        tmp_path,
+    )
+    emp._figure_f9_motive_energy(
+        (
+            list(daily_energy.DAY_MODE_GROUPS),
+            [1.0, 2.0, 7.0, 9.0],
+            np.tile([30.0, 20.0, 10.0, 40.0], (len(daily_energy.DAY_MODE_GROUPS), 1)),
+        ),
+        tmp_path,
+    )
+    assert len(saved) == 18
+    assert len(list(tmp_path.glob("*.csv"))) == 18
+    con.close()
 
 
 def test_f4_energy_and_time_figures_export_means_and_medians_by_mode(
@@ -426,7 +669,9 @@ def test_f4_energy_and_time_figures_export_means_and_medians_by_mode(
             'unemployed',
             'retired',
             'other_inactive'
-        ]) AS population_category
+        ]) AS population_category, 1.0 AS pond_jour,
+            100.0 AS total_energy_kh_kj, 90.0 AS total_energy_cp_kj,
+            50.0 AS total_time_min
     """)
 
     paths, _ = emp._figure_f4_mean_by_mode(con, tmp_path, n_reps=1, seed=0)
@@ -474,7 +719,17 @@ def test_f4_energy_and_time_figures_export_means_and_medians_by_mode(
 
 def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    figures = []
+    save_figure = emp.figstyle.save_figure
+
+    def capture_figure(fig, path, **kwargs):
+        result = save_figure(fig, path, **kwargs)
+        figures.append(fig)
+        return result
+
+    monkeypatch.setattr(emp.figstyle, "save_figure", capture_figure)
     emp.figstyle.set_context(
         scope="Reference",
         survey="ENTD 2008 vs EMP 2019",
@@ -641,6 +896,12 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     budgets_2019 = [
         SimpleNamespace(group="employed", n=60, budget=55.0, budget_ci=(50.0, 60.0))
     ]
+    for rows in (time_stats_2008, time_stats_2019, budgets_2008, budgets_2019):
+        template = vars(rows[0])
+        rows[:] = [
+            SimpleNamespace(**{**template, "group": category})
+            for category in daily_energy.POPULATION_CATEGORIES
+        ]
     category_path = emp._figure_compare_time_by_category(
         time_stats_2008,
         time_stats_2019,
@@ -649,6 +910,16 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         {row.group: row for row in budgets_2008},
         {row.group: row for row in budgets_2019},
         tmp_path,
+        references_2008={
+            "all": (56.0, 50.0),
+            "weekday": (57.0, 51.0),
+            "person": (40.0, None),
+        },
+        references_2019={
+            "all": (61.0, 55.0),
+            "weekday": (62.0, 56.0),
+            "person": (45.0, None),
+        },
         ratio_intervals={
             ("all", "employed"): (1.08, 1.02, 1.14),
             ("weekday", "employed"): (1.08, 1.02, 1.14),
@@ -658,9 +929,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     assert category_path.is_file()
     assert category_path.with_suffix(".csv").is_file()
     assert plt.imread(category_path).shape[:2] == (1200, 3800)
-    with category_path.with_suffix(".csv").open(
-        encoding="utf-8", newline=""
-    ) as stream:
+    with category_path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
         category_rows = list(csv.DictReader(stream))
     category_row = next(
         row
@@ -673,6 +942,41 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     assert float(category_row["p25"]) == pytest.approx(45.0)
     assert float(category_row["median"]) == pytest.approx(58.0)
     assert float(category_row["p75"]) == pytest.approx(70.0)
+    for panel, year, statistic, expected in (
+        ("(A) All days, day with trips", "2008", "mean", 56.0),
+        ("(A) All days, day with trips", "2019", "median", 55.0),
+        ("(B) Weekday only, day with trips", "2008", "median", 51.0),
+        ("(B) Weekday only, day with trips", "2019", "mean", 62.0),
+        ("(C) Weekday only, per person", "2008", "mean", 40.0),
+        ("(C) Weekday only, per person", "2019", "mean", 45.0),
+    ):
+        reference = next(
+            row
+            for row in category_rows
+            if row["panel"] == panel
+            and row["group"] == "All"
+            and row["subgroup"].startswith(f"All ({year}) {statistic}:")
+        )
+        assert float(reference[statistic]) == pytest.approx(expected)
+    assert not any(
+        row["median"]
+        for row in category_rows
+        if row["panel"] == "(C) Weekday only, per person"
+    )
+    for ax, count in zip(figures[-1].axes, (4, 4, 2), strict=True):
+        legend_bottom = ax.transData.inverted().transform(
+            ax.get_legend().get_window_extent().p0
+        )[1]
+        for line in ax.lines:
+            values = np.asarray(line.get_ydata(), dtype=float)
+            assert np.all(values[np.isfinite(values)] < legend_bottom)
+        lines = [line for line in ax.lines if line.get_label().startswith("All (")]
+        assert len(lines) == count
+        assert all(line.get_visible() for line in lines)
+        assert all(np.allclose(line.get_ydata(), line.get_ydata()[0]) for line in lines)
+        assert {line.get_linestyle() for line in lines} == (
+            {"--"} if count == 2 else {"--", ":"}
+        )
 
 
 #: The EMP 2019 base-case group table on the synthetic fixture (section
@@ -1016,6 +1320,11 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
     monkeypatch.setattr(emp, "_comparison_ratio_intervals", lambda *args, **kwargs: {})
     monkeypatch.setattr(
         emp, "_person_budget_ratio_intervals", lambda *args, **kwargs: {}
+    )
+    monkeypatch.setattr(
+        emp,
+        "_comparison_time_references",
+        lambda *args: dict.fromkeys(("all", "weekday", "person"), (None, None)),
     )
     monkeypatch.setattr(
         emp,

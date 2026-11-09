@@ -2,6 +2,36 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11: complete figure-rendering restoration (2026-11-09)
+
+- The previous readability correction was incomplete: only four plots were
+  exempted from the shared resizing and annotations. The default saver now
+  preserves every producer's original dimensions, fonts, series colours,
+  axes/ticks, heatmap text and colourbars. Automatic value labels and the
+  generic bootstrap/quartile footer no longer crowd the survey plots.
+  Scope subtitles are small and positioned below the measured title.
+- F01/F01b/F01c no longer display redundant sample labels; F01 heatmap
+  cells again show just their values. Sample metadata remain in CSVs.
+  F04 retains mean/median/quartile markers and overall mean/median
+  references in both energy and time panels.
+- The approved `compare_energy_time.png` rendering explicitly retains its
+  existing styling. `compare_time_by_category.png` now has each survey's
+  own weighted overall mean (dashed) and median (dotted) in A/B. As
+  confirmed by the user, C shows the existing roster-based overall mean
+  only, without an invented median. CSV reference rows distinguish means
+  from medians. No estimator or production default changed.
+- Eleven focused regressions passed (92.69 s); changed-file Ruff passed.
+  The strengthened production-title/all-category rendering rerun passed
+  (3 tests, 96.54 s); final comparison/reference/call-wiring checks passed
+  (4 tests, 5.62 s), including legend clearance above plotted values.
+  Rendering checks cover all 18 survey figures for each survey on populated
+  synthetic data, preserving artist styles and checking title bounds,
+  title/subtitle separation and absence of layout warnings. Comparison
+  checks verify visible reference lines and exact CSV values.
+- Synthetic full-size previews and a local HTML gallery are saved in the
+  session's `files/figure-restoration-preview/` directory. No real-data
+  report or full suite was run; existing generated reports are untouched.
+
 ### Step 11 figure readability correction (2026-11-07)
 
 - The F04 and comparison figures preserve their designed multi-panel size.

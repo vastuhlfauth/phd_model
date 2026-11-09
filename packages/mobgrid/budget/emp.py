@@ -1612,6 +1612,7 @@ def _figure_f1_trips_per_day(
                 fontsize=8,
                 color=figstyle.SECONDARY_TEXT_COLOUR,
             )
+            sample_label.set_visible(False)
             if n < MIN_CELL_N:
                 setattr(sample_label, "_figure_n_value", n)
         ax.set_ylabel("Mean trips per day")
@@ -1630,7 +1631,7 @@ def _figure_f1_trips_per_day(
             if n < MIN_CELL_N:
                 text = "n < 50"
             elif not np.isnan(freq_matrix[i, j]):
-                text = f"{freq_matrix[i, j]:.1f}\n(n={n})"
+                text = f"{freq_matrix[i, j]:.1f}"
             else:
                 continue
             if text:
@@ -1643,8 +1644,9 @@ def _figure_f1_trips_per_day(
                     fontsize=6,
                     color="white",
                 )
+                setattr(cell_label, "_figure_n_value", n)
                 if n < MIN_CELL_N:
-                    setattr(cell_label, "_figure_n_value", n)
+                    cell_label.set_visible(False)
     ax_freq.set_title(
         "(D) Mean trips per day by population category x main-mode group\n"
         "(row/col 'overall' = marginal, weighted means, as in (B)/(C); a\n"
@@ -1706,11 +1708,12 @@ def _figure_scalar_by_category_key(
                             color=figstyle.SECONDARY_TEXT_COLOUR,
                         )
                         setattr(sample_label, "_figure_n_value", stat.n)
+                        sample_label.set_visible(False)
                     continue
                 means.append(stat.mean)
                 lowers.append(max(stat.mean - stat.mean_ci[0], 0.0))
                 uppers.append(max(stat.mean_ci[1] - stat.mean, 0.0))
-                ax.text(
+                sample_label = ax.text(
                     x[key_index] + i * width,
                     0,
                     f"n={stat.n}",
@@ -1719,6 +1722,7 @@ def _figure_scalar_by_category_key(
                     fontsize=8,
                     color=figstyle.SECONDARY_TEXT_COLOUR,
                 )
+                sample_label.set_visible(False)
             ax.bar(
                 x + i * width,
                 means,
@@ -1984,6 +1988,29 @@ def _bootstrap_scalar_time_stats_where(
     return {s.group: s for s in stats}
 
 
+def _panel_overall_stats(
+    con: duckdb.DuckDBPyConnection, where_sql: str
+) -> dict[str, tuple[float, float]]:
+    """Weighted mean and median in kJ or minutes for an F04 panel (9.9)."""
+    statistics = {}
+    for metric, column in (
+        ("kh", "total_energy_kh_kj"),
+        ("cp", "total_energy_cp_kj"),
+        ("time", "total_time_min"),
+    ):
+        rows = con.sql(
+            f"SELECT pond_jour, {column} AS value FROM day_summary "
+            f"WHERE ({where_sql}) AND {column} IS NOT NULL"
+        ).fetchnumpy()
+        if len(rows["value"]):
+            mean, _ = daily_energy.weighted_mean_variance(
+                rows["pond_jour"], rows["value"]
+            )
+            median = daily_energy._weighted_median(rows["value"], rows["pond_jour"])
+            statistics[metric] = (mean, median)
+    return statistics
+
+
 def _figure_f4_mean_by_mode(
     con: duckdb.DuckDBPyConnection,
     out_dir: Path,
@@ -2013,6 +2040,10 @@ def _figure_f4_mean_by_mode(
         (label, _bootstrap_stats_where(con, where_sql, n_reps=n_reps, seed=seed))
         for label, where_sql in panel_where_sql
     ]
+    overall_stats = {
+        label: _panel_overall_stats(con, where_sql)
+        for label, where_sql in panel_where_sql
+    }
 
     time_panels = [
         (
@@ -2086,6 +2117,28 @@ def _figure_f4_mean_by_mode(
                 rotation=90,
             )
             text.set_visible(False)
+        ax.axhline(
+            daily_energy.KH_DAILY_ENERGY_KJ,
+            color="grey",
+            linestyle="--",
+            linewidth=0.8,
+            label="Koelbl & Helbing 615 kJ" if ax is axes.flat[0] else None,
+        )
+        for rate_key, color in (("kh", "tab:blue"), ("cp", "tab:orange")):
+            if rate_key not in overall_stats[label]:
+                continue
+            mean, median = overall_stats[label][rate_key]
+            for value, statistic, linestyle in (
+                (mean, "computed mean", "-."),
+                (median, "overall median", ":"),
+            ):
+                ax.axhline(
+                    value,
+                    color=color,
+                    linestyle=linestyle,
+                    linewidth=0.8,
+                    label=f"{statistic} ({rate_key})",
+                )
         if ax is axes.flat[0]:
             ax.set_ylabel("Mean daily energy, kJ")
         ax.set_xticks(x)
@@ -2165,6 +2218,19 @@ def _figure_f4_mean_by_mode(
                 rotation=90,
             )
             text.set_visible(False)
+        if "time" in overall_stats[label]:
+            mean, median = overall_stats[label]["time"]
+            for value, statistic, linestyle in (
+                (mean, "computed mean", "-."),
+                (median, "overall median", ":"),
+            ):
+                ax.axhline(
+                    value,
+                    color="black",
+                    linestyle=linestyle,
+                    linewidth=0.8,
+                    label=statistic,
+                )
         if ax is axes.flat[0]:
             ax.set_ylabel("Mean daily travel time, minutes")
         ax.set_xticks(x)
@@ -4608,6 +4674,8 @@ def run_compare(
         results_2008["person_budget_weekday_population"],
         results_2019_proxy["person_budget_weekday_population"],
         out_path,
+        references_2008=_comparison_time_references(results_2008),
+        references_2019=_comparison_time_references(results_2019_proxy),
         ratio_intervals={
             ("all", group): value for group, value in category_ratio_intervals.items()
         }
@@ -4877,9 +4945,36 @@ def _figure_compare_energy_time(
     )
     fig.tight_layout()
     path = out_dir / "compare_energy_time.png"
-    figstyle.save_figure(fig, path, preserve_size=True, annotate_values=False)
+    figstyle.save_figure(
+        fig, path, preserve_size=True, annotate_values=False, restyle=True
+    )
     plt.close(fig)
     return path
+
+
+def _comparison_time_references(
+    results: dict,
+) -> dict[str, tuple[float | None, float | None]]:
+    """Overall mean and median in minutes for each section 9.9 time panel.
+
+    Day references use day weights, never averages of category estimates.
+    The per-person reference reuses the roster-based mean, with no median.
+    """
+    references: dict[str, tuple[float | None, float | None]] = {}
+    for panel, key in (("all", "all_days"), ("weekday", "weekday_days")):
+        days = results[key]
+        mean, _ = daily_energy.weighted_mean_variance(
+            days["pond_jour"], days["total_time_min"]
+        )
+        median = daily_energy._weighted_median(
+            days["total_time_min"], days["pond_jour"]
+        )
+        references[panel] = (mean, median)
+    references["person"] = (
+        results["person_budget_weekday_population"]["overall"].budget,
+        None,
+    )
+    return references
 
 
 def _figure_compare_time_by_category(
@@ -4891,6 +4986,8 @@ def _figure_compare_time_by_category(
     budgets_2019_weekday: dict[str, daily_energy.PersonBudgetRow],
     out_dir: Path,
     *,
+    references_2008: dict[str, tuple[float | None, float | None]],
+    references_2019: dict[str, tuple[float | None, float | None]],
     ratio_intervals: dict[tuple[str, str], tuple[float, float, float]] | None = None,
 ) -> Path:
     """Daily travel time by population category, 2008 vs 2019 (section
@@ -5094,7 +5191,35 @@ def _figure_compare_time_by_category(
     ax_person.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
     ax_person.set_ylabel("Mean daily time, minutes")
     ax_person.set_title("(C) Weekday only, per person", fontsize=9)
-    ax_person.legend(fontsize=6)
+
+    for ax, panel in (
+        (ax_all, "all"),
+        (ax_weekday, "weekday"),
+        (ax_person, "person"),
+    ):
+        for year, references, color in (
+            ("2008", references_2008, figstyle.SURVEY_COLOURS["ENTD 2008"]),
+            ("2019", references_2019, figstyle.SURVEY_COLOURS["EMP 2019"]),
+        ):
+            mean, median = references[panel]
+            if mean is not None:
+                ax.axhline(
+                    mean,
+                    color=color,
+                    linestyle="--",
+                    linewidth=1,
+                    label=f"All ({year}) mean: {mean:.1f}",
+                )
+            if median is not None:
+                ax.axhline(
+                    median,
+                    color=color,
+                    linestyle=":",
+                    linewidth=1,
+                    label=f"All ({year}) median: {median:.1f}",
+                )
+        ax.margins(y=0.25)
+        ax.legend(fontsize=6, ncol=2, loc="upper left")
 
     fig.suptitle(
         "Daily travel time by population category, 2008 vs 2019 (density "

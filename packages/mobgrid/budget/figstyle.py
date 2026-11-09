@@ -6,6 +6,7 @@ import csv
 import re
 import warnings
 from pathlib import Path
+from textwrap import fill
 from typing import Any
 
 import numpy as np
@@ -254,9 +255,7 @@ def _apply_style(
     if not preserve_size and width != 7.0:
         fig.set_size_inches(7.0, height * 7.0 / width, forward=True)
 
-    survey_colour = (
-        None if preserve_series_colors else SURVEY_COLOURS.get(survey or "")
-    )
+    survey_colour = None if preserve_series_colors else SURVEY_COLOURS.get(survey or "")
     for ax in fig.axes:
         ax.set_facecolor(BACKGROUND_COLOUR)
         x_labels = [
@@ -322,16 +321,13 @@ def _apply_style(
             labeled_indexes = set(range(len(visible_bars)))
             if len(visible_bars) > 24:
                 heights = [
-                    float(patch.get_y() + patch.get_height())
-                    for patch in visible_bars
+                    float(patch.get_y() + patch.get_height()) for patch in visible_bars
                 ]
                 labeled_indexes = {int(np.argmin(heights)), int(np.argmax(heights))}
                 labeled_indexes.update(
                     i
                     for i, patch in enumerate(visible_bars)
-                    if _nearest_group(
-                        ax, float(patch.get_x() + patch.get_width() / 2)
-                    )
+                    if _nearest_group(ax, float(patch.get_x() + patch.get_width() / 2))
                     == "All"
                 )
             existing_text_positions = [
@@ -344,8 +340,7 @@ def _apply_style(
                 x = float(patch.get_x() + patch.get_width() / 2)
                 y = float(patch.get_y() + patch.get_height())
                 if any(
-                    np.isclose(x, text_x, atol=0.04)
-                    and np.isclose(y, text_y, atol=0.5)
+                    np.isclose(x, text_x, atol=0.04) and np.isclose(y, text_y, atol=0.5)
                     for text_x, text_y in existing_text_positions
                 ):
                     continue
@@ -388,7 +383,10 @@ def _apply_style(
 
 def _nearest_group(ax: Any, x: float) -> str:
     ticks = np.asarray(ax.get_xticks(), dtype=float)
-    labels = [label.get_text() for label in ax.get_xticklabels()]
+    labels = [
+        _PLAIN_LABELS.get(label.get_text(), label.get_text())
+        for label in ax.get_xticklabels()
+    ]
     if not len(ticks):
         return ""
     index = int(np.argmin(np.abs(ticks - x)))
@@ -498,7 +496,8 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
                     "_"
                 ):
                     group = "All"
-                    row_for(group, label)["mean"] = float(y_data[0])
+                    statistic = "median" if "median" in label.casefold() else "mean"
+                    row_for(group, label)[statistic] = float(y_data[0])
             elif len(x_data) == len(y_data) and len(y_data) > 1:
                 label = line.get_label()
                 if label.startswith("_"):
@@ -631,51 +630,76 @@ def save_figure(
     preserve_size: bool = False,
     annotate_values: bool = True,
     apply_quantity_ranges: bool = True,
+    restyle: bool = False,
     rows: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Save a 200-dpi PNG and same-stem CSV of plotted values.
 
-    Figures use a consistent 7-inch width unless ``preserve_size`` is set.
-    ``annotate_values`` controls automatic bar-value labels.
+    By default, preserve the producer's dimensions, fonts, colors, axes and
+    annotations. The approved comparison rendering can opt into ``restyle``.
     """
-    _apply_style(
-        fig,
-        survey=survey or _CONTEXT["survey"],
-        preserve_series_colors=preserve_series_colors,
-        preserve_size=preserve_size,
-        annotate_values=annotate_values,
-        apply_quantity_ranges=apply_quantity_ranges,
+    if restyle:
+        _apply_style(
+            fig,
+            survey=survey or _CONTEXT["survey"],
+            preserve_series_colors=preserve_series_colors,
+            preserve_size=preserve_size,
+            annotate_values=annotate_values,
+            apply_quantity_ranges=apply_quantity_ranges,
+        )
+    subtitle = " · ".join(
+        value
+        for value in (
+            _CONTEXT["scope"],
+            _CONTEXT["days"],
+            _CONTEXT["basis"],
+            _CONTEXT["survey"],
+        )
+        if value
     )
-    fig.text(
+    subtitle_y = 0.955
+    if not restyle:
+        fig.canvas.draw()
+        title = fig._suptitle
+        title_bottom = (
+            title.get_window_extent(fig.canvas.get_renderer())
+            .transformed(fig.transFigure.inverted())
+            .y0
+            if title is not None
+            else 0.98
+        )
+        subtitle_y = title_bottom - 0.015
+    subtitle_text = fig.text(
         0.5,
-        0.955,
-        " · ".join(
-            value
-            for value in (
-                _CONTEXT["scope"],
-                _CONTEXT["days"],
-                _CONTEXT["basis"],
-                _CONTEXT["survey"],
-            )
-            if value
-        ),
+        subtitle_y,
+        subtitle if restyle else fill(subtitle, width=120),
         ha="center",
         va="top",
-        fontsize=8,
+        fontsize=8 if restyle else 7,
         color=SECONDARY_TEXT_COLOUR,
     )
-    fig.text(
-        0.5,
-        0.012,
-        "Mean and 95% CI (household bootstrap, "
-        f"{_CONTEXT['replicates']} replicates); ◇ median; bar = quartiles; "
-        f"{_CONTEXT['section']}",
-        ha="center",
-        va="bottom",
-        fontsize=8,
-        color=SECONDARY_TEXT_COLOUR,
-    )
-    fig.tight_layout(rect=(0.0, 0.04, 1.0, 0.91))
+    if restyle:
+        fig.text(
+            0.5,
+            0.012,
+            "Mean and 95% CI (household bootstrap, "
+            f"{_CONTEXT['replicates']} replicates); ◇ median; bar = quartiles; "
+            f"{_CONTEXT['section']}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            color=SECONDARY_TEXT_COLOUR,
+        )
+    top = 0.91
+    if not restyle:
+        fig.canvas.draw()
+        top = (
+            subtitle_text.get_window_extent(fig.canvas.get_renderer())
+            .transformed(fig.transFigure.inverted())
+            .y0
+            - 0.015
+        )
+    fig.tight_layout(rect=(0.0, 0.04 if restyle else 0.0, 1.0, top))
     fig.savefig(path, dpi=200, facecolor=BACKGROUND_COLOUR)
     data_path = path.with_suffix(".csv")
     output_rows = _rows_from_figure(fig, path) if rows is None else rows

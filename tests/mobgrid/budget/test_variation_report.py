@@ -890,6 +890,16 @@ def test_2019_2008_ratio_is_identical_in_b2_c7_comparison_and_csv(
         {},
         {},
         tmp_path,
+        references_2008={
+            "all": (50.0, 50.0),
+            "weekday": (50.0, 50.0),
+            "person": (None, None),
+        },
+        references_2019={
+            "all": (50.0, 50.0),
+            "weekday": (50.0, 50.0),
+            "person": (None, None),
+        },
         ratio_intervals={("weekday", "employed"): intervals["employed"]},
     )
     with path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
