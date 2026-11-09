@@ -268,7 +268,9 @@ def _apply_style(
         ]
         if x_labels:
             ax.set_xticks(ax.get_xticks(), labels=x_labels)
-        if y_labels:
+        if y_labels and y_labels != [
+            label.get_text() for label in ax.get_yticklabels()
+        ]:
             ax.set_yticks(ax.get_yticks(), labels=y_labels)
         ax.tick_params(colors=TEXT_COLOUR, labelsize=8)
         ax.xaxis.label.set_color(TEXT_COLOUR)

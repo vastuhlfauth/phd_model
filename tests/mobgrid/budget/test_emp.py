@@ -722,9 +722,13 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     figures = []
+    original_limits = []
+    original_locators = []
     save_figure = emp.figstyle.save_figure
 
     def capture_figure(fig, path, **kwargs):
+        original_limits.append([ax.get_ylim() for ax in fig.axes])
+        original_locators.append([ax.yaxis.get_major_locator() for ax in fig.axes])
         result = save_figure(fig, path, **kwargs)
         figures.append(fig)
         return result
@@ -816,6 +820,11 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     import matplotlib.pyplot as plt
 
     assert plt.imread(energy_path).shape[:2] == (1200, 3800)
+    for ax, limits, locator in zip(
+        figures[0].axes, original_limits[0], original_locators[0], strict=True
+    ):
+        assert ax.get_ylim() == pytest.approx(limits)
+        assert ax.yaxis.get_major_locator() is locator
     with energy_path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     headline = next(

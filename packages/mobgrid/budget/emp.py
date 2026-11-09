@@ -4946,7 +4946,12 @@ def _figure_compare_energy_time(
     fig.tight_layout()
     path = out_dir / "compare_energy_time.png"
     figstyle.save_figure(
-        fig, path, preserve_size=True, annotate_values=False, restyle=True
+        fig,
+        path,
+        preserve_size=True,
+        annotate_values=False,
+        apply_quantity_ranges=False,
+        restyle=True,
     )
     plt.close(fig)
     return path

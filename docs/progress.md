@@ -2,6 +2,18 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11: comparison axis scaling correction (2026-11-09)
+
+- `compare_energy_time.png` no longer applies fixed quantity ranges:
+  the synthetic energy maximum of 411.5 kJ previously produced a 1500 kJ
+  axis. Each panel now retains its data-driven limits, including reference
+  lines, confidence intervals and quartiles. Numeric tick locators remain
+  automatic instead of being replaced with fixed ticks.
+- Four focused comparison/style tests passed (3.86 s); changed-file Ruff
+  passed. The regression checks exact preservation of pre-save limits and
+  tick locators. The session preview gallery's comparison was refreshed and
+  visually inspected; no real-data report or estimate was changed.
+
 ### Step 11: complete figure-rendering restoration (2026-11-09)
 
 - The previous readability correction was incomplete: only four plots were
