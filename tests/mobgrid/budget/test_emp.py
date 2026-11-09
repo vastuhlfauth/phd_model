@@ -335,6 +335,143 @@ def test_figstyle_csv_preserves_suppressed_sample_size(tmp_path: Path) -> None:
     )
 
 
+def test_figstyle_preserves_multipanel_size_without_auto_value_labels(
+    tmp_path: Path,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 2, figsize=(6, 3))
+    axes[0].bar([0], [10.0], label="mean")
+    emp.figstyle.plot_quartiles(
+        axes[0], [0], [6.0], [9.0], [12.0], color="black", label="median"
+    )
+    path = tmp_path / "multipanel.png"
+
+    emp.figstyle.save_figure(
+        fig, path, preserve_size=True, annotate_values=False
+    )
+    plt.close(fig)
+
+    assert path.is_file()
+    assert plt.imread(path).shape[:2] == (600, 1200)
+    assert len(axes[0].texts) == 0
+    with path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    median_row = next(
+        row for row in rows if row["group"] == "0.0" and row["median"]
+    )
+    assert float(median_row["median"]) == pytest.approx(9.0)
+    assert float(median_row["p25"]) == pytest.approx(6.0)
+    assert float(median_row["p75"]) == pytest.approx(12.0)
+
+
+def test_figstyle_default_still_resizes_multipanel_figures(tmp_path: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 2, figsize=(6, 3))
+    axes[0].bar([0], [10.0])
+    path = tmp_path / "default-size.png"
+
+    emp.figstyle.save_figure(fig, path)
+    plt.close(fig)
+
+    assert plt.imread(path).shape[:2] == (700, 1400)
+
+
+def test_f4_energy_and_time_figures_export_means_and_medians_by_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import duckdb
+
+    emp.figstyle.set_context(scope="Reference", survey="EMP 2019", days="7-day")
+    energy_stat = SimpleNamespace(
+        group="walking_only",
+        n=60,
+        mean_energy_kh_kj=100.0,
+        mean_energy_kh_ci=(90.0, 110.0),
+        p25_energy_kh_kj=80.0,
+        median_energy_kh_kj=95.0,
+        p75_energy_kh_kj=115.0,
+        mean_energy_cp_kj=90.0,
+        mean_energy_cp_ci=(80.0, 100.0),
+        p25_energy_cp_kj=70.0,
+        median_energy_cp_kj=85.0,
+        p75_energy_cp_kj=105.0,
+    )
+    time_stat = SimpleNamespace(
+        group="walking_only",
+        n=60,
+        mean=50.0,
+        mean_ci=(45.0, 55.0),
+        p25=40.0,
+        median=48.0,
+        p75=60.0,
+    )
+    monkeypatch.setattr(
+        emp,
+        "_bootstrap_stats_where",
+        lambda *args, **kwargs: {"walking_only": energy_stat},
+    )
+    monkeypatch.setattr(
+        emp,
+        "_bootstrap_scalar_time_stats_where",
+        lambda *args, **kwargs: {"walking_only": time_stat},
+    )
+    con = duckdb.connect()
+    con.sql("""
+        CREATE TABLE day_summary AS
+        SELECT unnest([
+            'children_6_17',
+            'employed',
+            'unemployed',
+            'retired',
+            'other_inactive'
+        ]) AS population_category
+    """)
+
+    paths, _ = emp._figure_f4_mean_by_mode(con, tmp_path, n_reps=1, seed=0)
+
+    assert [path.name for path in paths] == [
+        "f04a_mean_energy_by_mode.png",
+        "f04b_mean_time_by_mode.png",
+    ]
+    import matplotlib.pyplot as plt
+
+    panel_sets = []
+    for path, subgroup, mean, low, high, median, p25, p75 in (
+        (paths[0], "kh", 100.0, 90.0, 110.0, 95.0, 80.0, 115.0),
+        (paths[0], "cp", 90.0, 80.0, 100.0, 85.0, 70.0, 105.0),
+        (paths[1], "", 50.0, 45.0, 55.0, 48.0, 40.0, 60.0),
+    ):
+        assert plt.imread(path).shape[:2] == (2200, 3800)
+        with path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        panel_sets.append({row["panel"] for row in rows})
+        assert panel_sets[-1] == {
+            "overall",
+            "children_6_17",
+            "employed",
+            "unemployed",
+            "retired",
+            "other_inactive",
+        }
+        category_row = next(
+            row
+            for row in rows
+            if row["panel"] == "overall"
+            and row["group"] == "Walking only"
+            and row["subgroup"] == subgroup
+        )
+        assert float(category_row["mean"]) == pytest.approx(mean)
+        assert category_row["n"] == "60"
+        assert float(category_row["ci_low"]) == pytest.approx(low)
+        assert float(category_row["ci_high"]) == pytest.approx(high)
+        assert float(category_row["median"]) == pytest.approx(median)
+        assert float(category_row["p25"]) == pytest.approx(p25)
+        assert float(category_row["p75"]) == pytest.approx(p75)
+    assert panel_sets[0] == panel_sets[1]
+
+
 def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     tmp_path: Path,
 ) -> None:
@@ -421,6 +558,9 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         ],
         ratio_intervals=ratios,
     )
+    import matplotlib.pyplot as plt
+
+    assert plt.imread(energy_path).shape[:2] == (1200, 3800)
     with energy_path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     headline = next(
@@ -439,6 +579,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         and "time" in row["quantity"].casefold()
     )
     assert float(time_row["p25"]) == pytest.approx(45.0)
+    assert float(time_row["mean"]) == pytest.approx(60.0)
     assert float(time_row["median"]) == pytest.approx(58.0)
     assert float(time_row["p75"]) == pytest.approx(70.0)
     energy_row = next(
@@ -448,6 +589,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         and row["subgroup"] == "2008"
         and "kh" in row["quantity"].casefold()
     )
+    assert float(energy_row["mean"]) == pytest.approx(100.0)
     assert float(energy_row["p25"]) == pytest.approx(80.0)
     assert float(energy_row["median"]) == pytest.approx(95.0)
     assert float(energy_row["p75"]) == pytest.approx(115.0)
@@ -515,6 +657,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     )
     assert category_path.is_file()
     assert category_path.with_suffix(".csv").is_file()
+    assert plt.imread(category_path).shape[:2] == (1200, 3800)
     with category_path.with_suffix(".csv").open(
         encoding="utf-8", newline=""
     ) as stream:
@@ -526,6 +669,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         and row["subgroup"] == "2008"
         and row["panel"] == "(A) All days, day with trips"
     )
+    assert float(category_row["mean"]) == pytest.approx(60.0)
     assert float(category_row["p25"]) == pytest.approx(45.0)
     assert float(category_row["median"]) == pytest.approx(58.0)
     assert float(category_row["p75"]) == pytest.approx(70.0)

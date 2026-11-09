@@ -1984,34 +1984,6 @@ def _bootstrap_scalar_time_stats_where(
     return {s.group: s for s in stats}
 
 
-def _panel_overall_stats(
-    con: duckdb.DuckDBPyConnection, where_sql: str
-) -> tuple[float, float, float, float]:
-    """This panel's own weighted mean and median daily energy (both rate
-    sets), across every main-mode group combined (F4a's "computed mean"
-    and "overall median" lines, distinct from Koelbl & Helbing's fixed
-    615 kJ reference)."""
-    rows = con.sql(
-        "SELECT pond_jour, total_energy_kh_kj, total_energy_cp_kj FROM day_summary "
-        f"WHERE total_energy_kh_kj IS NOT NULL AND ({where_sql})"
-    ).fetchnumpy()
-    if len(rows["pond_jour"]) == 0:
-        return (float("nan"),) * 4
-    mean_kh, _ = daily_energy.weighted_mean_variance(
-        rows["pond_jour"], rows["total_energy_kh_kj"]
-    )
-    mean_cp, _ = daily_energy.weighted_mean_variance(
-        rows["pond_jour"], rows["total_energy_cp_kj"]
-    )
-    median_kh = daily_energy._weighted_median(
-        rows["total_energy_kh_kj"], rows["pond_jour"]
-    )
-    median_cp = daily_energy._weighted_median(
-        rows["total_energy_cp_kj"], rows["pond_jour"]
-    )
-    return mean_kh, mean_cp, median_kh, median_cp
-
-
 def _figure_f4_mean_by_mode(
     con: duckdb.DuckDBPyConnection,
     out_dir: Path,
@@ -2041,21 +2013,30 @@ def _figure_f4_mean_by_mode(
         (label, _bootstrap_stats_where(con, where_sql, n_reps=n_reps, seed=seed))
         for label, where_sql in panel_where_sql
     ]
-    panel_stats_overall = {
-        label: _panel_overall_stats(con, where_sql)
-        for label, where_sql in panel_where_sql
-    }
 
-    fig, axes = plt.subplots(2, 3, figsize=(19, 11))
-    for ax, (label, stats) in zip(axes.flat, panels, strict=False):
-        present = [g for g in groups if g in stats]
+    time_panels = [
+        (
+            label,
+            _bootstrap_scalar_time_stats_where(
+                con, where_sql, n_reps=n_reps, seed=seed
+            ),
+        )
+        for label, where_sql in panel_where_sql
+    ]
+
+    fig, axes = plt.subplots(2, 3, figsize=(19, 11), sharey=True)
+    for ax, (label, stats), (_, time_stats) in zip(
+        axes.flat, panels, time_panels, strict=False
+    ):
+        present = [g for g in groups if g in stats or g in time_stats]
         x = np.arange(len(present))
         width = 0.35
         for offset, rate_key in zip((-width / 2, width / 2), ("kh", "cp"), strict=True):
+            color = {"kh": "tab:blue", "cp": "tab:orange"}[rate_key]
             means, lowers, uppers, p25s, medians, p75s = [], [], [], [], [], []
             for group in present:
-                stat = stats[group]
-                if stat.n < MIN_CELL_N:
+                stat = stats.get(group)
+                if stat is None or stat.n < MIN_CELL_N:
                     means.append(np.nan)
                     lowers.append(0.0)
                     uppers.append(0.0)
@@ -2071,81 +2052,42 @@ def _figure_f4_mean_by_mode(
                 p25s.append(getattr(stat, f"p25_energy_{rate_key}_kj"))
                 medians.append(getattr(stat, f"median_energy_{rate_key}_kj"))
                 p75s.append(getattr(stat, f"p75_energy_{rate_key}_kj"))
-            ax.bar(
+            bars = ax.bar(
                 x + offset,
                 means,
                 width,
                 yerr=[lowers, uppers],
                 label=rate_key,
+                color=color,
                 capsize=2,
             )
+            setattr(bars, "_figure_subgroup", rate_key)
+            for bar in bars:
+                setattr(bar, "_figure_subgroup", rate_key)
             figstyle.plot_quartiles(
                 ax,
                 x + offset,
                 p25s,
                 medians,
                 p75s,
-                color="black",
+                color=color,
                 size=14,
                 label=f"{rate_key} median" if ax is axes.flat[0] else None,
             )
-            for xi, mean in zip(x + offset, means, strict=True):
-                if not np.isnan(mean):
-                    ax.text(
-                        xi,
-                        mean,
-                        f"{mean:.0f}",
-                        ha="center",
-                        va="bottom",
-                        fontsize=6,
-                    )
         for i, group in enumerate(present):
-            ax.text(
+            sample_size = stats[group].n if group in stats else 0
+            text = ax.text(
                 i,
                 0,
-                f"n={stats[group].n}",
+                f"n={sample_size}",
                 ha="center",
                 va="bottom",
                 fontsize=6,
                 rotation=90,
             )
-        # Reference lines use the y-axis transform (x in axes fraction,
-        # y in data units) so their value labels stay inside the plot
-        # regardless of how many mode groups a panel has.
-        label_transform = ax.get_yaxis_transform()
-        panel_mean_kh, panel_mean_cp, panel_median_kh, panel_median_cp = (
-            panel_stats_overall[label]
-        )
-        for value, color, linestyle, text_va, show_legend in (
-            (
-                daily_energy.KH_DAILY_ENERGY_KJ,
-                "grey",
-                "--",
-                "bottom",
-                "Koelbl & Helbing 615 kJ",
-            ),
-            (panel_mean_kh, "tab:blue", "-.", "bottom", "computed mean (kh)"),
-            (panel_mean_cp, "tab:orange", "-.", "top", "computed mean (cp)"),
-            (panel_median_kh, "tab:blue", ":", "bottom", "overall median (kh)"),
-            (panel_median_cp, "tab:orange", ":", "top", "overall median (cp)"),
-        ):
-            ax.axhline(
-                value,
-                color=color,
-                linestyle=linestyle,
-                linewidth=0.8,
-                label=show_legend if ax is axes.flat[0] else None,
-            )
-            ax.text(
-                0.98,
-                value,
-                f"{value:.0f}",
-                transform=label_transform,
-                color=color,
-                fontsize=6,
-                ha="right",
-                va=text_va,
-            )
+            text.set_visible(False)
+        if ax is axes.flat[0]:
+            ax.set_ylabel("Mean daily energy, kJ")
         ax.set_xticks(x)
         ax.set_xticklabels(present, rotation=45, ha="right", fontsize=7)
         ax.set_title(label, fontsize=9)
@@ -2153,30 +2095,25 @@ def _figure_f4_mean_by_mode(
     for ax in axes.flat[len(panels) :]:
         ax.axis("off")
     fig.suptitle(
-        "F4a. Mean daily energy by main-mode group, 95% CI, n, quartile "
-        "bars, median marker, mean bar values, and labelled reference lines (Koelbl & "
-        "Helbing 615 kJ, this panel's own computed mean, overall median; "
-        "section 9.9)"
+        "F4a. Daily energy by main-mode group: weighted mean (95% CI) and "
+        "median by population category (section 9.9)"
     )
-    fig.tight_layout()
     path_energy = out_dir / "f04a_mean_energy_by_mode.png"
-    figstyle.save_figure(fig, path_energy)
+    figstyle.save_figure(
+        fig,
+        path_energy,
+        preserve_series_colors=True,
+        preserve_size=True,
+        annotate_values=False,
+        apply_quantity_ranges=False,
+    )
     plt.close(fig)
 
-    time_panels = [
-        (
-            label,
-            _bootstrap_scalar_time_stats_where(
-                con, where_sql, n_reps=n_reps, seed=seed
-            ),
-        )
-        for label, where_sql in panel_where_sql
-    ]
-    fig, axes = plt.subplots(2, 3, figsize=(19, 11))
+    fig, axes = plt.subplots(2, 3, figsize=(19, 11), sharey=True)
     for ax, (label, stats), (_, time_stats) in zip(
         axes.flat, panels, time_panels, strict=False
     ):
-        present = [g for g in groups if g in stats]
+        present = [g for g in groups if g in stats or g in time_stats]
         x = np.arange(len(present))
         means, lowers, uppers, p25s, medians, p75s = [], [], [], [], [], []
         for group in present:
@@ -2195,7 +2132,17 @@ def _figure_f4_mean_by_mode(
             p25s.append(stat.p25)
             medians.append(stat.median)
             p75s.append(stat.p75)
-        ax.bar(x, means, yerr=[lowers, uppers], color="tab:gray", capsize=2)
+        bars = ax.bar(
+            x,
+            means,
+            yerr=[lowers, uppers],
+            color="tab:gray",
+            label="mean",
+            capsize=2,
+        )
+        setattr(bars, "_figure_subgroup", "")
+        for bar in bars:
+            setattr(bar, "_figure_subgroup", "")
         figstyle.plot_quartiles(
             ax,
             x,
@@ -2206,19 +2153,20 @@ def _figure_f4_mean_by_mode(
             size=14,
             label="median" if ax is axes.flat[0] else None,
         )
-        for xi, mean in zip(x, means, strict=True):
-            if not np.isnan(mean):
-                ax.text(xi, mean, f"{mean:.0f}", ha="center", va="bottom", fontsize=6)
         for i, group in enumerate(present):
-            ax.text(
+            stat = time_stats.get(group)
+            text = ax.text(
                 i,
                 0,
-                f"n={stats[group].n}",
+                f"n={stat.n if stat is not None else 0}",
                 ha="center",
                 va="bottom",
                 fontsize=6,
                 rotation=90,
             )
+            text.set_visible(False)
+        if ax is axes.flat[0]:
+            ax.set_ylabel("Mean daily travel time, minutes")
         ax.set_xticks(x)
         ax.set_xticklabels(present, rotation=45, ha="right", fontsize=7)
         ax.set_title(label, fontsize=9)
@@ -2230,14 +2178,18 @@ def _figure_f4_mean_by_mode(
     for ax in axes.flat[len(panels) :]:
         ax.axis("off")
     fig.suptitle(
-        "F4b. Mean daily travel time by main-mode group, 95% CI, n, "
-        "quartile bars and median marker (section 9.9's income update: "
-        "the same treatment "
-        "energy already has)"
+        "F4b. Daily travel time by main-mode group: weighted mean (95% CI) "
+        "and median by population category (section 9.9)"
     )
-    fig.tight_layout()
     path_time = out_dir / "f04b_mean_time_by_mode.png"
-    figstyle.save_figure(fig, path_time)
+    figstyle.save_figure(
+        fig,
+        path_time,
+        preserve_series_colors=True,
+        preserve_size=True,
+        annotate_values=False,
+        apply_quantity_ranges=False,
+    )
     plt.close(fig)
     return [path_energy, path_time], panels
 
@@ -4783,6 +4735,7 @@ def _figure_compare_energy_time(
                     fontsize=8,
                     color=figstyle.SECONDARY_TEXT_COLOUR,
                 )
+                label_text.set_visible(False)
                 if stat.n < MIN_CELL_N:
                     setattr(label_text, "_figure_n_value", stat.n)
     for offset, by_year, time_stats, label, color in (
@@ -4849,14 +4802,15 @@ def _figure_compare_energy_time(
                 fontsize=8,
                 color=figstyle.SECONDARY_TEXT_COLOUR,
             )
+            label_text.set_visible(False)
             if stat.n < MIN_CELL_N:
                 setattr(label_text, "_figure_n_value", stat.n)
 
     ratio_intervals = ratio_intervals or {}
-    for ax, overall_values, unit, metric in (
-        (ax_energy_kh, overall_mean_energy_kh, "kJ", "kh"),
-        (ax_energy_cp, overall_mean_energy_cp, "kJ", "cp"),
-        (ax_time, overall_mean_time_min, "min", "time"),
+    for ax, overall_values, metric in (
+        (ax_energy_kh, overall_mean_energy_kh, "kh"),
+        (ax_energy_cp, overall_mean_energy_cp, "cp"),
+        (ax_time, overall_mean_time_min, "time"),
     ):
         for i, group in enumerate(groups):
             ratio = ratio_intervals.get((group, metric))
@@ -4879,21 +4833,22 @@ def _figure_compare_energy_time(
                 mean_a = sample_2008[group].mean
                 mean_b = sample_2019[group].mean
             figstyle.annotate_ratio(
-                ax, i, max(mean_a, mean_b) * 1.04, (point, low, high)
+                ax,
+                i,
+                max(mean_a, mean_b) * 1.04,
+                (point, low, high),
+                visible=False,
             )
-        label_transform = ax.get_yaxis_transform()
-        for value, year, color, va in (
+        for value, year, color in (
             (
                 overall_values[0],
                 "2008",
                 figstyle.SURVEY_COLOURS["ENTD 2008"],
-                "bottom",
             ),
             (
                 overall_values[1],
                 "2019",
                 figstyle.SURVEY_COLOURS["EMP 2019"],
-                "top",
             ),
         ):
             ax.axhline(
@@ -4903,22 +4858,6 @@ def _figure_compare_energy_time(
                 linewidth=1.0,
                 label=f"All ({year})",
             )
-            # Left-anchored (not right): a right-anchored label can
-            # render into the neighbouring subplot's own white
-            # background and look clipped there, since adjacent panels
-            # share a narrow gap (``fig.tight_layout()`` does not widen
-            # it for text added after the axes are built).
-            ax.text(
-                0.02,
-                value,
-                f"All ({year}): {value:.1f} {unit}",
-                transform=label_transform,
-                color=color,
-                fontsize=8,
-                ha="left",
-                va=va,
-            )
-
     ax_energy_kh.set_xticks(x)
     ax_energy_kh.set_xticklabels(groups, rotation=30, ha="right")
     ax_energy_kh.set_ylabel("Mean daily energy, kJ (KH)")
@@ -4938,7 +4877,7 @@ def _figure_compare_energy_time(
     )
     fig.tight_layout()
     path = out_dir / "compare_energy_time.png"
-    figstyle.save_figure(fig, path)
+    figstyle.save_figure(fig, path, preserve_size=True, annotate_values=False)
     plt.close(fig)
     return path
 
@@ -5034,7 +4973,7 @@ def _figure_compare_time_by_category(
             )
             for xi, mean, n in zip(x + offset, means, ns, strict=True):
                 if not np.isnan(mean):
-                    ax.text(
+                    label_text = ax.text(
                         xi,
                         mean,
                         f"{mean:.0f}\nn={n}",
@@ -5042,6 +4981,7 @@ def _figure_compare_time_by_category(
                         va="bottom",
                         fontsize=6,
                     )
+                    label_text.set_visible(False)
         for index, category in enumerate(categories):
             ratio = ratio_intervals.get((ratio_key, category))
             if ratio is None:
@@ -5055,7 +4995,11 @@ def _figure_compare_time_by_category(
             ):
                 values = [by_2008[category].mean, by_2019[category].mean]
                 figstyle.annotate_ratio(
-                    ax, index, max(values) * 1.04, (point, low, high)
+                    ax,
+                    index,
+                    max(values) * 1.04,
+                    (point, low, high),
+                    visible=False,
                 )
         ax.set_xticks(x)
         ax.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
@@ -5117,7 +5061,7 @@ def _figure_compare_time_by_category(
         )
         for xi, mean, n in zip(x + offset, means, ns, strict=True):
             if not np.isnan(mean):
-                ax_person.text(
+                label_text = ax_person.text(
                     xi,
                     mean,
                     f"{mean:.0f}\nn={n}",
@@ -5125,6 +5069,7 @@ def _figure_compare_time_by_category(
                     va="bottom",
                     fontsize=6,
                 )
+                label_text.set_visible(False)
     for index, category in enumerate(categories):
         ratio = ratio_intervals.get(("person", category))
         row_2008 = budgets_2008_weekday.get(category)
@@ -5143,6 +5088,7 @@ def _figure_compare_time_by_category(
             index,
             max(row_2008.budget, row_2019.budget) * 1.04,
             (point, low, high),
+            visible=False,
         )
     ax_person.set_xticks(x)
     ax_person.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
@@ -5157,7 +5103,7 @@ def _figure_compare_time_by_category(
     )
     fig.tight_layout()
     path = out_dir / "compare_time_by_category.png"
-    figstyle.save_figure(fig, path)
+    figstyle.save_figure(fig, path, preserve_size=True, annotate_values=False)
     plt.close(fig)
     return path
 

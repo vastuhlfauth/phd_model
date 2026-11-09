@@ -2,6 +2,15 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11 figure readability correction (2026-11-07)
+
+- The F04 and comparison figures preserve their designed multi-panel size.
+  F04 uses the same mode categories and y-scale in its energy and time panels;
+  redundant automatic values and comparison annotations no longer crowd the
+  plots, while figure CSV values remain available.
+- The focused figure regressions passed (5); changed-file Ruff passed. No
+  real-data report or full test suite was run.
+
 ### Step 11/12 figure finishing (2026-11-07)
 
 - The hand-written ENTD 2008 data page now states the observed cross-survey

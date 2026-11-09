@@ -144,7 +144,12 @@ def set_context(
 
 
 def annotate_ratio(
-    ax: Any, x: float, y: float, ratio: tuple[float, float, float]
+    ax: Any,
+    x: float,
+    y: float,
+    ratio: tuple[float, float, float],
+    *,
+    visible: bool = True,
 ) -> None:
     """Annotate a survey ratio while retaining full precision for its CSV."""
     point, low, high = ratio
@@ -157,6 +162,7 @@ def annotate_ratio(
         fontsize=8,
     )
     setattr(text, "_figure_ratio_values", ratio)
+    text.set_visible(visible)
 
 
 def plot_quartiles(
@@ -234,13 +240,23 @@ def _axis_values(ax: Any) -> list[float]:
     return values
 
 
-def _apply_style(fig: Any, *, survey: str | None) -> None:
+def _apply_style(
+    fig: Any,
+    *,
+    survey: str | None,
+    preserve_series_colors: bool,
+    preserve_size: bool,
+    annotate_values: bool,
+    apply_quantity_ranges: bool,
+) -> None:
     fig.set_facecolor(BACKGROUND_COLOUR)
     width, height = fig.get_size_inches()
-    if width != 7.0:
+    if not preserve_size and width != 7.0:
         fig.set_size_inches(7.0, height * 7.0 / width, forward=True)
 
-    survey_colour = SURVEY_COLOURS.get(survey or "")
+    survey_colour = (
+        None if preserve_series_colors else SURVEY_COLOURS.get(survey or "")
+    )
     for ax in fig.axes:
         ax.set_facecolor(BACKGROUND_COLOUR)
         x_labels = [
@@ -270,7 +286,7 @@ def _apply_style(fig: Any, *, survey: str | None) -> None:
                 text.set_fontsize(max(8.0, text.get_fontsize()))
                 text.set_color(TEXT_COLOUR)
 
-        limits = _quantity_range(ax.get_ylabel())
+        limits = _quantity_range(ax.get_ylabel()) if apply_quantity_ranges else None
         if limits is not None:
             values = _axis_values(ax)
             if values and (min(values) < limits[0] or max(values) > limits[1]):
@@ -301,71 +317,35 @@ def _apply_style(fig: Any, *, survey: str | None) -> None:
                     text.set_text("n < 50")
                     text.set_color(SECONDARY_TEXT_COLOUR)
                     break
-        visible_bars = [patch for patch in bars if patch.get_visible()]
-        labeled_indexes = set(range(len(visible_bars)))
-        if len(visible_bars) > 24:
-            heights = [
-                float(patch.get_y() + patch.get_height()) for patch in visible_bars
-            ]
-            labeled_indexes = {int(np.argmin(heights)), int(np.argmax(heights))}
-            labeled_indexes.update(
-                i
-                for i, patch in enumerate(visible_bars)
-                if _nearest_group(ax, float(patch.get_x() + patch.get_width() / 2))
-                == "All"
-            )
-        existing_text_positions = [
-            (float(text.get_position()[0]), float(text.get_position()[1]))
-            for text in ax.texts
-        ]
-        for index, patch in enumerate(visible_bars):
-            if index not in labeled_indexes:
-                continue
-            x = float(patch.get_x() + patch.get_width() / 2)
-            y = float(patch.get_y() + patch.get_height())
-            if any(
-                np.isclose(x, text_x, atol=0.04) and np.isclose(y, text_y, atol=0.5)
-                for text_x, text_y in existing_text_positions
-            ):
-                continue
-            ax.annotate(
-                f"{y:.1f}",
-                (x, y),
-                xytext=(0, 3),
-                textcoords="offset points",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                color=TEXT_COLOUR,
-            )
-            existing_text_positions.append((x, y))
-
-        for line in ax.lines:
-            if line.get_marker() in ("None", "", None):
-                continue
-            x_values = np.asarray(line.get_xdata(), dtype=float)
-            y_values = np.asarray(line.get_ydata(), dtype=float)
-            if len(x_values) != len(y_values) or len(x_values) < 2:
-                continue
-            valid = np.isfinite(x_values) & np.isfinite(y_values)
-            indexes = np.flatnonzero(valid)
-            if len(indexes) > 24:
-                visible_values = y_values[indexes]
-                selected = {
-                    indexes[int(np.argmin(visible_values))],
-                    indexes[int(np.argmax(visible_values))],
-                }
-                selected.update(
-                    index
-                    for index in indexes
-                    if _nearest_group(ax, float(x_values[index])) == "All"
+        if annotate_values:
+            visible_bars = [patch for patch in bars if patch.get_visible()]
+            labeled_indexes = set(range(len(visible_bars)))
+            if len(visible_bars) > 24:
+                heights = [
+                    float(patch.get_y() + patch.get_height())
+                    for patch in visible_bars
+                ]
+                labeled_indexes = {int(np.argmin(heights)), int(np.argmax(heights))}
+                labeled_indexes.update(
+                    i
+                    for i, patch in enumerate(visible_bars)
+                    if _nearest_group(
+                        ax, float(patch.get_x() + patch.get_width() / 2)
+                    )
+                    == "All"
                 )
-            else:
-                selected = set(indexes)
-            for index in selected:
-                x, y = float(x_values[index]), float(y_values[index])
+            existing_text_positions = [
+                (float(text.get_position()[0]), float(text.get_position()[1]))
+                for text in ax.texts
+            ]
+            for index, patch in enumerate(visible_bars):
+                if index not in labeled_indexes:
+                    continue
+                x = float(patch.get_x() + patch.get_width() / 2)
+                y = float(patch.get_y() + patch.get_height())
                 if any(
-                    np.isclose(x, text_x, atol=0.04) and np.isclose(y, text_y, atol=0.5)
+                    np.isclose(x, text_x, atol=0.04)
+                    and np.isclose(y, text_y, atol=0.5)
                     for text_x, text_y in existing_text_positions
                 ):
                     continue
@@ -379,8 +359,6 @@ def _apply_style(fig: Any, *, survey: str | None) -> None:
                     fontsize=8,
                     color=TEXT_COLOUR,
                 )
-                existing_text_positions.append((x, y))
-
         for collection in ax.collections:
             paths = getattr(collection, "get_paths", lambda: [])()
             if paths and any(len(path.vertices) == 5 for path in paths):
@@ -396,20 +374,6 @@ def _apply_style(fig: Any, *, survey: str | None) -> None:
                     else SECONDARY_TEXT_COLOUR
                 )
                 collection.set_edgecolor(edge_colour)
-                offsets = np.asarray(collection.get_offsets())
-                if offsets.ndim == 2 and offsets.shape[1] == 2:
-                    for x, y in offsets:
-                        if np.isfinite(x) and np.isfinite(y):
-                            ax.annotate(
-                                f"{y:.1f}",
-                                (float(x), float(y)),
-                                xytext=(0, -9),
-                                textcoords="offset points",
-                                ha="center",
-                                va="top",
-                                fontsize=8,
-                                color=SECONDARY_TEXT_COLOUR,
-                            )
 
         if survey_colour is not None:
             for patch in ax.patches:
@@ -492,12 +456,17 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
             x = float(patch.get_x() + patch.get_width() / 2)
             group = _nearest_group(ax, x)
             label = getattr(patch, "get_label", lambda: "")()
-            subgroup = "" if not label or label.startswith("_") else label
+            subgroup = getattr(
+                patch,
+                "_figure_subgroup",
+                "" if not label or label.startswith("_") else label,
+            )
             colour = to_hex(patch.get_facecolor())
-            if colour == SURVEY_COLOURS["ENTD 2008"]:
-                subgroup = "2008"
-            elif colour == SURVEY_COLOURS["EMP 2019"]:
-                subgroup = "2019"
+            if not hasattr(patch, "_figure_subgroup"):
+                if colour == SURVEY_COLOURS["ENTD 2008"]:
+                    subgroup = "2008"
+                elif colour == SURVEY_COLOURS["EMP 2019"]:
+                    subgroup = "2019"
             row = row_for(group, subgroup)
             value = float(patch.get_y() + patch.get_height())
             if np.isfinite(value):
@@ -506,6 +475,7 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
         for line in ax.lines:
             x_data = np.asarray(line.get_xdata(), dtype=float)
             y_data = np.asarray(line.get_ydata(), dtype=float)
+            label = line.get_label()
             if (
                 len(x_data) == 1
                 and len(y_data) == 1
@@ -515,15 +485,13 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
                     "",
                     None,
                 )
+                and not label.startswith("_")
             ):
                 group = _nearest_group(ax, float(x_data[0]))
-                label = line.get_label()
                 if "median" in label.casefold() or line.get_marker() == "D":
                     row_for(group, "")["median"] = float(y_data[0])
                 else:
-                    row_for(group, label if not label.startswith("_") else "")[
-                        "mean"
-                    ] = float(y_data[0])
+                    row_for(group, label)["mean"] = float(y_data[0])
             elif len(y_data) >= 2 and np.allclose(y_data, y_data[0]):
                 label = line.get_label()
                 if line.get_linestyle() in ("--", "-.", ":") and not label.startswith(
@@ -550,17 +518,24 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
             if not any(len(path.vertices) == 5 for path in paths):
                 continue
             quantiles = getattr(collection, "_figure_quantile_values", None)
+            label = collection.get_label()
             for index, (x_value, y_value) in enumerate(offsets):
                 if np.isfinite(x_value) and np.isfinite(y_value):
                     group = _nearest_group(ax, float(x_value))
-                    row = row_for(group, _year_series(ax, float(x_value)))
+                    subgroup = _year_series(ax, float(x_value))
+                    if not subgroup and label.casefold() == "median":
+                        subgroup = ""
+                    elif not subgroup and label.casefold().endswith(" median"):
+                        subgroup = label[: -len(" median")]
+                    row = row_for(group, subgroup)
                     row["median"] = float(y_value)
                     if quantiles is not None:
                         row["p25"] = float(quantiles[index, 0])
                         row["p75"] = float(quantiles[index, 2])
 
         for container in ax.containers:
-            parts = getattr(container, "lines", None)
+            errorbar = getattr(container, "errorbar", None)
+            parts = getattr(errorbar or container, "lines", None)
             if not parts or len(parts) < 3:
                 continue
             bar_line_collections = parts[2]
@@ -575,7 +550,12 @@ def _rows_from_figure(fig: Any, path: Path) -> list[dict[str, Any]]:
                         continue
                     group = _nearest_group(ax, float(points[0, 0]))
                     label = container.get_label()
-                    row = row_for(group, label if label in ("2008", "2019") else "")
+                    subgroup = getattr(
+                        container,
+                        "_figure_subgroup",
+                        label if label in ("2008", "2019") else "",
+                    )
+                    row = row_for(group, subgroup)
                     row["ci_low"] = float(np.min(points[:, 1]))
                     row["ci_high"] = float(np.max(points[:, 1]))
 
@@ -647,10 +627,25 @@ def save_figure(
     path: Path,
     *,
     survey: str | None = None,
+    preserve_series_colors: bool = False,
+    preserve_size: bool = False,
+    annotate_values: bool = True,
+    apply_quantity_ranges: bool = True,
     rows: list[dict[str, Any]] | None = None,
 ) -> Path:
-    """Save a 7-inch, 200-dpi PNG and a same-stem CSV of plotted values."""
-    _apply_style(fig, survey=survey or _CONTEXT["survey"])
+    """Save a 200-dpi PNG and same-stem CSV of plotted values.
+
+    Figures use a consistent 7-inch width unless ``preserve_size`` is set.
+    ``annotate_values`` controls automatic bar-value labels.
+    """
+    _apply_style(
+        fig,
+        survey=survey or _CONTEXT["survey"],
+        preserve_series_colors=preserve_series_colors,
+        preserve_size=preserve_size,
+        annotate_values=annotate_values,
+        apply_quantity_ranges=apply_quantity_ranges,
+    )
     fig.text(
         0.5,
         0.955,
