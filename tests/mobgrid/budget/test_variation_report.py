@@ -885,8 +885,6 @@ def test_2019_2008_ratio_is_identical_in_b2_c7_comparison_and_csv(
     path = emp._figure_compare_time_by_category(
         stats,
         stats,
-        stats,
-        stats,
         {},
         {},
         tmp_path,

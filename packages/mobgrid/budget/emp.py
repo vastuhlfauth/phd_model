@@ -480,6 +480,16 @@ def _build_base(
     daily_energy.create_day_summary(con, where_sql=selected_scope.trip_filter_sql())
 
 
+def _restrict_report_to_weekdays(con: duckdb.DuckDBPyConnection, survey) -> None:
+    """Keep Monday-Friday trips for all section 9.9 report consumers."""
+    column = "TYPEJOUR" if survey is emp2019 else "V2_TYPJOUR"
+    con.sql("ALTER VIEW k_deploc RENAME TO report_all_days_trips")
+    con.sql(
+        "CREATE VIEW k_deploc AS SELECT * FROM report_all_days_trips "
+        f"WHERE CAST({column} AS DOUBLE) = 1"
+    )
+
+
 def run(
     out_dir: Path,
     survey=emp2019,
@@ -517,8 +527,8 @@ def run(
     gained the new parameter; this report/figure pipeline is updated in
     part B).
 
-    Every result table uses ``scope``; full-survey diagnostics that are
-    independent of the selected trip scope remain unfiltered.
+    Every result uses Monday-Friday and ``scope``. EMP 2019 additionally
+    provides one explicitly labelled all-days per-person sensitivity table.
     """
     config = load_energy_config(config_path)
     variation_config = variation.load_variation_config(variation_config_path)
@@ -549,6 +559,7 @@ def run(
     )
     csv_paths = survey.extract_tables(data_path, interim_dir)
     survey.register_views(con, csv_paths)
+    _restrict_report_to_weekdays(con, survey)
 
     # ENTD 2008 only (section 9.9's "Quirks"): fill rate and mean change
     # of the undocumented `distcor`/`v2_mduree` correction columns.
@@ -770,25 +781,6 @@ def run(
         n_reps=n_reps,
         seed=seed,
     )
-    if person["day_types"] == ("weekday", "saturday", "sunday"):
-        (
-            person_budget_all_week_population,
-            person_budget_all_week_category_density,
-            person_budget_all_week_category_income,
-        ) = _person_budget_tables(
-            person,
-            person_budget_days,
-            value=person_budget_days["total_time_min"],
-            day_types=person["day_types"],
-            period_divisor=7.0,
-            n_reps=n_reps,
-            seed=seed,
-        )
-    else:
-        person_budget_all_week_population = None
-        person_budget_all_week_category_density = None
-        person_budget_all_week_category_income = None
-
     # Car passengers: household vs carpool, and the walking trips of
     # passenger days (section 9.9, "Outputs of the re-estimation").
     passenger_trip_stats = {}
@@ -967,7 +959,6 @@ def run(
         con, "cycle", where_sql=where_sql
     )
 
-    non_traveler = survey.non_traveler_summary(con)
     # Weekday surveyed-day mix among travellers, now read directly from
     # `day_summary.typejour` (one row per day, no join needed), as a
     # *share* of the total (previously a raw `sum(pond_jour)` fed
@@ -1028,6 +1019,41 @@ def run(
         )
     }
     zero_local_trip_day = daily_energy.zero_local_trip_day_summary(con)
+
+    person_budget_all_week_population = None
+    person_budget_all_week_category_density = None
+    person_budget_all_week_category_income = None
+    if survey is emp2019:
+        con.sql(
+            "CREATE OR REPLACE VIEW k_deploc AS "
+            "SELECT * FROM report_all_days_trips"
+        )
+        _build_base(
+            con,
+            survey,
+            config,
+            selected_scope=scope,
+            activity_stay_min=variation_config.scope.activity_stay_min,
+            density_source=density_source,
+        )
+        sensitivity_days = _person_budget_day_rows(con)
+        (
+            person_budget_all_week_population,
+            person_budget_all_week_category_density,
+            person_budget_all_week_category_income,
+        ) = _person_budget_tables(
+            person,
+            sensitivity_days,
+            value=sensitivity_days["total_time_min"],
+            day_types=person["day_types"],
+            period_divisor=7.0,
+            n_reps=n_reps,
+            seed=seed,
+        )
+
+    # Keep the no-trip audit on the full described-day roster: a weekend
+    # traveller is not an immobile respondent when weekday trips are selected.
+    non_traveler = survey.non_traveler_summary(con)
 
     return {
         "config": config,
@@ -3190,6 +3216,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         f"# Step 11 (`mobgrid/budget`): {survey_name} re-estimation (section 9.9)",
         "",
         f"**Scope:** {selected_scope.label} (`{selected_scope.id}`).",
+        "**Days:** Monday-Friday; EMP 2019's all-days table is a sensitivity only.",
         *(
             [
                 "",
@@ -3223,7 +3250,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "",
         "**Sample flow** (persons and days kept apart, section 9.9's "
         '"Change between 2008 and 2019"; one described day per respondent '
-        "in EMP 2019, up to three in ENTD 2008, weekday/Saturday/Sunday):",
+        "in EMP 2019, reference weekday in ENTD 2008; Monday-Friday only):",
         "",
         "| Step | n |",
         "|---|---|",
@@ -3494,7 +3521,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     ]
     if results["person_budget_all_week_population"] is not None:
         lines += [
-            "#### All-week",
+            "#### Sensitivity: all days (Monday-Sunday)",
             "",
             *_format_person_budget_table(results["person_budget_all_week_population"]),
             "",
@@ -4405,6 +4432,7 @@ def run_compare(
         "# Step 11 (`mobgrid/budget`): 2008-2019 comparison (section 9.9)",
         "",
         f"**Scope:** {scope.label} (`{scope.id}`).",
+        "**Days:** Monday-Friday in every table and figure.",
         "",
         "## Choices made",
         "",
@@ -4634,14 +4662,6 @@ def run_compare(
         )
     weekday_mask_2008 = results_2008["all_days"]["typejour"] == 1
     weekday_mask_2019 = results_2019_proxy["all_days"]["typejour"] == 1
-    category_ratio_intervals = _comparison_ratio_intervals(
-        results_2008["all_days"],
-        results_2019_proxy["all_days"],
-        "population_category",
-        "total_time_min",
-        n_reps=n_reps,
-        seed=seed,
-    )
     weekday_category_ratio_intervals = _comparison_ratio_intervals(
         results_2008["all_days"],
         results_2019_proxy["all_days"],
@@ -4667,8 +4687,6 @@ def run_compare(
         ratio_intervals=mode_ratio_intervals,
     )
     time_by_category_path = _figure_compare_time_by_category(
-        results_2008["population_time_stats"],
-        results_2019_proxy["population_time_stats"],
         results_2008["population_time_stats_weekday"],
         results_2019_proxy["population_time_stats_weekday"],
         results_2008["person_budget_weekday_population"],
@@ -4677,9 +4695,6 @@ def run_compare(
         references_2008=_comparison_time_references(results_2008),
         references_2019=_comparison_time_references(results_2019_proxy),
         ratio_intervals={
-            ("all", group): value for group, value in category_ratio_intervals.items()
-        }
-        | {
             ("weekday", group): value
             for group, value in weekday_category_ratio_intervals.items()
         }
@@ -4966,7 +4981,7 @@ def _comparison_time_references(
     The per-person reference reuses the roster-based mean, with no median.
     """
     references: dict[str, tuple[float | None, float | None]] = {}
-    for panel, key in (("all", "all_days"), ("weekday", "weekday_days")):
+    for panel, key in (("weekday", "weekday_days"),):
         days = results[key]
         mean, _ = daily_energy.weighted_mean_variance(
             days["pond_jour"], days["total_time_min"]
@@ -4983,8 +4998,6 @@ def _comparison_time_references(
 
 
 def _figure_compare_time_by_category(
-    stats_2008: list[daily_energy.ScalarGroupStats],
-    stats_2019: list[daily_energy.ScalarGroupStats],
     stats_2008_weekday: list[daily_energy.ScalarGroupStats],
     stats_2019_weekday: list[daily_energy.ScalarGroupStats],
     budgets_2008_weekday: dict[str, daily_energy.PersonBudgetRow],
@@ -4999,8 +5012,7 @@ def _figure_compare_time_by_category(
     9.9, 27 October 2026 decision: the time budget's own b_k is now the
     reference constant): mean with 95% CI and a median marker, the same
     treatment `compare_energy_time`'s energy panels already give energy
-    (section 9.9's income update). Three panels, left to right: (A) all
-    days, day with trips, selected scope; (B) weekday only, day with
+    (section 9.9's income update). Two panels: (B) weekday only, day with
     trips; (C) weekday only, per person (days without trips included,
     direct producer-weighted sum over the full respondent roster; no
     median marker for a per-person total). (B)/(C) share the
@@ -5109,14 +5121,7 @@ def _figure_compare_time_by_category(
         ax.set_title(title, fontsize=9)
         ax.legend(fontsize=6)
 
-    fig, (ax_all, ax_weekday, ax_person) = plt.subplots(1, 3, figsize=(19, 6))
-    _scalar_panel(
-        ax_all,
-        {s.group: s for s in stats_2008},
-        {s.group: s for s in stats_2019},
-        "(A) All days, day with trips",
-        "all",
-    )
+    fig, (ax_weekday, ax_person) = plt.subplots(1, 2, figsize=(15, 6))
     _scalar_panel(
         ax_weekday,
         {s.group: s for s in stats_2008_weekday},
@@ -5198,7 +5203,6 @@ def _figure_compare_time_by_category(
     ax_person.set_title("(C) Weekday only, per person", fontsize=9)
 
     for ax, panel in (
-        (ax_all, "all"),
         (ax_weekday, "weekday"),
         (ax_person, "person"),
     ):
@@ -5229,7 +5233,7 @@ def _figure_compare_time_by_category(
     fig.suptitle(
         "Daily travel time by population category, 2008 vs 2019 (density "
         "proxy in both, section 9.9); mean with 95% CI, diamond = median "
-        "(panels A/B only, no median for a per-person budget)"
+        "(panel B only, no median for a per-person budget)"
     )
     fig.tight_layout()
     path = out_dir / "compare_time_by_category.png"

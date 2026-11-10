@@ -40,6 +40,23 @@ def _add_synthetic_entd_cli_duration_spread(raw_dir: Path) -> None:
     path.write_text("\n".join(lines), encoding="cp1252")
 
 
+@pytest.mark.parametrize(
+    ("survey", "column"), [(emp2019, "TYPEJOUR"), (entd2008, "V2_TYPJOUR")]
+)
+def test_report_weekdays_filter_precedes_every_trip_consumer(survey, column) -> None:
+    """Section 9.9: weekend rows cannot enter any step-11 estimate."""
+    import duckdb
+
+    with duckdb.connect() as con:
+        con.sql(
+            f"CREATE VIEW k_deploc AS SELECT * FROM "
+            f"(VALUES (1, 10), (2, 200), (3, 300)) t({column}, minutes)"
+        )
+        emp._restrict_report_to_weekdays(con, survey)
+        assert con.sql("SELECT minutes FROM k_deploc").fetchall() == [(10,)]
+        assert con.sql("SELECT count(*) FROM report_all_days_trips").fetchone() == (3,)
+
+
 def test_zero_variance_gamma_fit_has_clear_report_text() -> None:
     assert emp._format_gamma_fit(None) == "fit skipped (weighted variance is zero)"
 
@@ -405,7 +422,6 @@ def test_comparison_time_reference_values_are_weighted_not_category_averages() -
     }
     refs = emp._comparison_time_references(results)
     assert refs == {
-        "all": (67.0, 100.0),
         "weekday": (17.5, 20.0),
         "person": (12.5, None),
     }
@@ -914,8 +930,6 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     category_path = emp._figure_compare_time_by_category(
         time_stats_2008,
         time_stats_2019,
-        time_stats_2008,
-        time_stats_2019,
         {row.group: row for row in budgets_2008},
         {row.group: row for row in budgets_2019},
         tmp_path,
@@ -937,7 +951,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     )
     assert category_path.is_file()
     assert category_path.with_suffix(".csv").is_file()
-    assert plt.imread(category_path).shape[:2] == (1200, 3800)
+    assert plt.imread(category_path).shape[:2] == (1200, 3000)
     with category_path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
         category_rows = list(csv.DictReader(stream))
     category_row = next(
@@ -945,15 +959,13 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         for row in category_rows
         if row["group"] == "Employed"
         and row["subgroup"] == "2008"
-        and row["panel"] == "(A) All days, day with trips"
+        and row["panel"] == "(B) Weekday only, day with trips"
     )
     assert float(category_row["mean"]) == pytest.approx(60.0)
     assert float(category_row["p25"]) == pytest.approx(45.0)
     assert float(category_row["median"]) == pytest.approx(58.0)
     assert float(category_row["p75"]) == pytest.approx(70.0)
     for panel, year, statistic, expected in (
-        ("(A) All days, day with trips", "2008", "mean", 56.0),
-        ("(A) All days, day with trips", "2019", "median", 55.0),
         ("(B) Weekday only, day with trips", "2008", "median", 51.0),
         ("(B) Weekday only, day with trips", "2019", "mean", 62.0),
         ("(C) Weekday only, per person", "2008", "mean", 40.0),
@@ -972,7 +984,8 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         for row in category_rows
         if row["panel"] == "(C) Weekday only, per person"
     )
-    for ax, count in zip(figures[-1].axes, (4, 4, 2), strict=True):
+    assert not any("All days" in row["panel"] for row in category_rows)
+    for ax, count in zip(figures[-1].axes, (4, 2), strict=True):
         legend_bottom = ax.transData.inverted().transform(
             ax.get_legend().get_window_extent().p0
         )[1]
