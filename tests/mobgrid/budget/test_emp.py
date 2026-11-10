@@ -371,6 +371,45 @@ def test_figstyle_preserves_multipanel_size_without_auto_value_labels(
     assert float(median_row["p75"]) == pytest.approx(12.0)
 
 
+@pytest.mark.parametrize("restyle", [False, True])
+def test_figstyle_uses_plain_ticks_and_legends_without_changing_locators(
+    tmp_path: Path, restyle: bool
+) -> None:
+    """Section 9.9: labels are readable even with the default non-restyling saver."""
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    fig, ax = plt.subplots()
+    ax.plot([0, 1], [1, 2], label="children_6_17")
+    ax.set_xticks([0, 1], labels=["children_6_17", "very_sparse"])
+    ax.set_yticks([1, 2], labels=["car_driver", "other_inactive"])
+    ax.set_yticks([1.5], labels=["very_sparse"], minor=True)
+    ax.set_title("Time for children_6_17")
+    ax.legend()
+    fig.legend()
+    x_locator = ax.xaxis.get_major_locator()
+    y_locator = ax.yaxis.get_major_locator()
+    emp.figstyle.save_figure(fig, tmp_path / "labels.png", restyle=restyle)
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    assert [text.get_text() for text in ax.get_xticklabels()] == [
+        "Children 6–17", "Very sparse"
+    ]
+    assert [text.get_text() for text in ax.get_yticklabels()] == [
+        "Car driver", "Other inactive"
+    ]
+    assert [text.get_text() for text in ax.get_yticklabels(minor=True)] == [
+        "Very sparse"
+    ]
+    assert ax.get_legend().get_texts()[0].get_text() == "Children 6–17"
+    assert fig.legends[0].get_texts()[0].get_text() == "Children 6–17"
+    assert ax.get_title() == "Time for Children 6–17"
+    if not restyle:
+        assert ax.xaxis.get_major_locator() is x_locator
+        assert ax.yaxis.get_major_locator() is y_locator
+    plt.close(fig)
+
+
 def test_figstyle_default_preserves_original_artists(tmp_path: Path) -> None:
     import matplotlib.pyplot as plt
 

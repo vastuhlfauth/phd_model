@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 from matplotlib.colors import to_hex
+from matplotlib.ticker import FuncFormatter
 
 SURVEY_COLOURS = {"ENTD 2008": "#2a78d6", "EMP 2019": "#eb6834"}
 HISTORICAL_COLOUR = "#52514e"
@@ -68,16 +69,23 @@ _PLAIN_LABELS = {
     "q4": "Q4",
     "q5": "Q5",
     "walking_only": "Walking only",
+    "walk": "Walk",
+    "bike": "Cycle",
     "cycle": "Cycle",
     "car_driver": "Car driver",
+    "car_passenger": "Car passenger",
     "car_passenger_household": "Car passenger (household)",
     "car_passenger_carpool": "Car passenger (carpool)",
     "urban_pt": "Urban PT",
     "train": "Train",
     "multimodal": "Multimodal",
     "other": "Other",
+    "unknown": "Unknown",
     "unknown distance": "Unknown distance",
 }
+_CODE_LABEL_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(key) for key in _PLAIN_LABELS if "_" in key) + r")\b"
+)
 
 # A given quantity always uses the same range, even when it appears in a
 # different report or panel. Ranges are deliberately broad enough for the
@@ -241,6 +249,49 @@ def _axis_values(ax: Any) -> list[float]:
     return values
 
 
+def _plain_label(label: str) -> str:
+    return _PLAIN_LABELS.get(
+        label, _CODE_LABEL_PATTERN.sub(lambda match: _PLAIN_LABELS[match[0]], label)
+    )
+
+
+def _apply_plain_labels(fig: Any) -> None:
+    """Translate figure labels without replacing numeric tick locators."""
+    for ax in fig.axes:
+        for axis in (ax.xaxis, ax.yaxis):
+            for minor in (False, True):
+                labels = axis.get_ticklabels(minor=minor)
+                if not any(
+                    _plain_label(text.get_text()) != text.get_text()
+                    for text in labels
+                ):
+                    continue
+                formatter = (
+                    axis.get_minor_formatter() if minor else axis.get_major_formatter()
+                )
+                plain = FuncFormatter(
+                    lambda value, position, base=formatter: _plain_label(
+                        base(value, position)
+                    )
+                )
+                if minor:
+                    axis.set_minor_formatter(plain)
+                else:
+                    axis.set_major_formatter(plain)
+        ax.title.set_text(_plain_label(ax.get_title()))
+        for artist in (*ax.lines, *ax.collections, *ax.patches, *ax.containers):
+            label = artist.get_label()
+            if isinstance(label, str):
+                artist.set_label(_plain_label(label))
+        legend = ax.get_legend()
+        if legend is not None:
+            for text in legend.get_texts():
+                text.set_text(_plain_label(text.get_text()))
+    for legend in fig.legends:
+        for text in legend.get_texts():
+            text.set_text(_plain_label(text.get_text()))
+
+
 def _apply_style(
     fig: Any,
     *,
@@ -258,20 +309,6 @@ def _apply_style(
     survey_colour = None if preserve_series_colors else SURVEY_COLOURS.get(survey or "")
     for ax in fig.axes:
         ax.set_facecolor(BACKGROUND_COLOUR)
-        x_labels = [
-            _PLAIN_LABELS.get(label.get_text(), label.get_text())
-            for label in ax.get_xticklabels()
-        ]
-        y_labels = [
-            _PLAIN_LABELS.get(label.get_text(), label.get_text())
-            for label in ax.get_yticklabels()
-        ]
-        if x_labels:
-            ax.set_xticks(ax.get_xticks(), labels=x_labels)
-        if y_labels and y_labels != [
-            label.get_text() for label in ax.get_yticklabels()
-        ]:
-            ax.set_yticks(ax.get_yticks(), labels=y_labels)
         ax.tick_params(colors=TEXT_COLOUR, labelsize=8)
         ax.xaxis.label.set_color(TEXT_COLOUR)
         ax.yaxis.label.set_color(TEXT_COLOUR)
@@ -638,8 +675,10 @@ def save_figure(
     """Save a 200-dpi PNG and same-stem CSV of plotted values.
 
     By default, preserve the producer's dimensions, fonts, colors, axes and
-    annotations. The approved comparison rendering can opt into ``restyle``.
+    annotations, translating only category labels. The approved comparison
+    rendering can opt into ``restyle``.
     """
+    _apply_plain_labels(fig)
     if restyle:
         _apply_style(
             fig,
