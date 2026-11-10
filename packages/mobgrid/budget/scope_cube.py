@@ -607,6 +607,135 @@ def core_rows(
     return rows
 
 
+def _paired_delta(
+    reference: CubeCell,
+    flipped: CubeCell,
+    key: str,
+    *,
+    percentiles: tuple[float, float],
+) -> tuple[float, tuple[float, float]] | None:
+    """Flipped-minus-reference change with a paired percentile interval
+    (the two cells share the survey's household draws)."""
+    point = flipped.estimates[key] - reference.estimates[key]
+    if not np.isfinite(point):
+        return None
+    differences = flipped.replicates[key] - reference.replicates[key]
+    finite = differences[np.isfinite(differences)]
+    if len(finite) == 0:
+        return (point, (float("nan"), float("nan")))
+    low, high = np.percentile(finite, percentiles)
+    return (point, (float(low), float(high)))
+
+
+def _ratio_replicates(
+    cell_2008: CubeCell, cell_2019: CubeCell, key: str
+) -> np.ndarray:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return cell_2019.replicates[key] / cell_2008.replicates[key]
+
+
+def _paired_ratio_delta(
+    ref_2008: CubeCell,
+    ref_2019: CubeCell,
+    flip_2008: CubeCell,
+    flip_2019: CubeCell,
+    key: str,
+) -> tuple[float, tuple[float, float]] | None:
+    """Change of the 2019/2008 ratio when the switch flips, with a paired
+    percentile 90% interval over the shared per-survey draws."""
+    points = (
+        ref_2008.estimates[key],
+        ref_2019.estimates[key],
+        flip_2008.estimates[key],
+        flip_2019.estimates[key],
+    )
+    if not all(np.isfinite(value) and value > 0 for value in points):
+        return None
+    point = points[3] / points[2] - points[1] / points[0]
+    with np.errstate(invalid="ignore"):
+        differences = _ratio_replicates(
+            flip_2008, flip_2019, key
+        ) - _ratio_replicates(ref_2008, ref_2019, key)
+    finite = differences[np.isfinite(differences)]
+    if len(finite) == 0:
+        return (point, (float("nan"), float("nan")))
+    low, high = np.percentile(finite, [5.0, 95.0])
+    return (point, (float(low), float(high)))
+
+
+def switch_rows(
+    cells_2008: dict[tuple[str, str], CubeCell],
+    cells_2019: dict[tuple[str, str], CubeCell],
+) -> list[dict]:
+    """Item-2 tidy rows: flip one switch at a time from the reference
+    scope (category ``All``) and give the change in each indicator.
+
+    Rows are encoded as ``change_<indicator>`` at the flipped scope: the
+    mean/CI columns hold the level change per survey (paired percentile
+    95% intervals from the shared draws), and the ratio columns on the
+    EMP 2019 row hold the 2019/2008 ratio change (paired 90% interval).
+    Verdicts do not apply. Suppression keeps the smaller cell's n.
+    """
+    reference_id = scope_module.REFERENCE_SCOPE.id
+    rows: list[dict] = []
+    for _, flipped_scope in SWITCH_FLIPS:
+        cell_pairs = {
+            "ENTD 2008": (
+                cells_2008[(reference_id, ALL_CATEGORY)],
+                cells_2008[(flipped_scope.id, ALL_CATEGORY)],
+            ),
+            "EMP 2019": (
+                cells_2019[(reference_id, ALL_CATEGORY)],
+                cells_2019[(flipped_scope.id, ALL_CATEGORY)],
+            ),
+        }
+        ratio_n = min(
+            cell.n_respondents
+            for pair in cell_pairs.values()
+            for cell in pair
+        )
+        for spec in INDICATOR_SPECS:
+            ratio_delta = _paired_ratio_delta(
+                cell_pairs["ENTD 2008"][0],
+                cell_pairs["EMP 2019"][0],
+                cell_pairs["ENTD 2008"][1],
+                cell_pairs["EMP 2019"][1],
+                spec.key,
+            )
+            for survey, (reference, flipped) in cell_pairs.items():
+                row = _blank_row(flipped_scope, survey, ALL_CATEGORY)
+                survey_n = min(reference.n_respondents, flipped.n_respondents)
+                row.update(
+                    indicator=f"change_{spec.indicator}",
+                    basis=spec.basis,
+                    n=survey_n,
+                )
+                if survey_n >= MIN_CELL_N:
+                    delta = _paired_delta(
+                        reference, flipped, spec.key, percentiles=(2.5, 97.5)
+                    )
+                    if delta is not None:
+                        _set_if_finite(
+                            row,
+                            mean=delta[0],
+                            ci_low=delta[1][0],
+                            ci_high=delta[1][1],
+                        )
+                if (
+                    survey == "EMP 2019"
+                    and ratio_delta is not None
+                    and ratio_n >= MIN_CELL_N
+                ):
+                    _set_if_finite(
+                        row,
+                        ratio=ratio_delta[0],
+                        ratio_ci_low=ratio_delta[1][0],
+                        ratio_ci_high=ratio_delta[1][1],
+                    )
+                rows.append(row)
+    return rows
+
+
 def run(
     out_dir: Path,
     config_path: Path = DEFAULT_CONFIG_PATH,
@@ -653,6 +782,7 @@ def run(
         equivalence_margin=variation_config.equivalence_margin,
         secondary_equivalence_margin=variation_config.secondary_equivalence_margin,
     )
+    rows += switch_rows(cells_2008, cells_2019)
     return {
         "rows": rows,
         "categories": categories,
@@ -777,6 +907,65 @@ def _format_indicator_table(
     return lines
 
 
+def _delta_cell(row: dict, spec: IndicatorSpec) -> str:
+    if row["mean"] == "":
+        return "-"
+    fmt = _value_formatter(spec)
+    return (
+        f"{fmt(row['mean'])} "
+        f"[{_fmt(row['ci_low'], fmt)}, {_fmt(row['ci_high'], fmt)}]"
+    )
+
+
+def _ratio_delta_cell(row: dict) -> str:
+    if row["ratio"] == "":
+        return "-"
+    return (
+        f"{vr._num(row['ratio'], 3)} [{vr._num(row['ratio_ci_low'], 3)}, "
+        f"{vr._num(row['ratio_ci_high'], 3)}]"
+    )
+
+
+def _format_switch_table(
+    rows: list[dict], switch: str, flipped_scope: scope_module.Scope
+) -> list[str]:
+    lookup = _row_lookup(rows)
+    reference = scope_module.REFERENCE_SCOPE
+    lines = [
+        f"### {switch.capitalize()}: `{getattr(reference, switch)}` → "
+        f"`{getattr(flipped_scope, switch)}` (`{flipped_scope.id}`)",
+        "",
+        "| Indicator | Basis | n 2008 | Δ 2008 [95% CI] | n 2019 | "
+        "Δ 2019 [95% CI] | Δ 2019/2008 ratio [90% CI] |",
+        "|---|---|---:|---:|---:|---:|---:|",
+    ]
+    for spec in INDICATOR_SPECS:
+        row_2008 = lookup[
+            (
+                flipped_scope.id,
+                "ENTD 2008",
+                ALL_CATEGORY,
+                f"change_{spec.indicator}",
+                spec.basis,
+            )
+        ]
+        row_2019 = lookup[
+            (
+                flipped_scope.id,
+                "EMP 2019",
+                ALL_CATEGORY,
+                f"change_{spec.indicator}",
+                spec.basis,
+            )
+        ]
+        lines.append(
+            f"| {spec.label} | {spec.basis} | {row_2008['n']} | "
+            f"{_delta_cell(row_2008, spec)} | {row_2019['n']} | "
+            f"{_delta_cell(row_2019, spec)} | {_ratio_delta_cell(row_2019)} |"
+        )
+    return lines
+
+
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the scope-cube report, one table per indicator."""
     rows = results["rows"]
@@ -820,6 +1009,18 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     ]
     for spec in INDICATOR_SPECS:
         lines += ["", *_format_indicator_table(rows, categories, spec)]
+    lines += [
+        "",
+        "## 2. Switch effects from the reference scope",
+        "",
+        "One switch flipped at a time from "
+        f"`{scope_module.REFERENCE_SCOPE.id}`, category All. Changes are "
+        "flipped minus reference; their intervals are paired: both scopes "
+        "reuse the same household draws within each survey (95% for the "
+        "survey levels, 90% for the change of the 2019/2008 ratio).",
+    ]
+    for switch, flipped_scope in SWITCH_FLIPS:
+        lines += ["", *_format_switch_table(rows, switch, flipped_scope)]
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

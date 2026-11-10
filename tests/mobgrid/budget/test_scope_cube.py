@@ -320,6 +320,119 @@ def test_ratio_reuses_shared_replicate_ratio_ci() -> None:
     assert (estimate, ci) == expected
 
 
+# ---------------------------------------------------------------------------
+# Switch effects (item 2).
+# ---------------------------------------------------------------------------
+
+
+def test_switch_effects_are_zero_with_degenerate_cis_on_identical_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With identical frames in every scope, the paired draws make every
+    level and ratio change exactly zero with a [0, 0] interval -- an
+    unpaired bootstrap would give nonzero interval width."""
+    monkeypatch.setattr(scope_cube, "MIN_CELL_N", 1)
+    scope_ids = tuple(selected.id for selected in scope_module.ALL_SCOPES)
+    cells_2008 = scope_cube.survey_cells(
+        _unit_survey("ENTD 2008", scope_ids=scope_ids), n_reps=32, seed=1
+    )
+    cells_2019 = scope_cube.survey_cells(
+        _unit_survey("EMP 2019", minutes_scale=2.0, scope_ids=scope_ids),
+        n_reps=32,
+        seed=2,
+    )
+    rows = scope_cube.switch_rows(cells_2008, cells_2019)
+    lookup = scope_cube._row_lookup(rows)
+    for _, flipped_scope in scope_cube.SWITCH_FLIPS:
+        for survey in ("ENTD 2008", "EMP 2019"):
+            row = lookup[
+                (
+                    flipped_scope.id,
+                    survey,
+                    "All",
+                    "change_minutes_per_day",
+                    "travel_day",
+                )
+            ]
+            assert row["mean"] == pytest.approx(0.0)
+            assert row["ci_low"] == pytest.approx(0.0)
+            assert row["ci_high"] == pytest.approx(0.0)
+        ratio_row = lookup[
+            (
+                flipped_scope.id,
+                "EMP 2019",
+                "All",
+                "change_minutes_per_day",
+                "travel_day",
+            )
+        ]
+        assert ratio_row["ratio"] == pytest.approx(0.0)
+        assert ratio_row["ratio_ci_low"] == pytest.approx(0.0)
+        assert ratio_row["ratio_ci_high"] == pytest.approx(0.0)
+
+
+def test_switch_effect_rows_match_item1_levels_and_appear_in_report(
+    cube_report: dict,
+) -> None:
+    """Each change equals the difference of the item-1 levels, the ratio
+    change equals the difference of the item-1 ratios, and the report has
+    one switch-effect table per flip."""
+    lookup = cube_report["lookup"]
+    text = cube_report["md_path"].read_text(encoding="utf-8")
+    assert "## 2. Switch effects from the reference scope" in text
+    reference_id = scope_module.REFERENCE_SCOPE.id
+    for _, flipped_scope in scope_cube.SWITCH_FLIPS:
+        for survey in ("ENTD 2008", "EMP 2019"):
+            change = lookup[
+                (
+                    flipped_scope.id,
+                    survey,
+                    "All",
+                    "change_minutes_per_day",
+                    "day",
+                )
+            ]
+            reference = lookup[
+                (reference_id, survey, "All", "minutes_per_day", "day")
+            ]
+            flipped = lookup[
+                (flipped_scope.id, survey, "All", "minutes_per_day", "day")
+            ]
+            assert change["mean"] == pytest.approx(
+                flipped["mean"] - reference["mean"]
+            )
+        ratio_change = lookup[
+            (flipped_scope.id, "EMP 2019", "All", "change_minutes_per_day", "day")
+        ]
+        reference_ratio = lookup[
+            (reference_id, "EMP 2019", "All", "minutes_per_day", "day")
+        ]
+        flipped_ratio = lookup[
+            (flipped_scope.id, "EMP 2019", "All", "minutes_per_day", "day")
+        ]
+        assert ratio_change["ratio"] == pytest.approx(
+            flipped_ratio["ratio"] - reference_ratio["ratio"]
+        )
+    # Flipping the distance switch brings the > 80 km returns back in, so
+    # producer km per trip rises in both surveys.
+    distance_scope = next(
+        flipped
+        for switch, flipped in scope_cube.SWITCH_FLIPS
+        if switch == "distance"
+    )
+    for survey in ("ENTD 2008", "EMP 2019"):
+        row = lookup[
+            (
+                distance_scope.id,
+                survey,
+                "All",
+                "change_km_per_trip_producer",
+                "trip",
+            )
+        ]
+        assert row["mean"] > 0
+
+
 def test_core_rows_suppress_small_cells_and_keep_counts() -> None:
     """Cells under 50 respondents keep their true n and blank every value,
     including the ratio columns on the EMP 2019 row."""
