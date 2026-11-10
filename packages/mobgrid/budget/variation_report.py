@@ -2742,6 +2742,8 @@ def _standardized_speed_pair(
     n_reps: int,
     seed: int,
     mix_data: dict | None = None,
+    share_sample_households: bool = False,
+    share_mix_households: bool = False,
 ) -> tuple[int, int, int, SpeedMetric, SpeedMetric]:
     """Standardise two cell samples to one weighted trip mix (C6).
 
@@ -2751,6 +2753,8 @@ def _standardized_speed_pair(
     populated in both sides and the mix source."""
     shared_mix = mix_data is None
     mix = data_a if shared_mix else mix_data
+    if share_mix_households and not share_sample_households:
+        raise ValueError("sharing mix households also requires shared sample draws")
     n_cells = int(data_a["n_cells"])
     if int(data_b["n_cells"]) != n_cells or int(mix["n_cells"]) != n_cells:
         raise ValueError("standardised samples must share one cell definition")
@@ -2773,17 +2777,74 @@ def _standardized_speed_pair(
     )
     reps_a = np.full(n_reps, np.nan)
     reps_b = np.full(n_reps, np.nan)
-    children = np.random.SeedSequence(seed).spawn(2 if shared_mix else 3)
-    rngs = [np.random.default_rng(child) for child in children]
-    rng_a, rng_b = rngs[0], rngs[1]
-    for rep in range(n_reps):
-        multiplier_a = variation.household_multipliers(data_a["household"], rng_a)
-        multiplier_b = variation.household_multipliers(data_b["household"], rng_b)
-        mix_multiplier = (
-            multiplier_a
-            if shared_mix
-            else variation.household_multipliers(mix["household"], rngs[2])
+    shared_sample_households = share_sample_households or (
+        share_mix_households and not shared_mix
+    )
+    separate_mix_draw = not shared_mix and not share_mix_households
+    separate_sample_draws = not shared_sample_households
+    stream_count = (
+        int(shared_sample_households)
+        + 2 * int(separate_sample_draws)
+        + int(separate_mix_draw)
+    )
+    rngs = [
+        np.random.default_rng(child)
+        for child in np.random.SeedSequence(seed).spawn(stream_count)
+    ]
+    stream = 0
+    sample_union = None
+    sample_codes_a = sample_codes_b = None
+    all_union = None
+    all_codes_a = all_codes_b = all_codes_mix = None
+    if share_mix_households:
+        all_union, _ = np.unique(
+            np.concatenate(
+                [data_a["household"], data_b["household"], mix["household"]]
+            ),
+            return_inverse=True,
         )
+        all_codes_a = np.searchsorted(all_union, data_a["household"])
+        all_codes_b = np.searchsorted(all_union, data_b["household"])
+        all_codes_mix = np.searchsorted(all_union, mix["household"])
+        shared_sample_rng = rngs[stream]
+        stream += 1
+    elif shared_sample_households:
+        sample_union, _ = np.unique(
+            np.concatenate([data_a["household"], data_b["household"]]),
+            return_inverse=True,
+        )
+        sample_codes_a = np.searchsorted(sample_union, data_a["household"])
+        sample_codes_b = np.searchsorted(sample_union, data_b["household"])
+        shared_sample_rng = rngs[stream]
+        stream += 1
+    else:
+        rng_a, rng_b = rngs[stream : stream + 2]
+        stream += 2
+    if separate_mix_draw:
+        rng_mix = rngs[stream]
+    for rep in range(n_reps):
+        if share_mix_households:
+            all_multipliers = variation.household_multipliers(
+                all_union, shared_sample_rng
+            )
+            multiplier_a = all_multipliers[all_codes_a]
+            multiplier_b = all_multipliers[all_codes_b]
+            mix_multiplier = all_multipliers[all_codes_mix]
+        elif shared_sample_households:
+            sample_multipliers = variation.household_multipliers(
+                sample_union, shared_sample_rng
+            )
+            multiplier_a = sample_multipliers[sample_codes_a]
+            multiplier_b = sample_multipliers[sample_codes_b]
+        else:
+            multiplier_a = variation.household_multipliers(data_a["household"], rng_a)
+            multiplier_b = variation.household_multipliers(data_b["household"], rng_b)
+        if shared_mix:
+            mix_multiplier = multiplier_a
+        elif not share_mix_households:
+            mix_multiplier = variation.household_multipliers(
+                mix["household"], rng_mix
+            )
         cell_weight = np.bincount(
             mix["cell"],
             weights=mix["weight"] * mix_multiplier,
@@ -2934,6 +2995,8 @@ def speed_limit_check(
                     mix_data=mix,
                     n_reps=n_reps,
                     seed=seed + case_index * 100 + survey_index * 10,
+                    share_sample_households=True,
+                    share_mix_households=survey == "ENTD 2008 (season control)",
                 )
             )
             ratio = _ratio_metric(metric_before, metric_after)

@@ -2270,6 +2270,58 @@ def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
     assert variation_report._ratio_metric(speed_2008, speed_2019) is not None
 
 
+def test_c6_split_speed_shares_household_draws_within_each_survey(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """3a: before/after splits share household draws; an ENTD target mix
+    uses that same draw, while the independent EMP sample uses its own."""
+    def data(households: list[str], durations: list[float]) -> dict:
+        n = len(households)
+        return {
+            "household": np.asarray(households),
+            "weight": np.ones(n),
+            "duration": np.asarray(durations, dtype=float),
+            "distance": np.full(n, 15.0),
+            "cell": np.zeros(n, dtype=int),
+            "n_cells": 1,
+        }
+
+    before = data(["h1", "h2"], [10.0, 10.0])
+    after = data(["h2", "h3"], [12.0, 12.0])
+    mix = data(["h1", "h2", "h3"], [15.0, 15.0, 15.0])
+    calls = []
+
+    def unit_multipliers(households: np.ndarray, rng: np.random.Generator):
+        calls.append(tuple(households.tolist()))
+        return np.ones(len(households))
+
+    monkeypatch.setattr(
+        variation_report.variation, "household_multipliers", unit_multipliers
+    )
+    variation_report._standardized_speed_pair(
+        before,
+        after,
+        mix_data=mix,
+        n_reps=1,
+        seed=3,
+        share_sample_households=True,
+        share_mix_households=True,
+    )
+    assert calls == [("h1", "h2", "h3")]
+
+    calls.clear()
+    variation_report._standardized_speed_pair(
+        before,
+        after,
+        mix_data=mix,
+        n_reps=1,
+        seed=3,
+        share_sample_households=True,
+        share_mix_households=False,
+    )
+    assert calls == [("h1", "h2", "h3"), ("h1", "h2", "h3")]
+
+
 def _period_speed_sample(
     *,
     duration_before: float,
