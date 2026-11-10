@@ -2,6 +2,33 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 11/12: report consistency fixes (2026-11-10)
+
+- Step 11 selects Monday-Friday trips before building either survey's
+  normalized trips, so SQL diagnostics, robustness rebuilds, tables, overall
+  estimates and figures use the same days. EMP retains one separately
+  labelled Monday-Sunday per-person sensitivity; ENTD has no weekend
+  estimates. The full described-day no-trip audit is preserved so weekend
+  travellers are not misclassified as immobile respondents.
+- Comparison time-by-category panel A is removed; weekday traveller and
+  per-person panels B/C remain. Step 11/12 figure subtitles and CSV day
+  metadata explicitly say Monday-Friday. C7 verdicts now put 15% before 10%.
+- Scope coverage counts Kish respondents, blanks estimates below 50 and
+  omits small unknown categories from scope diagnostics. Step-11 tables and
+  shift-share tables likewise omit unsupported unknown rows.
+- B7a's title is wrapped and checked against both figure edges. The shared
+  saver translates category tick labels (major/minor), legends and category
+  titles, without resetting numeric tick locators or restyling the plots.
+- Each requested item has its own commit; a test-formatting follow-up is
+  separate. The comparison CLI smoke test uses synthetic survey results
+  but writes both real figures/CSVs and the report, with a 10-second limit;
+  its final call took 1.11 s. Production defaults are unchanged.
+- Final changed-test selection: 21 passed, 0 failed (7.36 s); changed-file
+  Ruff passed and all three source files passed syntax checks. No full
+  suite or real-data report ran, and no generated data documentation was
+  edited. Regeneration commands remain the four reference-scope commands
+  documented below, invoked as `python -m ...`.
+
 ### Step 11: comparison axis scaling correction (2026-11-09)
 
 - `compare_energy_time.png` no longer applies fixed quantity ranges:
