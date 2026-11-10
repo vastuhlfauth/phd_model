@@ -4278,6 +4278,49 @@ def _scope_return_leg_counts(
     return {(category, mode): count for category, mode, count in rows}
 
 
+def _write_report_table_csv(
+    md_path: Path, suffix: str, fieldnames: list[str], rows: list[dict]
+) -> Path:
+    """Write one report table beside the report: one row per estimate,
+    plain column names; suppressed cells keep their true n, blank values."""
+    path = md_path.with_name(f"{md_path.stem}_{suffix}.csv")
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+    return path
+
+
+def _csv_value(value: float | None, n: int) -> float | str:
+    """One unrounded CSV estimate; blank when suppressed or unavailable."""
+    if value is None or n < MIN_CELL_N or not np.isfinite(value):
+        return ""
+    return float(value)
+
+
+def _ledger_km_csv_rows(ledger: MeasurementLedger) -> list[dict]:
+    rows = []
+    for row in ledger.rows:
+        if row.km_effect is None or row.km_bounds is None:
+            continue
+        for (measure, _), value, (low, high) in zip(
+            LEDGER_KM_MEASURES, row.km_effect, row.km_bounds, strict=True
+        ):
+            rows.append(
+                {
+                    "row": row.key,
+                    "label": row.label,
+                    "measure": measure,
+                    "n": row.n,
+                    "effect_km_per_trip": _csv_value(value, row.n),
+                    "ci_low": _csv_value(low, row.n),
+                    "ci_high": _csv_value(high, row.n),
+                }
+            )
+    return rows
+
+
 def _write_scope_rule_csv(
     md_path: Path,
     diagnostics_by_survey: dict[str, dict],
@@ -4528,6 +4571,21 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     rule_csv = _write_scope_rule_csv(
         md_path, results["scope_diagnostics"], selected_scope
     )
+    if results.get("measurement_ledger") is not None:
+        _write_report_table_csv(
+            md_path,
+            "ledger_km_per_trip",
+            [
+                "row",
+                "label",
+                "measure",
+                "n",
+                "effect_km_per_trip",
+                "ci_low",
+                "ci_high",
+            ],
+            _ledger_km_csv_rows(results["measurement_ledger"]),
+        )
     lines = [
         "# Step 12: what explains the variation of daily travel time",
         "",
@@ -6841,6 +6899,10 @@ class MeasurementLedgerRow:
     source: str
     n: int
     note: str = ""
+    #: Row e only: effect on km/trip of the short-trip restoration, in the
+    #: (producer, crow-fly) order; other rows keep ``None`` and print ``-``.
+    km_effect: np.ndarray | None = None
+    km_bounds: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -6881,6 +6943,94 @@ def _ledger_metrics(
         else np.array([t, n, t / n])
     )
     return point, np.column_stack([rt, rn, ratio])
+
+
+#: Row e's distance measures, in column order (label, trip column).
+LEDGER_KM_MEASURES = (("producer", "distance_km"), ("crow-fly", "crow_fly_km"))
+
+
+def _km_restoration_measures(
+    a: SurveyFrames, b: SurveyFrames, config: variation.MeasurementConfig
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """C4e trip-level km totals per day: all trips, short trips and the
+    count of short trips with a known distance, for both C6 measures.
+    Missing, non-finite or negative distances contribute no km."""
+    measures: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for label, column in LEDGER_KM_MEASURES:
+        per_survey = []
+        for frames in (a, b):
+            km = frames.trips[column].astype(float)
+            valid = np.isfinite(km) & (km >= 0)
+            short = (
+                frames.trips["duration_min"].astype(float) < config.short_duration_min
+            )
+            per_survey.append((km, valid, short))
+        measures[f"total {label} km"] = tuple(
+            np.where(valid, km, 0.0) for km, valid, _ in per_survey
+        )
+        measures[f"short-trip {label} km"] = tuple(
+            np.where(valid & short, km, 0.0) for km, valid, short in per_survey
+        )
+        measures[f"short trips with {label} km"] = tuple(
+            (valid & short).astype(float) for km, valid, short in per_survey
+        )
+    return measures
+
+
+def _km_restoration_effect(
+    km_rates: dict[str, DailyRateRow],
+    *,
+    deficit: float,
+    deficit_reps: np.ndarray,
+    trips_b: float,
+    trips_b_reps: np.ndarray,
+    n_reps: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """C4e km/trip bias: observed 2019 km/trip minus the EMP value with the
+    2008-minus-2019 short-trip rate restored at its 2008 mean distance.
+    Returns the (producer, crow-fly) effects and their paired 95% bounds."""
+    effect = np.full(len(LEDGER_KM_MEASURES), np.nan)
+    effect_reps = np.full((n_reps, len(LEDGER_KM_MEASURES)), np.nan)
+    for index, (label, _) in enumerate(LEDGER_KM_MEASURES):
+        total = km_rates[f"total {label} km"]
+        short_km = km_rates[f"short-trip {label} km"]
+        short_known = km_rates[f"short trips with {label} km"]
+        if (
+            total.replicates_b is None
+            or short_km.replicates_a is None
+            or short_known.replicates_a is None
+        ):
+            raise ValueError("C4e requires the cached km household replicates")
+        mean_short_km = (
+            short_km.mean_a / short_known.mean_a if short_known.mean_a > 0 else np.nan
+        )
+        added_km = deficit * mean_short_km if deficit != 0 else 0.0
+        if trips_b > 0 and trips_b + deficit > 0:
+            observed = total.mean_b / trips_b
+            restored = (total.mean_b + added_km) / (trips_b + deficit)
+            effect[index] = observed - restored
+        mean_short_km_reps = np.divide(
+            short_km.replicates_a,
+            short_known.replicates_a,
+            out=np.full(n_reps, np.nan),
+            where=short_known.replicates_a > 0,
+        )
+        added_reps = np.where(deficit_reps != 0, deficit_reps * mean_short_km_reps, 0.0)
+        observed_reps = np.divide(
+            total.replicates_b,
+            trips_b_reps,
+            out=np.full(n_reps, np.nan),
+            where=trips_b_reps > 0,
+        )
+        restored_reps = np.divide(
+            total.replicates_b + added_reps,
+            trips_b_reps + deficit_reps,
+            out=np.full(n_reps, np.nan),
+            where=trips_b_reps + deficit_reps > 0,
+        )
+        effect_reps[:, index] = observed_reps - restored_reps
+    bounds = np.array([_ledger_interval(column) for column in effect_reps.T])
+    return effect, bounds
 
 
 def _calendar_cells(frames: SurveyFrames) -> np.ndarray:
@@ -7114,6 +7264,25 @@ def measurement_ledger(
     short_n = (
         min(n, int(np.sum(short_days > 0))) if short.mean_a > 0 or deficit != 0 else n
     )
+    km_rates = {
+        row.metric: row
+        for row in _daily_rate_rows(
+            a,
+            b,
+            _km_restoration_measures(a, b, config),
+            n_reps=n_reps,
+            seed=seed,
+        )
+        if row.group == "overall"
+    }
+    km_effect, km_bounds = _km_restoration_effect(
+        km_rates,
+        deficit=deficit,
+        deficit_reps=deficit_reps,
+        trips_b=point_b[1],
+        trips_b_reps=reps_b[:, 1],
+        n_reps=n_reps,
+    )
     rows.append(
         MeasurementLedgerRow(
             "e",
@@ -7128,11 +7297,16 @@ def measurement_ledger(
             f" Restoration (adjusted minus observed): {restoration[0]:+.3f} "
             f"min/day, {restoration[1]:+.3f} trips/day, "
             f"{restoration[2]:+.3f} min/trip."
+            " The km/trip column restores the same trips at their 2008 mean "
+            "distance per measure (trips with a known, non-negative distance); "
+            "the same paired household draws give the 95% CIs."
             + (
                 " No 2008 short trips: time/mean-duration effects unavailable."
                 if short.mean_a <= 0 and deficit != 0
                 else ""
             ),
+            km_effect=km_effect,
+            km_bounds=km_bounds,
         )
     )
     rows.append(
@@ -7218,6 +7392,20 @@ def measurement_ledger(
     )
 
 
+def _km_effect_cell(row: MeasurementLedgerRow) -> str:
+    """Row e's km/trip effect cell: per-measure value [95% CI], else ``-``."""
+    if row.km_effect is None or row.km_bounds is None:
+        return "-"
+    parts = []
+    for value, (low, high) in zip(row.km_effect, row.km_bounds, strict=True):
+        parts.append(
+            "-"
+            if not np.isfinite(value)
+            else f"{_num(value, 3)} [{_num(low, 3)}, {_num(high, 3)}]"
+        )
+    return _suppress(row.n, "; ".join(parts))
+
+
 def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
     """Render C4 with existing suppression and explicitly non-additive bounds."""
     lines = [
@@ -7226,12 +7414,16 @@ def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
         "Weekday person-days with selected-scope trips, day weights (section 9.9). "
         "T = minutes/day, N = trips/day, M = weighted total minutes/trips "
         "(not an average of person-day ratios). Brackets below are ordered "
-        "T; N; M. Unavailable estimates print `-`.",
+        "T; N; M. The km/trip column is row e's distance analogue (producer, "
+        "then crow-fly, each a ratio of weighted totals); the other "
+        "differences have no distance effect and print `-`. "
+        "Unavailable estimates print `-`.",
         "",
         "| Difference | Effect on time change (min/day) | "
         "Effect on trips/day change | Effect on min/trip change | "
+        "Effect on km/trip change (producer; crow-fly) | "
         "Interval or bounds (T; N; M) | Source section |",
-        "|---|---:|---:|---:|---|---|",
+        "|---|---:|---:|---:|---|---|---|",
     ]
     for row in ledger.rows:
         cells = [
@@ -7245,6 +7437,7 @@ def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
                 zip(row.effect, row.bounds, strict=True)
             )
         ]
+        cells.append(_km_effect_cell(row))
         bounds = "; ".join(
             f"[{_num(low, 3)}, {_num(high, 3)}]" for low, high in row.bounds
         )

@@ -1712,7 +1712,7 @@ def test_measurement_ledger_suppresses_small_cells() -> None:
         rows=tuple(replace(row, n=49) for row in ledger.rows),
     )
     text = "\n".join(variation_report._format_measurement_ledger(small))
-    assert "| a. Duration rounding | - | - | - | - | C1 |" in text
+    assert "| a. Duration rounding | - | - | - | - | - | C1 |" in text
     assert "| Observed change | - | - | - |" in text
     assert "100.0%" not in text
 
@@ -1847,6 +1847,40 @@ def test_measurement_ledger_no_short_trips_requires_no_restoration() -> None:
     short = next(row for row in ledger.rows if row.key == "e")
     assert short.effect == pytest.approx(np.zeros(3))
     np.testing.assert_allclose(short.bounds, np.zeros((3, 2)))
+    assert short.km_effect == pytest.approx(np.zeros(2))
+    np.testing.assert_allclose(short.km_bounds, np.zeros((2, 2)))
+
+
+def test_measurement_ledger_km_column_restores_short_trips_at_2008_distance() -> None:
+    """C4e km/trip: restoring 1 short trip/day with producer km 2.0 and
+    crow-fly km 0.0 onto 2019's single 2-km (producer) / 1-km (crow-fly)
+    trip leaves producer km/trip unchanged and halves crow-fly km/trip."""
+    a, b, results = _ledger_inputs()
+    ledger = variation_report.measurement_ledger(
+        a, b, results, config=_measurement_config(), n_reps=N_REPS, seed=0
+    )
+    rows = {row.key: row for row in ledger.rows}
+    assert all(row.km_effect is None for key, row in rows.items() if key != "e")
+    assert rows["e"].km_effect == pytest.approx([0.0, 0.5])
+    # Every synthetic household is identical, so the paired household
+    # replicates equal the point effects exactly.
+    np.testing.assert_allclose(
+        rows["e"].km_bounds, [[0.0, 0.0], [0.5, 0.5]], atol=1e-12
+    )
+    text = "\n".join(variation_report._format_measurement_ledger(ledger))
+    assert "Effect on km/trip change (producer; crow-fly)" in text
+    e_line = next(line for line in text.splitlines() if line.startswith("| e."))
+    assert "0.000 [0.000, 0.000]; 0.500 [0.500, 0.500]" in e_line
+    a_line = next(line for line in text.splitlines() if line.startswith("| a."))
+    assert "| - |" in a_line
+    csv_rows = variation_report._ledger_km_csv_rows(ledger)
+    assert [row["measure"] for row in csv_rows] == ["producer", "crow-fly"]
+    assert csv_rows[1]["effect_km_per_trip"] == pytest.approx(0.5)
+    suppressed = variation_report._ledger_km_csv_rows(
+        replace(ledger, rows=tuple(replace(row, n=49) for row in ledger.rows))
+    )
+    assert suppressed[0]["n"] == 49
+    assert suppressed[0]["effect_km_per_trip"] == ""
 
 
 def test_measurement_ledger_does_not_leak_a_suppressed_recall_effect() -> None:
@@ -1863,7 +1897,7 @@ def test_measurement_ledger_does_not_leak_a_suppressed_recall_effect() -> None:
         ),
     )
     text = "\n".join(variation_report._format_measurement_ledger(ledger))
-    assert "| b. Recall lag | - | - | - | - | A1 |" in text
+    assert "| b. Recall lag | - | - | - | - | - | A1 |" in text
     assert "| Residual (removing a, b, e, f) | - | - | - |" in text
     assert "| Residual (also removing g, composition) | - | - | - |" in text
 
