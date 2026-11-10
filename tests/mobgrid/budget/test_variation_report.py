@@ -2480,6 +2480,63 @@ def test_c6_duration_bands_report_weighted_deciles_and_round_shares() -> None:
     assert list(first)[4:13] == [f"d{p}_min" for p in range(10, 100, 10)]
 
 
+def test_c6_mode_mix_speed_isolates_the_mode_shift() -> None:
+    """3d: with constant within-mode speeds, the mode x band x density
+    standardization gives a flat ratio while the band x density one keeps
+    the mode-shift speed gain."""
+
+    def sample(n_walk: int, n_car: int) -> variation_report.SpeedSample:
+        n = n_walk + n_car
+        return variation_report.SpeedSample(
+            household=np.array([f"h{i}" for i in range(n)]),
+            weight=np.ones(n),
+            duration_min=np.array([45.0] * n_walk + [6.0] * n_car),
+            producer_km=np.full(n, 3.0),
+            crow_fly_km=np.full(n, 3.0),
+            mode=np.array(["walk"] * n_walk + ["car_driver"] * n_car, dtype=object),
+            density=np.array(["dense"] * n, dtype=object),
+            residence_zone=np.array([""] * n, dtype=object),
+        )
+
+    rows = variation_report.mode_mix_speed_rows(
+        sample(50, 50), sample(20, 80), n_reps=20, seed=0
+    )
+
+    by = {row["comparison"]: row for row in rows}
+    assert list(by) == [
+        "as observed",
+        "2008 mode x band x density mix",
+        "2008 band x density mix",
+        *(f"within {mode}" for mode in variation_report.MODE_MIX_MODES),
+    ]
+    observed_ratio = 2550.0 / 1380.0
+    assert by["as observed"]["ratio"].estimate == pytest.approx(observed_ratio)
+    assert by["as observed"]["speed_2008"].estimate == pytest.approx(60 * 300 / 2550)
+    # Holding the 2008 mode mix removes the whole speed change ...
+    assert by["2008 mode x band x density mix"]["ratio"].estimate == pytest.approx(1.0)
+    assert by["2008 mode x band x density mix"]["cells"] == 2
+    # ... while band x density cells alone let the mode shift act.
+    assert by["2008 band x density mix"]["ratio"].estimate == pytest.approx(
+        observed_ratio
+    )
+    assert by["2008 band x density mix"]["cells"] == 1
+    assert by["within walk"]["ratio"].estimate == pytest.approx(1.0)
+    assert by["within walk"]["speed_2008"].estimate == pytest.approx(4.0)
+    assert by["within car_driver"]["ratio"].estimate == pytest.approx(1.0)
+    assert by["within train"]["cells"] == 0
+    assert by["within train"]["ratio"] is None
+
+    lines = variation_report._format_c6_mode_mix_speed(rows)
+    assert lines[0] == "#### All-mode speed with the mode mix held constant"
+    train_line = next(line for line in lines if line.startswith("| within train"))
+    assert train_line.endswith("| - | - | - |")
+    csv_rows = variation_report._mode_mix_speed_csv_rows(rows)
+    by_csv = {row["comparison"]: row for row in csv_rows}
+    assert by_csv["as observed"]["ratio"] == pytest.approx(observed_ratio)
+    # within walk has only 20 trips in 2019: suppressed in the CSV too.
+    assert by_csv["within walk"]["ratio"] == ""
+
+
 def test_c6_speed_limit_period_masks_and_day_share() -> None:
     months = np.array(
         ["mai", "Juin ", "octobre", "janvier", "avril", "nonsense"], dtype=object

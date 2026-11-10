@@ -3177,6 +3177,129 @@ def _duration_band_csv_rows(rows: list[dict]) -> list[dict]:
     return out
 
 
+#: 3d's within-cell modes (MODE7 without the heterogeneous "other").
+MODE_MIX_MODES = ("walk", "bike", "car_driver", "car_passenger", "urban_pt", "train")
+
+
+def mode_mix_speed_rows(
+    sample_2008: SpeedSample,
+    sample_2019: SpeedSample,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[dict]:
+    """C6's all-mode door-to-door speed (crow-fly 2-80 km) in three
+    versions - observed, standardized to the 2008 mode x band x density
+    mix, and standardized to the 2008 band x density mix only - plus the
+    within-cell (band x density) ratio of each mode. The gap between the
+    two standardized versions is the mode-shift effect on speed."""
+    rows: list[dict] = []
+    observed = []
+    for index, sample in enumerate((sample_2008, sample_2019)):
+        estimate = _bootstrap_speed_estimate(
+            sample,
+            "crow-fly",
+            _speed_band_index(sample.crow_fly_km) >= 0,
+            n_reps=n_reps,
+            seed=seed + index,
+        )
+        observed.append(estimate)
+    rows.append(
+        {
+            "comparison": "as observed",
+            "cells": None,
+            "n_2008": observed[0].n_trips,
+            "n_2019": observed[1].n_trips,
+            "speed_2008": observed[0].speed_kmh,
+            "speed_2019": observed[1].speed_kmh,
+            "ratio": _ratio_metric(observed[0].speed_kmh, observed[1].speed_kmh),
+        }
+    )
+    versions = (
+        ("2008 mode x band x density mix", {"modes": None, "include_mode": True}),
+        ("2008 band x density mix", {"modes": None, "include_mode": False}),
+        *(
+            (f"within {mode}", {"modes": (mode,), "include_mode": False})
+            for mode in MODE_MIX_MODES
+        ),
+    )
+    for index, (label, params) in enumerate(versions):
+        cells, n_2008, n_2019, metric_2008, metric_2019 = _standardized_speed_pair(
+            _speed_cells(sample_2008, **params),
+            _speed_cells(sample_2019, **params),
+            n_reps=n_reps,
+            seed=seed + 10 * (index + 1),
+        )
+        rows.append(
+            {
+                "comparison": label,
+                "cells": cells,
+                "n_2008": n_2008,
+                "n_2019": n_2019,
+                "speed_2008": metric_2008,
+                "speed_2019": metric_2019,
+                "ratio": _ratio_metric(metric_2008, metric_2019),
+            }
+        )
+    return rows
+
+
+def _format_c6_mode_mix_speed(rows: list[dict]) -> list[str]:
+    lines = [
+        "#### All-mode speed with the mode mix held constant",
+        "",
+        "Door-to-door speed over every mode (crow-fly 2-80 km trips), as "
+        "observed and standardized to the 2008 trip mix: once over mode x "
+        "crow-fly band x density cells and once over band x density cells "
+        "only. The second holds the mode mix at 2008; the third lets the "
+        "observed mode mix act within each band x density cell, so the gap "
+        "between their ratios is the mode shift's effect on speed. The "
+        "`within` rows standardize each mode's own trips over band x "
+        "density cells (its own 2008 mix). Standardized versions keep the "
+        "cells populated in both years; speeds use 95% CIs and ratios 90% "
+        "CIs.",
+        "",
+        "| Comparison | Common cells | n 2008 | n 2019 | "
+        "2008 km/h [95% CI] | 2019 km/h [95% CI] | "
+        "2019/2008 ratio [90% CI] |",
+        "|---|---:|---:|---:|---|---|---|",
+    ]
+    for row in rows:
+        n = min(row["n_2008"], row["n_2019"])
+        ratio_cell = "-" if row["ratio"] is None else _metric_cell(row["ratio"], n, 3)
+        lines.append(
+            f"| {row['comparison']} | "
+            f"{'-' if row['cells'] is None else row['cells']} | "
+            f"{row['n_2008']} | {row['n_2019']} | "
+            f"{_metric_cell(row['speed_2008'], row['n_2008'])} | "
+            f"{_metric_cell(row['speed_2019'], row['n_2019'])} | "
+            f"{ratio_cell} |"
+        )
+    return lines
+
+
+def _mode_mix_speed_csv_rows(rows: list[dict]) -> list[dict]:
+    out = []
+    for row in rows:
+        n = min(row["n_2008"], row["n_2019"])
+        out.append(
+            {
+                "comparison": row["comparison"],
+                "cells": "" if row["cells"] is None else row["cells"],
+                "n_2008": row["n_2008"],
+                "n_2019": row["n_2019"],
+                **_metric_csv_fields(
+                    "speed_2008_kmh", row["speed_2008"], row["n_2008"]
+                ),
+                **_metric_csv_fields(
+                    "speed_2019_kmh", row["speed_2019"], row["n_2019"]
+                ),
+                **_metric_csv_fields("ratio", row["ratio"], n),
+            }
+        )
+    return out
+
+
 def _format_c6_speed_limit(rows: list[dict], day_share: dict) -> list[str]:
     lines = [
         "#### 80 km/h limit (1 July 2018)",
@@ -3698,14 +3821,22 @@ def _format_c6(
         seed=seed + 60_000,
     )
     duration_rows = duration_band_rows(samples["B"][0], samples["B"][1])
+    mode_mix_rows = mode_mix_speed_rows(
+        samples["B"][0],
+        samples["B"][1],
+        n_reps=n_reps,
+        seed=seed + 70_000,
+    )
     if results is not None:
         results["c6_speed_limit"] = speed_limit_rows
         results["c6_speed_limit_day_share"] = day_share
         results["c6_speed_recall_lag"] = recall_rows
         results["c6_duration_bands"] = duration_rows
+        results["c6_mode_mix_speed"] = mode_mix_rows
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
     lines += ["", *_format_c6_recall_lag_speed(recall_rows)]
     lines += ["", *_format_c6_duration_bands(duration_rows)]
+    lines += ["", *_format_c6_mode_mix_speed(mode_mix_rows)]
     return lines
 
 
@@ -5311,6 +5442,14 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         _write_report_table_csv(
             md_path,
             "duration_bands",
+            list(csv_rows[0]) if csv_rows else [],
+            csv_rows,
+        )
+    if results.get("c6_mode_mix_speed") is not None:
+        csv_rows = _mode_mix_speed_csv_rows(results["c6_mode_mix_speed"])
+        _write_report_table_csv(
+            md_path,
+            "speed_mode_mix",
             list(csv_rows[0]) if csv_rows else [],
             csv_rows,
         )
