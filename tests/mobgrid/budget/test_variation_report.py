@@ -2195,6 +2195,43 @@ def test_c6_speed_uses_weighted_totals_and_crow_fly_zero_share() -> None:
     ]
 
 
+def test_c6_crow_fly_distribution_excludes_zeros_and_lumps_over_5km() -> None:
+    sample = variation_report.SpeedSample(
+        household=np.array(["h"] * 6),
+        weight=np.array([1.0, 1.0, 2.0, 1.0, 1.0, 1.0]),
+        duration_min=np.full(6, 10.0),
+        producer_km=np.full(6, 1.0),
+        crow_fly_km=np.array([0.0, 0.3, 1.5, 4.99, 5.0, np.nan]),
+        mode=np.array(["walk"] * 6),
+        density=np.array(["dense"] * 6),
+        residence_zone=np.array([""] * 6),
+    )
+
+    rows = variation_report.crow_fly_distribution_rows(sample, "ENTD 2008")
+
+    by_band = {row["band"]: row for row in rows}
+    assert [row["band"] for row in rows] == list(
+        variation_report.CROW_FLY_BAND_LABELS
+    )
+    assert sum(row["share"] for row in rows) == pytest.approx(1.0)
+    # The zero and NaN trips are excluded: total weight 5.
+    assert by_band["0-0.5 km"]["share"] == pytest.approx(0.2)
+    assert by_band["0-0.5 km"]["n"] == 1
+    assert by_band["1.5-2 km"]["share"] == pytest.approx(0.4)
+    assert by_band["4.5-5 km"]["share"] == pytest.approx(0.2)
+    assert by_band[">=5 km"]["share"] == pytest.approx(0.2)
+
+    lines = variation_report._format_c6_crow_fly_measure(
+        rows + variation_report.crow_fly_distribution_rows(sample, "EMP 2019")
+    )
+    text = "\n".join(lines)
+    assert "V2_DVO_LOC" in text and "dVO_ORIDES" in text
+    assert "chefs-lieux" in text and "centroïdes" in text
+    # Cells under 50 trips keep their true n and hide the share.
+    band_line = next(line for line in lines if line.startswith("| 1.5-2 km"))
+    assert band_line == "| 1.5-2 km | 1 | - | 1 | - |"
+
+
 def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
     def sample(
         first_cell_n: int,

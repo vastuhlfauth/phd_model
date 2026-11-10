@@ -2307,6 +2307,101 @@ def _distance_measure_values(sample: SpeedSample, measure: str) -> np.ndarray:
         raise ValueError(f"unknown speed distance measure: {measure!r}")
 
 
+#: C6's crow-fly distribution: 0.5 km steps up to 5 km, non-zero trips only.
+CROW_FLY_STEP_KM = 0.5
+CROW_FLY_MAX_BAND_KM = 5.0
+CROW_FLY_BAND_LABELS = (
+    *(
+        f"{i * CROW_FLY_STEP_KM:g}-{(i + 1) * CROW_FLY_STEP_KM:g} km"
+        for i in range(int(CROW_FLY_MAX_BAND_KM / CROW_FLY_STEP_KM))
+    ),
+    f">={CROW_FLY_MAX_BAND_KM:g} km",
+)
+
+
+def crow_fly_distribution_rows(sample: SpeedSample, survey: str) -> list[dict]:
+    """Weighted shares of non-zero crow-fly distances by 0.5 km band (C6).
+
+    The first band is open at zero (same-commune trips are excluded);
+    shares are over all non-zero finite crow-fly trips with a positive
+    weight, so the bands sum to one with the >=5 km remainder."""
+    km = sample.crow_fly_km
+    valid = np.isfinite(km) & (km > 0) & np.isfinite(sample.weight)
+    valid &= sample.weight > 0
+    weight = sample.weight[valid]
+    bands = np.minimum(
+        (km[valid] / CROW_FLY_STEP_KM).astype(int),
+        len(CROW_FLY_BAND_LABELS) - 1,
+    )
+    total = float(np.sum(weight))
+    rows = []
+    for index, label in enumerate(CROW_FLY_BAND_LABELS):
+        selected = bands == index
+        rows.append(
+            {
+                "survey": survey,
+                "band": label,
+                "n": int(np.sum(selected)),
+                "share": (
+                    float(np.sum(weight[selected]) / total) if total > 0 else np.nan
+                ),
+            }
+        )
+    return rows
+
+
+def _format_c6_crow_fly_measure(rows: list[dict]) -> list[str]:
+    """C6's crow-fly measure: how the two variables are built, and the
+    distribution of non-zero values in 0.5 km steps."""
+    lines = [
+        "#### Crow-fly measure",
+        "",
+        "How the two crow-fly variables are computed, from the survey "
+        "documentation:",
+        "",
+        "- ENTD 2008 `V2_DVO_LOC` is the \"distance à vol d'oiseau entre la "
+        "commune de départ et la commune d'arrivée\" (Dictionnaire des "
+        "données). The methodological guide computes local crow-fly "
+        "distances \"entre chefs-lieux des communes d'origine et de "
+        "destination\" (Guide méthodologique de l'ENTD 2008, p. 28, "
+        "distance imputation) and geolocates commune-level places at the "
+        "chef-lieu (la mairie) (pp. 33-34, 53). It is a commune "
+        "chef-lieu-to-chef-lieu distance, not a geocoded point-to-point "
+        "one; same-commune trips get 0.",
+        "- EMP 2019 `dVO_ORIDES` is the \"distance vol d'oiseau comm départ "
+        "et arrivée\" (dictionary, K_DEPLOC). The documentation computes "
+        "crow-fly, geodesic and theoretical distances \"lorsque les "
+        "communes de départ et d'arrivée ont été validées\" (p. 24): also "
+        "commune-level, not geocoded trip endpoints. The local-mobility "
+        "definition refers to commune \"centroïdes\" (p. 4), while the "
+        "distance-imputation classes use \"la distance à vol d'oiseau "
+        "entre les 2 chefs-lieux\" (pp. 25-26).",
+        "",
+        "Both variables are commune-to-commune crow-fly distances. The "
+        "2008 reference point is the chef-lieu (mairie); the 2019 "
+        "documentation mentions both commune centroids and chefs-lieux, so "
+        "the reference geometry may differ between the surveys. That would "
+        "move short inter-commune distances without touching the trips "
+        "themselves, which the band shares below can reveal.",
+        "",
+        "Weighted shares of non-zero crow-fly distances (selected scope "
+        "trips; same-commune zeros are in the table above). Cells with "
+        "fewer than 50 trips keep n and hide the share.",
+        "",
+        "| Band | n 2008 | 2008 share | n 2019 | 2019 share |",
+        "|---|---:|---|---:|---|",
+    ]
+    by_survey_band = {(row["survey"], row["band"]): row for row in rows}
+    surveys = ("ENTD 2008", "EMP 2019")
+    for band in CROW_FLY_BAND_LABELS:
+        cells = [band]
+        for survey in surveys:
+            row = by_survey_band[(survey, band)]
+            cells += [str(row["n"]), _suppress(row["n"], _pct(row["share"]))]
+        lines.append("| " + " | ".join(cells) + " |")
+    return lines
+
+
 def _metric_interval(
     estimate: float, replicates: np.ndarray, *, percentiles: tuple[float, float]
 ) -> SpeedMetric:
@@ -2962,12 +3057,19 @@ def _format_c6(
     n_reps: int,
     seed: int,
     include_selected_scope_ratio: bool = True,
+    results: dict | None = None,
 ) -> list[str]:
     """Render C6 speed estimates from the existing trip scopes and weights."""
     samples = {
         "A": (_speed_sample(frames_2008, "A"), _speed_sample(frames_2019, "A")),
         "B": (_speed_sample(frames_2008, "B"), _speed_sample(frames_2019, "B")),
     }
+    crow_fly_rows = [
+        *crow_fly_distribution_rows(samples["B"][0], "ENTD 2008"),
+        *crow_fly_distribution_rows(samples["B"][1], "EMP 2019"),
+    ]
+    if results is not None:
+        results["c6_crow_fly_distribution"] = crow_fly_rows
     lines = [
         "### C6. Door-to-door speed",
         "",
@@ -3000,6 +3102,8 @@ def _format_c6(
             seed=seed + 500,
             include_selected_scope_ratio=include_selected_scope_ratio,
         ),
+        "",
+        *_format_c6_crow_fly_measure(crow_fly_rows),
         "",
         *_format_c6_residence(
             samples,
@@ -4586,6 +4690,16 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             ],
             _ledger_km_csv_rows(results["measurement_ledger"]),
         )
+    if results.get("c6_crow_fly_distribution") is not None:
+        _write_report_table_csv(
+            md_path,
+            "crow_fly_distribution",
+            ["survey", "band", "n", "share"],
+            [
+                {**row, "share": _csv_value(row["share"], row["n"])}
+                for row in results["c6_crow_fly_distribution"]
+            ],
+        )
     lines = [
         "# Step 12: what explains the variation of daily travel time",
         "",
@@ -4888,6 +5002,7 @@ def run(
             n_reps=n_reps,
             seed=seed,
             include_selected_scope_ratio=True,
+            results=results,
         )
     )
     results["c7_rows"] = _c7_comparison(
