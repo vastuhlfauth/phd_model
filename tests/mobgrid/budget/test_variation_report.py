@@ -177,6 +177,11 @@ def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
         diagnostics = variation_report.scope_diagnostics(
             con, survey_name="ENTD 2008", sample_pct=None, n_reps=30, seed=2
         )
+        con.sql("UPDATE q_tcm_individu SET SITUA = NULL")
+        con.sql("UPDATE trip_legs SET population_category = 'unknown'")
+        unknown = variation_report.scope_diagnostics(
+            con, survey_name="ENTD 2008", sample_pct=None, n_reps=1, seed=2
+        )
     finally:
         con.close()
 
@@ -231,6 +236,11 @@ def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
         for row in diagnostics["coverage"]
         if row["population_category"] == "overall"
     )
+    assert coverage["n_respondents"] == 3
+    for section in ("open_days", "activity", "rule_drops", "coverage"):
+        assert not any(
+            row["population_category"] == "unknown" for row in unknown[section]
+        )
     assert coverage["days_with_nonlocal_share"] == pytest.approx(3 / 15)
     assert coverage["days_with_nonlocal_trip_share"] == pytest.approx(3 / 6)
     assert coverage["nonlocal_trips_per_day"] == pytest.approx(3 / 15)
@@ -249,6 +259,42 @@ def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
     assert "person-weekdays / trip-days" in rendered
     assert "negative point-estimate population cells" in rendered
     assert "not recorded" in rendered
+
+
+@pytest.mark.parametrize("category", ["unknown", "employed"])
+@pytest.mark.parametrize("n", [49, 50])
+def test_coverage_table_suppresses_small_respondent_cells(category, n) -> None:
+    """Section 9.9: 50 respondents, not weighted days or trip counts."""
+    metrics = (
+        "days_with_nonlocal_share",
+        "days_with_nonlocal_trip_share",
+        "nonlocal_trips_per_day",
+        "nonlocal_minutes_per_day",
+        "nonlocal_km_per_day",
+        "days_out_no_local_share",
+        "days_out_no_local_trip_share",
+    )
+    row = {
+        "population_category": category,
+        "n_respondents": n,
+        **dict.fromkeys(metrics, 0.123),
+        **{f"{metric}_ci95": (0.1, 0.2) for metric in metrics},
+    }
+    diagnostics = {
+        "open_days": [], "activity": [], "rule_drops": [], "coverage": [row],
+        "negative_point_cells": 0, "negative_bootstrap_cell_draws": 0,
+        "bootstrap_replicates": 1,
+    }
+    text = "\n".join(
+        variation_report._format_scope_diagnostics({"EMP 2019": diagnostics})
+    ).split("### Coverage of the day table")[1]
+    lines = [line for line in text.splitlines() if line.startswith("| EMP 2019 |")]
+    if category == "unknown" and n < 50:
+        assert not lines
+    else:
+        assert len(lines) == 1
+        assert f"| {n} |" in lines[0]
+        assert ("12.3%" in lines[0]) == (n >= 50)
 
 
 def test_scope_diagnostics_does_not_clip_negative_person_weekday_cells() -> None:

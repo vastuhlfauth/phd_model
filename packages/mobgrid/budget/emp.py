@@ -2796,6 +2796,8 @@ def _format_category_key_table(
     for category in daily_energy.POPULATION_CATEGORIES:
         for key in key_order:
             stat = category_key_stats.get((category, key))
+            if key == "unknown" and (stat is None or stat.n < MIN_CELL_N):
+                continue
             if stat is None or stat.n < MIN_CELL_N:
                 n = stat.n if stat else 0
                 row = f"| {category} | {key} | {n} | -"
@@ -2847,6 +2849,8 @@ def _format_equivalence_table(
         "|---|---|---|---|---|---|---|",
     ]
     for row in rows:
+        if "unknown" in (row.category, row.group) and row.n < MIN_CELL_N:
+            continue
         if row.equivalent_15 is None:
             lines.append(f"| {row.category} | {row.group} | {row.n} | - | - | - | - |")
             continue
@@ -2878,6 +2882,12 @@ def _format_equivalence_side_by_side(
         "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for category, group in keys:
+        if "unknown" in (category, group) and any(
+            (row := rows_by_year.get((category, group))) is None
+            or row.n < MIN_CELL_N
+            for rows_by_year in (by_2008, by_2019)
+        ):
+            continue
         cells = []
         for rows_by_year in (by_2008, by_2019):
             row = rows_by_year.get((category, group))
@@ -2926,6 +2936,8 @@ def _format_income_quintile_report(report: dict) -> list[str]:
     ]
     for label in trip_legs.INCOME_QUINTILE_LABELS:
         n = report["n_by_label"].get(label, 0)
+        if label == "unknown" and n < MIN_CELL_N:
+            continue
         ind_share = report["individual_weight_share_by_label"].get(label, 0.0)
         day_share = report["day_weight_share_by_label"].get(label, 0.0)
         lines.append(f"| {label} | {n} | {ind_share:.1%} | {day_share:.1%} |")
@@ -2974,6 +2986,8 @@ def _format_scalar_group_table(
         "|---|---|---|---|---|---|---|---|",
     ]
     for stat in sorted(stats, key=lambda s: -s.weighted_n):
+        if stat.group == "unknown" and stat.n < MIN_CELL_N:
+            continue
         if stat.n < MIN_CELL_N:
             lines.append(
                 f"| {stat.group} | {stat.n} | {stat.weighted_n:,.0f} | "
@@ -3028,6 +3042,8 @@ def _format_person_budget_key_table(
     for category in daily_energy.POPULATION_CATEGORIES:
         for key in key_order:
             row = rows.get((category, key))
+            if key == "unknown" and (row is None or row.n < MIN_CELL_N):
+                continue
             if row is None or row.n == 0:
                 lines.append(f"| {category} | {key} | 0 | - | - |")
                 continue
@@ -3062,6 +3078,8 @@ def _format_scalar_category_key_table(
     for category in daily_energy.POPULATION_CATEGORIES:
         for key in key_order:
             stat = category_key_stats.get((category, key))
+            if key == "unknown" and (stat is None or stat.n < MIN_CELL_N):
+                continue
             if stat is None or stat.n < MIN_CELL_N:
                 n = stat.n if stat else 0
                 lines.append(f"| {category} | {key} | {n} | - | - | - | - | - |")
@@ -3085,6 +3103,8 @@ def _format_group_table(stats: list[daily_energy.GroupStats]) -> list[str]:
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for stat in sorted(stats, key=lambda s: -s.weighted_n):
+        if stat.group == "unknown" and stat.n < MIN_CELL_N:
+            continue
         lines.append(
             f"| {stat.group} | {stat.n} | {stat.weighted_n:,.0f} | "
             f"{stat.mean_time_min:.1f} | {stat.p25_time_min:.1f} | "
@@ -3903,6 +3923,10 @@ def _group_table_two_surveys(
     ]
     for group in groups:
         a, b = by_a.get(group), by_b.get(group)
+        if group == "unknown" and any(
+            stat is None or stat.n < MIN_CELL_N for stat in (a, b)
+        ):
+            continue
 
         def _cell(stat, attr, fmt="{:.1f}"):
             return fmt.format(getattr(stat, attr)) if stat else "-"

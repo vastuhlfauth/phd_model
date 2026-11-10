@@ -1075,13 +1075,16 @@ def scope_diagnostics(
         GROUP BY GROUPING SETS ((population_category), ())
     """).fetchall()
     person_weekdays_by_category: dict[str, float] = {}
+    respondent_counts: dict[str, int] = {}
     for _, household, category, weight in person_weekdays:
+        respondent_counts[category] = respondent_counts.get(category, 0) + 1
         person_weekdays_by_category[category] = (
             person_weekdays_by_category.get(category, 0.0) + weight
         )
     person_weekdays_by_category["overall"] = sum(
         weight for _, _, _, weight in person_weekdays
     )
+    respondent_counts["overall"] = len(person_weekdays)
     tripday_household_rows = con.sql("""
         SELECT ident_men, population_category, sum(weight) AS tripday_weight,
             sum(weight) FILTER (WHERE open_reason = 'first_not_home')
@@ -1515,6 +1518,14 @@ def scope_diagnostics(
         for row in coverage_rows
         for category in ("overall" if row[1] else row[0] or "unknown",)
     ]
+    for rows in (open_days, activity, rule_drops, coverage):
+        for row in rows:
+            row["n_respondents"] = respondent_counts[row["population_category"]]
+        rows[:] = [
+            row for row in rows
+            if row["population_category"] != "unknown"
+            or row["n_respondents"] >= MIN_CELL_N
+        ]
     return {
         "open_days": open_days,
         "activity": activity,
@@ -4467,17 +4478,23 @@ def _format_scope_diagnostics(
         "identify away-from-home days comparably; those shares are "
         "unavailable rather than inferred from voyage dates.",
         "",
-        "| Survey | Population category | Days with non-local row "
+        "Cells below 50 respondents are blank; small unknown categories are omitted.",
+        "",
+        "| Survey | Population category | n respondents | Days with non-local row "
         "(person-weekdays / trip-days) | Non-local trips/day | Minutes/day | Km/day | "
         "Days out with no local trip (person-weekdays / trip-days) | "
         "No-trip days flagged away |",
-        "|---|---|---:|---:|---:|---:|---:|---|",
+        "|---|---|---:|---:|---:|---:|---:|---:|---|",
     ]
     for survey_name, diagnostics in diagnostics_by_survey.items():
         for row in diagnostics["coverage"]:
+            n = row["n_respondents"]
+            if row["population_category"] == "unknown" and n < MIN_CELL_N:
+                continue
             cells = [
                 survey_name,
                 row["population_category"],
+                str(n),
                 " / ".join(
                     (
                         _row_estimate_ci(row, "days_with_nonlocal_share", _pct),
@@ -4499,6 +4516,7 @@ def _format_scope_diagnostics(
                 ),
                 "not recorded",
             ]
+            cells[3:-1] = [_suppress(n, cell) for cell in cells[3:-1]]
             lines.append("| " + " | ".join(cells) + " |")
     lines += ["", scope_module.DAYTABLE_COVERAGE_NOTE]
     return lines
@@ -5254,6 +5272,8 @@ def _format_shift_share(
             continue
         n_a = counts_a.get(group, 0)
         n_b = counts_b.get(group, 0)
+        if group == "unknown" and min(n_a, n_b) < MIN_CELL_N:
+            continue
         if min(n_a, n_b) < MIN_CELL_N:
             lines.append(
                 f"| {group} | {n_a} | {n_b} | "

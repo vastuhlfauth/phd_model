@@ -1379,6 +1379,35 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
     )
 
 
+@pytest.mark.parametrize(
+    "formatter", ["group", "scalar", "comparison", "key", "equivalence", "equivalence_pair"]
+)
+def test_small_unknown_rows_are_omitted(formatter: str) -> None:
+    """Section 9.9: unknown rows below 50 are absent, not blank placeholders."""
+    stat = SimpleNamespace(
+        category="employed", group="unknown", n=49, weighted_n=10000.0
+    )
+    if formatter == "group":
+        lines = emp._format_group_table([stat])
+    elif formatter == "scalar":
+        lines = emp._format_scalar_group_table([stat], label="min/day")
+    elif formatter == "comparison":
+        lines = emp._group_table_two_surveys([stat], "2008", [stat], "2019")
+    elif formatter == "key":
+        lines = emp._format_category_key_table(
+            {("employed", "unknown"): stat}, ("unknown",), "Income"
+        )
+    elif formatter == "equivalence":
+        lines = emp._format_equivalence_table(
+            [stat], margin=0.15, secondary_margin=0.10
+        )
+    else:
+        lines = emp._format_equivalence_side_by_side(
+            [stat], [stat], margin=0.15, secondary_margin=0.10
+        )
+    assert not any("unknown" in line for line in lines)
+
+
 def test_suppressed_person_budget_cell_keeps_true_n() -> None:
     rows = {
         ("unemployed", "q4"): daily_energy.PersonBudgetRow(
