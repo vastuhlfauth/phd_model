@@ -2366,6 +2366,52 @@ def test_c6_speed_limit_check_standardizes_each_split_to_the_2008_mix() -> None:
     assert by_csv[("placebo: 2-10 km, dense", "EMP 2019")]["ratio"] == ""
 
 
+def test_c6_recall_lag_speed_rows_split_emp_by_lag() -> None:
+    """3b: the pooled standardized ratio, with EMP split by recall lag."""
+
+    def sample(durations: list[float], lags: list[float] | None):
+        n = len(durations)
+        return variation_report.SpeedSample(
+            household=np.array([f"h{i}" for i in range(n)]),
+            weight=np.ones(n),
+            duration_min=np.asarray(durations, dtype=float),
+            producer_km=np.full(n, 15.0),
+            crow_fly_km=np.full(n, 15.0),
+            mode=np.array(["car_driver"] * n, dtype=object),
+            density=np.array(["intermediate"] * n, dtype=object),
+            residence_zone=np.array([""] * n, dtype=object),
+            recall_lag=None if lags is None else np.asarray(lags, dtype=float),
+        )
+
+    entd = sample([15.0] * 120, None)  # 60 km/h
+    emp = sample(
+        [10.0] * 60 + [12.0] * 60 + [18.0] * 60 + [90.0] * 10,
+        [1.0] * 60 + [2.0] * 30 + [3.0] * 30 + [5.0] * 60 + [float("nan")] * 10,
+    )
+
+    rows = variation_report.recall_lag_speed_rows(entd, emp, n_reps=20, seed=0)
+
+    by_lag = {row["lag"]: row for row in rows}
+    assert list(by_lag) == ["all days", "1 day", "2-3 days", "4-7 days"]
+    assert by_lag["1 day"]["n_2019"] == 60
+    assert by_lag["1 day"]["ratio"].estimate == pytest.approx(1.5)
+    assert by_lag["2-3 days"]["ratio"].estimate == pytest.approx(1.25)
+    assert by_lag["4-7 days"]["ratio"].estimate == pytest.approx(5 / 6)
+    # The unknown-lag trips enter the all-days row only.
+    assert by_lag["all days"]["n_2019"] == 190
+    assert all(row["speed_2008"].estimate == pytest.approx(60.0) for row in rows)
+
+    lines = variation_report._format_c6_recall_lag_speed(rows)
+    assert lines[0] == "#### Recall lag and the standardized car-driver ratio"
+    lag_line = next(line for line in lines if line.startswith("| 2-3 days"))
+    assert "1.250" in lag_line
+    csv_rows = variation_report._recall_lag_speed_csv_rows(rows)
+    assert csv_rows[2]["emp_recall_lag"] == "2-3 days"
+    assert csv_rows[2]["ratio"] == pytest.approx(1.25)
+    with pytest.raises(ValueError, match="recall lags"):
+        variation_report.recall_lag_speed_rows(entd, entd, n_reps=5, seed=0)
+
+
 def test_c6_speed_limit_period_masks_and_day_share() -> None:
     months = np.array(
         ["mai", "Juin ", "octobre", "janvier", "avril", "nonsense"], dtype=object

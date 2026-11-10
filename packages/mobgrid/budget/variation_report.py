@@ -2956,6 +2956,106 @@ def speed_limit_check(
     return rows
 
 
+#: 3b's EMP recall-lag groups (label, min and max lag in days).
+RECALL_LAG_SPEED_GROUPS = (
+    ("1 day", 1.0, 1.0),
+    ("2-3 days", 2.0, 3.0),
+    ("4-7 days", 4.0, 7.0),
+)
+
+
+def recall_lag_speed_rows(
+    sample_2008: SpeedSample,
+    sample_2019: SpeedSample,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[dict]:
+    """C6's pooled standardized car-driver ratio, with EMP trips split by
+    the described day's recall lag; ENTD 2008 is not split, and each row
+    keeps the pooled table's 2008 band x density mix."""
+    if sample_2019.recall_lag is None:
+        raise ValueError("the recall-lag speed check needs EMP recall lags")
+    data_2008 = _standardization_input(sample_2008)
+    lag = sample_2019.recall_lag
+    rows = []
+    groups = (("all days", None, None), *RECALL_LAG_SPEED_GROUPS)
+    for index, (label, low, high) in enumerate(groups):
+        selected = (
+            None
+            if low is None
+            else np.isfinite(lag) & (lag >= low) & (lag <= high)
+        )
+        cells, n_2008, n_2019, metric_2008, metric_2019 = _standardized_speed_pair(
+            data_2008,
+            _speed_cells(sample_2019, selected=selected),
+            n_reps=n_reps,
+            seed=seed + index,
+        )
+        rows.append(
+            {
+                "lag": label,
+                "cells": cells,
+                "n_2008": n_2008,
+                "n_2019": n_2019,
+                "speed_2008": metric_2008,
+                "speed_2019": metric_2019,
+                "ratio": _ratio_metric(metric_2008, metric_2019),
+            }
+        )
+    return rows
+
+
+def _format_c6_recall_lag_speed(rows: list[dict]) -> list[str]:
+    lines = [
+        "#### Recall lag and the standardized car-driver ratio",
+        "",
+        "The pooled table's standardized 2019/2008 car-driver speed ratio "
+        "(crow-fly 2-80 km, 2008 band x density mix), with EMP days split "
+        "by the recall lag between the described day and the interview "
+        "(`MDATE_delai`). ENTD 2008 is never split; unknown lags are only "
+        "in the all-days row. Common cells can differ across rows.",
+        "",
+        "| EMP recall lag | Common cells | n 2008 | n 2019 | "
+        "Standardized 2008 km/h [95% CI] | Standardized 2019 km/h [95% CI] | "
+        "2019/2008 ratio [90% CI] |",
+        "|---|---:|---:|---:|---|---|---|",
+    ]
+    for row in rows:
+        n = min(row["n_2008"], row["n_2019"])
+        ratio_cell = "-" if row["ratio"] is None else _metric_cell(row["ratio"], n, 3)
+        lines.append(
+            f"| {row['lag']} | {row['cells']} | {row['n_2008']} | "
+            f"{row['n_2019']} | "
+            f"{_metric_cell(row['speed_2008'], row['n_2008'])} | "
+            f"{_metric_cell(row['speed_2019'], row['n_2019'])} | "
+            f"{ratio_cell} |"
+        )
+    return lines
+
+
+def _recall_lag_speed_csv_rows(rows: list[dict]) -> list[dict]:
+    out = []
+    for row in rows:
+        n = min(row["n_2008"], row["n_2019"])
+        out.append(
+            {
+                "emp_recall_lag": row["lag"],
+                "cells": row["cells"],
+                "n_2008": row["n_2008"],
+                "n_2019": row["n_2019"],
+                **_metric_csv_fields(
+                    "speed_2008_kmh", row["speed_2008"], row["n_2008"]
+                ),
+                **_metric_csv_fields(
+                    "speed_2019_kmh", row["speed_2019"], row["n_2019"]
+                ),
+                **_metric_csv_fields("ratio", row["ratio"], n),
+            }
+        )
+    return out
+
+
 def _format_c6_speed_limit(rows: list[dict], day_share: dict) -> list[str]:
     lines = [
         "#### 80 km/h limit (1 July 2018)",
@@ -3470,10 +3570,18 @@ def _format_c6(
         seed=seed + 50_000,
     )
     day_share = emp_day_share_before(frames_2019)
+    recall_rows = recall_lag_speed_rows(
+        samples["B"][0],
+        samples["B"][1],
+        n_reps=n_reps,
+        seed=seed + 60_000,
+    )
     if results is not None:
         results["c6_speed_limit"] = speed_limit_rows
         results["c6_speed_limit_day_share"] = day_share
+        results["c6_speed_recall_lag"] = recall_rows
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
+    lines += ["", *_format_c6_recall_lag_speed(recall_rows)]
     return lines
 
 
@@ -5063,6 +5171,14 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         _write_report_table_csv(
             md_path,
             "speed_80kmh",
+            list(csv_rows[0]) if csv_rows else [],
+            csv_rows,
+        )
+    if results.get("c6_speed_recall_lag") is not None:
+        csv_rows = _recall_lag_speed_csv_rows(results["c6_speed_recall_lag"])
+        _write_report_table_csv(
+            md_path,
+            "speed_recall_lag",
             list(csv_rows[0]) if csv_rows else [],
             csv_rows,
         )
