@@ -282,7 +282,7 @@ def test_c7_reports_daytable_ratio_with_observed_coverage_note() -> None:
                     "estimate_2008": 100.0,
                     "n_2019": 100,
                     "estimate_2019": 102.0,
-                    "ratio": (1.02, (1.01, 1.03)),
+                    "ratio": (1.12, (1.11, 1.14)),
                 }
             ],
             equivalence_margin=0.15,
@@ -291,7 +291,9 @@ def test_c7_reports_daytable_ratio_with_observed_coverage_note() -> None:
     )
 
     assert "alldays-allpurp-daytable" in report
-    assert "1.020 [1.010, 1.030]" in report
+    assert "1.120 [1.110, 1.140]" in report
+    assert "| ±15% | ±10% |" in report
+    assert "| equivalent | different |" in report
     assert scope.DAYTABLE_COVERAGE_NOTE in report
 
 

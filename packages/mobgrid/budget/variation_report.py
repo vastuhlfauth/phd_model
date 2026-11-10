@@ -3203,10 +3203,10 @@ def _format_c7(
         "estimates are used. Per-traveller "
         "means include only described days with at least one in-scope trip. "
         "Ratios are independent-survey household-bootstrap 90% intervals; "
-        "verdicts use ±10% and ±15%. Cells below 50 respondents are hidden.",
+        "verdicts use ±15% then ±10%. Cells below 50 respondents are hidden.",
         "",
         "| Scope | Period | Basis | Measure | n 2008 | 2008 | n 2019 | "
-        "2019 | 2019/2008 [90% CI] | ±10% | ±15% |",
+        "2019 | 2019/2008 [90% CI] | ±15% | ±10% |",
         "|---|---|---|---|---:|---:|---:|---:|---|---|---|",
     ]
     for row in rows:
@@ -3236,7 +3236,7 @@ def _format_c7(
             f"| {scope_cell} | {row['period']} | {row['basis']} | "
             f"{row['measure']} | {n_2008 if n_2008 is not None else '-'} | "
             f"{value_2008} | {n_2019} | {value_2019} | {ratio_cell} | "
-            f"{verdict_10} | {verdict_15} |"
+            f"{verdict_15} | {verdict_10} |"
         )
     lines += ["", scope_module.DAYTABLE_COVERAGE_NOTE]
     return lines
