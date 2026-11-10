@@ -1,515 +1,515 @@
 figure,panel,scope,survey,group,subgroup,quantity,unit,days,basis,n,mean,ci_low,ci_high,median,p25,p75,ratio,ratio_ci_low,ratio_ci_high
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,1,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.9323200677737956,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,2.5,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,11.26456106518089,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,4,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,22.201844430233166,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,5.0,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,6.97572527109184,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,6,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,6.765179541085757,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,7.5,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,2.0669118493035015,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,9,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.933305840021127,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,10.0,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.4803316915358077,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,11,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.19548910890216176,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,12.5,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.07303391808535832,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,14,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.05557112606432795,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,15.0,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.027173043489055644,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,16,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.008378747755370553,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,17.5,,% of person-days,%,weekday / Saturday / Sunday,per day with trips,,0.008703989456073938,,,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,1076,3.0706384088682652,2.9588616968841297,3.18480438780365,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,5101,3.714037370925257,3.645953917338609,3.7815168836784037,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,643,3.769095205250193,3.5432434650622198,4.006104327388811,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,4109,3.1161566998874295,3.0579115793587976,3.1757084929885226,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,980,3.273445648061309,3.1228014921447222,3.4439853458448564,,,,,,
-f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Dense,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,4388,3.3587306278072937,3.2931495164526625,3.4134553734153967,,,,,,
-f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Intermediate,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,3346,3.4768434486417825,3.403330434609916,3.5534264436312917,,,,,,
-f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Sparse,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,3743,3.4855746443959372,3.400013132824506,3.581806024109064,,,,,,
-f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Very sparse,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,444,3.593327393093399,3.3321386390411187,3.833362059233228,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,1,,% of person-days,%,Monday-Friday,per day with trips,,0.7697915102167027,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,2.5,,% of person-days,%,Monday-Friday,per day with trips,,10.859264206966536,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,4,,% of person-days,%,Monday-Friday,per day with trips,,23.049024027119952,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,5.0,,% of person-days,%,Monday-Friday,per day with trips,,7.7288944756530364,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,6,,% of person-days,%,Monday-Friday,per day with trips,,7.516696320530733,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,7.5,,% of person-days,%,Monday-Friday,per day with trips,,2.4844722857326658,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,9,,% of person-days,%,Monday-Friday,per day with trips,,1.0537511799541077,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,10.0,,% of person-days,%,Monday-Friday,per day with trips,,0.6265811604733127,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,11,,% of person-days,%,Monday-Friday,per day with trips,,0.2371757957068689,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,12.5,,% of person-days,%,Monday-Friday,per day with trips,,0.09709766379900919,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,14,,% of person-days,%,Monday-Friday,per day with trips,,0.0529756029373788,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,15.0,,% of person-days,%,Monday-Friday,per day with trips,,0.036126215192394256,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,16,,% of person-days,%,Monday-Friday,per day with trips,,0.01113943841348087,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,17.5,,% of person-days,%,Monday-Friday,per day with trips,,0.011571843111697388,,,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,,Mean trips per day,,Monday-Friday,per day with trips,861,3.0952216864725726,2.9775537443555464,3.1917401769548817,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,,Mean trips per day,,Monday-Friday,per day with trips,4045,3.8963861223035314,3.819366571340088,3.9845536629427367,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,,Mean trips per day,,Monday-Friday,per day with trips,502,3.9496058916426415,3.6901585969701296,4.189665231886425,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,,Mean trips per day,,Monday-Friday,per day with trips,3222,3.2347157453870405,3.170634275488398,3.309899152336438,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,,Mean trips per day,,Monday-Friday,per day with trips,778,3.44295293679373,3.2807642663562584,3.6158481355730188,,,,,,
+f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Dense,,Mean trips per day,,Monday-Friday,per day with trips,3490,3.5058479083089935,3.43327472006602,3.585730578586249,,,,,,
+f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Intermediate,,Mean trips per day,,Monday-Friday,per day with trips,2611,3.630976453137791,3.5341023466778796,3.7198224096200945,,,,,,
+f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Sparse,,Mean trips per day,,Monday-Friday,per day with trips,2965,3.604020735556287,3.512390149300717,3.6923923425837084,,,,,,
+f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Very sparse,,Mean trips per day,,Monday-Friday,per day with trips,352,3.7676369619300907,3.5168292583553225,4.035910781525226,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Walking only,,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,195,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,156,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Cycle,,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,17,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,15,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Car driver,,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,329,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,263,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Car passenger (household),,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,120,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,81,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Car passenger (carpool),,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,63,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,50,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Urban PT,,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,138,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,120,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Train,,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,24,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,15,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Multimodal,,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,72,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,58,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other,,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,22,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,20,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,3.435963631942299,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,3.5773150624030654,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,walking_only,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,2.9391918975242275,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,3.1009048203756002,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,cycle,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Cycle,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,3.390680548517185,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,3.5918719810922934,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,car_driver,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,3.601400999991774,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,3.758622815794481,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,car_passenger_household,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,3.1184907279382585,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,3.248394260934252,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,car_passenger_carpool,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Car passenger (carpool),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,3.019990834417205,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,2.9393712047734994,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,urban_pt,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,2.9164650430690253,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,2.9783847025654993,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,train,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Train,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,2.372375159992055,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,2.4470066444901213,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,multimodal,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Multimodal,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,4.613173708931187,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,4.729152107356325,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,other,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,overall,Other,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,980,2.9845599407228285,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,778,2.9570742181965946,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,overall,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.0706384088682652,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.095221686472572,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,walking_only,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.0070259389633036,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.1496871004975295,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,cycle,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Cycle,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,car_driver,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,car_passenger_household,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.2015404850020754,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.2645011103084447,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,car_passenger_carpool,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Car passenger (carpool),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,urban_pt,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.5313425484101066,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.560262515535726,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,train,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Train,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,multimodal,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Multimodal,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.647238268087292,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.5883449168784507,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,children_6_17,other,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Children 6–17,Other,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.5922458659968397,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,overall,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.714037370925256,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.896386122303531,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,walking_only,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.137965022079004,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.352109168466366,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,cycle,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Cycle,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.834350060763358,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,4.068598343576467,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,car_driver,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.7456508714306724,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.9093182858585678,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,car_passenger_household,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.9703331134301276,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.3348405014358535,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,car_passenger_carpool,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Car passenger (carpool),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.1972521877099243,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.127610016414923,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,urban_pt,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.1892548712977495,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.2770627521546425,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,train,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Train,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.43483557271685,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.4941328666679956,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,multimodal,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Multimodal,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,4.9711541290774,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,5.162254549129411,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,employed,other,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Employed,Other,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.4639651578028183,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.6055851614488206,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,overall,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.7690952052501925,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.949605891642641,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,walking_only,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.332782557247864,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4297180093583193,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,cycle,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Cycle,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,car_driver,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.7934345504339175,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.976967292154291,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,car_passenger_household,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,car_passenger_carpool,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Car passenger (carpool),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,urban_pt,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.9243518142372795,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.9391391555086073,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,train,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Train,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,multimodal,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Multimodal,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,unemployed,other,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Unemployed,Other,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,overall,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.11615669988743,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.2347157453870414,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,walking_only,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.574092938725583,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.670182699818954,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,cycle,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Cycle,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,car_driver,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.2345208252582553,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.3593328233755666,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,car_passenger_household,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.9331759173437364,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.046022003968257,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,car_passenger_carpool,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Car passenger (carpool),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.8102685241977796,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.8844424799260158,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,urban_pt,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.016058933311485,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.119100348732917,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,train,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Train,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,multimodal,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Multimodal,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,4.772921585471357,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,4.9756740649015,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,retired,other,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Retired,Other,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,overall,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.273445648061309,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.442952936793731,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,walking_only,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.184973822771,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4858355933172076,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,cycle,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Cycle,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,car_driver,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.542691175873492,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.73805126667093,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,car_passenger_household,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.180941061546919,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4901205950337197,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,car_passenger_carpool,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Car passenger (carpool),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,3.0257882670057445,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.895880121430167,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,urban_pt,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,2.8186234954606144,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.9017295575482813,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,train,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Train,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,multimodal,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Multimodal,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,4.288827990171486,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,4.434046653457112,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,other_inactive,other,"(D) Mean trips per day by population category x main-mode group
+the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,Other inactive,Other,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,weekday / Saturday / Sunday,per day with trips,,,,,,,,,,
-f01_trips_per_day,Panel 5,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,,,Mean trips per day,,weekday / Saturday / Sunday,per day with trips,,,,,0.0,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,,,,,,,,,
+f01_trips_per_day,Panel 5,Round-trip days · destination purposes · local (≤ 80 km),EMP 2019,,,Mean trips per day,,Monday-Friday,per day with trips,,,,,0.0,,,,,

@@ -1,0 +1,3 @@
+row,label,measure,n,effect_km_per_trip,ci_low,ci_high
+e,Short trips missing in 2019,producer,1680,0.2223373407760434,0.15783110599485325,0.2957138043879716
+e,Short trips missing in 2019,crow-fly,1680,0.15052413451808633,0.10701993173411625,0.19989696063647355
