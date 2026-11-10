@@ -38,6 +38,7 @@ every value, in the report and in the CSV.
 from __future__ import annotations
 
 import argparse
+import csv
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -736,6 +737,52 @@ def switch_rows(
     return rows
 
 
+#: Tidy-CSV column order (`docs/data/scope_cube/estimates.csv`): one row
+#: per estimate; cells that do not apply stay empty. Ratio columns sit on
+#: the EMP 2019 row of each cell; ``change_<indicator>`` rows hold item-2
+#: switch effects in the mean/CI (level change) and ratio (ratio change)
+#: columns, at the flipped scope.
+CSV_COLUMNS = (
+    "scope",
+    "days_switch",
+    "purposes_switch",
+    "distance_switch",
+    "survey",
+    "category",
+    "indicator",
+    "basis",
+    "n",
+    "mean",
+    "ci_low",
+    "ci_high",
+    "median",
+    "p25",
+    "p75",
+    "ratio",
+    "ratio_ci_low",
+    "ratio_ci_high",
+    "verdict_15",
+    "verdict_10",
+)
+
+
+def _csv_value(value) -> str:
+    if isinstance(value, float):
+        return f"{value:.10g}"
+    return str(value)
+
+
+def write_csv(csv_path: Path, rows: list[dict]) -> Path:
+    """Write the tidy estimates (items 1 and 2), built from the same rows
+    as the report tables."""
+    with csv_path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(CSV_COLUMNS)
+        for row in rows:
+            writer.writerow([_csv_value(row[key]) for key in CSV_COLUMNS])
+    return csv_path
+
+
 def run(
     out_dir: Path,
     config_path: Path = DEFAULT_CONFIG_PATH,
@@ -783,8 +830,10 @@ def run(
         secondary_equivalence_margin=variation_config.secondary_equivalence_margin,
     )
     rows += switch_rows(cells_2008, cells_2019)
+    csv_path = write_csv(out_dir / "estimates.csv", rows)
     return {
         "rows": rows,
+        "csv_path": csv_path,
         "categories": categories,
         "n_reps": n_reps,
         "seed": seed,
@@ -1021,6 +1070,18 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     ]
     for switch, flipped_scope in SWITCH_FLIPS:
         lines += ["", *_format_switch_table(rows, switch, flipped_scope)]
+    lines += [
+        "",
+        "## 3. Files",
+        "",
+        f"- `{out_dir.name}/estimates.csv` — every estimate of items 1 "
+        "and 2, one row each, built from the same rows as the tables "
+        "above. Ratio columns sit on the EMP 2019 row of each cell; "
+        "`change_*` rows hold the switch effects (level change in the "
+        "mean/CI columns, ratio change in the ratio columns) at the "
+        "flipped scope. Cells that do not apply are empty; suppressed "
+        "cells keep their true n.",
+    ]
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

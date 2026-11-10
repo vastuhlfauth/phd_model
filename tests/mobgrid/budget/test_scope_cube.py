@@ -541,3 +541,154 @@ def test_report_shows_unsuppressed_values_and_ratios(cube_report: dict) -> None:
         if spec.indicator == "minutes_per_day" and spec.basis == "day"
     )
     assert scope_cube._mean_cell(row, spec) in text
+
+
+# ---------------------------------------------------------------------------
+# Tidy CSV (item 3).
+# ---------------------------------------------------------------------------
+
+
+def _read_csv_rows(csv_path: Path) -> list[dict]:
+    import csv
+
+    with csv_path.open(encoding="utf-8", newline="") as stream:
+        return list(csv.DictReader(stream))
+
+
+def _csv_row(rows: list[dict], **conditions: str) -> dict:
+    matches = [
+        row
+        for row in rows
+        if all(row[key] == value for key, value in conditions.items())
+    ]
+    assert len(matches) == 1, (conditions, len(matches))
+    return matches[0]
+
+
+def _parsed(row: dict) -> dict:
+    """CSV strings back to the report writer's row values."""
+    parsed = dict(row)
+    for key in (
+        "mean",
+        "ci_low",
+        "ci_high",
+        "median",
+        "p25",
+        "p75",
+        "ratio",
+        "ratio_ci_low",
+        "ratio_ci_high",
+    ):
+        if parsed[key] != "":
+            parsed[key] = float(parsed[key])
+    return parsed
+
+
+def _table_line(text: str, heading: str, scope: str, category: str) -> str:
+    lines = text.splitlines()
+    start = lines.index(heading)
+    prefix = f"| {scope} | {category} |"
+    for line in lines[start + 1 :]:
+        if line.startswith("### ") or line.startswith("## "):
+            break
+        if line.startswith(prefix):
+            return line
+    raise AssertionError(f"no row {prefix!r} under {heading!r}")
+
+
+def test_csv_has_required_columns_and_all_cube_rows(cube_report: dict) -> None:
+    csv_path = cube_report["results"]["csv_path"]
+    assert csv_path == cube_report["out_dir"] / "estimates.csv"
+    rows = _read_csv_rows(csv_path)
+    assert list(rows[0].keys()) == list(scope_cube.CSV_COLUMNS)
+    scopes = {row["scope"] for row in rows}
+    assert scopes == {selected.id for selected in scope_module.ALL_SCOPES}
+    # Switch columns always carry the scope's own settings.
+    row = _csv_row(
+        rows,
+        scope="round-dest-daytable",
+        survey="EMP 2019",
+        category="All",
+        indicator="change_minutes_per_day",
+        basis="day",
+    )
+    assert (
+        row["days_switch"],
+        row["purposes_switch"],
+        row["distance_switch"],
+    ) == ("round", "dest", "daytable")
+
+
+def test_csv_rows_equal_report_table_cells(cube_report: dict) -> None:
+    """A few CSV rows, formatted with the report's own cell formatters,
+    equal the report's table cells (the CSV is built from the table rows)."""
+    text = cube_report["md_path"].read_text(encoding="utf-8")
+    rows = _read_csv_rows(cube_report["results"]["csv_path"])
+    spec = next(
+        spec
+        for spec in scope_cube.INDICATOR_SPECS
+        if spec.indicator == "minutes_per_day" and spec.basis == "day"
+    )
+    for scope_id in ("round-dest-local", "alldays-allpurp-daytable"):
+        row_2019 = _parsed(
+            _csv_row(
+                rows,
+                scope=scope_id,
+                survey="EMP 2019",
+                category="All",
+                indicator="minutes_per_day",
+                basis="day",
+            )
+        )
+        line = _table_line(text, f"### {spec.label}", scope_id, "All")
+        assert scope_cube._mean_cell(row_2019, spec) in line
+        assert scope_cube._quantile_cell(row_2019, spec) in line
+        ratio_cell, verdict_15, verdict_10 = scope_cube._ratio_cells(row_2019)
+        assert ratio_cell in line
+        assert f" {verdict_15} |" in line and f" {verdict_10} |" in line
+    # Per-trip ratio-of-totals table.
+    trip_spec = next(
+        spec
+        for spec in scope_cube.INDICATOR_SPECS
+        if spec.key == "minutes_per_trip"
+    )
+    trip_row = _parsed(
+        _csv_row(
+            rows,
+            scope="round-dest-local",
+            survey="ENTD 2008",
+            category="All",
+            indicator="minutes_per_trip",
+            basis="trip",
+        )
+    )
+    line = _table_line(
+        text, f"### {trip_spec.label}", "round-dest-local", "All"
+    )
+    assert scope_cube._mean_cell(trip_row, trip_spec) in line
+    # A switch-effect cell.
+    change_row = _parsed(
+        _csv_row(
+            rows,
+            scope="round-dest-daytable",
+            survey="EMP 2019",
+            category="All",
+            indicator="change_km_per_trip_producer",
+            basis="trip",
+        )
+    )
+    km_spec = next(
+        spec
+        for spec in scope_cube.INDICATOR_SPECS
+        if spec.key == "km_per_trip_producer"
+    )
+    heading = "### Distance: `local` → `daytable` (`round-dest-daytable`)"
+    lines = text.splitlines()
+    start = lines.index(heading)
+    switch_line = next(
+        line
+        for line in lines[start + 1 :]
+        if line.startswith(f"| {km_spec.label} |")
+    )
+    assert scope_cube._delta_cell(change_row, km_spec) in switch_line
+    assert scope_cube._ratio_delta_cell(change_row) in switch_line
