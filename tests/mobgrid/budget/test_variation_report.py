@@ -2270,6 +2270,126 @@ def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
     assert variation_report._ratio_metric(speed_2008, speed_2019) is not None
 
 
+def _period_speed_sample(
+    *,
+    duration_before: float,
+    duration_after: float,
+    before_tag: str,
+    after_tag: str,
+    tag_field: str,
+) -> variation_report.SpeedSample:
+    """120 identical 15 km car-driver trips in one intermediate-density
+    cell, half tagged before and half after (by month or by date)."""
+    n, half = 120, 60
+    tags = np.array([before_tag] * half + [after_tag] * half, dtype=object)
+    blanks = np.array([""] * n, dtype=object)
+    return variation_report.SpeedSample(
+        household=np.array([f"h{i}" for i in range(n)]),
+        weight=np.ones(n),
+        duration_min=np.array([duration_before] * half + [duration_after] * half),
+        producer_km=np.full(n, 15.0),
+        crow_fly_km=np.full(n, 15.0),
+        mode=np.array(["car_driver"] * n, dtype=object),
+        density=np.array(["intermediate"] * n, dtype=object),
+        residence_zone=blanks.copy(),
+        month=tags if tag_field == "month" else blanks.copy(),
+        date=tags if tag_field == "date" else blanks.copy(),
+    )
+
+
+def test_c6_speed_limit_check_standardizes_each_split_to_the_2008_mix() -> None:
+    """3a: EMP before/after at the 2008 mix (90 vs 80 km/h), the ENTD
+    season control (60 vs 50 km/h) and the ratio of ratios."""
+    entd = _period_speed_sample(
+        duration_before=15.0,
+        duration_after=18.0,
+        before_tag="2007-06-30",
+        after_tag="2007-07-01",
+        tag_field="date",
+    )
+    emp = _period_speed_sample(
+        duration_before=10.0,
+        duration_after=11.25,
+        before_tag="mai",
+        after_tag="octobre",
+        tag_field="month",
+    )
+    # Two ambiguous avril trips must leave both periods.
+    months = emp.month.copy()
+    months[:2] = "avril"
+    emp = replace(emp, month=months)
+
+    rows = variation_report.speed_limit_check(entd, emp, n_reps=20, seed=0)
+
+    main = "main: 10-80 km, intermediate/sparse/very sparse"
+    by = {(row["check"], row["survey"]): row for row in rows}
+    emp_row = by[(main, "EMP 2019")]
+    assert emp_row["cells"] == 1
+    assert (emp_row["n_before"], emp_row["n_after"]) == (58, 60)
+    assert emp_row["speed_before"].estimate == pytest.approx(90.0)
+    assert emp_row["speed_after"].estimate == pytest.approx(80.0)
+    assert emp_row["ratio"].estimate == pytest.approx(8 / 9)
+    entd_row = by[(main, "ENTD 2008 (season control)")]
+    assert entd_row["speed_before"].estimate == pytest.approx(60.0)
+    assert entd_row["speed_after"].estimate == pytest.approx(50.0)
+    assert entd_row["ratio"].estimate == pytest.approx(5 / 6)
+    ratio_of_ratios = by[(main, "ratio of ratios (EMP / ENTD)")]["ratio"]
+    assert ratio_of_ratios.estimate == pytest.approx(16 / 15)
+    # No 2-10 km dense trips: the placebo prints unavailable cells.
+    placebo_row = by[("placebo: 2-10 km, dense", "EMP 2019")]
+    assert placebo_row["cells"] == 0
+    assert placebo_row["ratio"] is None
+
+    lines = variation_report._format_c6_speed_limit(
+        rows,
+        {
+            "share_before": 0.3,
+            "share_ambiguous": 0.05,
+            "n_before": 58,
+            "n_after": 60,
+            "n_ambiguous": 2,
+        },
+    )
+    text = "\n".join(lines)
+    assert "#### 80 km/h limit (1 July 2018)" in text
+    assert "avril" in text
+    assert "30.0%" in text
+    placebo_line = next(
+        line
+        for line in lines
+        if line.startswith("| placebo: 2-10 km, dense | EMP 2019")
+    )
+    assert placebo_line.endswith("| 0 | 0 | - | - | - |")
+    csv_rows = variation_report._speed_limit_csv_rows(rows)
+    by_csv = {(row["check"], row["split"]): row for row in csv_rows}
+    assert by_csv[(main, "EMP 2019")]["ratio"] == pytest.approx(8 / 9)
+    assert by_csv[("placebo: 2-10 km, dense", "EMP 2019")]["ratio"] == ""
+
+
+def test_c6_speed_limit_period_masks_and_day_share() -> None:
+    months = np.array(
+        ["mai", "Juin ", "octobre", "janvier", "avril", "nonsense"], dtype=object
+    )
+    before, after = variation_report._emp_period_masks(months)
+    assert before.tolist() == [True, True, False, False, False, False]
+    assert after.tolist() == [False, False, True, True, False, False]
+    dates = np.array(["2007-06-30", "2007-07-01", ""], dtype=object)
+    entd_before, entd_after = variation_report._entd_period_masks(dates)
+    assert entd_before.tolist() == [True, False, False]
+    assert entd_after.tolist() == [False, True, False]
+    frames = _frames(
+        {
+            "pond_jour": [1.0, 1.0, 2.0, 4.0],
+            "described_month_name": ["mai", "juin", "octobre", "avril"],
+        },
+        {"pond_jour": []},
+    )
+    share = variation_report.emp_day_share_before(frames)
+    assert share["share_before"] == pytest.approx(0.5)
+    assert share["share_ambiguous"] == pytest.approx(0.5)
+    assert (share["n_before"], share["n_after"], share["n_ambiguous"]) == (2, 1, 1)
+
+
 def test_c7_period_estimates_use_full_roster_and_traveller_days() -> None:
     sample = variation_report.PeriodBudgetSample(
         person_household=np.array(["h1", "h2"]),

@@ -184,7 +184,11 @@ class SurveyFrames:
 
 @dataclass(frozen=True)
 class SpeedSample:
-    """C6 trip-level inputs; distances are km and durations are minutes."""
+    """C6 trip-level inputs; distances are km and durations are minutes.
+
+    ``month``/``date``/``recall_lag`` carry the described day's French
+    month name, ISO date ('' when unpublished) and recall lag in days;
+    they are only filled for scope B (``None`` under scope A)."""
 
     household: np.ndarray
     weight: np.ndarray
@@ -194,6 +198,9 @@ class SpeedSample:
     mode: np.ndarray
     density: np.ndarray
     residence_zone: np.ndarray
+    month: np.ndarray | None = None
+    date: np.ndarray | None = None
+    recall_lag: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -256,6 +263,9 @@ def _create_person_ext_emp2019(con: duckdb.DuckDBPyConnection) -> None:
             TRY_CAST(i.MDATE_delai AS INTEGER) AS recall_lag,
             CAST(i.MDATE_jour AS VARCHAR) AS described_weekday_name,
             CAST(i.MDATE_mois AS VARCHAR) AS described_month_name,
+            -- EMP 2019 publishes no full described-day date (weekday,
+            -- month and interview delay only).
+            CAST(NULL AS DATE) AS described_date,
             coalesce(CAST(m.REG_res AS VARCHAR) = 'Ile-de-France', FALSE)
                 AS is_idf,
             {residence_class_sql} AS residence_aa_class,
@@ -324,6 +334,7 @@ def _create_person_ext_entd2008(con: duckdb.DuckDBPyConnection) -> None:
             CASE WHEN d.ref_date IS NOT NULL AND d.visit2_date IS NOT NULL
                 THEN date_diff('day', d.ref_date, d.visit2_date)
             END AS recall_lag,
+            d.ref_date AS described_date,
             CASE isodow(d.ref_date)
                 WHEN 1 THEN 'lundi' WHEN 2 THEN 'mardi' WHEN 3 THEN 'mercredi'
                 WHEN 4 THEN 'jeudi' WHEN 5 THEN 'vendredi' WHEN 6 THEN 'samedi'
@@ -388,7 +399,9 @@ def _create_frames_tables(
             coalesce({motive_group_sql}, 'unknown') AS motive_group,
             e.declared_km, e.crow_fly_km, e.vac_scol,
             p.sex, p.recall_lag, p.described_weekday_name,
-            p.described_month_name, p.is_idf, p.cars_band,
+            p.described_month_name,
+            CAST(p.described_date AS VARCHAR) AS described_date,
+            p.is_idf, p.cars_band,
             p.residence_aa_class
         FROM trip_legs t
         LEFT JOIN vr_person p ON p.ident_ind = t.ident_ind
@@ -2294,6 +2307,19 @@ def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
         mode=_text_values(trips["mode7"]),
         density=_text_values(trips["home_density"]),
         residence_zone=_text_values(trips["residence_aa_class"]),
+        month=(
+            _text_values(trips["described_month_name"])
+            if "described_month_name" in trips
+            else None
+        ),
+        date=(
+            _text_values(trips["described_date"])
+            if "described_date" in trips
+            else None
+        ),
+        recall_lag=(
+            trips["recall_lag"].astype(float) if "recall_lag" in trips else None
+        ),
     )
 
 
@@ -2560,13 +2586,29 @@ def _residence_classes(sample: SpeedSample) -> np.ndarray:
     )
 
 
-def _speed_band_index(distance_km: np.ndarray) -> np.ndarray:
-    valid = np.isfinite(distance_km) & (distance_km >= 2.0) & (distance_km <= 80.0)
+def _band_index(
+    distance_km: np.ndarray,
+    *,
+    upper_km: tuple[float, ...],
+    min_km: float,
+    max_km: float,
+) -> np.ndarray:
+    """Band index of each crow-fly distance within [min_km, max_km]; -1
+    outside. ``upper_km`` holds the inner band boundaries (exclusive)."""
+    valid = (
+        np.isfinite(distance_km) & (distance_km >= min_km) & (distance_km <= max_km)
+    )
     result = np.full(len(distance_km), -1, dtype=int)
     result[valid] = np.searchsorted(
-        SPEED_BAND_UPPER_KM, distance_km[valid], side="right"
+        np.asarray(upper_km), distance_km[valid], side="right"
     )
     return result
+
+
+def _speed_band_index(distance_km: np.ndarray) -> np.ndarray:
+    return _band_index(
+        distance_km, upper_km=SPEED_BAND_UPPER_KM, min_km=2.0, max_km=80.0
+    )
 
 
 def _density_index(values: np.ndarray) -> np.ndarray:
@@ -2581,28 +2623,71 @@ def _density_index(values: np.ndarray) -> np.ndarray:
     return result
 
 
-def _standardization_input(sample: SpeedSample) -> dict[str, np.ndarray]:
-    bands = _speed_band_index(sample.crow_fly_km)
-    density = _density_index(sample.density)
-    cells = bands * len(DENSITY_GRID_LABELS) + density
+def _speed_cells(
+    sample: SpeedSample,
+    *,
+    modes: tuple[str, ...] | None = ("car_driver",),
+    include_mode: bool = False,
+    band_upper_km: tuple[float, ...] = SPEED_BAND_UPPER_KM,
+    band_min_km: float = 2.0,
+    band_max_km: float = 80.0,
+    densities: tuple[str, ...] = DENSITY_GRID_LABELS,
+    selected: np.ndarray | None = None,
+) -> dict[str, np.ndarray | int]:
+    """Crow-fly trips in (mode x) band x density cells for standardisation.
+
+    ``modes`` filters trips (``None`` keeps every mode); ``include_mode``
+    makes the mode part of the cell. Trips outside the band range, the
+    density subset or the mode list are dropped."""
+    n_bands = len(band_upper_km) + 1
+    bands = _band_index(
+        sample.crow_fly_km,
+        upper_km=band_upper_km,
+        min_km=band_min_km,
+        max_km=band_max_km,
+    )
+    global_density = _density_index(sample.density)
+    density_local = np.full(len(global_density), -1, dtype=int)
+    for local, label in enumerate(densities):
+        density_local[global_density == DENSITY_GRID_LABELS.index(label)] = local
+    if include_mode:
+        mode_labels = modes if modes is not None else MODE7_LABELS
+        mode_local = np.full(len(sample.mode), -1, dtype=int)
+        for local, label in enumerate(mode_labels):
+            mode_local[sample.mode == label] = local
+        n_modes = len(mode_labels)
+    else:
+        mode_ok = (
+            np.ones(len(sample.mode), dtype=bool)
+            if modes is None
+            else np.isin(sample.mode, modes)
+        )
+        mode_local = np.where(mode_ok, 0, -1)
+        n_modes = 1
     valid = (
         (bands >= 0)
-        & (density >= 0)
-        & (sample.mode == "car_driver")
+        & (density_local >= 0)
+        & (mode_local >= 0)
         & np.isfinite(sample.weight)
         & (sample.weight > 0)
         & np.isfinite(sample.duration_min)
         & (sample.duration_min > 0)
-        & np.isfinite(sample.crow_fly_km)
-        & (sample.crow_fly_km >= 0)
     )
+    if selected is not None:
+        valid &= np.asarray(selected, dtype=bool)
+    cells = (mode_local * n_bands + bands) * len(densities) + density_local
     return {
         "household": sample.household[valid].astype(str),
         "weight": sample.weight[valid],
         "duration": sample.duration_min[valid],
         "distance": sample.crow_fly_km[valid],
         "cell": cells[valid],
+        "n_cells": n_modes * n_bands * len(densities),
     }
+
+
+def _standardization_input(sample: SpeedSample) -> dict[str, np.ndarray | int]:
+    return _speed_cells(sample)
 
 
 def _standardized_speed_value(
@@ -2615,7 +2700,7 @@ def _standardized_speed_value(
     active_cells = common_cells[mix[common_cells] > 0]
     if len(active_cells) == 0:
         return float("nan")
-    distance_mean = np.zeros(len(SPEED_BAND_LABELS) * len(DENSITY_GRID_LABELS))
+    distance_mean = np.zeros(len(mix))
     time_mean = np.zeros_like(distance_mean)
     for cell in active_cells:
         selected = sample["cell"] == cell
@@ -2635,30 +2720,36 @@ def _standardized_speed_value(
     )
 
 
-def _standardized_car_speed(
-    sample_2008: SpeedSample,
-    sample_2019: SpeedSample,
+def _standardized_speed_pair(
+    data_a: dict,
+    data_b: dict,
     *,
     n_reps: int,
     seed: int,
+    mix_data: dict | None = None,
 ) -> tuple[int, int, int, SpeedMetric, SpeedMetric]:
-    """Reweight crow-fly car speeds to the 2008 band x density trip mix."""
-    data_a = _standardization_input(sample_2008)
-    data_b = _standardization_input(sample_2019)
-    n_cells = len(SPEED_BAND_LABELS) * len(DENSITY_GRID_LABELS)
+    """Standardise two cell samples to one weighted trip mix (C6).
+
+    The mix defaults to ``data_a``'s own (the pooled 2008 table); an
+    explicit ``mix_data`` reweights both sides to a third sample's mix
+    (e.g. EMP before/after splits held at the 2008 mix). Cells must be
+    populated in both sides and the mix source."""
+    shared_mix = mix_data is None
+    mix = data_a if shared_mix else mix_data
+    n_cells = int(data_a["n_cells"])
+    if int(data_b["n_cells"]) != n_cells or int(mix["n_cells"]) != n_cells:
+        raise ValueError("standardised samples must share one cell definition")
     weight_a = np.bincount(data_a["cell"], weights=data_a["weight"], minlength=n_cells)
     weight_b = np.bincount(data_b["cell"], weights=data_b["weight"], minlength=n_cells)
-    common_cells = np.flatnonzero((weight_a > 0) & (weight_b > 0))
+    weight_mix = np.bincount(mix["cell"], weights=mix["weight"], minlength=n_cells)
+    common_cells = np.flatnonzero((weight_a > 0) & (weight_b > 0) & (weight_mix > 0))
     empty = _empty_speed_metric(n_reps)
     if len(common_cells) == 0:
         return 0, 0, 0, empty, empty
 
     n_a = int(np.sum(np.isin(data_a["cell"], common_cells)))
     n_b = int(np.sum(np.isin(data_b["cell"], common_cells)))
-    cell_weight_a = np.bincount(
-        data_a["cell"], weights=data_a["weight"], minlength=n_cells
-    )
-    point_mix = cell_weight_a / np.sum(cell_weight_a[common_cells])
+    point_mix = weight_mix / np.sum(weight_mix[common_cells])
     point_a = _standardized_speed_value(
         data_a, np.ones(len(data_a["weight"])), common_cells, point_mix
     )
@@ -2667,23 +2758,32 @@ def _standardized_car_speed(
     )
     reps_a = np.full(n_reps, np.nan)
     reps_b = np.full(n_reps, np.nan)
-    rng_a, rng_b = (
-        np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(2)
-    )
+    children = np.random.SeedSequence(seed).spawn(2 if shared_mix else 3)
+    rngs = [np.random.default_rng(child) for child in children]
+    rng_a, rng_b = rngs[0], rngs[1]
     for rep in range(n_reps):
         multiplier_a = variation.household_multipliers(data_a["household"], rng_a)
         multiplier_b = variation.household_multipliers(data_b["household"], rng_b)
-        cell_weight_a = np.bincount(
-            data_a["cell"],
-            weights=data_a["weight"] * multiplier_a,
+        mix_multiplier = (
+            multiplier_a
+            if shared_mix
+            else variation.household_multipliers(mix["household"], rngs[2])
+        )
+        cell_weight = np.bincount(
+            mix["cell"],
+            weights=mix["weight"] * mix_multiplier,
             minlength=n_cells,
         )
-        mix_total = float(np.sum(cell_weight_a[common_cells]))
+        mix_total = float(np.sum(cell_weight[common_cells]))
         if mix_total <= 0:
             continue
-        mix = cell_weight_a / mix_total
-        reps_a[rep] = _standardized_speed_value(data_a, multiplier_a, common_cells, mix)
-        reps_b[rep] = _standardized_speed_value(data_b, multiplier_b, common_cells, mix)
+        rep_mix = cell_weight / mix_total
+        reps_a[rep] = _standardized_speed_value(
+            data_a, multiplier_a, common_cells, rep_mix
+        )
+        reps_b[rep] = _standardized_speed_value(
+            data_b, multiplier_b, common_cells, rep_mix
+        )
     return (
         len(common_cells),
         n_a,
@@ -2691,6 +2791,219 @@ def _standardized_car_speed(
         _metric_interval(point_a, reps_a, percentiles=(2.5, 97.5)),
         _metric_interval(point_b, reps_b, percentiles=(2.5, 97.5)),
     )
+
+
+def _standardized_car_speed(
+    sample_2008: SpeedSample,
+    sample_2019: SpeedSample,
+    *,
+    n_reps: int,
+    seed: int,
+) -> tuple[int, int, int, SpeedMetric, SpeedMetric]:
+    """Reweight crow-fly car speeds to the 2008 band x density trip mix."""
+    return _standardized_speed_pair(
+        _standardization_input(sample_2008),
+        _standardization_input(sample_2019),
+        n_reps=n_reps,
+        seed=seed,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Part C6 speed checks: the 80 km/h limit of 1 July 2018
+# ---------------------------------------------------------------------------
+
+#: EMP 2019 described days carry only French weekday/month names. Fieldwork
+#: runs April 2018 - April 2019: mai-juin can only be 2018 (before 1 July
+#: 2018), juillet-mars only after it, and avril is ambiguous (2018 or 2019).
+SPEED_LIMIT_MONTHS_BEFORE = ("mai", "juin")
+SPEED_LIMIT_MONTHS_AMBIGUOUS = ("avril",)
+#: ENTD 2008's season control splits its described days (full dates) at the
+#: same day of year, one year into its April 2007 - April 2008 fieldwork.
+SPEED_LIMIT_ENTD_CUTOFF = "2007-07-01"
+
+#: The two 80 km/h selections: the treated roads (longer rural car trips)
+#: and a placebo that the limit change should not touch.
+SPEED_LIMIT_CASES: dict[str, dict] = {
+    "main: 10-80 km, intermediate/sparse/very sparse": {
+        "band_upper_km": (20.0, 40.0),
+        "band_min_km": 10.0,
+        "band_max_km": 80.0,
+        "densities": ("intermediate", "sparse", "very_sparse"),
+    },
+    "placebo: 2-10 km, dense": {
+        "band_upper_km": (5.0,),
+        "band_min_km": 2.0,
+        "band_max_km": 10.0,
+        "densities": ("dense",),
+    },
+}
+
+
+def _emp_period_masks(months: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(before, after) 1 July 2018 masks from EMP described-month names;
+    avril (2018 or 2019) and unknown months are in neither."""
+    labels = np.char.lower(np.char.strip(months.astype(str)))
+    known = np.isin(labels, tuple(_FRENCH_MONTH_NUM))
+    before = np.isin(labels, SPEED_LIMIT_MONTHS_BEFORE)
+    ambiguous = np.isin(labels, SPEED_LIMIT_MONTHS_AMBIGUOUS)
+    return before, known & ~before & ~ambiguous
+
+
+def _entd_period_masks(dates: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(before, from) ``SPEED_LIMIT_ENTD_CUTOFF`` masks from ISO dates."""
+    values = dates.astype(str)
+    known = np.char.str_len(np.char.strip(values)) > 0
+    return known & (values < SPEED_LIMIT_ENTD_CUTOFF), known & (
+        values >= SPEED_LIMIT_ENTD_CUTOFF
+    )
+
+
+def emp_day_share_before(frames_2019: SurveyFrames) -> dict:
+    """Weighted share of EMP days before 1 July 2018 (classifiable days),
+    and the weighted share excluded as ambiguous (avril)."""
+    months = frames_2019.days["described_month_name"]
+    weight = frames_2019.days["pond_jour"].astype(float)
+    before, after = _emp_period_masks(months)
+    labels = np.char.lower(np.char.strip(months.astype(str)))
+    ambiguous = np.isin(labels, SPEED_LIMIT_MONTHS_AMBIGUOUS)
+    classified = float(weight[before].sum() + weight[after].sum())
+    known = np.isin(labels, tuple(_FRENCH_MONTH_NUM))
+    return {
+        "share_before": (
+            float(weight[before].sum() / classified) if classified > 0 else np.nan
+        ),
+        "share_ambiguous": (
+            float(weight[ambiguous].sum() / weight[known].sum())
+            if weight[known].sum() > 0
+            else np.nan
+        ),
+        "n_before": int(before.sum()),
+        "n_after": int(after.sum()),
+        "n_ambiguous": int(ambiguous.sum()),
+    }
+
+
+def speed_limit_check(
+    sample_2008: SpeedSample,
+    sample_2019: SpeedSample,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[dict]:
+    """C6's 80 km/h check: standardized before/after car-driver speeds.
+
+    Within each survey, days before vs from 1 July of the fieldwork year
+    are compared on the same crow-fly band x density cells, both periods
+    reweighted to the full 2008 trip mix; EMP carries the limit change,
+    ENTD 2008 is the season control, and the dense short-trip case is the
+    placebo. The mix and both periods resample households independently."""
+    if sample_2019.month is None or sample_2008.date is None:
+        raise ValueError("the 80 km/h check needs described months and dates")
+    emp_masks = _emp_period_masks(sample_2019.month)
+    entd_masks = _entd_period_masks(sample_2008.date)
+    rows: list[dict] = []
+    for case_index, (case, params) in enumerate(SPEED_LIMIT_CASES.items()):
+        mix = _speed_cells(sample_2008, **params)
+        ratios: dict[str, tuple[SpeedMetric | None, int]] = {}
+        for survey_index, (survey, sample, (before, after)) in enumerate(
+            (
+                ("EMP 2019", sample_2019, emp_masks),
+                ("ENTD 2008 (season control)", sample_2008, entd_masks),
+            )
+        ):
+            cells, n_before, n_after, metric_before, metric_after = (
+                _standardized_speed_pair(
+                    _speed_cells(sample, selected=before, **params),
+                    _speed_cells(sample, selected=after, **params),
+                    mix_data=mix,
+                    n_reps=n_reps,
+                    seed=seed + case_index * 100 + survey_index * 10,
+                )
+            )
+            ratio = _ratio_metric(metric_before, metric_after)
+            ratios[survey] = (ratio, min(n_before, n_after))
+            rows.append(
+                {
+                    "check": case,
+                    "survey": survey,
+                    "cells": cells,
+                    "n_before": n_before,
+                    "n_after": n_after,
+                    "speed_before": metric_before,
+                    "speed_after": metric_after,
+                    "ratio": ratio,
+                }
+            )
+        emp_ratio, emp_n = ratios["EMP 2019"]
+        entd_ratio, entd_n = ratios["ENTD 2008 (season control)"]
+        rows.append(
+            {
+                "check": case,
+                "survey": "ratio of ratios (EMP / ENTD)",
+                "cells": None,
+                "n_before": min(emp_n, entd_n),
+                "n_after": min(emp_n, entd_n),
+                "speed_before": None,
+                "speed_after": None,
+                "ratio": (
+                    _ratio_metric(entd_ratio, emp_ratio)
+                    if emp_ratio is not None and entd_ratio is not None
+                    else None
+                ),
+            }
+        )
+    return rows
+
+
+def _format_c6_speed_limit(rows: list[dict], day_share: dict) -> list[str]:
+    lines = [
+        "#### 80 km/h limit (1 July 2018)",
+        "",
+        "From 1 July 2018 the speed limit on two-way rural roads without a "
+        "central separator fell from 90 to 80 km/h; EMP 2019 days run from "
+        "April 2018 to April 2019. Car-driver trips with crow-fly 10-80 km "
+        "and residence density intermediate, sparse or very sparse carry "
+        "the treated roads. Each survey's days before 1 July of its "
+        "fieldwork year are compared with the days from it, both periods "
+        "standardized to the full 2008 crow-fly band x density trip mix "
+        "(cells populated in both periods and the mix). EMP days carry "
+        "month names only: mai-juin are before, juillet-mars after, and "
+        "avril (2018 or 2019) is excluded. ENTD 2008, split at 1 July "
+        "2007, is the season control; the ratio of the two ratios removes "
+        "the seasonal speed pattern. Car-driver trips of 2-10 km in dense "
+        "areas are the placebo. Ratios use 90% CIs, speeds 95% CIs; the "
+        "mix and both periods resample households independently.",
+        "",
+        f"Weighted share of classifiable EMP days before 1 July 2018: "
+        f"{_pct(day_share['share_before'])} ({day_share['n_before']} days "
+        f"before, {day_share['n_after']} after; {day_share['n_ambiguous']} "
+        f"avril days, {_pct(day_share['share_ambiguous'])} of known-month "
+        "weight, excluded).",
+        "",
+        "| Check | Split | Common cells | n before | n after | "
+        "Before km/h [95% CI] | After km/h [95% CI] | "
+        "after/before ratio [90% CI] |",
+        "|---|---|---:|---:|---:|---|---|---|",
+    ]
+    for row in rows:
+        n = min(row["n_before"], row["n_after"])
+        ratio_cell = (
+            "-" if row["ratio"] is None else _metric_cell(row["ratio"], n, 3)
+        )
+        lines.append(
+            f"| {row['check']} | {row['survey']} | "
+            f"{'-' if row['cells'] is None else row['cells']} | "
+            f"{row['n_before']} | {row['n_after']} | "
+            + (
+                "- | - | "
+                if row["speed_before"] is None or row["speed_after"] is None
+                else f"{_metric_cell(row['speed_before'], row['n_before'])} | "
+                f"{_metric_cell(row['speed_after'], row['n_after'])} | "
+            )
+            + f"{ratio_cell} |"
+        )
+    return lines
 
 
 def _metric_cell(metric: SpeedMetric, n_trips: int, decimals: int = 2) -> str:
@@ -3150,6 +3463,17 @@ def _format_c6(
             include_ratio=include_selected_scope_ratio,
         ),
     ]
+    speed_limit_rows = speed_limit_check(
+        samples["B"][0],
+        samples["B"][1],
+        n_reps=n_reps,
+        seed=seed + 50_000,
+    )
+    day_share = emp_day_share_before(frames_2019)
+    if results is not None:
+        results["c6_speed_limit"] = speed_limit_rows
+        results["c6_speed_limit_day_share"] = day_share
+    lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
     return lines
 
 
@@ -4403,6 +4727,40 @@ def _csv_value(value: float | None, n: int) -> float | str:
     return float(value)
 
 
+def _metric_csv_fields(prefix: str, metric: SpeedMetric | None, n: int) -> dict:
+    """Flatten one SpeedMetric into plain CSV columns, with suppression."""
+    if metric is None:
+        return {prefix: "", f"{prefix}_ci_low": "", f"{prefix}_ci_high": ""}
+    return {
+        prefix: _csv_value(metric.estimate, n),
+        f"{prefix}_ci_low": _csv_value(metric.interval[0], n),
+        f"{prefix}_ci_high": _csv_value(metric.interval[1], n),
+    }
+
+
+def _speed_limit_csv_rows(rows: list[dict]) -> list[dict]:
+    out = []
+    for row in rows:
+        n = min(row["n_before"], row["n_after"])
+        out.append(
+            {
+                "check": row["check"],
+                "split": row["survey"],
+                "cells": "" if row["cells"] is None else row["cells"],
+                "n_before": row["n_before"],
+                "n_after": row["n_after"],
+                **_metric_csv_fields(
+                    "speed_before_kmh", row["speed_before"], row["n_before"]
+                ),
+                **_metric_csv_fields(
+                    "speed_after_kmh", row["speed_after"], row["n_after"]
+                ),
+                **_metric_csv_fields("ratio", row["ratio"], n),
+            }
+        )
+    return out
+
+
 def _ledger_km_csv_rows(ledger: MeasurementLedger) -> list[dict]:
     rows = []
     for row in ledger.rows:
@@ -4700,6 +5058,14 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
                 for row in results["c6_crow_fly_distribution"]
             ],
         )
+    if results.get("c6_speed_limit") is not None:
+        csv_rows = _speed_limit_csv_rows(results["c6_speed_limit"])
+        _write_report_table_csv(
+            md_path,
+            "speed_80kmh",
+            list(csv_rows[0]) if csv_rows else [],
+            csv_rows,
+        )
     lines = [
         "# Step 12: what explains the variation of daily travel time",
         "",
@@ -4843,6 +5209,10 @@ BASE_CHOICES = [
     "behavioural remainder split in proportion to B2's trips / km per "
     "trip / speed / selection terms (the decompositions are not nested). "
     "At zero total change, an explicit allocation residual closes the plot.",
+    "EMP 2019 publishes no full described-day date (weekday, month and "
+    "interview delay only): C6's 80 km/h check classifies mai-juin days "
+    "as before 1 July 2018 and juillet-mars days as after, and excludes "
+    "avril days, which can belong to April 2018 or April 2019.",
 ]
 
 
