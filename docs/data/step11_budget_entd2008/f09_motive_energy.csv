@@ -1,0 +1,8 @@
+figure,panel,scope,survey,group,subgroup,quantity,unit,days,basis,n,mean,ci_low,ci_high,median,p25,p75,ratio,ratio_ci_low,ratio_ci_high
+f09_motive_energy,Panel 1,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Car driver,,"Share of weighted energy, % (kh)",%,weekday / Saturday / Sunday,per day with trips,,100.0,,,,,,,,
+f09_motive_energy,Panel 1,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Car passenger (carpool),,"Share of weighted energy, % (kh)",%,weekday / Saturday / Sunday,per day with trips,,100.0,,,,,,,,
+f09_motive_energy,Panel 1,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Car passenger (household),,"Share of weighted energy, % (kh)",%,weekday / Saturday / Sunday,per day with trips,,99.99999999999999,,,,,,,,
+f09_motive_energy,Panel 1,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Cycle,,"Share of weighted energy, % (kh)",%,weekday / Saturday / Sunday,per day with trips,,100.0,,,,,,,,
+f09_motive_energy,Panel 1,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Train,,"Share of weighted energy, % (kh)",%,weekday / Saturday / Sunday,per day with trips,,100.0,,,,,,,,
+f09_motive_energy,Panel 1,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Urban PT,,"Share of weighted energy, % (kh)",%,weekday / Saturday / Sunday,per day with trips,,100.00000000000001,,,,,,,,
+f09_motive_energy,Panel 1,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,walk,,"Share of weighted energy, % (kh)",%,weekday / Saturday / Sunday,per day with trips,,100.0,,,,,,,,

@@ -1,0 +1,8 @@
+figure,panel,scope,survey,group,subgroup,quantity,unit,days,basis,n,mean,ci_low,ci_high,median,p25,p75,ratio,ratio_ci_low,ratio_ci_high
+f07_passengers,(A) Household vs carpool (trip level),Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,household,,"Mean one-way trip energy, kJ",kJ,weekday / Saturday / Sunday,per trip,,41.57572514137606,,,,,,,,
+f07_passengers,(A) Household vs carpool (trip level),Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,carpool,,"Mean one-way trip energy, kJ",kJ,weekday / Saturday / Sunday,per trip,,52.570904706548966,,,,,,,,
+f07_passengers,"(B) Walking trips, driver vs passenger days",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,driver,,Mean walking trips per day,,weekday / Saturday / Sunday,per day with trips,,0.20896084337349397,,,,,,,,
+f07_passengers,"(B) Walking trips, driver vs passenger days",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,"passenger
+(household)",,Mean walking trips per day,,weekday / Saturday / Sunday,per day with trips,,0.31866750471401634,,,,,,,,
+f07_passengers,"(B) Walking trips, driver vs passenger days",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,"passenger
+(carpool)",,Mean walking trips per day,,weekday / Saturday / Sunday,per day with trips,,0.49953139643861294,,,,,,,,
