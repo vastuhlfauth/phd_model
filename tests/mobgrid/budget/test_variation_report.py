@@ -2680,6 +2680,29 @@ def test_c6_speed_limit_period_masks_and_day_share() -> None:
     assert (share["n_before"], share["n_after"], share["n_ambiguous"]) == (2, 1, 1)
 
 
+def test_c7_open_days_leave_both_numerator_and_denominator() -> None:
+    """Section 9.9: 300 minutes / (200 person-days - 10 open days)."""
+    sample = variation_report.PeriodBudgetSample(
+        person_household=np.array(["h1", "h2", "h3"]),
+        person_weight=np.array([50.0, 50.0, 100.0]),
+        day_household=np.array(["h1", "h2", "h3"]),
+        day_person=np.array(["p1", "p2", "p3"]),
+        day_weight=np.array([10.0, 10.0, 20.0]),
+        day_type=np.ones(3, dtype=int),
+        trips=np.array([2.0, 1.0, 0.0]),
+        total_time_min=np.array([30.0, 900.0, 0.0]),
+        time_trips=np.array([2.0, 1.0, 0.0]),
+        is_open=np.array([False, True, False]),
+    )
+    estimates = variation_report._period_budget_estimates(
+        sample, day_types=(1,), person_period_divisor=1.0, n_reps=8, seed=0
+    )
+    assert estimates["per_person"]["minutes_per_day"].estimate == pytest.approx(
+        300.0 / 190.0
+    )
+    assert estimates["per_traveller"]["minutes_per_day"].estimate == 30.0
+
+
 def test_c7_period_estimates_use_full_roster_and_traveller_days() -> None:
     sample = variation_report.PeriodBudgetSample(
         person_household=np.array(["h1", "h2"]),

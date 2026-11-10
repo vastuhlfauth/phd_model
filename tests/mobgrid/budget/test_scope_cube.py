@@ -204,11 +204,46 @@ def cube_report(tmp_path_factory: pytest.TempPathFactory) -> dict:
     md_path = out_dir.with_suffix(".md")
     scope_cube.write_markdown(md_path, out_dir, results)
     return {
+        "emp_zip": emp_zip,
+        "entd_dir": entd_dir,
         "results": results,
         "md_path": md_path,
         "out_dir": out_dir,
         "lookup": scope_cube._row_lookup(results["rows"]),
     }
+
+
+def test_reference_person_value_matches_c7_extraction(cube_report: dict) -> None:
+    """Section 9.9: actual scope loaders retain open-day denominator weights."""
+    import duckdb
+    from mobgrid.budget import emp2019, entd2008, variation_report
+    from mobgrid.energy.rates import load_energy_config
+
+    for survey, path in (
+        (emp2019, cube_report["emp_zip"]), (entd2008, cube_report["entd_dir"])
+    ):
+        with duckdb.connect() as con:
+            paths = survey.extract_tables(path, path.parent / survey.SURVEY_NAME)
+            survey.register_views(con, paths)
+            survey.build_trip_legs(
+                con, load_energy_config(scope_cube.DEFAULT_CONFIG_PATH),
+                density_source=survey.DEFAULT_DENSITY_SOURCE,
+            )
+            scope_module.create_scope_views_from_trip_legs(con, activity_stay_min=15)
+            sample = variation_report._c7_scope_data(
+                con, survey, scope_module.REFERENCE_SCOPE, None
+            )
+            assert sample.is_open.any()
+            estimate = variation_report._period_budget_estimates(
+                sample, day_types=(1,),
+                person_period_divisor=5.0 if survey is emp2019 else 1.0,
+                n_reps=16, seed=0,
+            )["per_person"]["minutes_per_day"]
+        row = cube_report["lookup"][(
+            "round-dest-local", survey.SURVEY_NAME, "All", "minutes_per_day", "person"
+        )]
+        assert row["mean"] == pytest.approx(estimate.estimate)
+        assert row["n"] == N_RESPONDENTS
 
 
 # ---------------------------------------------------------------------------

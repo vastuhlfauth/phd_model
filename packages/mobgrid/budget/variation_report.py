@@ -216,6 +216,7 @@ class PeriodBudgetSample:
     trips: np.ndarray
     total_time_min: np.ndarray
     time_trips: np.ndarray
+    is_open: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -1887,7 +1888,7 @@ def _c7_scope_data(
     sample_pct: float | None,
 ) -> PeriodBudgetSample:
     """Extract section 9.9 rosters and trip/minute totals for a C7 scope."""
-    scope_sql = selected_scope.trip_filter_sql()
+    scope_sql = selected_scope.trip_filter_sql("t")
 
     if survey is emp2019:
         roster_sql = f"""
@@ -1918,19 +1919,23 @@ def _c7_scope_data(
 
     people = con.sql(roster_sql).fetchnumpy()
     day_rows = con.sql(f"""
-        SELECT any_value(ident_men) AS ident_men,
-            any_value(ident_ind) AS ident_ind,
-            any_value(pond_jour) AS day_weight,
-            any_value(typejour) AS typejour,
-            count(*) AS trips,
-            count(duration_min) FILTER (WHERE isfinite(duration_min))
+        SELECT any_value(t.ident_men) AS ident_men,
+            any_value(t.ident_ind) AS ident_ind,
+            any_value(t.pond_jour) AS day_weight,
+            any_value(t.typejour) AS typejour,
+            count(*) FILTER (WHERE {scope_sql}) AS trips,
+            count(t.duration_min) FILTER (
+                WHERE isfinite(t.duration_min) AND ({scope_sql}))
                 AS time_trips,
-            coalesce(sum(duration_min), 0.0) AS total_time_min
-        FROM trip_legs
-        WHERE pond_jour > 0
-            AND ({scope_sql})
-            AND ({_sample_sql(sample_pct)})
-        GROUP BY day_id
+            coalesce(sum(t.duration_min) FILTER (WHERE {scope_sql}), 0.0)
+                AS total_time_min,
+            {str(selected_scope.days == "round").lower()}
+                AND NOT coalesce(any_value(d.is_round), FALSE) AS is_open
+        FROM trip_legs t
+        LEFT JOIN scope_days d ON d.day_id = t.day_id
+        WHERE t.pond_jour > 0
+            AND ({_sample_sql(sample_pct, "t.ident_men")})
+        GROUP BY t.day_id
     """).fetchnumpy()
     return PeriodBudgetSample(
         person_household=_text_values(people["ident_men"]),
@@ -1942,6 +1947,7 @@ def _c7_scope_data(
         trips=np.asarray(day_rows["trips"], dtype=float),
         total_time_min=np.asarray(day_rows["total_time_min"], dtype=float),
         time_trips=np.asarray(day_rows["time_trips"], dtype=float),
+        is_open=np.asarray(day_rows["is_open"], dtype=bool),
     )
 
 
@@ -1974,6 +1980,26 @@ def _bootstrap_budget_metric(
         & (sample.day_weight > 0)
         & np.isfinite(numerator_values)
     )
+    is_open = (
+        np.zeros(len(sample.trips), dtype=bool)
+        if sample.is_open is None else sample.is_open
+    )
+    if denominator_kind == "person":
+        if not valid_day.any():
+            return BudgetMetric(0.0, np.zeros(n_reps))
+        point, replicates = daily_energy.bootstrap_person_value_replicates(
+            sample.person_household,
+            sample.person_weight,
+            sample.day_household[valid_day],
+            sample.day_weight[valid_day],
+            numerator_values[valid_day],
+            period_divisor=person_period_divisor,
+            open_days=is_open[valid_day],
+            n_reps=n_reps,
+            seed=seed,
+        )
+        return BudgetMetric(point, replicates)
+    valid_day &= ~is_open
     if denominator_values is not None:
         valid_day &= np.isfinite(denominator_values) & (denominator_values > 0)
 
@@ -2033,6 +2059,8 @@ def _period_budget_estimates(
     """Estimate section 9.9 trips/day and minutes/day or minutes/trip."""
     period_days = np.isin(sample.day_type, day_types)
     traveller_days = period_days & (sample.trips > 0)
+    if sample.is_open is not None:
+        traveller_days &= ~sample.is_open
     estimates: dict[str, dict[str, BudgetMetric | int]] = {}
     for basis, mask in (
         ("per_person", period_days),
@@ -4112,6 +4140,8 @@ def _c7_ratio_inputs(
 ]:
     """Section 9.9 numerator and denominator for the shared survey ratio."""
     mask = np.isin(sample.day_type, day_types)
+    if sample.is_open is not None:
+        mask &= ~sample.is_open
     if basis == "per_traveller" or metric == "minutes_per_trip":
         mask &= sample.trips > 0
     values = sample.trips if metric == "trips_per_day" else sample.total_time_min
@@ -4213,14 +4243,38 @@ def _c7_comparison(
                         b = _c7_ratio_inputs(
                             sample_2019, basis, metric_key, day_types, divisor_2019
                         )
-                        ratio = daily_energy.bootstrap_ratio_ci(
-                            *a[:3],
-                            *b[:3],
-                            denominator_a=a[3],
-                            denominator_b=b[3],
-                            n_reps=n_reps,
-                            seed=seed,
-                        )
+                        if basis == "per_person" and metric_key != "minutes_per_trip":
+                            metrics = [
+                                _bootstrap_budget_metric(
+                                    sample,
+                                    day_mask=np.isin(sample.day_type, day_types),
+                                    numerator_values=(
+                                        sample.trips if metric_key == "trips_per_day"
+                                        else sample.total_time_min
+                                    ),
+                                    denominator_values=None,
+                                    denominator_kind="person",
+                                    person_period_divisor=divisor,
+                                    n_reps=n_reps,
+                                    seed=child,
+                                )
+                                for sample, divisor, child in zip(
+                                    (sample_2008, sample_2019),
+                                    (divisor_2008, divisor_2019),
+                                    np.random.SeedSequence(seed).spawn(2),
+                                    strict=True,
+                                )
+                            ]
+                            ratio = daily_energy.bootstrap_replicate_ratio_ci(
+                                metrics[0].estimate, metrics[0].replicates,
+                                metrics[1].estimate, metrics[1].replicates,
+                            )
+                        else:
+                            ratio = daily_energy.bootstrap_ratio_ci(
+                                *a[:3], *b[:3],
+                                denominator_a=a[3], denominator_b=b[3],
+                                n_reps=n_reps, seed=seed,
+                            )
                     rows.append(
                         {
                             "scope": scope_label,

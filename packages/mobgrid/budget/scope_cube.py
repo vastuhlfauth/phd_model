@@ -206,6 +206,7 @@ class CubeCell:
     estimates: dict[str, float]
     replicates: dict[str, np.ndarray]
     quantiles: dict[str, tuple[float, float, float]]
+    n_people: int = 0
 
 
 def _scope_day_frame(
@@ -434,6 +435,21 @@ def survey_cells(
             totals = aggregates.sum(axis=0)
             point = _cell_metrics(totals)
             replicates = _cell_metrics(multipliers @ aggregates)
+            if roster_mask.any() and day_mask.any():
+                person_point, person_reps = (
+                    daily_energy.bootstrap_person_value_replicates(
+                        survey.roster_household[roster_mask],
+                        survey.roster_weight[roster_mask],
+                        frame.household[day_mask],
+                        weight[day_mask],
+                        frame.minutes[day_mask],
+                        open_days=~kept[day_mask],
+                        n_reps=n_reps,
+                        seed=seed,
+                    )
+                )
+                point["minutes_per_day_person"] = person_point
+                replicates["minutes_per_day_person"] = person_reps
             traveller_mask = day_mask & travel
             kept_mask = day_mask & kept
             quantiles = {
@@ -453,6 +469,7 @@ def survey_cells(
                 estimates={key: float(value) for key, value in point.items()},
                 replicates=replicates,
                 quantiles=quantiles,
+                n_people=int(roster_mask.sum()),
             )
     return cells
 
@@ -574,7 +591,8 @@ def core_rows(
                     row.update(
                         indicator=spec.indicator,
                         basis=spec.basis,
-                        n=cell.n_respondents,
+                        n=(cell.n_people if spec.basis == "person"
+                           else cell.n_respondents),
                     )
                     if cell.n_respondents >= MIN_CELL_N:
                         low, high = _level_ci(cell.replicates[spec.key])

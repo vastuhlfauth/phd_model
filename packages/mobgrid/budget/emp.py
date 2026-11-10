@@ -236,12 +236,29 @@ def _day_rows(
     ).fetchnumpy()
 
 
-def _person_budget_day_rows(con: duckdb.DuckDBPyConnection) -> dict:
-    """Fetch selected-scope day totals, including days with no energy."""
-    return con.sql(
-        "SELECT population_category, home_density, income_quintile, ident_men, "
-        "typejour, pond_jour, total_time_min FROM day_summary"
-    ).fetchnumpy()
+def _person_budget_day_rows(
+    con: duckdb.DuckDBPyConnection,
+    selected_scope: scope_module.Scope | None = None,
+) -> dict:
+    """Section 9.9 minute totals and open-day weights, including zero days."""
+    open_sql = ""
+    if selected_scope is not None and selected_scope.days == "round":
+        open_sql = """
+            UNION ALL
+            SELECT any_value(t.population_category), any_value(t.residence_density),
+                any_value(t.income_quintile), any_value(t.ident_men),
+                any_value(t.typejour), any_value(t.pond_jour), 0.0, TRUE
+            FROM trip_legs t
+            LEFT JOIN scope_days d ON d.day_id = t.day_id
+            WHERE t.pond_jour > 0 AND NOT coalesce(d.is_round, FALSE)
+            GROUP BY t.day_id
+        """
+    return con.sql(f"""
+        SELECT population_category, home_density, income_quintile, ident_men,
+            typejour, pond_jour, total_time_min, FALSE AS is_open
+        FROM day_summary
+        {open_sql}
+    """).fetchnumpy()
 
 
 def _income_quintile_report(con: duckdb.DuckDBPyConnection, days: dict, survey) -> dict:
@@ -766,7 +783,7 @@ def run(
     # full respondent roster.
     person = _person_universe(survey, con, density_source)
     daily_energy.create_day_summary(con, where_sql=where_sql)
-    person_budget_days = _person_budget_day_rows(con)
+    person_budget_days = _person_budget_day_rows(con, scope)
     daily_energy.create_day_summary(con, where_sql=where_sql)
     (
         person_budget_weekday_population,
@@ -992,6 +1009,7 @@ def run(
             "pond_jour",
             "total_time_min",
             "population_category",
+            "is_open",
             "home_density",
             "trips_per_day",
         )
@@ -1036,7 +1054,7 @@ def run(
             activity_stay_min=variation_config.scope.activity_stay_min,
             density_source=density_source,
         )
-        sensitivity_days = _person_budget_day_rows(con)
+        sensitivity_days = _person_budget_day_rows(con, scope)
         (
             person_budget_all_week_population,
             person_budget_all_week_category_density,
@@ -1384,6 +1402,7 @@ def _person_budget_tables(
         day_types=day_types,
         person_weight_scale=1.0,
         period_divisor=period_divisor,
+        t_is_open=days.get("is_open"),
         min_cell_n=MIN_CELL_N,
         n_reps=n_reps,
         seed=seed,
@@ -1415,6 +1434,7 @@ def _person_budget_tables(
             day_types=day_types,
             person_weight_scale=1.0,
             period_divisor=period_divisor,
+            t_is_open=days.get("is_open"),
             min_cell_n=MIN_CELL_N,
             n_reps=n_reps,
             seed=seed,
@@ -4198,40 +4218,27 @@ def _temporal_person_budget_rows(
         if min(n_2008, n_2019) < MIN_CELL_N:
             rows.append(TemporalRatioRow(category, "-", n_2008, n_2019, None, None))
             continue
-        denominator_2008 = (
-            persons_2008["household"][person_mask_2008],
-            persons_2008["weight"][person_mask_2008] * persons_2008["period_divisor"],
+        estimates = []
+        for (days, persons, day_mask, person_mask), child in zip(
+            year_data, np.random.SeedSequence(seed).spawn(2), strict=True
+        ):
+            estimates.append(daily_energy.bootstrap_person_value_replicates(
+                persons["household"][person_mask],
+                persons["weight"][person_mask],
+                days["ident_men"][day_mask],
+                days["pond_jour"][day_mask],
+                days["total_time_min"][day_mask],
+                period_divisor=persons["period_divisor"],
+                open_days=days.get(
+                    "is_open", np.zeros(len(days["pond_jour"]), dtype=bool)
+                )[day_mask],
+                n_reps=n_reps,
+                seed=child,
+            ))
+        ratio, ci = daily_energy.bootstrap_replicate_ratio_ci(
+            *estimates[0], *estimates[1]
         )
-        denominator_2019 = (
-            persons_2019["household"][person_mask_2019],
-            persons_2019["weight"][person_mask_2019] * persons_2019["period_divisor"],
-        )
-        ratio, ci = daily_energy.bootstrap_ratio_ci(
-            days_2008["ident_men"][day_mask_2008],
-            days_2008["pond_jour"][day_mask_2008],
-            days_2008["total_time_min"][day_mask_2008],
-            days_2019["ident_men"][day_mask_2019],
-            days_2019["pond_jour"][day_mask_2019],
-            days_2019["total_time_min"][day_mask_2019],
-            n_reps=n_reps,
-            seed=seed,
-            denominator_a=denominator_2008,
-            denominator_b=denominator_2019,
-        )
-        point_2008 = float(
-            np.sum(
-                days_2008["pond_jour"][day_mask_2008]
-                * days_2008["total_time_min"][day_mask_2008]
-            )
-            / denominator_2008[1].sum()
-        )
-        point_2019 = float(
-            np.sum(
-                days_2019["pond_jour"][day_mask_2019]
-                * days_2019["total_time_min"][day_mask_2019]
-            )
-            / denominator_2019[1].sum()
-        )
+        point_2008, point_2019 = estimates[0][0], estimates[1][0]
         rows.append(
             TemporalRatioRow(
                 category,

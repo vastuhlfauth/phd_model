@@ -159,10 +159,11 @@ def test_age_eligibility_removes_children_and_missing_ages_in_every_scope(
 
 def test_person_ratio_matches_c7_and_figure_intervals() -> None:
     """Section 9.9: shared roster denominator and seed for person ratios."""
-    from mobgrid.budget import variation_report
+    from mobgrid.budget import scope_cube, variation_report
 
     results = []
     frames = []
+    cells = []
     for year in range(2):
         households = np.array([f"M{i // 2}" for i in range(80)])
         weight = np.linspace(1.0, 2.0, 80)
@@ -173,6 +174,7 @@ def test_person_ratio_matches_c7_and_figure_intervals() -> None:
             "pond_jour": weight,
             "total_time_min": minutes,
             "population_category": np.full(80, "employed"),
+            "is_open": np.arange(80) % (7 + year) == 0,
         }
         persons = {
             "household": np.append(households, "immobile"),
@@ -196,7 +198,26 @@ def test_person_ratio_matches_c7_and_figure_intervals() -> None:
             trips=np.full(80, 2.0),
             total_time_min=minutes,
             time_trips=np.full(80, 2.0),
+            is_open=days["is_open"],
         )
+        cube = scope_cube.CubeSurvey(
+            name=("ENTD 2008", "EMP 2019")[year],
+            roster_person=np.arange(81).astype(str),
+            roster_household=persons["household"],
+            roster_category=persons["category"],
+            roster_weight=persons["weight"] * divisor,
+            frames={"round-dest-local": scope_cube.ScopeDayFrame(
+                person=sample.day_person, household=households,
+                category=days["population_category"], weight=weight,
+                kept=~days["is_open"], trips=sample.trips, minutes=minutes,
+                minute_trips=sample.time_trips, producer_km=sample.trips,
+                producer_trips=sample.trips, crow_km=sample.trips,
+                crow_trips=sample.trips,
+            )},
+        )
+        cells.append(scope_cube.survey_cells(
+            cube, n_reps=200, seed=np.random.SeedSequence(0).spawn(2)[year]
+        )[("round-dest-local", "All")])
         frames.append(
             variation_report.SurveyFrames(
                 name=str(year),
@@ -221,6 +242,13 @@ def test_person_ratio_matches_c7_and_figure_intervals() -> None:
         and row["measure"] == "Minutes/day"
     )
     assert (row.ratio, row.ci) == c7["ratio"]
+    assert row.estimate_2008 == c7["estimate_2008"]
+    assert row.estimate_2019 == c7["estimate_2019"]
+    assert row.estimate_2008 == cells[0].estimates["minutes_per_day_person"]
+    assert row.estimate_2019 == cells[1].estimates["minutes_per_day_person"]
+    assert scope_cube._ratio_with_ci(
+        *cells, "minutes_per_day_person"
+    ) == c7["ratio"]
     assert emp._person_budget_ratio_intervals(*results, n_reps=200, seed=0)[
         "employed"
     ] == (row.ratio, *row.ci)
