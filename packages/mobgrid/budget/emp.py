@@ -538,7 +538,7 @@ def run(
         figstyle.set_context(
             scope=scope.label,
             survey=survey.SURVEY_NAME,
-            days="weekday / Saturday / Sunday",
+            days="Monday-Friday",
             basis="per day with trips",
             replicates=n_reps,
         )
@@ -4639,7 +4639,7 @@ def run_compare(
     figstyle.set_context(
         scope=scope.label,
         survey="ENTD 2008 vs EMP 2019",
-        days="weekday / Saturday / Sunday",
+        days="Monday-Friday",
         basis="per day with trips",
         replicates=n_reps,
     )

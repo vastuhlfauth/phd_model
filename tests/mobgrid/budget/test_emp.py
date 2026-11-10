@@ -753,7 +753,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     emp.figstyle.set_context(
         scope="Reference",
         survey="ENTD 2008 vs EMP 2019",
-        days="weekday",
+        days="Monday-Friday",
     )
     stats_2008 = [
         SimpleNamespace(
@@ -843,6 +843,7 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
         assert ax.yaxis.get_major_locator() is locator
     with energy_path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
+    assert {row["days"] for row in rows} == {"Monday-Friday"}
     headline = next(
         row
         for row in rows
@@ -954,6 +955,10 @@ def test_comparison_figures_export_headlines_and_bootstrap_ratios(
     assert plt.imread(category_path).shape[:2] == (1200, 3000)
     with category_path.with_suffix(".csv").open(encoding="utf-8", newline="") as stream:
         category_rows = list(csv.DictReader(stream))
+    assert {row["days"] for row in category_rows} == {"Monday-Friday"}
+    for figure in figures:
+        assert any("Monday-Friday" in text.get_text() for text in figure.texts)
+        assert not any("Saturday" in text.get_text() for text in figure.texts)
     category_row = next(
         row
         for row in category_rows
@@ -1366,6 +1371,7 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
     )
 
     report = report_path.read_text(encoding="utf-8")
+    assert emp.figstyle._CONTEXT["days"] == "Monday-Friday"
     assert scope.DAYTABLE_COVERAGE_NOTE in report
     assert (
         "**Scope:** All days · all purposes · all trips in the day's trip table"

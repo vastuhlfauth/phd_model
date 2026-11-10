@@ -4674,7 +4674,7 @@ def run(
     figstyle.set_context(
         scope=scope.label,
         survey="ENTD 2008 vs EMP 2019",
-        days="weekday",
+        days="Monday-Friday",
         basis="per day with trips",
         section="step 12",
         replicates=n_reps,

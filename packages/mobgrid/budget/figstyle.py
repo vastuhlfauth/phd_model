@@ -117,7 +117,7 @@ CSV_COLUMNS = (
 _CONTEXT: dict[str, str] = {
     "scope": "Reference",
     "survey": "",
-    "days": "7-day",
+    "days": "Monday-Friday",
     "basis": "per day with trips",
     "section": "section 9.9",
     "replicates": "200",
