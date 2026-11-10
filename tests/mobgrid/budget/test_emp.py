@@ -1380,7 +1380,8 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
 
 
 @pytest.mark.parametrize(
-    "formatter", ["group", "scalar", "comparison", "key", "equivalence", "equivalence_pair"]
+    "formatter",
+    ["group", "scalar", "comparison", "key", "equivalence", "equivalence_pair"],
 )
 def test_small_unknown_rows_are_omitted(formatter: str) -> None:
     """Section 9.9: unknown rows below 50 are absent, not blank placeholders."""
