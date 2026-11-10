@@ -2,6 +2,45 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: scope cube (2026-11-10)
+
+- New `mobgrid/budget/scope_cube.py` writes the spec's cross-scope
+  comparison to `docs/data/scope_cube.md` and
+  `docs/data/scope_cube/estimates.csv`: core indicators for the 8 scopes
+  × 2 surveys × population categories (and All) on weekdays — n
+  respondents/trips, share of person-days kept, trips per day, minutes
+  and km per trip (producer and crow-fly, ratios of weighted totals),
+  minutes per day on the described-day, travel-day and per-person bases —
+  with means/95% CIs, medians and quartiles for per-day quantities, the
+  2019/2008 ratio with its 90% CI and verdicts at ±15%/±10%. Flipping one
+  switch at a time from the reference gives the change in each indicator
+  (2008/2019 levels and the ratio) with paired-bootstrap CIs: one shared
+  set of 200 household draws per survey across every scope.
+- It reuses, without duplication: the scope chain (`scope.py`), the
+  step-11 survey loaders and `trip_legs`, step 12's Kish person-weekday
+  roster, `variation.household_multipliers`, `daily_energy`'s weighted
+  quantiles and `bootstrap_replicate_ratio_ci`, and the step-12
+  suppression/formatting helpers (cells under 50 respondents keep their
+  true n and hide values, in the report and in the CSV). No figures.
+- Assumptions: the person-weekday universe is 5 × the individual weight
+  (as the step-12 roster); `round` drops non-round described trip-days
+  from the universe (open-day rule) while trip switches keep the day at
+  zero; trips per day uses the days-with-trips basis; ratio columns sit
+  on the EMP 2019 CSV rows; switch effects are computed for All only
+  (per-category levels for every scope are in item 1). ENTD `daytable`
+  cells carry the observed-coverage caveat in the report intro.
+- Tests (11) cover hand-computed weighted totals, shared draws across
+  scopes (identical scopes give exactly [0, 0] paired intervals), the
+  shared ratio function, suppression, an end-to-end run on synthetic
+  72-respondent surveys, and CSV rows equalling the report's table cells.
+  Repo-wide Ruff passes; the changed module plus `test_scope.py` and
+  `test_variation.py` pass (24 tests, 36.5 s). The full suite was stopped
+  after more than an hour (the pre-existing step-11/12 figure tests run
+  90+ s each; no existing source file was modified) — rerun
+  `uv run pytest -q` offline if wanted. No real-data report was run.
+  Generate with
+  `uv run python -m mobgrid.budget.scope_cube --out docs\data\scope_cube`.
+
 ### Step 11/12: report consistency fixes (2026-11-10)
 
 - Step 11 selects Monday-Friday trips before building either survey's
