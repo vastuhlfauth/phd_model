@@ -5836,7 +5836,7 @@ def _figure_b7_waterfall(results: dict, out_dir: Path) -> Path | None:
     )
     ax.set_ylabel("Daily time with trips (min)")
     ax.set_title(
-        "B7a. 2008 -> 2019 daily-time change (crow-fly distances): "
+        "B7a. 2008 -> 2019 daily-time change (crow-fly distances):\n"
         "composition and unscaled B2 terms"
     )
     fig.tight_layout(rect=(0, 0, 1, 0.92))

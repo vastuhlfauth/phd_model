@@ -1133,6 +1133,7 @@ def test_waterfall_closes_with_zero_net_change(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
 
     a = _b1_frames({"employed": 60.0, "retired": 30.0}, {"employed": 60, "retired": 60})
@@ -1173,6 +1174,13 @@ def test_waterfall_closes_with_zero_net_change(
         "non-additive residual"
     )
     assert "B7a" in figures[0].axes[0].get_title()
+    fig = figures[0]
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    title_box = fig.axes[0].title.get_window_extent(canvas.get_renderer())
+    assert fig.bbox.contains(title_box.x0, title_box.y0)
+    assert fig.bbox.contains(title_box.x1, title_box.y1)
+    assert "\n" in fig.axes[0].get_title()
     assert bars[-2].get_y() + bars[-2].get_height() == pytest.approx(
         bars[-1].get_height()
     )
