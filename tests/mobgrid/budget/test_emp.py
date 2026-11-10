@@ -16,6 +16,7 @@ import csv
 import re
 import warnings
 from pathlib import Path
+from time import perf_counter
 from types import SimpleNamespace
 
 import numpy as np
@@ -1339,9 +1340,14 @@ def test_daytable_temporal_comparison_reports_ratios_with_coverage_note(
     assert scope.DAYTABLE_COVERAGE_NOTE in report
 
 
-def test_run_compare_keeps_selected_scope_for_temporal_section(
+def test_cli_compare_writes_report_and_figures_under_ten_seconds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Section 9.9: CLI orchestration, not three slow survey re-estimations.
+
+    Numerical estimators and rendered figure values have focused regressions;
+    this smoke test keeps report writing and both figure/CSV exports real.
+    """
     variation_config = SimpleNamespace(
         equivalence_margin=0.15,
         secondary_equivalence_margin=0.10,
@@ -1376,7 +1382,13 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
         "person_budget_weekday_population": {},
         "all_days": {"typejour": np.array([], dtype=int)},
     }
-    monkeypatch.setattr(emp, "run", lambda *args, **kwargs: results)
+    calls = []
+
+    def synthetic_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return results
+
+    monkeypatch.setattr(emp, "run", synthetic_run)
     monkeypatch.setattr(emp, "_group_table_two_surveys", lambda *args: [])
     monkeypatch.setattr(
         emp, "_format_equivalence_side_by_side", lambda *args, **kwargs: []
@@ -1392,24 +1404,38 @@ def test_run_compare_keeps_selected_scope_for_temporal_section(
         "_comparison_time_references",
         lambda *args: dict.fromkeys(("all", "weekday", "person"), (None, None)),
     )
-    monkeypatch.setattr(
-        emp,
-        "_figure_compare_energy_time",
-        lambda *args, **kwargs: tmp_path / "compare_energy.png",
-    )
-    monkeypatch.setattr(
-        emp,
-        "_figure_compare_time_by_category",
-        lambda *args, **kwargs: tmp_path / "compare_time.png",
-    )
     selected_scope = scope.Scope.parse("alldays-allpurp-daytable")
-
-    report_path = emp.run_compare(
-        tmp_path / "comparison",
-        scope=selected_scope,
+    out_dir = tmp_path / "comparison"
+    started = perf_counter()
+    exit_code = emp.main(
+        [
+            "--compare", "--out", str(out_dir),
+            "--scope", selected_scope.id,
+            "--bootstrap-reps", "1",
+        ]
     )
+    elapsed = perf_counter() - started
 
-    report = report_path.read_text(encoding="utf-8")
+    assert exit_code == 0
+    assert elapsed < 10.0, f"Comparison CLI smoke test took {elapsed:.2f} s"
+    assert len(calls) == 3
+    assert [args[1] for args, _ in calls] == [emp2019, emp2019, entd2008]
+    assert [kwargs["density_source"] for _, kwargs in calls] == [
+        "proxy", "grid", "proxy"
+    ]
+    assert all(
+        kwargs["n_reps"] == 1
+        and kwargs["scope"] == selected_scope
+        and kwargs["make_figures"] is False
+        for _, kwargs in calls
+    )
+    assert {path.stem for path in out_dir.glob("*.png")} == {
+        "compare_energy_time", "compare_time_by_category"
+    }
+    assert {path.stem for path in out_dir.glob("*.csv")} == {
+        "compare_energy_time", "compare_time_by_category"
+    }
+    report = out_dir.with_suffix(".md").read_text(encoding="utf-8")
     assert emp.figstyle._CONTEXT["days"] == "Monday-Friday"
     assert scope.DAYTABLE_COVERAGE_NOTE in report
     assert (
