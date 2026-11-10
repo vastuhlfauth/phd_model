@@ -2537,6 +2537,73 @@ def test_c6_mode_mix_speed_isolates_the_mode_shift() -> None:
     assert by_csv["within walk"]["ratio"] == ""
 
 
+def test_c6_clock_time_rows_measure_minute_rounding_and_duration_gap() -> None:
+    """3e: minute categories, the duration = arrival - departure share
+    (overnight gaps mod 24 h) and the mean duration gap, by mode."""
+    nan = float("nan")
+    trips = {
+        "pond_jour": [1.0] * 8,
+        "mode7": ["car_driver"] * 7 + ["walk"],
+        "departure_min": [480.0, 495.0, 510.0, 500.0, 503.0, nan, 1430.0, 600.0],
+        "arrival_min": [510.0, 520.0, 540.0, nan, 523.0, 600.0, 10.0, 615.0],
+        "duration_min": [30.0, 30.0, 25.0, 20.0, 20.0, 10.0, 20.0, 15.0],
+    }
+    frames = _frames({}, trips)
+
+    minute_rows, gap_rows = variation_report.clock_time_rows(frames, frames)
+
+    def pick(rows: list[dict], mode: str, endpoint: str | None = None) -> dict:
+        return next(
+            row
+            for row in rows
+            if row["survey"] == "EMP 2019"
+            and row["mode"] == mode
+            and (endpoint is None or row["endpoint"] == endpoint)
+        )
+
+    departure = pick(minute_rows, "car_driver", "departure")
+    assert departure["n"] == 6
+    assert departure["share_:00"] == pytest.approx(1 / 6)
+    assert departure["share_:30"] == pytest.approx(1 / 6)
+    assert departure["share_:15/:45"] == pytest.approx(1 / 6)
+    assert departure["share_other multiple of 5"] == pytest.approx(2 / 6)
+    assert departure["share_other"] == pytest.approx(1 / 6)
+    arrival = pick(minute_rows, "car_driver", "arrival")
+    assert arrival["n"] == 6
+    assert arrival["share_:00"] == pytest.approx(2 / 6)
+    assert arrival["share_:15/:45"] == 0.0
+    assert pick(minute_rows, "All", "departure")["n"] == 7
+    gap = pick(gap_rows, "car_driver")
+    # The 23:50 -> 00:10 overnight trip counts as a 20-min gap.
+    assert gap["n"] == 5
+    assert gap["share_equal"] == pytest.approx(3 / 5)
+    assert gap["mean_duration_minus_gap"] == pytest.approx(0.0)
+    assert pick(gap_rows, "walk")["share_equal"] == pytest.approx(1.0)
+
+    lines = variation_report._format_c6_clock_times(minute_rows, gap_rows)
+    assert lines[0] == "#### Clock times behind the durations"
+    departure_line = next(
+        line
+        for line in lines
+        if line.startswith("| EMP 2019 | car_driver | departure")
+    )
+    # Under 50 trips: the true n stays, every share is hidden.
+    assert departure_line == (
+        "| EMP 2019 | car_driver | departure | 6 | - | - | - | - | - |"
+    )
+    minute_csv = variation_report._clock_minute_csv_rows(minute_rows)
+    assert minute_csv[0]["share_00"] == ""  # suppressed below 50 trips
+    assert list(minute_csv[0])[4:] == [
+        "share_00",
+        "share_30",
+        "share_15_45",
+        "share_other_multiple_5",
+        "share_other",
+    ]
+    gap_csv = variation_report._clock_gap_csv_rows(gap_rows)
+    assert gap_csv[0]["share_duration_equals_gap"] == ""
+
+
 def test_c6_speed_limit_period_masks_and_day_share() -> None:
     months = np.array(
         ["mai", "Juin ", "octobre", "janvier", "avril", "nonsense"], dtype=object

@@ -281,14 +281,22 @@ def _create_person_ext_emp2019(con: duckdb.DuckDBPyConnection) -> None:
         LEFT JOIN tcm_men m ON m.ident_men = t.ident_men
         LEFT JOIN q_menage q ON q.IDENT_MEN = t.ident_men
     """)
-    # Trip-level extras: crow-fly distance and the school-holiday flag.
+    # Trip-level extras: crow-fly distance, the school-holiday flag and
+    # the declared clock times in minutes since midnight (`MORIHDEP`/
+    # `MDESHARR`), next to the published duration already in `trip_legs`.
     con.sql("""
         CREATE OR REPLACE VIEW vr_trip_ext AS
         SELECT IDENT_DEP AS ident_dep,
             TRY_CAST(MDISTTOT_decl AS DOUBLE) AS declared_km,
             TRY_CAST(dVO_ORIDES AS DOUBLE) AS crow_fly_km,
             TRY_CAST(NEW_VAC_SCOL AS INTEGER) AS vac_scol,
-            TRY_CAST(mobloc AS INTEGER) = 1 AS is_local
+            TRY_CAST(mobloc AS INTEGER) = 1 AS is_local,
+            date_part('hour', TRY_CAST(MORIHDEP AS TIME)) * 60
+                + date_part('minute', TRY_CAST(MORIHDEP AS TIME))
+                AS departure_min,
+            date_part('hour', TRY_CAST(MDESHARR AS TIME)) * 60
+                + date_part('minute', TRY_CAST(MDESHARR AS TIME))
+                AS arrival_min
         FROM k_deploc
     """)
 
@@ -360,7 +368,13 @@ def _create_person_ext_entd2008(con: duckdb.DuckDBPyConnection) -> None:
             TRY_CAST(V2_MDISTTOT AS DOUBLE) AS declared_km,
             TRY_CAST(V2_DVO_LOC AS DOUBLE) AS crow_fly_km,
             TRY_CAST(V2_VAC_SCOL AS INTEGER) AS vac_scol,
-            TRY_CAST(V2_DLOCAL AS INTEGER) <> 0 AS is_local
+            TRY_CAST(V2_DLOCAL AS INTEGER) <> 0 AS is_local,
+            date_part('hour', TRY_CAST(V2_MORIHDEP AS TIME)) * 60
+                + date_part('minute', TRY_CAST(V2_MORIHDEP AS TIME))
+                AS departure_min,
+            date_part('hour', TRY_CAST(V2_MDESHARR AS TIME)) * 60
+                + date_part('minute', TRY_CAST(V2_MDESHARR AS TIME))
+                AS arrival_min
         FROM k_deploc
     """)
 
@@ -398,6 +412,7 @@ def _create_frames_tables(
             ({mode7_sql}) AS mode7,
             coalesce({motive_group_sql}, 'unknown') AS motive_group,
             e.declared_km, e.crow_fly_km, e.vac_scol,
+            e.departure_min, e.arrival_min,
             p.sex, p.recall_lag, p.described_weekday_name,
             p.described_month_name,
             CAST(p.described_date AS VARCHAR) AS described_date,
@@ -3300,6 +3315,182 @@ def _mode_mix_speed_csv_rows(rows: list[dict]) -> list[dict]:
     return out
 
 
+#: 3e's clock-minute categories, in reporting order.
+CLOCK_MINUTE_CATEGORIES = (":00", ":30", ":15/:45", "other multiple of 5", "other")
+
+
+def _clock_minute_shares(
+    minutes: np.ndarray, weights: np.ndarray
+) -> tuple[int, dict[str, float]]:
+    """Weighted shares of known clock times by minute category."""
+    valid = np.isfinite(minutes) & np.isfinite(weights) & (weights > 0)
+    weight = weights[valid]
+    total = float(weight.sum())
+    minute = np.mod(minutes[valid].astype(int), 60)
+    category = np.where(
+        minute == 0,
+        ":00",
+        np.where(
+            minute == 30,
+            ":30",
+            np.where(
+                np.isin(minute, (15, 45)),
+                ":15/:45",
+                np.where(minute % 5 == 0, "other multiple of 5", "other"),
+            ),
+        ),
+    )
+    shares = {
+        label: (float(weight[category == label].sum() / total) if total > 0 else np.nan)
+        for label in CLOCK_MINUTE_CATEGORIES
+    }
+    return int(valid.sum()), shares
+
+
+def clock_time_rows(
+    frames_2008: SurveyFrames, frames_2019: SurveyFrames
+) -> tuple[list[dict], list[dict]]:
+    """C6's clock times behind the durations (3e).
+
+    Returns (minute_rows, gap_rows), by year and mode: the weighted
+    shares of departure and arrival times at :00, :30, :15/:45 and other
+    multiples of 5 (EMP `MORIHDEP`/`MDESHARR`, ENTD `V2_MORIHDEP`/
+    `V2_MDESHARR`); the share of trips whose published duration (`DUREE`;
+    `v2_mduree` if filled, else `V2_DUREE`) equals arrival minus
+    departure; and the weighted mean of duration minus that gap. The gap
+    is taken modulo 24 h, so overnight trips stay positive."""
+    minute_rows: list[dict] = []
+    gap_rows: list[dict] = []
+    for survey, frames in (("ENTD 2008", frames_2008), ("EMP 2019", frames_2019)):
+        trips = frames.trips
+        departure = trips["departure_min"].astype(float)
+        arrival = trips["arrival_min"].astype(float)
+        duration = trips["duration_min"].astype(float)
+        weight = trips["pond_jour"].astype(float)
+        mode7 = _text_values(trips["mode7"])
+        for mode in ("All", *MODE7_LABELS):
+            in_mode = (
+                np.ones(len(weight), dtype=bool) if mode == "All" else mode7 == mode
+            )
+            for endpoint, minutes in (("departure", departure), ("arrival", arrival)):
+                n, shares = _clock_minute_shares(
+                    np.where(in_mode, minutes, np.nan), weight
+                )
+                minute_rows.append(
+                    {"survey": survey, "mode": mode, "endpoint": endpoint, "n": n}
+                    | {f"share_{label}": value for label, value in shares.items()}
+                )
+            both = (
+                in_mode
+                & np.isfinite(departure)
+                & np.isfinite(arrival)
+                & np.isfinite(duration)
+                & np.isfinite(weight)
+                & (weight > 0)
+            )
+            gap = np.mod(arrival[both] - departure[both], 24 * 60.0)
+            w = weight[both]
+            total = float(w.sum())
+            equal = np.isclose(duration[both], gap)
+            gap_rows.append(
+                {
+                    "survey": survey,
+                    "mode": mode,
+                    "n": int(both.sum()),
+                    "share_equal": (
+                        float(w[equal].sum() / total) if total > 0 else np.nan
+                    ),
+                    "mean_duration_minus_gap": (
+                        float(np.average(duration[both] - gap, weights=w))
+                        if total > 0
+                        else np.nan
+                    ),
+                }
+            )
+    return minute_rows, gap_rows
+
+
+def _format_c6_clock_times(
+    minute_rows: list[dict], gap_rows: list[dict]
+) -> list[str]:
+    lines = [
+        "#### Clock times behind the durations",
+        "",
+        "Departure and arrival times (EMP `MORIHDEP`/`MDESHARR`, ENTD "
+        "`V2_MORIHDEP`/`V2_MDESHARR`), by year and mode. If the published "
+        "duration (`DUREE`; `v2_mduree` if filled, else `V2_DUREE`) merely "
+        "differences rounded clock times, it should equal arrival minus "
+        "departure and inherit their minute rounding; a separate duration "
+        "answer breaks that identity. The gap is taken modulo 24 h "
+        "(overnight trips). Weighted shares over trips with the needed "
+        "fields; cells with fewer than 50 trips keep n and hide values.",
+        "",
+        "| Year | Mode | Endpoint | n | at :00 | at :30 | at :15/:45 | "
+        "other multiple of 5 | other |",
+        "|---|---|---|---:|---|---|---|---|---|",
+    ]
+    for row in minute_rows:
+        share_cells = [
+            _suppress(row["n"], _pct(row[f"share_{label}"]))
+            for label in CLOCK_MINUTE_CATEGORIES
+        ]
+        lines.append(
+            f"| {row['survey']} | {row['mode']} | {row['endpoint']} | "
+            f"{row['n']} | " + " | ".join(share_cells) + " |"
+        )
+    lines += [
+        "",
+        "| Year | Mode | n | Share duration = arrival - departure | "
+        "Mean duration - (arrival - departure), min |",
+        "|---|---|---:|---|---|",
+    ]
+    for row in gap_rows:
+        lines.append(
+            f"| {row['survey']} | {row['mode']} | {row['n']} | "
+            f"{_suppress(row['n'], _pct(row['share_equal']))} | "
+            f"{_suppress(row['n'], _num(row['mean_duration_minus_gap'], 2))} |"
+        )
+    return lines
+
+
+def _clock_minute_csv_rows(minute_rows: list[dict]) -> list[dict]:
+    key_by_label = {
+        ":00": "share_00",
+        ":30": "share_30",
+        ":15/:45": "share_15_45",
+        "other multiple of 5": "share_other_multiple_5",
+        "other": "share_other",
+    }
+    return [
+        {
+            "survey": row["survey"],
+            "mode": row["mode"],
+            "endpoint": row["endpoint"],
+            "n": row["n"],
+            **{
+                key: _csv_value(row[f"share_{label}"], row["n"])
+                for label, key in key_by_label.items()
+            },
+        }
+        for row in minute_rows
+    ]
+
+
+def _clock_gap_csv_rows(gap_rows: list[dict]) -> list[dict]:
+    return [
+        {
+            "survey": row["survey"],
+            "mode": row["mode"],
+            "n": row["n"],
+            "share_duration_equals_gap": _csv_value(row["share_equal"], row["n"]),
+            "mean_duration_minus_gap_min": _csv_value(
+                row["mean_duration_minus_gap"], row["n"]
+            ),
+        }
+        for row in gap_rows
+    ]
+
+
 def _format_c6_speed_limit(rows: list[dict], day_share: dict) -> list[str]:
     lines = [
         "#### 80 km/h limit (1 July 2018)",
@@ -3827,16 +4018,20 @@ def _format_c6(
         n_reps=n_reps,
         seed=seed + 70_000,
     )
+    clock_minute_rows, clock_gap_rows = clock_time_rows(frames_2008, frames_2019)
     if results is not None:
         results["c6_speed_limit"] = speed_limit_rows
         results["c6_speed_limit_day_share"] = day_share
         results["c6_speed_recall_lag"] = recall_rows
         results["c6_duration_bands"] = duration_rows
         results["c6_mode_mix_speed"] = mode_mix_rows
+        results["c6_clock_minutes"] = clock_minute_rows
+        results["c6_clock_gaps"] = clock_gap_rows
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
     lines += ["", *_format_c6_recall_lag_speed(recall_rows)]
     lines += ["", *_format_c6_duration_bands(duration_rows)]
     lines += ["", *_format_c6_mode_mix_speed(mode_mix_rows)]
+    lines += ["", *_format_c6_clock_times(clock_minute_rows, clock_gap_rows)]
     return lines
 
 
@@ -5450,6 +5645,22 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         _write_report_table_csv(
             md_path,
             "speed_mode_mix",
+            list(csv_rows[0]) if csv_rows else [],
+            csv_rows,
+        )
+    if results.get("c6_clock_minutes") is not None:
+        csv_rows = _clock_minute_csv_rows(results["c6_clock_minutes"])
+        _write_report_table_csv(
+            md_path,
+            "clock_minute_shares",
+            list(csv_rows[0]) if csv_rows else [],
+            csv_rows,
+        )
+    if results.get("c6_clock_gaps") is not None:
+        csv_rows = _clock_gap_csv_rows(results["c6_clock_gaps"])
+        _write_report_table_csv(
+            md_path,
+            "clock_duration_gap",
             list(csv_rows[0]) if csv_rows else [],
             csv_rows,
         )
