@@ -52,7 +52,7 @@ Rules for speed:
 3. **Tests first:** write the acceptance tests with the reference numbers of the spec, check that they fail, then implement until they pass.
 4. **Keep functions small and typed,** with docstrings that state units and the spec section they implement.
 5. **`[TO CONFIRM: …]` items:** use the value in `config/`, mark it with a `TODO(confirm)` comment, and list it in `docs/progress.md`. Never invent a value silently.
-6. **Before finishing,** run `uv run ruff check . && uv run pytest -q` and fix every failure.
+6. **Before finishing,** run `ruff check` on the files you changed and `pytest` on the test files you changed or added, and fix every failure. Never run the whole test suite: it takes over an hour, and I run it myself.
 7. **Finish** by updating `docs/progress.md`: what was done, assumptions, open points.
 
 ## Do not
@@ -72,5 +72,5 @@ Rules for speed:
 - End every task with one report of at most 15 lines: files changed, test result (passed/failed counts), commands for me to run, and at most one question.
 - Never paste logs, diffs, code or long tables into the chat. Write details to docs/ or logs/ and give the path.
 - Do every point of my message, then report once. If one point is blocked, note it, skip it and continue with the others; do not stop to ask unless continuing would damage data or main.
-- Run only the tests of the module you changed while working, and the full suite once at the end.
-- Never start long runs or downloads; give me the command.
+- Run only the tests of the module you changed, while working and at the end. Never run the full suite, and never leave a command running in a background shell.
+- Never start long runs or downloads; give me the command, written as `python -m ...` (I run it in the project's `.venv`; `uv` is not on my PATH).
