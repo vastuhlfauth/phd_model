@@ -2412,6 +2412,74 @@ def test_c6_recall_lag_speed_rows_split_emp_by_lag() -> None:
         variation_report.recall_lag_speed_rows(entd, entd, n_reps=5, seed=0)
 
 
+def test_c6_duration_bands_report_weighted_deciles_and_round_shares() -> None:
+    """3c: deciles use the cumulative-weight rule and the round-minute
+    shares count exact multiples (30 is also a multiple of 15)."""
+    n = 5
+    sample = variation_report.SpeedSample(
+        household=np.array([f"h{i}" for i in range(n)]),
+        weight=np.ones(n),
+        duration_min=np.array([10.0, 15.0, 30.0, 7.0, 45.0]),
+        producer_km=np.full(n, 3.0),
+        crow_fly_km=np.full(n, 3.0),
+        mode=np.array(["car_driver"] * 4 + ["walk"], dtype=object),
+        density=np.array(["dense"] * n, dtype=object),
+        residence_zone=np.array([""] * n, dtype=object),
+    )
+
+    rows = variation_report.duration_band_rows(sample, sample)
+
+    car_2008 = next(
+        row
+        for row in rows
+        if row["modes"] == "car driver"
+        and row["survey"] == "ENTD 2008"
+        and row["band"] == "2-5 km"
+    )
+    assert car_2008["n"] == 4
+    assert car_2008["deciles"].tolist() == [
+        7.0,
+        7.0,
+        10.0,
+        10.0,
+        10.0,
+        15.0,
+        15.0,
+        30.0,
+        30.0,
+    ]
+    assert car_2008["share_multiple_15"] == pytest.approx(0.5)
+    assert car_2008["share_multiple_30"] == pytest.approx(0.25)
+    all_2019 = next(
+        row
+        for row in rows
+        if row["modes"] == "all modes"
+        and row["survey"] == "EMP 2019"
+        and row["band"] == "2-5 km"
+    )
+    assert all_2019["n"] == 5
+    assert all_2019["share_multiple_15"] == pytest.approx(0.6)
+    assert all_2019["share_multiple_30"] == pytest.approx(0.2)
+    empty = next(row for row in rows if row["band"] == "40-80 km")
+    assert empty["n"] == 0 and np.isnan(empty["deciles"]).all()
+
+    lines = variation_report._format_c6_duration_bands(rows)
+    assert lines[0] == "#### Trip durations within crow-fly bands"
+    car_line = next(
+        line for line in lines if line.startswith("| car driver | 2-5 km | ENTD 2008")
+    )
+    # Under 50 trips: the true n stays, every value is hidden.
+    assert car_line == (
+        "| car driver | 2-5 km | ENTD 2008 | 4 | - | - | - | - | - | - | - | "
+        "- | - | - | - |"
+    )
+    csv_rows = variation_report._duration_band_csv_rows(rows)
+    first = csv_rows[0]
+    assert first["modes"] == "car driver" and first["band"] == "2-5 km"
+    assert first["d50_min"] == ""  # suppressed below 50 trips
+    assert list(first)[4:13] == [f"d{p}_min" for p in range(10, 100, 10)]
+
+
 def test_c6_speed_limit_period_masks_and_day_share() -> None:
     months = np.array(
         ["mai", "Juin ", "octobre", "janvier", "avril", "nonsense"], dtype=object

@@ -3056,6 +3056,127 @@ def _recall_lag_speed_csv_rows(rows: list[dict]) -> list[dict]:
     return out
 
 
+#: 3c's decile probabilities for minutes per trip.
+DURATION_DECILES = tuple((i + 1) / 10 for i in range(9))
+
+
+def _weighted_quantile_values(
+    values: np.ndarray, weights: np.ndarray, probs: tuple[float, ...]
+) -> np.ndarray:
+    """Weighted quantiles with `daily_energy._weighted_quantiles`'s rule:
+    the first value whose cumulative weight reaches each threshold."""
+    if len(values) == 0 or weights.sum() <= 0:
+        return np.full(len(probs), np.nan)
+    order = np.argsort(values, kind="stable")
+    sorted_values = values[order]
+    cum_weight = np.cumsum(weights[order])
+    indices = np.searchsorted(cum_weight, cum_weight[-1] * np.asarray(probs))
+    indices = np.minimum(indices, len(sorted_values) - 1)
+    return sorted_values[indices].astype(float)
+
+
+def _round_multiple_share(
+    durations: np.ndarray, weights: np.ndarray, multiple: float
+) -> float:
+    """Weighted share of durations at an exact multiple of ``multiple`` min."""
+    total = float(weights.sum())
+    if total <= 0:
+        return float("nan")
+    remainder = np.mod(durations, multiple)
+    at_multiple = np.isclose(remainder, 0.0) | np.isclose(remainder, multiple)
+    return float(weights[at_multiple].sum() / total)
+
+
+def duration_band_rows(
+    sample_2008: SpeedSample, sample_2019: SpeedSample
+) -> list[dict]:
+    """C6's trip durations within crow-fly bands: weighted deciles of
+    minutes per trip and the shares at multiples of 15 and of 30 min, by
+    band and year, for car drivers and for all modes. Multiples of 30 are
+    also multiples of 15; valid trips have a positive duration and weight."""
+    rows = []
+    for modes_label, modes in (("car driver", ("car_driver",)), ("all modes", None)):
+        for survey, sample in (("ENTD 2008", sample_2008), ("EMP 2019", sample_2019)):
+            bands = _speed_band_index(sample.crow_fly_km)
+            valid = (
+                (bands >= 0)
+                & np.isfinite(sample.weight)
+                & (sample.weight > 0)
+                & np.isfinite(sample.duration_min)
+                & (sample.duration_min > 0)
+            )
+            if modes is not None:
+                valid &= np.isin(sample.mode, modes)
+            for band_index, band in enumerate(SPEED_BAND_LABELS):
+                selected = valid & (bands == band_index)
+                durations = sample.duration_min[selected]
+                weights = sample.weight[selected]
+                deciles = _weighted_quantile_values(
+                    durations, weights, DURATION_DECILES
+                )
+                rows.append(
+                    {
+                        "modes": modes_label,
+                        "band": band,
+                        "survey": survey,
+                        "n": int(selected.sum()),
+                        "deciles": deciles,
+                        "share_multiple_15": _round_multiple_share(
+                            durations, weights, 15.0
+                        ),
+                        "share_multiple_30": _round_multiple_share(
+                            durations, weights, 30.0
+                        ),
+                    }
+                )
+    return rows
+
+
+def _format_c6_duration_bands(rows: list[dict]) -> list[str]:
+    lines = [
+        "#### Trip durations within crow-fly bands",
+        "",
+        "Weighted deciles of minutes per trip and the shares of durations "
+        "at exact multiples of 15 and of 30 minutes, by crow-fly band and "
+        "year (selected scope trips with a positive duration). Multiples "
+        "of 30 are included in the multiples of 15. Cells with fewer than "
+        "50 trips keep n and hide values.",
+        "",
+        "| Modes | Band | Year | n | "
+        + " | ".join(f"d{int(p * 100)}" for p in DURATION_DECILES)
+        + " | share at :15 multiples | share at :30 multiples |",
+        "|---|---|---|---:|" + "---:|" * len(DURATION_DECILES) + "---|---|",
+    ]
+    for row in rows:
+        decile_cells = [
+            _suppress(row["n"], _num(value, 1)) for value in row["deciles"]
+        ]
+        lines.append(
+            f"| {row['modes']} | {row['band']} | {row['survey']} | {row['n']} | "
+            + " | ".join(decile_cells)
+            + f" | {_suppress(row['n'], _pct(row['share_multiple_15']))} | "
+            f"{_suppress(row['n'], _pct(row['share_multiple_30']))} |"
+        )
+    return lines
+
+
+def _duration_band_csv_rows(rows: list[dict]) -> list[dict]:
+    out = []
+    for row in rows:
+        record = {
+            "modes": row["modes"],
+            "band": row["band"],
+            "survey": row["survey"],
+            "n": row["n"],
+        }
+        for prob, value in zip(DURATION_DECILES, row["deciles"], strict=True):
+            record[f"d{int(prob * 100)}_min"] = _csv_value(value, row["n"])
+        record["share_multiple_15"] = _csv_value(row["share_multiple_15"], row["n"])
+        record["share_multiple_30"] = _csv_value(row["share_multiple_30"], row["n"])
+        out.append(record)
+    return out
+
+
 def _format_c6_speed_limit(rows: list[dict], day_share: dict) -> list[str]:
     lines = [
         "#### 80 km/h limit (1 July 2018)",
@@ -3576,12 +3697,15 @@ def _format_c6(
         n_reps=n_reps,
         seed=seed + 60_000,
     )
+    duration_rows = duration_band_rows(samples["B"][0], samples["B"][1])
     if results is not None:
         results["c6_speed_limit"] = speed_limit_rows
         results["c6_speed_limit_day_share"] = day_share
         results["c6_speed_recall_lag"] = recall_rows
+        results["c6_duration_bands"] = duration_rows
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
     lines += ["", *_format_c6_recall_lag_speed(recall_rows)]
+    lines += ["", *_format_c6_duration_bands(duration_rows)]
     return lines
 
 
@@ -5179,6 +5303,14 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         _write_report_table_csv(
             md_path,
             "speed_recall_lag",
+            list(csv_rows[0]) if csv_rows else [],
+            csv_rows,
+        )
+    if results.get("c6_duration_bands") is not None:
+        csv_rows = _duration_band_csv_rows(results["c6_duration_bands"])
+        _write_report_table_csv(
+            md_path,
+            "duration_bands",
             list(csv_rows[0]) if csv_rows else [],
             csv_rows,
         )
