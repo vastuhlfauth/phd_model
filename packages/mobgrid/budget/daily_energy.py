@@ -23,6 +23,7 @@ from dataclasses import dataclass
 import duckdb
 import numpy as np
 
+from mobgrid.budget import variation
 from mobgrid.energy import bike
 from mobgrid.energy.rates import EnergyConfig
 
@@ -325,6 +326,7 @@ def _weighted_mean_bootstrap_replicates(
     *,
     n_reps: int,
     rng: np.random.Generator,
+    household_universe: np.ndarray | None = None,
 ) -> tuple[float, np.ndarray]:
     """Point estimate and household-bootstrap replicates of a weighted
     ratio of totals."""
@@ -334,7 +336,9 @@ def _weighted_mean_bootstrap_replicates(
         raise ValueError("bootstrap weights must be finite, non-negative, and non-zero")
     if not np.isfinite(value).all():
         raise ValueError("bootstrap values must be finite")
-    households, household_codes = np.unique(household, return_inverse=True)
+    households, household_codes = _bootstrap_household_codes(
+        household, household_universe
+    )
     if len(households) == 0:
         raise ValueError("bootstrap requires at least one household")
     point = float(np.sum(weight * value) / weight.sum())
@@ -387,6 +391,10 @@ def bootstrap_ratio_ci(
     seed: int = 0,
     denominator_a: tuple[np.ndarray, np.ndarray] | None = None,
     denominator_b: tuple[np.ndarray, np.ndarray] | None = None,
+    household_universe_a: np.ndarray | None = None,
+    household_universe_b: np.ndarray | None = None,
+    open_days_a: np.ndarray | None = None,
+    open_days_b: np.ndarray | None = None,
 ) -> tuple[float, tuple[float, float]]:
     """Section 9.9 survey ratio B/A and its 90% percentile household CI.
 
@@ -394,6 +402,8 @@ def bootstrap_ratio_ci(
     household/weight denominators support minutes/trip and per-person
     budgets (period scaling must already be in those weights). Both surveys
     always use independent streams spawned from the same report seed.
+    Supply the full Kish household universes for subgroup estimates: absent
+    households contribute zero rather than disappearing from the draw.
     """
     if n_reps <= 0:
         raise ValueError("n_reps must be positive")
@@ -405,6 +415,8 @@ def bootstrap_ratio_ci(
         value: np.ndarray,
         denominator: tuple[np.ndarray, np.ndarray] | None,
         survey_seed: np.random.SeedSequence,
+        household_universe: np.ndarray | None,
+        open_days: np.ndarray | None,
     ) -> tuple[float, np.ndarray]:
         if denominator is None:
             return _weighted_mean_bootstrap_replicates(
@@ -413,6 +425,7 @@ def bootstrap_ratio_ci(
                 value,
                 n_reps=n_reps,
                 rng=np.random.default_rng(survey_seed),
+                household_universe=household_universe,
             )
         denominator_household, denominator_weight = denominator
         return bootstrap_person_value_replicates(
@@ -423,10 +436,18 @@ def bootstrap_ratio_ci(
             value,
             n_reps=n_reps,
             seed=survey_seed,
+            household_universe=household_universe,
+            open_days=open_days,
         )
 
-    point_a, reps_a = estimate(household_a, weight_a, value_a, denominator_a, seed_a)
-    point_b, reps_b = estimate(household_b, weight_b, value_b, denominator_b, seed_b)
+    point_a, reps_a = estimate(
+        household_a, weight_a, value_a, denominator_a, seed_a,
+        household_universe_a, open_days_a,
+    )
+    point_b, reps_b = estimate(
+        household_b, weight_b, value_b, denominator_b, seed_b,
+        household_universe_b, open_days_b,
+    )
     return bootstrap_replicate_ratio_ci(point_a, reps_a, point_b, reps_b)
 
 
@@ -961,6 +982,40 @@ def zero_local_trip_day_summary(
     )
 
 
+def _bootstrap_household_codes(
+    household: np.ndarray, household_universe: np.ndarray | None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Map observations to the full survey's sorted household draw universe."""
+    households = np.unique(
+        household if household_universe is None else household_universe
+    )
+    if not np.isin(household, households).all():
+        raise ValueError("bootstrap observations include households outside the roster")
+    return households, np.searchsorted(households, household)
+
+
+def household_multiplier_matrix(
+    households: np.ndarray, *, n_reps: int, seed: int | np.random.SeedSequence
+) -> np.ndarray:
+    """Section 9.9: one shared household draw matrix for a survey and seed."""
+    if n_reps <= 0:
+        raise ValueError("n_reps must be positive")
+    rng = np.random.default_rng(seed)
+    return np.stack([
+        draw_household_multipliers(households, rng) for _ in range(n_reps)
+    ]).astype(float)
+
+
+def draw_household_multipliers(
+    household: np.ndarray,
+    rng: np.random.Generator,
+    household_universe: np.ndarray | None = None,
+) -> np.ndarray:
+    """Draw on the full roster; return multiplicities for contributing rows."""
+    households, codes = _bootstrap_household_codes(household, household_universe)
+    return variation.household_multipliers(households, rng)[codes]
+
+
 def bootstrap_person_value_replicates(
     household_p: np.ndarray,
     weight_p: np.ndarray,
@@ -973,6 +1028,7 @@ def bootstrap_person_value_replicates(
     open_days: np.ndarray | None = None,
     n_reps: int = 200,
     seed: int | np.random.SeedSequence = 0,
+    household_universe: np.ndarray | None = None,
 ) -> tuple[float, np.ndarray]:
     """Direct producer-weighted per-person value and household replicates.
 
@@ -1016,10 +1072,12 @@ def bootstrap_person_value_replicates(
     if denominator <= 0:
         raise ValueError("person-budget denominator after open days must be positive")
     point = float(np.sum(weight_t[~open_days] * value_t[~open_days]) / denominator)
-    households = np.unique(np.concatenate([household_p, household_t]))
+    households, _ = _bootstrap_household_codes(
+        np.concatenate([household_p, household_t]), household_universe
+    )
     hh_index = {household: i for i, household in enumerate(households)}
-    idx_p = np.array([hh_index[household] for household in household_p])
-    idx_t = np.array([hh_index[household] for household in household_t])
+    idx_p = np.array([hh_index[household] for household in household_p], dtype=int)
+    idx_t = np.array([hh_index[household] for household in household_t], dtype=int)
     rng = np.random.default_rng(seed)
     reps = np.empty(n_reps)
     for rep in range(n_reps):
@@ -1116,6 +1174,7 @@ def person_budget_by_group(
             open_days=t_is_open[mask_t] if t_is_open is not None else None,
             n_reps=n_reps,
             seed=seed,
+            household_universe=p_household,
         )
         finite_reps = reps[np.isfinite(reps)]
         if len(finite_reps):

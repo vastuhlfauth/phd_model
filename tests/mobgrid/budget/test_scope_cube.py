@@ -355,6 +355,77 @@ def test_ratio_reuses_shared_replicate_ratio_ci() -> None:
     assert (estimate, ci) == expected
 
 
+def test_reference_time_ratio_ci_matches_b2_c7_and_comparison() -> None:
+    """Section 9.9: nontravellers remain in every estimator's draw universe."""
+    from mobgrid.budget import emp
+    from mobgrid.budget import variation_report as vr
+
+    frames, results, cells = [], [], []
+    for year, child in enumerate(np.random.SeedSequence(8).spawn(2)):
+        n = 100
+        households = np.array([f"h{i:03}" for i in range(n)])
+        minutes = np.linspace(20, 90 + year * 20, n)
+        weight = np.linspace(1, 2, n)
+        kept = np.arange(n) % 9 != 0
+        trips = np.where(np.arange(n) < 80, 2.0, 0.0)
+        minutes[trips == 0] = 0
+        frame = scope_cube.ScopeDayFrame(
+            person=households, household=households, category=np.full(n, "employed"),
+            weight=weight, kept=kept, trips=trips, minutes=minutes,
+            minute_trips=trips, producer_km=trips * 5, producer_trips=trips,
+            crow_km=trips * 4, crow_trips=trips,
+        )
+        cube = scope_cube.CubeSurvey(
+            name=("ENTD 2008", "EMP 2019")[year],
+            roster_person=households, roster_household=households,
+            roster_category=frame.category, roster_weight=weight * 5,
+            frames={"round-dest-local": frame},
+        )
+        cells.append(scope_cube.survey_cells(
+            cube, n_reps=40, seed=child
+        )[("round-dest-local", "All")])
+        selected = kept & (trips > 0)
+        days = {
+            "ident_ind": households[selected], "ident_men": households[selected],
+            "pond_jour": weight[selected], "total_time_min": minutes[selected],
+            "population_category": frame.category[selected],
+            "trips_per_day": trips[selected],
+            "total_distance_km": trips[selected] * 5,
+            "distance_trips": trips[selected],
+            "distance_time_min": minutes[selected],
+        }
+        sample = vr.PeriodBudgetSample(
+            person_household=households, person_weight=weight * (5 if year == 0 else 1),
+            day_household=households, day_person=households, day_weight=weight,
+            day_type=np.ones(n, dtype=int), trips=trips, total_time_min=minutes,
+            time_trips=trips, is_open=~kept,
+        )
+        frames.append(vr.SurveyFrames(
+            str(year), days, {}, {"c7_data": dict.fromkeys(
+                ("reference", "sdes", "daytable"), sample
+            ), "household_universe": households}
+        ))
+        results.append({"_weekday_days": days, "_weekday_person_rows": {
+            "household": households,
+        }})
+    expected = scope_cube._ratio_with_ci(*cells, "minutes_per_day_travel_day")
+    b2 = vr.b2_decompositions(
+        *frames, n_reps=40, seed=8, include_time_ratio=True, categories=()
+    )[0]
+    c7 = next(row for row in vr._c7_comparison(*frames, n_reps=40, seed=8)
+              if row["scope"] == "round-dest-local" and row["period"] == "weekday"
+              and row["basis"] == "per traveller" and row["measure"] == "Minutes/day")
+    comparison = emp._temporal_day_ratio_rows(
+        *results, n_reps=40, seed=8
+    )[-1]
+    for ratio, ci in (
+        (b2.time_ratio, b2.time_ratio_ci90), c7["ratio"],
+        (comparison.ratio, comparison.ci),
+    ):
+        assert ratio == pytest.approx(expected[0], abs=1e-14)
+        assert ci == pytest.approx(expected[1], abs=1e-14)
+
+
 # ---------------------------------------------------------------------------
 # Switch effects (item 2).
 # ---------------------------------------------------------------------------

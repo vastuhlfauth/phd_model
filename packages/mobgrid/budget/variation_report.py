@@ -201,6 +201,7 @@ class SpeedSample:
     month: np.ndarray | None = None
     date: np.ndarray | None = None
     recall_lag: np.ndarray | None = None
+    household_universe: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -1762,6 +1763,7 @@ def load_frames(
             "distance_doc": distance_doc(con),
             "official_scope_data": official_data,
             "c7_data": c7_data,
+            "household_universe": c7_data["reference"].person_household,
             "scope_diagnostics": scope_data,
             "age_eligibility": scope_module.age_eligibility_summary(con),
         }
@@ -1997,6 +1999,7 @@ def _bootstrap_budget_metric(
             open_days=is_open[valid_day],
             n_reps=n_reps,
             seed=seed,
+            household_universe=sample.person_household,
         )
         return BudgetMetric(point, replicates)
     valid_day &= ~is_open
@@ -2089,7 +2092,7 @@ def _period_budget_estimates(
                 denominator_kind=denominator_kind,
                 person_period_divisor=person_period_divisor,
                 n_reps=n_reps,
-                seed=seed + 1,
+                seed=seed,
             ),
             "minutes_per_trip": _bootstrap_budget_metric(
                 sample,
@@ -2099,7 +2102,7 @@ def _period_budget_estimates(
                 denominator_kind="day",
                 person_period_divisor=person_period_divisor,
                 n_reps=n_reps,
-                seed=seed + 2,
+                seed=seed,
             ),
             "n": (
                 len(sample.person_household)
@@ -2337,6 +2340,7 @@ def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
             mode=_text_values(data["mode_t"][weekday]),
             density=_text_values(data["density_t"][weekday]),
             residence_zone=_text_values(data["residence_aa_class"][weekday]),
+            household_universe=frames.aux.get("household_universe"),
         )
     if scope != "B":
         raise ValueError(f"unknown speed scope: {scope!r}")
@@ -2363,6 +2367,7 @@ def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
         recall_lag=(
             trips["recall_lag"].astype(float) if "recall_lag" in trips else None
         ),
+        household_universe=frames.aux.get("household_universe"),
     )
 
 
@@ -2548,7 +2553,9 @@ def _bootstrap_speed_estimate(
     reps_zero = np.full(n_reps, np.nan) if measure == "crow-fly" else None
     rng = np.random.default_rng(seed)
     for rep in range(n_reps):
-        multiplier = variation.household_multipliers(household, rng)
+        multiplier = daily_energy.draw_household_multipliers(
+            household, rng, sample.household_universe
+        )
         rep_weight = weight * multiplier
         rep_total = float(np.sum(rep_weight))
         rep_time = float(np.sum(rep_weight * duration))
@@ -2726,6 +2733,10 @@ def _speed_cells(
         "distance": sample.crow_fly_km[valid],
         "cell": cells[valid],
         "n_cells": n_modes * n_bands * len(densities),
+        "household_universe": (
+            sample.household if sample.household_universe is None
+            else sample.household_universe
+        ),
     }
 
 
@@ -2865,13 +2876,17 @@ def _standardized_speed_pair(
             multiplier_a = sample_multipliers[sample_codes_a]
             multiplier_b = sample_multipliers[sample_codes_b]
         else:
-            multiplier_a = variation.household_multipliers(data_a["household"], rng_a)
-            multiplier_b = variation.household_multipliers(data_b["household"], rng_b)
+            multiplier_a = daily_energy.draw_household_multipliers(
+                data_a["household"], rng_a, data_a.get("household_universe")
+            )
+            multiplier_b = daily_energy.draw_household_multipliers(
+                data_b["household"], rng_b, data_b.get("household_universe")
+            )
         if shared_mix:
             mix_multiplier = multiplier_a
         elif not share_mix_households:
-            mix_multiplier = variation.household_multipliers(
-                mix["household"], rng_mix
+            mix_multiplier = daily_energy.draw_household_multipliers(
+                mix["household"], rng_mix, mix.get("household_universe")
             )
         cell_weight = np.bincount(
             mix["cell"],
@@ -4137,10 +4152,13 @@ def _c7_ratio_inputs(
     np.ndarray,
     np.ndarray,
     tuple[np.ndarray, np.ndarray] | None,
+    np.ndarray | None,
 ]:
     """Section 9.9 numerator and denominator for the shared survey ratio."""
     mask = np.isin(sample.day_type, day_types)
-    if sample.is_open is not None:
+    if sample.is_open is not None and not (
+        basis == "per_person" and metric != "minutes_per_trip"
+    ):
         mask &= ~sample.is_open
     if basis == "per_traveller" or metric == "minutes_per_trip":
         mask &= sample.trips > 0
@@ -4162,6 +4180,8 @@ def _c7_ratio_inputs(
         sample.day_weight[mask],
         values[mask],
         denominator,
+        (sample.is_open[mask] if basis == "per_person"
+         and metric != "minutes_per_trip" and sample.is_open is not None else None),
     )
 
 
@@ -4189,6 +4209,7 @@ def _c7_comparison(
         ("minutes_per_day", "Minutes/day"),
     )
     rows = []
+    survey_seeds = np.random.SeedSequence(seed).spawn(2)
     for scope_index, (scope, scope_label) in enumerate(scopes):
         sample_2008 = frames_2008.aux["c7_data"][scope]
         sample_2019 = frames_2019.aux["c7_data"][scope]
@@ -4206,14 +4227,14 @@ def _c7_comparison(
                     day_types=day_types,
                     person_period_divisor=divisor_2008,
                     n_reps=n_reps,
-                    seed=seed + scope_index * 100_000 + period_index * 1000,
+                    seed=survey_seeds[0],
                 )
             estimate_2019 = _period_budget_estimates(
                 sample_2019,
                 day_types=day_types,
                 person_period_divisor=divisor_2019,
                 n_reps=n_reps,
-                seed=seed + 50_000 + scope_index * 100_000 + period_index * 1000,
+                seed=survey_seeds[1],
             )
             for basis in ("per_person", "per_traveller"):
                 basis_n_2008 = (
@@ -4243,38 +4264,14 @@ def _c7_comparison(
                         b = _c7_ratio_inputs(
                             sample_2019, basis, metric_key, day_types, divisor_2019
                         )
-                        if basis == "per_person" and metric_key != "minutes_per_trip":
-                            metrics = [
-                                _bootstrap_budget_metric(
-                                    sample,
-                                    day_mask=np.isin(sample.day_type, day_types),
-                                    numerator_values=(
-                                        sample.trips if metric_key == "trips_per_day"
-                                        else sample.total_time_min
-                                    ),
-                                    denominator_values=None,
-                                    denominator_kind="person",
-                                    person_period_divisor=divisor,
-                                    n_reps=n_reps,
-                                    seed=child,
-                                )
-                                for sample, divisor, child in zip(
-                                    (sample_2008, sample_2019),
-                                    (divisor_2008, divisor_2019),
-                                    np.random.SeedSequence(seed).spawn(2),
-                                    strict=True,
-                                )
-                            ]
-                            ratio = daily_energy.bootstrap_replicate_ratio_ci(
-                                metrics[0].estimate, metrics[0].replicates,
-                                metrics[1].estimate, metrics[1].replicates,
-                            )
-                        else:
-                            ratio = daily_energy.bootstrap_ratio_ci(
-                                *a[:3], *b[:3],
-                                denominator_a=a[3], denominator_b=b[3],
-                                n_reps=n_reps, seed=seed,
-                            )
+                        ratio = daily_energy.bootstrap_ratio_ci(
+                            *a[:3], *b[:3],
+                            denominator_a=a[3], denominator_b=b[3],
+                            household_universe_a=sample_2008.person_household,
+                            household_universe_b=sample_2019.person_household,
+                            open_days_a=a[4], open_days_b=b[4],
+                            n_reps=n_reps, seed=seed,
+                        )
                     rows.append(
                         {
                             "scope": scope_label,
@@ -6271,6 +6268,8 @@ def _time_ratio_ci(
         time_b,
         n_reps=n_reps,
         seed=seed,
+        household_universe_a=frames_a.aux.get("household_universe"),
+        household_universe_b=frames_b.aux.get("household_universe"),
     )
 
 

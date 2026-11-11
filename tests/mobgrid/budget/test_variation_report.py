@@ -894,11 +894,16 @@ def test_2019_2008_ratio_is_identical_in_b2_c7_comparison_and_csv(
             time_trips=frames.days["trips_per_day"],
         )
         frames.aux["c7_data"] = dict.fromkeys(("reference", "sdes", "daytable"), sample)
+        frames.aux["household_universe"] = sample.person_household
     b2 = variation_report.b2_decompositions(
         a, b, n_reps=200, seed=0, include_time_ratio=True, categories=()
     )[0]
     comparison = emp._temporal_day_ratio_rows(
-        {"_weekday_days": a.days}, {"_weekday_days": b.days}, n_reps=200, seed=0
+        {"_weekday_days": a.days, "_weekday_person_rows": {
+            "household": a.aux["household_universe"]}},
+        {"_weekday_days": b.days, "_weekday_person_rows": {
+            "household": b.aux["household_universe"]}},
+        n_reps=200, seed=0
     )[-1]
     c7 = next(
         row
@@ -921,7 +926,9 @@ def test_2019_2008_ratio_is_identical_in_b2_c7_comparison_and_csv(
     )
     assert daytable["ratio"] == expected
     intervals = emp._comparison_ratio_intervals(
-        a.days, b.days, "population_category", "total_time_min", n_reps=200, seed=0
+        a.days, b.days, "population_category", "total_time_min", n_reps=200, seed=0,
+        household_universe_2008=a.aux["household_universe"],
+        household_universe_2019=b.aux["household_universe"],
     )
     assert intervals["employed"] == (expected[0], *expected[1])
     stats = [

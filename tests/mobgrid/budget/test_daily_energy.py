@@ -19,6 +19,42 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "config" / "energy.yaml"
 
 
+def test_ratio_bootstrap_keeps_noncontributing_roster_households() -> None:
+    """Section 9.9: subgroup draws use the full Kish household universe."""
+    import numpy as np
+    import pytest
+    from mobgrid.budget import daily_energy
+
+    household = np.array(["a", "b"])
+    roster = np.array(["a", "b", "c", "d", "e"])
+    seed_a, seed_b = np.random.SeedSequence(13).spawn(2)
+    points, reps = [], []
+    for seed, values in ((seed_a, np.array([10., 50.])),
+                         (seed_b, np.array([25., 75.]))):
+        draws = daily_energy.household_multiplier_matrix(roster, n_reps=40, seed=seed)
+        numerator = draws[:, :2] @ values
+        denominator = draws[:, :2].sum(axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            reps.append(numerator / denominator)
+        points.append(values.mean())
+    expected = daily_energy.bootstrap_replicate_ratio_ci(
+        points[0], reps[0], points[1], reps[1]
+    )
+    actual = daily_energy.bootstrap_ratio_ci(
+        household, np.ones(2), np.array([10., 50.]),
+        household, np.ones(2), np.array([25., 75.]),
+        household_universe_a=roster, household_universe_b=roster,
+        n_reps=40, seed=13,
+    )
+    assert actual[0] == expected[0]
+    assert actual[1] == pytest.approx(expected[1])
+    with pytest.raises(ValueError, match="outside the roster"):
+        daily_energy.bootstrap_ratio_ci(
+            household, np.ones(2), np.ones(2),
+            household, np.ones(2), np.ones(2),
+            household_universe_a=np.array(["a"]), n_reps=40,
+        )
+
 @pytest.fixture
 def day_summary(tmp_path: Path, synthetic_emp_zip: Path) -> duckdb.DuckDBPyConnection:
     config = load_energy_config(CONFIG_PATH)

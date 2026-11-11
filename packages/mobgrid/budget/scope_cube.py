@@ -341,12 +341,9 @@ def multiplier_matrix(
     """One (n_reps, households) household-bootstrap multiplicity matrix,
     from the shared ``variation.household_multipliers`` draw. One matrix
     per survey is reused by every scope, so switch effects are paired."""
-    if n_reps <= 0:
-        raise ValueError("n_reps must be positive")
-    rng = np.random.default_rng(seed)
-    return np.stack(
-        [variation.household_multipliers(households, rng) for _ in range(n_reps)]
-    ).astype(float)
+    return daily_energy.household_multiplier_matrix(
+        households, n_reps=n_reps, seed=seed
+    )
 
 
 def _cell_metrics(values: np.ndarray) -> dict[str, np.ndarray]:
@@ -446,6 +443,7 @@ def survey_cells(
                         open_days=~kept[day_mask],
                         n_reps=n_reps,
                         seed=seed,
+                        household_universe=households,
                     )
                 )
                 point["minutes_per_day_person"] = person_point
@@ -585,6 +583,8 @@ def core_rows(
                 ratio_n = min(
                     cell_by_survey["ENTD 2008"].n_respondents,
                     cell_by_survey["EMP 2019"].n_respondents,
+                    cell_by_survey["ENTD 2008"].n_trips,
+                    cell_by_survey["EMP 2019"].n_trips,
                 )
                 for survey, cell in cell_by_survey.items():
                     row = _blank_row(selected_scope, survey, category)
@@ -594,7 +594,7 @@ def core_rows(
                         n=(cell.n_people if spec.basis == "person"
                            else cell.n_respondents),
                     )
-                    if cell.n_respondents >= MIN_CELL_N:
+                    if min(cell.n_respondents, cell.n_trips) >= MIN_CELL_N:
                         low, high = _level_ci(cell.replicates[spec.key])
                         _set_if_finite(
                             row,
@@ -709,7 +709,7 @@ def switch_rows(
             ),
         }
         ratio_n = min(
-            cell.n_respondents
+            min(cell.n_respondents, cell.n_trips)
             for pair in cell_pairs.values()
             for cell in pair
         )
@@ -727,9 +727,10 @@ def switch_rows(
                 row.update(
                     indicator=f"change_{spec.indicator}",
                     basis=spec.basis,
-                    n=survey_n,
+                    n=(min(reference.n_people, flipped.n_people)
+                       if spec.basis == "person" else survey_n),
                 )
-                if survey_n >= MIN_CELL_N:
+                if min(survey_n, reference.n_trips, flipped.n_trips) >= MIN_CELL_N:
                     delta = _paired_delta(
                         reference, flipped, spec.key, percentiles=(2.5, 97.5)
                     )
@@ -1049,7 +1050,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         "for 2019/2008 ratios, with equivalence verdicts at "
         f"±{results['equivalence_margin']:.0%} and "
         f"±{results['secondary_equivalence_margin']:.0%}. Cells of fewer "
-        f"than {MIN_CELL_N} respondents print their true n with `-` for "
+        f"than {MIN_CELL_N} respondents or trips print their true n with `-` for "
         "the values."
         + (
             f" Household sample: {results['sample_pct']:g}% (smoke run)."

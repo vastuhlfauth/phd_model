@@ -796,7 +796,9 @@ def run(
         day_types=("weekday",),
         period_divisor=person["period_divisor"],
         n_reps=n_reps,
-        seed=seed,
+        seed=np.random.SeedSequence(seed).spawn(2)[
+            1 if survey is emp2019 else 0
+        ],
     )
     # Car passengers: household vs carpool, and the walking trips of
     # passenger days (section 9.9, "Outputs of the re-estimation").
@@ -1066,7 +1068,7 @@ def run(
             day_types=person["day_types"],
             period_divisor=7.0,
             n_reps=n_reps,
-            seed=seed,
+            seed=np.random.SeedSequence(seed).spawn(2)[1],
         )
 
     # Keep the no-trip audit on the full described-day roster: a weekend
@@ -3993,6 +3995,8 @@ def _comparison_ratio_intervals(
     seed: int,
     day_mask_2008: np.ndarray | None = None,
     day_mask_2019: np.ndarray | None = None,
+    household_universe_2008: np.ndarray | None = None,
+    household_universe_2019: np.ndarray | None = None,
 ) -> dict[str, tuple[float, float, float]]:
     """Household-bootstrap 2019/2008 ratios and 90% percentile intervals."""
     samples = []
@@ -4024,7 +4028,9 @@ def _comparison_ratio_intervals(
         if np.average(a[2], weights=a[1]) <= 0 or np.average(b[2], weights=b[1]) <= 0:
             continue
         ratio, (low, high) = daily_energy.bootstrap_ratio_ci(
-            *a, *b, n_reps=n_reps, seed=seed
+            *a, *b, n_reps=n_reps, seed=seed,
+            household_universe_a=household_universe_2008,
+            household_universe_b=household_universe_2019,
         )
         intervals[group] = (ratio, low, high)
     return intervals
@@ -4187,6 +4193,12 @@ def _temporal_day_ratio_rows(
             days_2019["total_time_min"][mask_2019],
             n_reps=n_reps,
             seed=seed,
+            household_universe_a=results_2008.get(
+                "_weekday_person_rows", {}
+            ).get("household"),
+            household_universe_b=results_2019.get(
+                "_weekday_person_rows", {}
+            ).get("household"),
         )
         rows.append(TemporalRatioRow(category, "-", n_2008, n_2019, ratio, ci))
     return rows
@@ -4218,27 +4230,40 @@ def _temporal_person_budget_rows(
         if min(n_2008, n_2019) < MIN_CELL_N:
             rows.append(TemporalRatioRow(category, "-", n_2008, n_2019, None, None))
             continue
-        estimates = []
-        for (days, persons, day_mask, person_mask), child in zip(
-            year_data, np.random.SeedSequence(seed).spawn(2), strict=True
-        ):
-            estimates.append(daily_energy.bootstrap_person_value_replicates(
-                persons["household"][person_mask],
-                persons["weight"][person_mask],
+        inputs = [
+            (
                 days["ident_men"][day_mask],
                 days["pond_jour"][day_mask],
                 days["total_time_min"][day_mask],
-                period_divisor=persons["period_divisor"],
-                open_days=days.get(
-                    "is_open", np.zeros(len(days["pond_jour"]), dtype=bool)
-                )[day_mask],
-                n_reps=n_reps,
-                seed=child,
-            ))
-        ratio, ci = daily_energy.bootstrap_replicate_ratio_ci(
-            *estimates[0], *estimates[1]
+            )
+            for days, persons, day_mask, person_mask in year_data
+        ]
+        denominators = [
+            (persons["household"][person_mask],
+             persons["weight"][person_mask] * persons["period_divisor"])
+            for days, persons, day_mask, person_mask in year_data
+        ]
+        open_days = [
+            days.get("is_open", np.zeros(len(days["pond_jour"]), dtype=bool))[day_mask]
+            for days, persons, day_mask, person_mask in year_data
+        ]
+        ratio, ci = daily_energy.bootstrap_ratio_ci(
+            *inputs[0], *inputs[1],
+            denominator_a=denominators[0], denominator_b=denominators[1],
+            household_universe_a=persons_2008["household"],
+            household_universe_b=persons_2019["household"],
+            open_days_a=open_days[0], open_days_b=open_days[1],
+            n_reps=n_reps, seed=seed,
         )
-        point_2008, point_2019 = estimates[0][0], estimates[1][0]
+        points = [
+            daily_energy.bootstrap_person_value_replicates(
+                *denominator, *data, open_days=is_open, n_reps=0
+            )[0]
+            for denominator, data, is_open in zip(
+                denominators, inputs, open_days, strict=True
+            )
+        ]
+        point_2008, point_2019 = points
         rows.append(
             TemporalRatioRow(
                 category,
@@ -4687,6 +4712,10 @@ def run_compare(
             column,
             n_reps=n_reps,
             seed=seed,
+            household_universe_2008=results_2008["_weekday_person_rows"]["household"],
+            household_universe_2019=results_2019_proxy[
+                "_weekday_person_rows"
+            ]["household"],
         )
         mode_ratio_intervals.update(
             {(group, metric): value for group, value in intervals.items()}
@@ -4702,6 +4731,8 @@ def run_compare(
         seed=seed,
         day_mask_2008=weekday_mask_2008,
         day_mask_2019=weekday_mask_2019,
+        household_universe_2008=results_2008["_weekday_person_rows"]["household"],
+        household_universe_2019=results_2019_proxy["_weekday_person_rows"]["household"],
     )
     person_budget_ratio_intervals = _person_budget_ratio_intervals(
         results_2008, results_2019_proxy, n_reps=n_reps, seed=seed
