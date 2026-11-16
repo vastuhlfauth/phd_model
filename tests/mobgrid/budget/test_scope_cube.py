@@ -246,6 +246,44 @@ def test_reference_person_value_matches_c7_extraction(cube_report: dict) -> None
         assert row["n"] == N_RESPONDENTS
 
 
+def test_reference_comparison_report_matches_cube(
+    cube_report: dict, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Section 9.9: actual survey report retains open days in denominator."""
+    from mobgrid.budget import emp, emp2019, entd2008
+
+    monkeypatch.setattr(
+        emp.daily_energy, "calibrate_v0_kmh", lambda *args, **kwargs: [5.0]
+    )
+    monkeypatch.setattr(
+        emp.daily_energy, "calibrate_p0", lambda *args, **kwargs: [30.0]
+    )
+    reports = [
+        emp.run(
+            tmp_path / survey.__name__.rsplit(".", 1)[-1],
+            survey=survey, data_path=path, n_reps=16, seed=0, make_figures=False,
+        )
+        for survey, path in (
+            (entd2008, cube_report["entd_dir"]),
+            (emp2019, cube_report["emp_zip"]),
+        )
+    ]
+    comparison = emp._temporal_person_budget_rows(*reports, n_reps=16, seed=0)[-1]
+    for survey, expected in (
+        ("ENTD 2008", comparison.estimate_2008),
+        ("EMP 2019", comparison.estimate_2019),
+    ):
+        row = cube_report["lookup"][(
+            "round-dest-local", survey, "All", "minutes_per_day", "person"
+        )]
+        assert row["mean"] == pytest.approx(expected)
+        if survey == "EMP 2019":
+            assert row["ratio"] == pytest.approx(comparison.ratio)
+            assert (row["ratio_ci_low"], row["ratio_ci_high"]) == pytest.approx(
+                comparison.ci
+            )
+
+
 # ---------------------------------------------------------------------------
 # Unit tests on hand-built CubeSurvey inputs.
 # ---------------------------------------------------------------------------

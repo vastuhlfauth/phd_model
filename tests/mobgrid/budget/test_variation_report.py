@@ -343,6 +343,21 @@ def test_c7_reports_daytable_ratio_with_observed_coverage_note() -> None:
     assert scope.DAYTABLE_COVERAGE_NOTE in report
 
 
+def test_c7_hides_estimates_when_fewer_than_50_trips() -> None:
+    """C7 keeps the respondent count while suppressing small trip cells."""
+    row = {
+        "scope": "round-dest-local", "period": "weekday", "basis": "per person",
+        "measure": "Minutes/day", "n_2008": 100, "n_2019": 100,
+        "n_trips_2008": 49, "n_trips_2019": 80,
+        "estimate_2008": 10., "estimate_2019": 12.,
+        "ratio": (1.2, (1.1, 1.3)),
+    }
+    text = "\n".join(variation_report._format_c7(
+        [row], equivalence_margin=.15, secondary_equivalence_margin=.1
+    ))
+    assert "| 100 | - | 100 | 12.00 | - |" in text
+
+
 def test_return_legs_are_attributed_to_the_preceding_activity_mode() -> None:
     """Section 9.9: a car return dropped with a walk belongs in its column."""
     con = duckdb.connect()
@@ -1117,9 +1132,11 @@ def test_frame_aggregation_keeps_missing_distance_days() -> None:
             CREATE VIEW vr_person AS SELECT DISTINCT ident_ind, 1 AS sex,
                 1 AS recall_lag, 'lundi' AS described_weekday_name,
                 'janvier' AS described_month_name, FALSE AS is_idf,
+                NULL::DATE AS described_date,
                 '1' AS cars_band, '11' AS residence_aa_class FROM trip_legs;
             CREATE VIEW vr_trip_ext AS SELECT ident_dep,
                 NULL::DOUBLE AS crow_fly_km, NULL::DOUBLE AS declared_km,
+                NULL::DOUBLE AS departure_min, NULL::DOUBLE AS arrival_min,
                 0 AS vac_scol FROM trip_legs;
         """)
         variation_report._create_frames_tables(
@@ -1491,16 +1508,10 @@ def test_cli_forwards_options_and_writes_report(
     """The CLI forwards options and writes its report without a costly data run."""
     calls = {}
     out_dir = tmp_path / "step12_variation"
-    expected_figures = [
-        out_dir / "waterfall.png",
-        out_dir / "shift_share.png",
-        out_dir / "recall_lag.png",
-    ]
-
     def fake_run(path, config_path, **kwargs):
         path.mkdir(parents=True, exist_ok=True)
         calls["run"] = (path, config_path, kwargs)
-        return {"figures": expected_figures}
+        return {"figures": []}
 
     def fake_write_markdown(md_path, report_out_dir, results):
         calls["write_markdown"] = (md_path, report_out_dir, results)
@@ -1546,8 +1557,8 @@ def test_cli_forwards_options_and_writes_report(
         "scope": scope.REFERENCE_SCOPE,
         "draw_figures": False,
     }
-    assert calls["write_markdown"] == (md_path, out_dir, {"figures": expected_figures})
-    assert "3 figures" in capsys.readouterr().out
+    assert calls["write_markdown"] == (md_path, out_dir, {"figures": []})
+    assert "0 figures" in capsys.readouterr().out
 
 
 def test_no_figures_skips_all_figure_producers(

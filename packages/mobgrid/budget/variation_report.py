@@ -4540,6 +4540,12 @@ def _c7_comparison(
                 n_reps=n_reps,
                 seed=survey_seeds[1],
             )
+            trip_counts = []
+            for sample in (sample_2008, sample_2019):
+                mask = np.isin(sample.day_type, day_types)
+                if sample.is_open is not None:
+                    mask &= ~sample.is_open
+                trip_counts.append(int(np.sum(sample.trips[mask])))
             for basis in ("per_person", "per_traveller"):
                 basis_n_2008 = (
                     int(estimate_2008[basis]["n"])
@@ -4583,12 +4589,16 @@ def _c7_comparison(
                             "basis": basis.replace("_", " "),
                             "measure": metric_label,
                             "n_2008": basis_n_2008,
+                            "n_trips_2008": (
+                                trip_counts[0] if estimate_2008 is not None else None
+                            ),
                             "estimate_2008": (
                                 metric_2008.estimate
                                 if metric_2008 is not None
                                 else None
                             ),
                             "n_2019": n_2019,
+                            "n_trips_2019": trip_counts[1],
                             "estimate_2019": metric_2019.estimate,
                             "ratio": ratio,
                         }
@@ -4618,7 +4628,7 @@ def _format_c7(
         "estimates are used. Per-traveller "
         "means include only described days with at least one in-scope trip. "
         "Ratios are independent-survey household-bootstrap 90% intervals; "
-        "verdicts use ±15% then ±10%. Cells below 50 respondents are hidden.",
+        "verdicts use ±15% then ±10%. Cells below 50 respondents or trips are hidden.",
         "",
         "| Scope | Period | Basis | Measure | n 2008 | 2008 | n 2019 | "
         "2019 | 2019/2008 [90% CI] | ±15% | ±10% |",
@@ -4627,19 +4637,22 @@ def _format_c7(
     for row in rows:
         n_2008 = row["n_2008"]
         n_2019 = row["n_2019"]
+        limit_2008 = min(n_2008, row.get("n_trips_2008", n_2008)) \
+            if n_2008 is not None else None
+        limit_2019 = min(n_2019, row.get("n_trips_2019", n_2019))
         value_2008 = (
-            _suppress(n_2008, _num(row["estimate_2008"], 2))
+            _suppress(limit_2008, _num(row["estimate_2008"], 2))
             if n_2008 is not None
             else "not available"
         )
-        value_2019 = _suppress(n_2019, _num(row["estimate_2019"], 2))
+        value_2019 = _suppress(limit_2019, _num(row["estimate_2019"], 2))
         ratio = row["ratio"]
         scope_cell = row["scope"]
         ratio_cell = "not comparable"
         verdict_10 = verdict_15 = "not comparable"
         if ratio is not None:
             estimate, ci = ratio
-            threshold_n = min(n_2008, n_2019)
+            threshold_n = min(limit_2008, limit_2019)
             ratio_cell = _suppress(threshold_n, _ci_cell(estimate, ci, 3))
             verdict_10 = _suppress(
                 threshold_n, _equivalence_verdict(ci, secondary_equivalence_margin)

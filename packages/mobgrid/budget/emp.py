@@ -1011,7 +1011,6 @@ def run(
             "pond_jour",
             "total_time_min",
             "population_category",
-            "is_open",
             "home_density",
             "trips_per_day",
         )
@@ -1036,6 +1035,7 @@ def run(
             "pond_jour",
             "total_time_min",
             "population_category",
+            "is_open",
         )
     }
     zero_local_trip_day = daily_energy.zero_local_trip_day_summary(con)
