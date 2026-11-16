@@ -1526,6 +1526,7 @@ def test_cli_forwards_options_and_writes_report(
             str(CLI_N_REPS),
             "--sample-households",
             "100",
+            "--no-figures",
         ]
     )
 
@@ -1543,9 +1544,23 @@ def test_cli_forwards_options_and_writes_report(
         "entd2008_zoning_data_path": tmp_path / "entd2008_zoning",
         "sample_pct": 100.0,
         "scope": scope.REFERENCE_SCOPE,
+        "draw_figures": False,
     }
     assert calls["write_markdown"] == (md_path, out_dir, {"figures": expected_figures})
     assert "3 figures" in capsys.readouterr().out
+
+
+def test_no_figures_skips_all_figure_producers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*args, **kwargs):
+        raise AssertionError("figure producer must not run")
+
+    for name in (
+        "_figure_b7_waterfall", "_figure_b7_shift_share", "_figure_b7_recall_lag"
+    ):
+        monkeypatch.setattr(variation_report, name, forbidden)
+    assert variation_report._part_b_figures({}, tmp_path, draw_figures=False) == []
 
 
 def _measurement_frames(durations: list[float]) -> SurveyFrames:

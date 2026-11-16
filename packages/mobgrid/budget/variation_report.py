@@ -6258,6 +6258,7 @@ def run(
     entd2008_zoning_data_path: Path | None = None,
     sample_pct: float | None = None,
     scope: scope_module.Scope = scope_module.REFERENCE_SCOPE,
+    draw_figures: bool = True,
 ) -> dict:
     """Compute every step-12 statistic and figure; returns the results
     dict consumed by ``write_markdown`` and the tests."""
@@ -6369,6 +6370,7 @@ def run(
         n_reps=n_reps,
         seed=seed,
         allow_year_ratio=True,
+        draw_figures=draw_figures,
     )
     results["extra_sections"].append(
         measurement_checks(
@@ -7600,6 +7602,7 @@ def _run_part_b(
     n_reps: int,
     seed: int,
     allow_year_ratio: bool,
+    draw_figures: bool = True,
 ) -> None:
     """Part B decompositions and figures; extended one item at a time
     (B2, B3, B1, B4, B5, B6, B7). Sections are appended in report order
@@ -7825,11 +7828,17 @@ def _run_part_b(
         ),
         results["pair4_lines"],
     ]
-    waterfall = _figure_b7_waterfall(results, out_dir)
-    results["figures"] = [
+    results["figures"] = _part_b_figures(results, out_dir, draw_figures=draw_figures)
+
+
+def _part_b_figures(results: dict, out_dir: Path, *, draw_figures: bool) -> list[Path]:
+    """Render existing B7 figures only when explicitly enabled."""
+    if not draw_figures:
+        return []
+    return [
         path
         for path in (
-            waterfall,
+            _figure_b7_waterfall(results, out_dir),
             _figure_b7_shift_share(results, out_dir),
             _figure_b7_recall_lag(results, out_dir),
         )
@@ -9031,6 +9040,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--bootstrap-reps", type=int, default=200)
+    parser.add_argument("--no-figures", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--emp2019-data-path", type=Path, default=None)
     parser.add_argument("--entd2008-data-path", type=Path, default=None)
@@ -9069,6 +9079,7 @@ def main(argv: list[str] | None = None) -> int:
             entd2008_zoning_data_path=args.entd2008_zoning_data_path,
             sample_pct=args.sample_households,
             scope=selected_scope,
+            draw_figures=not args.no_figures,
         )
         md_path = out_dir.with_suffix(".md")
         write_markdown(md_path, out_dir, results)
