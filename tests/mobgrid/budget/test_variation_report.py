@@ -465,6 +465,15 @@ def test_compact_scope_tables_and_detail_csv(
             ]
         ],
         "figures": [tmp_path / "synthetic.png"],
+        "c6_clock_speed": [{
+            "modes": "car_driver", "subset": "departure round", "cells": 1,
+            "n_2008": 49, "n_2019": 60,
+            "n_common_2008": 49, "n_common_2019": 60,
+            "share_2008": .4, "share_2019": .6,
+            "ratio": variation_report.SpeedMetric(
+                1.2, (1.1, 1.3), np.array([1.1, 1.3])
+            ),
+        }],
     }
     md_path = tmp_path / "report.md"
     variation_report.write_markdown(md_path, tmp_path, results)
@@ -490,6 +499,13 @@ def test_compact_scope_tables_and_detail_csv(
     assert "10.0%" in removals and "20.0%" in removals
     csv_path = tmp_path / "report_scope_rules_round-dest-local.csv"
     assert csv_path.name in report
+    with (tmp_path / "report_speed_clock_rounding.csv").open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        clock_rows = list(csv.DictReader(stream))
+    assert clock_rows[0]["ratio"] == ""
+    assert clock_rows[0]["share_2008"] == ""
+    assert float(clock_rows[0]["share_2019"]) == pytest.approx(.6)
     with csv_path.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert len(rows) == 2 * len(rules)
@@ -2594,6 +2610,68 @@ def test_c6_mode_mix_speed_isolates_the_mode_shift() -> None:
     assert by_csv["as observed"]["ratio"] == pytest.approx(observed_ratio)
     # within walk has only 20 trips in 2019: suppressed in the CSV too.
     assert by_csv["within walk"]["ratio"] == ""
+
+
+def test_clock_time_classes_and_standardized_subset_ratios() -> None:
+    """Section 9.9 / C6: classify endpoints, preserve the 2008 target mix."""
+    classes = variation_report.clock_time_class(
+        np.array([0., 30., 75., 105., 5., 25., 7., np.nan])
+    )
+    assert classes.tolist() == [
+        "round", "round", "quarter", "quarter", "five", "five", "precise", ""
+    ]
+    samples = []
+    for year in range(2):
+        n = 480
+        samples.append(variation_report.SpeedSample(
+            household=np.array([f"h{i}" for i in range(n)]),
+            household_universe=np.array([f"h{i}" for i in range(n + 20)]),
+            weight=np.tile([1., 2., 3., 4.], 120),
+            duration_min=np.tile([30., 10., 20., 40.], 120) / (year + 1),
+            producer_km=np.full(n, 6.),
+            crow_fly_km=np.tile([3., 7., 3., 7.], 120),
+            mode=np.repeat(["car_driver", "walk"], n // 2),
+            density=np.full(n, "dense"), residence_zone=np.full(n, "11"),
+            departure_min=np.tile([480., 485., 487., 495.], 120),
+            arrival_min=np.tile([510., 517., 519., 525.], 120),
+        ))
+    rows = variation_report.clock_speed_rows(*samples, n_reps=12, seed=3)
+    assert len(rows) == 8
+    for row in rows:
+        assert row["ratio"].estimate == pytest.approx(2.)
+        assert row["ratio"].interval == pytest.approx(
+            variation_report._ratio_metric(
+                row["speed_2008"], row["speed_2019"]
+            ).interval
+        )
+    car_round = next(r for r in rows if r["modes"] == "car_driver"
+                     and r["subset"] == "departure round")
+    assert car_round["share_2008"] == pytest.approx(.1)
+    assert car_round["n_2008"] == 60
+    not_round = next(r for r in rows if r["modes"] == "car_driver"
+                     and r["subset"] == "departure not round")
+    # Full 2008 target mix is 40% in the 3-km band, 60% in the 7-km band.
+    # The not-round 3-km duration is 20, and 7-km duration is 30 minutes.
+    assert not_round["speed_2008"].estimate == pytest.approx(60 * 5.4 / 26.)
+    text = "\n".join(variation_report._format_clock_speed(rows))
+    assert "mode × band × density" in text
+    assert "90% CI" in text
+    assert len(variation_report._clock_speed_csv_rows(rows)) == len(rows)
+
+
+def test_clock_speed_suppresses_small_cells_and_omits_precise_subset() -> None:
+    sample = variation_report.SpeedSample(
+        household=np.array(["h"] * 49), weight=np.ones(49),
+        duration_min=np.full(49, 10.), producer_km=np.full(49, 3.),
+        crow_fly_km=np.full(49, 3.), mode=np.full(49, "car_driver"),
+        density=np.full(49, "dense"), residence_zone=np.full(49, "11"),
+        departure_min=np.full(49, 487.), arrival_min=np.full(49, 499.),
+    )
+    rows = variation_report.clock_speed_rows(sample, sample, n_reps=4, seed=3)
+    assert not any(row["subset"] == "both endpoints precise" for row in rows)
+    exported = variation_report._clock_speed_csv_rows(rows)
+    assert all(row["ratio"] == "" for row in exported)
+    assert all(row["share_2008"] == "" for row in exported)
 
 
 def test_c6_clock_time_rows_measure_minute_rounding_and_duration_gap() -> None:

@@ -202,6 +202,8 @@ class SpeedSample:
     date: np.ndarray | None = None
     recall_lag: np.ndarray | None = None
     household_universe: np.ndarray | None = None
+    departure_min: np.ndarray | None = None
+    arrival_min: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -2368,6 +2370,8 @@ def _speed_sample(frames: SurveyFrames, scope: str) -> SpeedSample:
             trips["recall_lag"].astype(float) if "recall_lag" in trips else None
         ),
         household_universe=frames.aux.get("household_universe"),
+        departure_min=trips.get("departure_min"),
+        arrival_min=trips.get("arrival_min"),
     )
 
 
@@ -2783,6 +2787,7 @@ def _standardized_speed_pair(
     mix_data: dict | None = None,
     share_sample_households: bool = False,
     share_mix_households: bool = False,
+    mix_shares_a: bool = False,
 ) -> tuple[int, int, int, SpeedMetric, SpeedMetric]:
     """Standardise two cell samples to one weighted trip mix (C6).
 
@@ -2794,6 +2799,8 @@ def _standardized_speed_pair(
     mix = data_a if shared_mix else mix_data
     if share_mix_households and not share_sample_households:
         raise ValueError("sharing mix households also requires shared sample draws")
+    if mix_shares_a and (shared_mix or share_sample_households):
+        raise ValueError("mix_shares_a requires a separate mix and independent surveys")
     n_cells = int(data_a["n_cells"])
     if int(data_b["n_cells"]) != n_cells or int(mix["n_cells"]) != n_cells:
         raise ValueError("standardised samples must share one cell definition")
@@ -2819,7 +2826,7 @@ def _standardized_speed_pair(
     shared_sample_households = share_sample_households or (
         share_mix_households and not shared_mix
     )
-    separate_mix_draw = not shared_mix and not share_mix_households
+    separate_mix_draw = not shared_mix and not share_mix_households and not mix_shares_a
     separate_sample_draws = not shared_sample_households
     stream_count = (
         int(shared_sample_households)
@@ -2861,6 +2868,13 @@ def _standardized_speed_pair(
         stream += 2
     if separate_mix_draw:
         rng_mix = rngs[stream]
+    if mix_shares_a:
+        mix_union = np.unique(np.concatenate([
+            data_a.get("household_universe", data_a["household"]),
+            mix.get("household_universe", mix["household"]),
+        ]))
+        codes_a = np.searchsorted(mix_union, data_a["household"])
+        codes_mix = np.searchsorted(mix_union, mix["household"])
     for rep in range(n_reps):
         if share_mix_households:
             all_multipliers = variation.household_multipliers(
@@ -2876,15 +2890,20 @@ def _standardized_speed_pair(
             multiplier_a = sample_multipliers[sample_codes_a]
             multiplier_b = sample_multipliers[sample_codes_b]
         else:
-            multiplier_a = daily_energy.draw_household_multipliers(
-                data_a["household"], rng_a, data_a.get("household_universe")
-            )
+            if mix_shares_a:
+                draw_a = variation.household_multipliers(mix_union, rng_a)
+                multiplier_a = draw_a[codes_a]
+                mix_multiplier = draw_a[codes_mix]
+            else:
+                multiplier_a = daily_energy.draw_household_multipliers(
+                    data_a["household"], rng_a, data_a.get("household_universe")
+                )
             multiplier_b = daily_energy.draw_household_multipliers(
                 data_b["household"], rng_b, data_b.get("household_universe")
             )
         if shared_mix:
             mix_multiplier = multiplier_a
-        elif not share_mix_households:
+        elif not share_mix_households and not mix_shares_a:
             mix_multiplier = daily_energy.draw_household_multipliers(
                 mix["household"], rng_mix, mix.get("household_universe")
             )
@@ -3451,6 +3470,120 @@ def _clock_minute_shares(
         for label in CLOCK_MINUTE_CATEGORIES
     }
     return int(valid.sum()), shares
+
+
+def clock_time_class(minutes: np.ndarray) -> np.ndarray:
+    """C6: classify clock minutes since midnight; missing times stay unclassified."""
+    valid = np.isfinite(minutes) & (minutes >= 0) & (minutes < 24 * 60)
+    return np.select(
+        [valid & (minutes % 30 == 0), valid & (minutes % 15 == 0),
+         valid & (minutes % 5 == 0), valid],
+        ["round", "quarter", "five", "precise"], default="",
+    )
+
+
+def clock_speed_rows(
+    sample_2008: SpeedSample, sample_2019: SpeedSample, *, n_reps: int, seed: int
+) -> list[dict]:
+    """C6: clock subsets at the full 2008 (mode x) band x density trip mix."""
+    selections = []
+    for sample in (sample_2008, sample_2019):
+        if sample.departure_min is None or sample.arrival_min is None:
+            raise ValueError("clock-speed checks require departure and arrival minutes")
+        departure = clock_time_class(sample.departure_min)
+        arrival = clock_time_class(sample.arrival_min)
+        selections.append({
+            "departure round": departure == "round",
+            "departure not round": (departure != "") & (departure != "round"),
+            "both endpoints not round": (
+                (departure != "") & (arrival != "")
+                & (departure != "round") & (arrival != "round")
+            ),
+            "both endpoints precise": (departure == "precise") & (arrival == "precise"),
+        })
+    rows = []
+    for modes in ("car_driver", "All"):
+        kwargs = {"modes": None, "include_mode": True} if modes == "All" else {}
+        base_a = _speed_cells(sample_2008, **kwargs)
+        base_b = _speed_cells(sample_2019, **kwargs)
+        for label in selections[0]:
+            a = _speed_cells(sample_2008, selected=selections[0][label], **kwargs)
+            b = _speed_cells(sample_2019, selected=selections[1][label], **kwargs)
+            cells, n_a, n_b, speed_a, speed_b = _standardized_speed_pair(
+                a, b, mix_data=base_a, mix_shares_a=True, n_reps=n_reps, seed=seed,
+            )
+            if label == "both endpoints precise" and min(
+                len(a["weight"]), len(b["weight"])
+            ) < MIN_CELL_N:
+                continue
+            rows.append({
+                "modes": modes, "subset": label, "cells": cells,
+                "n_2008": len(a["weight"]), "n_2019": len(b["weight"]),
+                "n_common_2008": n_a, "n_common_2019": n_b,
+                "share_2008": (
+                    float(a["weight"].sum() / base_a["weight"].sum())
+                    if base_a["weight"].sum() > 0 else np.nan
+                ),
+                "share_2019": (
+                    float(b["weight"].sum() / base_b["weight"].sum())
+                    if base_b["weight"].sum() > 0 else np.nan
+                ),
+                "speed_2008": speed_a, "speed_2019": speed_b,
+                "ratio": _ratio_metric(speed_a, speed_b),
+            })
+    return rows
+
+
+def _format_clock_speed(rows: list[dict]) -> list[str]:
+    lines = [
+        "#### Speed by clock-time rounding",
+        "",
+        "Endpoint minutes: round = :00/:30; quarter = :15/:45; five = other "
+        "multiples of 5; precise = not a multiple of 5. Crow-fly 2–80 km, "
+        "positive duration and known density. Car-driver speeds use the full "
+        "2008 band × density mix; all modes pooled use the full 2008 "
+        "mode × band × density mix. Standardisation uses common supported "
+        "cells, with the 2008 mix resampled in the same draw as its subset. "
+        "Shares are weighted fractions of each year's eligible trips before "
+        "common-cell restriction; n common counts supported trips. Missing "
+        "clock times belong to no subset. Values under 50 trips are hidden; "
+        "both-precise rows require 50 eligible trips in each year.",
+        "",
+        "| Modes | Subset | n 2008 | n common 2008 | Share 2008 | n 2019 | "
+        "n common 2019 | Share 2019 | Speed ratio 2019/2008 [90% CI] |",
+        "|---|---|---:|---:|---|---:|---:|---|---|",
+    ]
+    for row in rows:
+        n_ratio = min(row["n_common_2008"], row["n_common_2019"])
+        ratio = row["ratio"]
+        lines.append(
+            f"| {row['modes']} | {row['subset']} | {row['n_2008']} | "
+            f"{row['n_common_2008']} | "
+            f"{_suppress(row['n_2008'], _pct(row['share_2008']))} | "
+            f"{row['n_2019']} | {row['n_common_2019']} | "
+            f"{_suppress(row['n_2019'], _pct(row['share_2019']))} | "
+            f"{_metric_cell(ratio, n_ratio, 3) if ratio is not None else '-'} |"
+        )
+    return lines
+
+
+def _clock_speed_csv_rows(rows: list[dict]) -> list[dict]:
+    records = []
+    for row in rows:
+        ratio = row["ratio"]
+        n = min(row["n_common_2008"], row["n_common_2019"])
+        records.append({
+            **{key: row[key] for key in (
+                "modes", "subset", "cells", "n_2008", "n_2019",
+                "n_common_2008", "n_common_2019",
+            )},
+            **{f"share_{year}": _csv_value(row[f"share_{year}"], row[f"n_{year}"])
+               for year in (2008, 2019)},
+            "ratio": _csv_value(ratio.estimate, n) if ratio is not None else "",
+            "ci_low": _csv_value(ratio.interval[0], n) if ratio is not None else "",
+            "ci_high": _csv_value(ratio.interval[1], n) if ratio is not None else "",
+        })
+    return records
 
 
 def clock_time_rows(
@@ -4125,6 +4258,7 @@ def _format_c6(
         seed=seed + 70_000,
     )
     clock_minute_rows, clock_gap_rows = clock_time_rows(frames_2008, frames_2019)
+    clock_speed = clock_speed_rows(*samples["B"], n_reps=n_reps, seed=seed)
     if results is not None:
         results["c6_speed_limit"] = speed_limit_rows
         results["c6_speed_limit_day_share"] = day_share
@@ -4133,11 +4267,13 @@ def _format_c6(
         results["c6_mode_mix_speed"] = mode_mix_rows
         results["c6_clock_minutes"] = clock_minute_rows
         results["c6_clock_gaps"] = clock_gap_rows
+        results["c6_clock_speed"] = clock_speed
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
     lines += ["", *_format_c6_recall_lag_speed(recall_rows)]
     lines += ["", *_format_c6_duration_bands(duration_rows)]
     lines += ["", *_format_c6_mode_mix_speed(mode_mix_rows)]
     lines += ["", *_format_c6_clock_times(clock_minute_rows, clock_gap_rows)]
+    lines += ["", *_format_clock_speed(clock_speed)]
     return lines
 
 
@@ -5702,6 +5838,12 @@ def _format_scope_diagnostics(
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the step-12 report."""
     selected_scope = results["scope"]
+    if results.get("c6_clock_speed") is not None:
+        csv_rows = _clock_speed_csv_rows(results["c6_clock_speed"])
+        _write_report_table_csv(
+            md_path, "speed_clock_rounding",
+            list(csv_rows[0]) if csv_rows else [], csv_rows,
+        )
     rule_csv = _write_scope_rule_csv(
         md_path, results["scope_diagnostics"], selected_scope
     )
