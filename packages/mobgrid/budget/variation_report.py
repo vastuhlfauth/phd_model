@@ -26,7 +26,7 @@ from __future__ import annotations
 import argparse
 import csv
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import ModuleType
 
@@ -4137,6 +4137,168 @@ def _format_c6_standardized(
     ]
 
 
+def _rounded_crow_fly_km(distance: np.ndarray) -> np.ndarray:
+    """C6/C2: nearest whole kilometre, non-negative half-km ties upward."""
+    distance = np.asarray(distance, dtype=float)
+    return np.where(np.isfinite(distance) & (distance >= 0),
+                    np.floor(distance + 0.5), np.nan)
+
+
+def _rounded_crow_fly_frames(frames: SurveyFrames) -> SurveyFrames:
+    rounded = SurveyFrames(
+        frames.name, frames.days,
+        {**frames.trips, "_rounded_crow_fly_km": _rounded_crow_fly_km(
+            frames.trips["crow_fly_km"]
+        )},
+        frames.aux,
+    )
+    return common_distance_frames(rounded, "_rounded_crow_fly_km")
+
+
+def whole_km_sensitivity(
+    frames_2008: SurveyFrames,
+    frames_2019: SurveyFrames,
+    sample_2008: SpeedSample,
+    sample_2019: SpeedSample,
+    *,
+    n_reps: int,
+    seed: int,
+) -> tuple[list[dict], list[dict]]:
+    """Section 9.9: current and whole-km C6 and crow-fly B4b point terms."""
+    current_a = common_distance_frames(frames_2008, "crow_fly_km")
+    current_b = common_distance_frames(frames_2019, "crow_fly_km")
+    rounded_b = _rounded_crow_fly_frames(frames_2019)
+    rounded_sample = replace(
+        sample_2019, crow_fly_km=_rounded_crow_fly_km(sample_2019.crow_fly_km)
+    )
+    ratio_rows = []
+    for label, sample in (("current", sample_2019), ("rounded", rounded_sample)):
+        cells, n_a, n_b, speed_a, speed_b = _standardized_car_speed(
+            sample_2008, sample, n_reps=n_reps, seed=seed
+        )
+        ratio_rows.append({
+            "variant": label, "cells": cells, "n_2008": n_a, "n_2019": n_b,
+            "ratio": _ratio_metric(speed_a, speed_b),
+        })
+
+    def terms(b: SurveyFrames) -> tuple[dict, dict, dict]:
+        labels_a = np.asarray(DISTANCE_BAND_LABELS)[
+            distance_band_index(current_a.trips["distance_km"])
+        ]
+        labels_b = np.asarray(DISTANCE_BAND_LABELS)[
+            distance_band_index(b.trips["distance_km"])
+        ]
+        result = variation.shift_share(
+            trip_sample_from_frames(current_a, labels_a).to_groups(),
+            trip_sample_from_frames(b, labels_b).to_groups(),
+        )
+        return (
+            {term.group: term for term in result.terms},
+            _group_counts(current_a, "distance_band"),
+            _group_counts(b, "distance_band"),
+        )
+
+    original, counts_a, counts_b = terms(current_b)
+    rounded, _, counts_rounded = terms(rounded_b)
+    rows = []
+    for band in DISTANCE_BAND_LABELS:
+        if band not in original and band not in rounded:
+            continue
+        row = {
+            "band": band, "n_2008": counts_a.get(band, 0),
+            "n_2019_current": counts_b.get(band, 0),
+            "n_2019_rounded": counts_rounded.get(band, 0),
+        }
+        for variant, values in (("current", original), ("rounded", rounded)):
+            term = values.get(band)
+            for name, attr in (
+                ("mix", "mix_min"), ("within_km", "within_km_min"),
+                ("within_speed", "within_speed_min"),
+            ):
+                row[f"{name}_{variant}"] = (
+                    getattr(term, attr) if term is not None else np.nan
+                )
+        rows.append(row)
+    return ratio_rows, rows
+
+
+def _whole_km_band_csv_rows(rows: list[dict]) -> list[dict]:
+    records = []
+    for row in rows:
+        record = {key: row[key] for key in (
+            "band", "n_2008", "n_2019_current", "n_2019_rounded"
+        )}
+        for name in ("mix", "within_km", "within_speed"):
+            for variant in ("current", "rounded"):
+                key = f"{name}_{variant}"
+                record[key] = _csv_value(
+                    row[key], min(row["n_2008"], row[f"n_2019_{variant}"])
+                )
+        records.append(record)
+    return records
+
+
+def _whole_km_ratio_csv_rows(rows: list[dict]) -> list[dict]:
+    records = []
+    for row in rows:
+        n = min(row["n_2008"], row["n_2019"])
+        ratio = row["ratio"]
+        records.append({
+            **{key: row[key] for key in ("variant", "cells", "n_2008", "n_2019")},
+            "ratio": _csv_value(ratio.estimate, n) if ratio is not None else "",
+            "ci_low": _csv_value(ratio.interval[0], n) if ratio is not None else "",
+            "ci_high": _csv_value(ratio.interval[1], n) if ratio is not None else "",
+        })
+    return records
+
+
+def _format_whole_km_sensitivity(ratios: list[dict], bands: list[dict]) -> list[str]:
+    lines = [
+        "#### Whole-kilometre crow-fly sensitivity",
+        "",
+        "ENTD 2008 `V2_DVO_LOC` is unchanged. EMP 2019 `dVO_ORIDES` is "
+        "rounded to the nearest kilometre (half-km ties upward) before both "
+        "banding and computing km and speed. Missing and negative distances "
+        "remain unknown. The car-driver comparison uses C6's 2–80 km, "
+        "2008 band × density mix, common cells and 90% household CI.",
+        "",
+        "| Variant | Common cells | n 2008 | n 2019 | Speed ratio [90% CI] |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for row in ratios:
+        ratio = row["ratio"]
+        n = min(row["n_2008"], row["n_2019"])
+        lines.append(
+            f"| {row['variant']} | {row['cells']} | {row['n_2008']} | "
+            f"{row['n_2019']} | "
+            f"{_metric_cell(ratio, n, 3) if ratio is not None else '-'} |"
+        )
+    lines += [
+        "",
+        "Crow-fly B4b terms are minutes per day with trips: the existing "
+        "shift-share mix and within-band km/trip and speed contributions. "
+        "These are point contributions, not CIs; interaction, volume and "
+        "selection terms remain as in B4b. Each variant is suppressed "
+        "when either year's band has fewer than 50 trips.",
+        "",
+        "| Band | n 2008 | n 2019 current | n 2019 rounded | "
+        "Mix current | Mix rounded | Km current | Km rounded | "
+        "Speed current | Speed rounded |",
+        "|---|---:|---:|---:|---|---|---|---|---|---|",
+    ]
+    for row in bands:
+        cells = []
+        for name in ("mix", "within_km", "within_speed"):
+            for variant in ("current", "rounded"):
+                n = min(row["n_2008"], row[f"n_2019_{variant}"])
+                cells.append(_suppress(n, _num(row[f"{name}_{variant}"], 2)))
+        lines.append(
+            f"| {row['band']} | {row['n_2008']} | {row['n_2019_current']} | "
+            f"{row['n_2019_rounded']} | " + " | ".join(cells) + " |"
+        )
+    return lines
+
+
 def _format_c6(
     frames_2008: SurveyFrames,
     frames_2019: SurveyFrames,
@@ -4259,6 +4421,9 @@ def _format_c6(
     )
     clock_minute_rows, clock_gap_rows = clock_time_rows(frames_2008, frames_2019)
     clock_speed = clock_speed_rows(*samples["B"], n_reps=n_reps, seed=seed)
+    whole_ratios, whole_bands = whole_km_sensitivity(
+        frames_2008, frames_2019, *samples["B"], n_reps=n_reps, seed=seed + 40_000
+    )
     if results is not None:
         results["c6_speed_limit"] = speed_limit_rows
         results["c6_speed_limit_day_share"] = day_share
@@ -4268,12 +4433,15 @@ def _format_c6(
         results["c6_clock_minutes"] = clock_minute_rows
         results["c6_clock_gaps"] = clock_gap_rows
         results["c6_clock_speed"] = clock_speed
+        results["c6_whole_km_ratios"] = whole_ratios
+        results["c6_whole_km_bands"] = whole_bands
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
     lines += ["", *_format_c6_recall_lag_speed(recall_rows)]
     lines += ["", *_format_c6_duration_bands(duration_rows)]
     lines += ["", *_format_c6_mode_mix_speed(mode_mix_rows)]
     lines += ["", *_format_c6_clock_times(clock_minute_rows, clock_gap_rows)]
     lines += ["", *_format_clock_speed(clock_speed)]
+    lines += ["", *_format_whole_km_sensitivity(whole_ratios, whole_bands)]
     return lines
 
 
@@ -5844,6 +6012,15 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             md_path, "speed_clock_rounding",
             list(csv_rows[0]) if csv_rows else [], csv_rows,
         )
+    for key, suffix, convert in (
+        ("c6_whole_km_ratios", "whole_km_speed", _whole_km_ratio_csv_rows),
+        ("c6_whole_km_bands", "whole_km_shift_share", _whole_km_band_csv_rows),
+    ):
+        if results.get(key) is not None:
+            csv_rows = convert(results[key])
+            _write_report_table_csv(
+                md_path, suffix, list(csv_rows[0]) if csv_rows else [], csv_rows
+            )
     rule_csv = _write_scope_rule_csv(
         md_path, results["scope_diagnostics"], selected_scope
     )

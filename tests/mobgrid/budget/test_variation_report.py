@@ -474,6 +474,18 @@ def test_compact_scope_tables_and_detail_csv(
                 1.2, (1.1, 1.3), np.array([1.1, 1.3])
             ),
         }],
+        "c6_whole_km_ratios": [{
+            "variant": "current", "cells": 1, "n_2008": 60, "n_2019": 60,
+            "ratio": variation_report.SpeedMetric(
+                1.2, (1.1, 1.3), np.array([1.1, 1.3])
+            ),
+        }],
+        "c6_whole_km_bands": [{
+            "band": "2-5 km", "n_2008": 60, "n_2019_current": 60,
+            "n_2019_rounded": 49, "mix_current": 1., "mix_rounded": 2.,
+            "within_km_current": 3., "within_km_rounded": 4.,
+            "within_speed_current": 5., "within_speed_rounded": 6.,
+        }],
     }
     md_path = tmp_path / "report.md"
     variation_report.write_markdown(md_path, tmp_path, results)
@@ -506,6 +518,16 @@ def test_compact_scope_tables_and_detail_csv(
     assert clock_rows[0]["ratio"] == ""
     assert clock_rows[0]["share_2008"] == ""
     assert float(clock_rows[0]["share_2019"]) == pytest.approx(.6)
+    with (tmp_path / "report_whole_km_speed.csv").open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        assert float(next(csv.DictReader(stream))["ratio"]) == pytest.approx(1.2)
+    with (tmp_path / "report_whole_km_shift_share.csv").open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        record = next(csv.DictReader(stream))
+        assert float(record["mix_current"]) == pytest.approx(1.)
+        assert record["mix_rounded"] == ""
     with csv_path.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert len(rows) == 2 * len(rules)
@@ -2019,6 +2041,62 @@ def test_rounding_draws_reach_partial_targets_and_are_reproducible() -> None:
         -0.5, abs=0.02
     )
     np.testing.assert_equal(result["shares"]["nearest"], repeated["shares"]["nearest"])
+
+
+def test_whole_km_sensitivity_rebands_and_recomputes_crow_fly_terms() -> None:
+    """C6/C2: half-km ties round upward; recompute B4b from rounded km."""
+    from dataclasses import replace
+
+    frames = []
+    samples = []
+    for year in range(2):
+        frame = _measurement_frames([10.0] * 360)
+        values = (
+            [1.6, 2.4, 4.5, 5.4, np.nan, -1.0]
+            if year else [2., 2., 4., 5., np.nan, -1.]
+        )
+        frame.trips["crow_fly_km"] = np.tile(values, 60)
+        frames.append(frame)
+        samples.append(variation_report.SpeedSample(
+            household=frame.trips["ident_men"],
+            weight=frame.trips["pond_jour"], duration_min=frame.trips["duration_min"],
+            crow_fly_km=frame.trips["crow_fly_km"],
+            producer_km=np.full(360, 4.), mode=np.full(360, "car_driver"),
+            density=np.full(360, "dense"), residence_zone=np.full(360, "11"),
+        ))
+    rounded = variation_report._rounded_crow_fly_frames(frames[1])
+    assert rounded.trips["distance_km"][:4] == pytest.approx([2., 2., 5., 5.])
+    assert np.isnan(rounded.trips["distance_km"][4:6]).all()
+    assert frames[1].trips["crow_fly_km"][0] == 1.6
+    ratio_rows, band_rows = variation_report.whole_km_sensitivity(
+        *frames, *samples, n_reps=8, seed=3
+    )
+    assert [row["variant"] for row in ratio_rows] == ["current", "rounded"]
+    expected = variation_report._standardized_car_speed(
+        samples[0], replace(samples[1], crow_fly_km=np.array(
+            [2., 2., 5., 5., np.nan, np.nan] * 60
+        )), n_reps=8, seed=3
+    )
+    assert ratio_rows[1]["ratio"].estimate == pytest.approx(
+        expected[4].estimate / expected[3].estimate
+    )
+    original = variation_report.common_distance_frames(frames[1], "crow_fly_km")
+    assert variation_report._group_counts(original, "distance_band")["1-2 km"] == 60
+    assert (
+        variation_report._group_counts(rounded, "distance_band").get("1-2 km", 0) == 0
+    )
+    a = variation_report.common_distance_frames(frames[0], "crow_fly_km")
+    expected_terms = variation_report.shift_share_by(
+        a, rounded, "distance_band", n_reps=8, seed=3
+    ).point.terms
+    expected_band = next(term for term in expected_terms if term.group == "2-5 km")
+    row = next(row for row in band_rows if row["band"] == "2-5 km")
+    assert row["mix_rounded"] == pytest.approx(expected_band.mix_min)
+    assert row["within_km_rounded"] == pytest.approx(expected_band.within_km_min)
+    assert row["within_speed_rounded"] == pytest.approx(expected_band.within_speed_min)
+    exported = variation_report._whole_km_band_csv_rows(band_rows)
+    small = next(record for record in exported if record["band"] == "1-2 km")
+    assert small["mix_rounded"] == ""
 
 
 def test_common_distances_reaggregate_without_speed_or_producer_correction() -> None:
