@@ -1111,13 +1111,18 @@ def test_distance_bands_separate_missing_and_sort_figure_numerically() -> None:
     assert labels == [label for label in order if label in labels]
 
 
-def test_frame_aggregation_keeps_missing_distance_days() -> None:
-    """Section 9.9: N/T include all trips, L/v only distance-known trips."""
+@pytest.mark.parametrize("household_type", ["BIGINT", "VARCHAR"])
+def test_frame_aggregation_keeps_missing_distance_days(
+    household_type: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Section 9.9: retain missing-distance days and match C7 roster IDs."""
     with duckdb.connect() as con:
-        con.sql("""
+        con.sql(f"""
             CREATE TABLE trip_legs AS SELECT
                 day_id, ident_dep, num_dep, distance_km, duration_min,
-                day_id AS ident_ind, day_id AS ident_men,
+                day_id AS ident_ind,
+                CAST(CASE WHEN day_id = 'a' THEN 1 ELSE 2 END
+                    AS {household_type}) AS ident_men,
                 CASE WHEN day_id = 'a' THEN 1.0 ELSE 3.0 END AS pond_jour,
                 'employed' AS population_category, 'dense' AS residence_density,
                 'q1' AS income_quintile, 40 AS age, 'walk' AS mode_group,
@@ -1161,6 +1166,29 @@ def test_frame_aggregation_keeps_missing_distance_days() -> None:
     assert days.distance_km == pytest.approx([6.0, 0.0])
     assert days.distance_trips == pytest.approx([1.0, 0.0])
     assert days.distance_time_min == pytest.approx([10.0, 0.0])
+    frames.aux["household_universe"] = np.array(["1", "2", "3"])
+    monkeypatch.setattr(variation_report, "MIN_CELL_N", 1)
+    ratio = variation_report._time_ratio_ci(
+        frames,
+        frames,
+        np.ones(2, dtype=bool),
+        np.ones(2, dtype=bool),
+        n_reps=16,
+        seed=0,
+    )
+    assert ratio is not None
+    assert ratio[0] == pytest.approx(1.0)
+    assert np.isfinite(ratio[1]).all()
+    frames.aux["household_universe"] = np.array(["1", "3"])
+    with pytest.raises(ValueError, match="households outside the roster"):
+        variation_report._time_ratio_ci(
+            frames,
+            frames,
+            np.ones(2, dtype=bool),
+            np.ones(2, dtype=bool),
+            n_reps=16,
+            seed=0,
+        )
 
 
 def test_b4_duration_tables_are_weighted_and_cover_both_years() -> None:

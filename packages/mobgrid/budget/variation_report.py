@@ -395,7 +395,7 @@ def _create_frames_tables(
     sample_pct: float | None,
     selected_scope: scope_module.Scope,
 ) -> None:
-    """Materialise weekday trip/day tables for the selected scope."""
+    """Materialise weekday trip/day tables with C7's text household IDs."""
     mode7_sql = """
         CASE t.mode_group
             WHEN 'cycle' THEN 'bike'
@@ -408,7 +408,8 @@ def _create_frames_tables(
     con.sql(f"""
         CREATE OR REPLACE TABLE vr_trips AS
         SELECT
-            t.day_id, t.ident_ind, t.ident_men, t.pond_jour,
+            t.day_id, t.ident_ind,
+            trim(CAST(t.ident_men AS VARCHAR)) AS ident_men, t.pond_jour,
             t.population_category,
             t.residence_density AS home_density,
             t.income_quintile,
