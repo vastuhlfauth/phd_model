@@ -2,6 +2,17 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: trip-delimitation purposes (2026-11-17)
+
+- Added weighted weekday trips per day with trips and minutes per trip by
+  main mode and harmonised escort, shopping, work, study, leisure and
+  personal-business purposes. Returns retain the section 9.9 origin-purpose
+  assignment; visits count as leisure and medical/administrative errands as
+  personal business. Each measure is suppressed below 50 eligible trips and
+  the report writes a matching CSV. No real-data report or figures were run.
+- The remaining trip-delimitation checks and the clock-speed interval need
+  separate follow-up; this entry records only the purpose table.
+
 ### Step 12: scope cube (2026-11-10)
 
 - New `mobgrid/budget/scope_cube.py` writes the spec's cross-scope

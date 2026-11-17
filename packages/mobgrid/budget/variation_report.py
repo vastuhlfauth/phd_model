@@ -413,7 +413,7 @@ def _create_frames_tables(
             t.population_category,
             t.residence_density AS home_density,
             t.income_quintile,
-            t.age, t.duration_min, t.distance_km,
+            t.age, t.duration_min, t.distance_km, t.motive,
             ({mode7_sql}) AS mode7,
             coalesce({motive_group_sql}, 'unknown') AS motive_group,
             e.declared_km, e.crow_fly_km, e.vac_scol,
@@ -3491,6 +3491,90 @@ def clock_time_class(minutes: np.ndarray) -> np.ndarray:
     )
 
 
+def trip_delimitation_purpose_rows(frames: SurveyFrames) -> list[dict]:
+    """Section 9.9: trips per travel day and minutes per trip by motive and mode."""
+    trips = frames.trips
+    motive = np.asarray(trips["motive"], dtype=float)
+    weight = np.asarray(trips["pond_jour"], dtype=float)
+    duration = np.asarray(trips["duration_min"], dtype=float)
+    modes = _text_values(trips["mode7"])
+    days = np.asarray(frames.days["pond_jour"], dtype=float)
+    valid_days = np.isfinite(days) & (days > 0)
+    day_weight = float(days[valid_days].sum())
+    if day_weight <= 0:
+        raise ValueError("purpose rates require positive travel-day weight")
+    valid = np.isfinite(weight) & (weight > 0)
+    groups = {
+        "escort or pick-up": (motive >= 6) & (motive < 7),
+        "shopping": (motive >= 2) & (motive < 3),
+        "work": (motive >= 9) & (motive < 10),
+        "study": np.isin(motive, [1.4, 1.5]),
+        "leisure": ((motive >= 5) & (motive < 6))
+        | ((motive >= 7) & (motive < 8)),
+        "personal business": (motive >= 3) & (motive < 5),
+    }
+    rows = []
+    for mode in MODE7_LABELS:
+        for purpose, group in groups.items():
+            selected = valid & (modes == mode) & group
+            n = int(selected.sum())
+            if not n:
+                continue
+            timed = selected & np.isfinite(duration) & (duration >= 0)
+            timed_weight = float(weight[timed].sum())
+            rows.append({
+                "survey": frames.name,
+                "mode": mode,
+                "purpose": purpose,
+                "n": n,
+                "n_duration": int(timed.sum()),
+                "trips_per_day": float(weight[selected].sum() / day_weight),
+                "minutes_per_trip": (
+                    float(np.sum(weight[timed] * duration[timed]) / timed_weight)
+                    if timed_weight > 0 else float("nan")
+                ),
+            })
+    return rows
+
+
+def _format_trip_delimitation_purposes(rows: list[dict]) -> list[str]:
+    lines = [
+        "##### Escort and short-stop purposes",
+        "",
+        "Weekday trips in the selected scope; returns to a residence take their "
+        "origin purpose. Trips/day uses all days with retained trips as the "
+        "denominator. Minutes/trip uses trips with known nonnegative duration. "
+        "Visits are grouped with leisure; medical care and administrative "
+        "errands with personal business. Cells under 50 trips are hidden.",
+        "",
+        "| Survey | Main mode | Purpose | n trips | n duration | Trips/day | "
+        "Minutes/trip |",
+        "|---|---|---|---:|---:|---:|---:|",
+    ]
+    for row in rows:
+        lines.append(
+            f"| {row['survey']} | {row['mode']} | {row['purpose']} | "
+            f"{row['n']} | {row['n_duration']} | "
+            f"{_suppress(row['n'], _num(row['trips_per_day'], 3))} | "
+            f"{_suppress(row['n_duration'], _num(row['minutes_per_trip'], 1))} |"
+        )
+    return lines
+
+
+def _trip_delimitation_purpose_csv_rows(rows: list[dict]) -> list[dict]:
+    return [
+        {
+            **{
+                key: row[key]
+                for key in ("survey", "mode", "purpose", "n", "n_duration")
+            },
+            "trips_per_day": _csv_value(row["trips_per_day"], row["n"]),
+            "minutes_per_trip": _csv_value(row["minutes_per_trip"], row["n_duration"]),
+        }
+        for row in rows
+    ]
+
+
 def clock_speed_rows(
     sample_2008: SpeedSample, sample_2019: SpeedSample, *, n_reps: int, seed: int
 ) -> list[dict]:
@@ -4430,6 +4514,10 @@ def _format_c6(
     )
     clock_minute_rows, clock_gap_rows = clock_time_rows(frames_2008, frames_2019)
     clock_speed = clock_speed_rows(*samples["B"], n_reps=n_reps, seed=seed)
+    purpose_rows = [
+        *trip_delimitation_purpose_rows(frames_2008),
+        *trip_delimitation_purpose_rows(frames_2019),
+    ]
     whole_ratios, whole_bands = whole_km_sensitivity(
         frames_2008, frames_2019, *samples["B"], n_reps=n_reps, seed=seed + 40_000
     )
@@ -4442,6 +4530,7 @@ def _format_c6(
         results["c6_clock_minutes"] = clock_minute_rows
         results["c6_clock_gaps"] = clock_gap_rows
         results["c6_clock_speed"] = clock_speed
+        results["c6_trip_delimitation_purposes"] = purpose_rows
         results["c6_whole_km_ratios"] = whole_ratios
         results["c6_whole_km_bands"] = whole_bands
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
@@ -4450,6 +4539,12 @@ def _format_c6(
     lines += ["", *_format_c6_mode_mix_speed(mode_mix_rows)]
     lines += ["", *_format_c6_clock_times(clock_minute_rows, clock_gap_rows)]
     lines += ["", *_format_clock_speed(clock_speed)]
+    lines += [
+        "",
+        "#### Trip delimitation",
+        "",
+        *_format_trip_delimitation_purposes(purpose_rows),
+    ]
     lines += ["", *_format_whole_km_sensitivity(whole_ratios, whole_bands)]
     return lines
 
@@ -6028,6 +6123,16 @@ def _format_scope_diagnostics(
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the step-12 report."""
     selected_scope = results["scope"]
+    if results.get("c6_trip_delimitation_purposes") is not None:
+        csv_rows = _trip_delimitation_purpose_csv_rows(
+            results["c6_trip_delimitation_purposes"]
+        )
+        _write_report_table_csv(
+            md_path, "trip_delimitation_purposes",
+            ["survey", "mode", "purpose", "n", "n_duration",
+             "trips_per_day", "minutes_per_trip"],
+            csv_rows,
+        )
     if results.get("c6_clock_speed") is not None:
         csv_rows = _clock_speed_csv_rows(results["c6_clock_speed"])
         _write_report_table_csv(

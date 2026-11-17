@@ -2802,6 +2802,53 @@ def test_c6_mode_mix_speed_isolates_the_mode_shift() -> None:
     assert by_csv["within walk"]["ratio"] == ""
 
 
+def test_trip_delimitation_purpose_rates_and_suppression() -> None:
+    """Section 9.9: return-home reassigned motives and day-weighted rates."""
+    frames = _frames(
+        days={"pond_jour": np.array([1.0, 3.0])},
+        trips={
+            "pond_jour": np.array([1.0, 1.0, 3.0, 3.0, 3.0, 3.0]),
+            "mode7": np.array(["car_driver"] * 6),
+            "motive": np.array([6.1, 6.1, 2.2, 1.4, 3.1, 5.1]),
+            "duration_min": np.array([5.0, 15.0, 20.0, 10.0, 8.0, 12.0]),
+        },
+    )
+    rows = variation_report.trip_delimitation_purpose_rows(frames)
+    by_purpose = {(row["mode"], row["purpose"]): row for row in rows}
+    escort = by_purpose["car_driver", "escort or pick-up"]
+    assert escort["n"] == 2
+    assert escort["trips_per_day"] == pytest.approx(0.5)
+    assert escort["minutes_per_trip"] == pytest.approx(10.0)
+    assert by_purpose["car_driver", "shopping"]["trips_per_day"] == pytest.approx(.75)
+    assert by_purpose["car_driver", "study"]["minutes_per_trip"] == pytest.approx(10.)
+    assert by_purpose["car_driver", "personal business"]["minutes_per_trip"] == (
+        pytest.approx(8.)
+    )
+    assert by_purpose["car_driver", "leisure"]["minutes_per_trip"] == pytest.approx(12.)
+    assert (
+        variation_report._trip_delimitation_purpose_csv_rows(rows)[0]["trips_per_day"]
+        == ""
+    )
+    assert " | 2 | 2 | - | - |" in "\n".join(
+        variation_report._format_trip_delimitation_purposes(rows)
+    )
+
+    large = _frames(
+        days={"pond_jour": [2.0]},
+        trips={
+            "pond_jour": [2.0] * 50,
+            "mode7": ["car_driver"] * 50,
+            "motive": [9.1] * 50,
+            "duration_min": [10.0] * 49 + [np.nan],
+        },
+    )
+    row = variation_report._trip_delimitation_purpose_csv_rows(
+        variation_report.trip_delimitation_purpose_rows(large)
+    )[0]
+    assert row["trips_per_day"] == pytest.approx(50.0)
+    assert row["minutes_per_trip"] == ""
+
+
 def test_clock_time_classes_and_standardized_subset_ratios() -> None:
     """Section 9.9 / C6: classify endpoints, preserve the 2008 target mix."""
     classes = variation_report.clock_time_class(
