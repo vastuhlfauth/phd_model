@@ -3654,6 +3654,106 @@ def trip_delimitation_tour_row(frames: SurveyFrames) -> dict:
     return row
 
 
+def trip_delimitation_speed_rows(
+    frames_2008: SurveyFrames,
+    frames_2019: SurveyFrames,
+    *,
+    n_reps: int,
+    seed: int,
+) -> list[dict]:
+    """C6: standardised car-driver speeds by complete tour size."""
+    frames = (frames_2008, frames_2019)
+    samples = [_speed_sample(frame, "B") for frame in frames]
+    rows = []
+    for label, minimum, maximum in (("2 trips", 2, 2), ("3+ trips", 3, None)):
+        data = []
+        counts = []
+        shares = []
+        for frame, sample in zip(frames, samples, strict=True):
+            size = np.asarray(frame.trips["tour_size"], dtype=int)
+            complete = np.asarray(frame.trips["is_complete_scope_tour"], dtype=bool)
+            valid = (
+                (sample.mode == "car_driver")
+                & np.isfinite(sample.weight) & (sample.weight > 0)
+            )
+            group = complete & (size >= minimum)
+            if maximum is not None:
+                group &= size <= maximum
+            selected = valid & group
+            counts.append(int(selected.sum()))
+            denominator = float(sample.weight[valid].sum())
+            shares.append(
+                float(sample.weight[selected].sum() / denominator)
+                if denominator > 0 else float("nan")
+            )
+            data.append(_speed_cells(sample, selected=selected))
+        cells, n_a, n_b, speed_a, speed_b = _standardized_speed_pair(
+            *data, n_reps=n_reps, seed=seed
+        )
+        ratio = _ratio_metric(speed_a, speed_b)
+        rows.append({
+            "group": label, "cells": cells,
+            "n_2008": counts[0], "n_2019": counts[1],
+            "n_common_2008": n_a, "n_common_2019": n_b,
+            "share_2008": shares[0], "share_2019": shares[1],
+            "ratio": ratio,
+            "valid_replicates": (
+                int(np.isfinite(ratio.replicates).sum()) if ratio is not None else 0
+            ),
+        })
+    return rows
+
+
+def _format_trip_delimitation_speeds(rows: list[dict]) -> list[str]:
+    lines = [
+        "##### Simple vs chained trips",
+        "",
+        "Car-driver trips in complete tours wholly in the selected scope. "
+        "Shares use all selected car-driver trips as denominator, including "
+        "trips in incomplete or partially excluded tours. Speeds use crow-fly "
+        "2–80 km, positive duration and known density, standardised to the "
+        "2008 group's band × density mix on common cells. Ratios have 90% "
+        "independent household-bootstrap intervals; the number of valid "
+        "paired replicates is shown. Values under 50 trips are hidden.",
+        "",
+        "| Tour | n 2008 | Share 2008 | n 2019 | Share 2019 | "
+        "n common 2008 | n common 2019 | Valid draws | Ratio [90% CI] |",
+        "|---|---:|---|---:|---|---:|---:|---:|---|",
+    ]
+    for row in rows:
+        n = min(row["n_common_2008"], row["n_common_2019"])
+        ratio = row["ratio"]
+        lines.append(
+            f"| {row['group']} | {row['n_2008']} | "
+            f"{_suppress(row['n_2008'], _pct(row['share_2008']))} | "
+            f"{row['n_2019']} | "
+            f"{_suppress(row['n_2019'], _pct(row['share_2019']))} | "
+            f"{row['n_common_2008']} | {row['n_common_2019']} | "
+            f"{row['valid_replicates']} | "
+            f"{_metric_cell(ratio, n, 3) if ratio is not None else '-'} |"
+        )
+    return lines
+
+
+def _trip_delimitation_speed_csv_rows(rows: list[dict]) -> list[dict]:
+    records = []
+    for row in rows:
+        ratio = row["ratio"]
+        n = min(row["n_common_2008"], row["n_common_2019"])
+        records.append({
+            **{key: row[key] for key in (
+                "group", "cells", "n_2008", "n_2019", "n_common_2008",
+                "n_common_2019", "valid_replicates",
+            )},
+            **{f"share_{year}": _csv_value(row[f"share_{year}"], row[f"n_{year}"])
+               for year in (2008, 2019)},
+            "ratio": _csv_value(ratio.estimate, n) if ratio is not None else "",
+            "ci_low": _csv_value(ratio.interval[0], n) if ratio is not None else "",
+            "ci_high": _csv_value(ratio.interval[1], n) if ratio is not None else "",
+        })
+    return records
+
+
 _TOUR_BANDS = ("2", "3", "4", "5_plus")
 
 
@@ -4742,6 +4842,9 @@ def _format_c6(
         trip_delimitation_tour_row(frames_2008),
         trip_delimitation_tour_row(frames_2019),
     ]
+    tour_speed_rows = trip_delimitation_speed_rows(
+        frames_2008, frames_2019, n_reps=n_reps, seed=seed
+    )
     whole_ratios, whole_bands = whole_km_sensitivity(
         frames_2008, frames_2019, *samples["B"], n_reps=n_reps, seed=seed + 40_000
     )
@@ -4757,6 +4860,7 @@ def _format_c6(
         results["c6_trip_delimitation_purposes"] = purpose_rows
         results["c6_trip_delimitation_stays"] = stay_rows
         results["c6_trip_delimitation_tours"] = tour_rows
+        results["c6_trip_delimitation_speeds"] = tour_speed_rows
         results["c6_whole_km_ratios"] = whole_ratios
         results["c6_whole_km_bands"] = whole_bands
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
@@ -4774,6 +4878,8 @@ def _format_c6(
         *_format_trip_delimitation_tours(tour_rows),
         "",
         *_format_trip_delimitation_purposes(purpose_rows),
+        "",
+        *_format_trip_delimitation_speeds(tour_speed_rows),
     ]
     lines += ["", *_format_whole_km_sensitivity(whole_ratios, whole_bands)]
     return lines
@@ -6353,6 +6459,14 @@ def _format_scope_diagnostics(
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the step-12 report."""
     selected_scope = results["scope"]
+    if results.get("c6_trip_delimitation_speeds") is not None:
+        csv_rows = _trip_delimitation_speed_csv_rows(
+            results["c6_trip_delimitation_speeds"]
+        )
+        _write_report_table_csv(
+            md_path, "trip_delimitation_speeds",
+            list(csv_rows[0]) if csv_rows else [], csv_rows,
+        )
     if results.get("c6_trip_delimitation_tours") is not None:
         csv_rows = _trip_delimitation_tour_csv_rows(
             results["c6_trip_delimitation_tours"]

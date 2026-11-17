@@ -2808,6 +2808,39 @@ def test_c6_mode_mix_speed_isolates_the_mode_shift() -> None:
     assert by_csv["within walk"]["ratio"] == ""
 
 
+def test_trip_delimitation_tour_speed_uses_common_support_and_trip_shares() -> None:
+    """C6: compare car speeds within complete two-trip and chained tours."""
+    frames = []
+    for year in range(2):
+        size = np.array([2] * 60 + [3] * 60 + [4] * 10)
+        frames.append(_frames(
+            days={},
+            trips={
+                "ident_men": [f"h{i}" for i in range(len(size))],
+                "pond_jour": np.ones(len(size)),
+                "duration_min": np.full(len(size), 10.0 + year * 2.5),
+                "distance_km": np.full(len(size), 3.0),
+                "crow_fly_km": np.full(len(size), 3.0),
+                "mode7": ["car_driver"] * len(size),
+                "home_density": ["dense"] * len(size),
+                "residence_aa_class": ["11"] * len(size),
+                "tour_size": size,
+                "is_complete_scope_tour": [True] * 120 + [False] * 10,
+            },
+        ))
+    rows = variation_report.trip_delimitation_speed_rows(
+        *frames, n_reps=30, seed=2
+    )
+    assert len(rows) == 2
+    for row in rows:
+        assert row["share_2008"] == pytest.approx(60 / 130)
+        assert row["share_2019"] == pytest.approx(60 / 130)
+        assert row["ratio"].estimate == pytest.approx(.8)
+        assert row["ratio"].interval == pytest.approx((.8, .8))
+    exported = variation_report._trip_delimitation_speed_csv_rows(rows)
+    assert exported[0]["ratio"] == pytest.approx(.8)
+
+
 def test_trip_delimitation_tours_use_full_sequence_and_weights() -> None:
     """Section 9.9: scope filtering must not join trips across omitted stops."""
     con = duckdb.connect()

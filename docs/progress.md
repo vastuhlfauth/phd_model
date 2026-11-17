@@ -2,6 +2,16 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: simple versus chained tour speeds (2026-11-17)
+
+- Added the C6 standardised car-driver speed comparison and weighted trip
+  shares for two-trip and 3+-trip complete in-scope tours, with a matching
+  CSV. Shares use all selected car-driver trips as denominator; incomplete
+  or partially filtered tours therefore remain outside both groups.
+- Each ratio reports the number of valid paired household-bootstrap draws,
+  since sparse standardisation cells can invalidate draws. Nine focused
+  tests passed; Ruff passed. No figures or real-data report were run.
+
 ### Step 12: trips per tour (2026-11-17)
 
 - Added tour counts and trip-count distributions with a matching CSV. Tours
