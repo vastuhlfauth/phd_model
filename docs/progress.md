@@ -2,6 +2,17 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: trips per tour (2026-11-17)
+
+- Added tour counts and trip-count distributions with a matching CSV. Tours
+  are split at residence arrivals on the original day chain; only complete
+  tours with every trip in the selected scope count. The tours/day
+  denominator includes all selected days with trips, including those with
+  no complete in-scope tour. This avoids inventing tours across filtered
+  stops, but excludes partial-scope tours.
+- Six targeted tests passed; Ruff passed. No figures or real-data report
+  were run.
+
 ### Step 12: stays between trips (2026-11-17)
 
 - Added weighted stay distributions by survey and arriving-trip mode, and

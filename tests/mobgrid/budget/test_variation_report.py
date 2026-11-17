@@ -2808,6 +2808,52 @@ def test_c6_mode_mix_speed_isolates_the_mode_shift() -> None:
     assert by_csv["within walk"]["ratio"] == ""
 
 
+def test_trip_delimitation_tours_use_full_sequence_and_weights() -> None:
+    """Section 9.9: scope filtering must not join trips across omitted stops."""
+    con = duckdb.connect()
+    try:
+        con.sql("""
+            CREATE TABLE scope_trips (
+                day_id VARCHAR, num_dep INTEGER, destination_purpose VARCHAR,
+                starts_at_residence BOOLEAN, is_round BOOLEAN,
+                is_destination BOOLEAN, mobloc INTEGER
+            );
+            INSERT INTO scope_trips VALUES
+                ('a', 1, '2.1', TRUE, TRUE, TRUE, 1),
+                ('a', 2, '1.1', TRUE, TRUE, TRUE, 1),
+                ('a', 3, '2.1', TRUE, TRUE, TRUE, 1),
+                ('a', 4, '8.1', TRUE, TRUE, FALSE, 1),
+                ('a', 5, '1.1', TRUE, TRUE, TRUE, 1),
+                ('b', 1, '9.1', TRUE, TRUE, TRUE, 1),
+                ('b', 2, '2.1', TRUE, TRUE, TRUE, 1),
+                ('b', 3, '1.1', TRUE, TRUE, TRUE, 1);
+        """)
+        variation_report._create_tour_memberships(con, scope.REFERENCE_SCOPE)
+        memberships = con.sql("""
+            SELECT day_id, num_dep, tour_size, is_complete_scope_tour
+            FROM vr_tour_membership ORDER BY day_id, num_dep
+        """).fetchall()
+    finally:
+        con.close()
+    assert memberships == [
+        ("a", 1, 2, True), ("a", 2, 2, True),
+        ("a", 3, 3, False), ("a", 4, 3, False), ("a", 5, 3, False),
+        ("b", 1, 3, True), ("b", 2, 3, True), ("b", 3, 3, True),
+    ]
+    frames = _frames(
+        days={"pond_jour": [1.0, 3.0]},
+        trips={},
+        aux={"tours": {"tour_size": np.array([2, 3]), "pond_jour": np.array([1., 3.])}},
+    )
+    row = variation_report.trip_delimitation_tour_row(frames)
+    assert row["tours_per_day"] == pytest.approx(1.0)
+    assert row["trips_per_tour"] == pytest.approx(2.75)
+    assert row["share_2"] == pytest.approx(.25)
+    assert row["share_3"] == pytest.approx(.75)
+    assert row["n_trips_3"] == 3
+    assert variation_report._trip_delimitation_tour_csv_rows([row])[0]["share_3"] == ""
+
+
 def test_trip_delimitation_stays_use_arriving_mode_and_day_denominator() -> None:
     """Section 9.9: weighted stays are allocated to the arriving trip."""
     frames = _frames(

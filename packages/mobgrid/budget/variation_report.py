@@ -408,7 +408,7 @@ def _create_frames_tables(
     con.sql(f"""
         CREATE OR REPLACE TABLE vr_trips AS
         SELECT
-            t.day_id, t.ident_ind,
+            t.day_id, t.num_dep, t.ident_ind,
             trim(CAST(t.ident_men AS VARCHAR)) AS ident_men, t.pond_jour,
             t.population_category,
             t.residence_density AS home_density,
@@ -458,6 +458,35 @@ def _create_frames_tables(
                 WHERE isfinite(distance_km)), 0) AS distance_time_min
         FROM vr_trips
         GROUP BY day_id
+    """)
+
+
+def _create_tour_memberships(
+    con: duckdb.DuckDBPyConnection, selected_scope: scope_module.Scope
+) -> None:
+    """Split original day chains at residence arrivals (section 9.9)."""
+    con.sql(f"""
+        CREATE OR REPLACE TABLE vr_tour_membership AS
+        WITH numbered AS (
+            SELECT *,
+                coalesce(sum(CASE WHEN destination_purpose IN ('1.1', '1.2', '1.3')
+                    THEN 1 ELSE 0 END) OVER (
+                        PARTITION BY day_id ORDER BY num_dep
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                    ), 0) AS tour_id,
+                ({selected_scope.where_sql}) AS selected
+            FROM scope_trips
+        ), tours AS (
+            SELECT day_id, tour_id, count(*) AS tour_size,
+                bool_and(coalesce(selected, FALSE))
+                    AND (tour_id > 0 OR bool_and(starts_at_residence))
+                    AND last(destination_purpose ORDER BY num_dep)
+                        IN ('1.1', '1.2', '1.3') AS is_complete_scope_tour
+            FROM numbered GROUP BY day_id, tour_id
+        )
+        SELECT n.day_id, n.num_dep, n.tour_id, t.tour_size,
+            coalesce(t.is_complete_scope_tour, FALSE) AS is_complete_scope_tour
+        FROM numbered n JOIN tours t USING (day_id, tour_id)
     """)
 
 
@@ -1742,8 +1771,18 @@ def load_frames(
         )
         _PERSON_EXT_BY_SURVEY[survey.SURVEY_NAME](con)
         _create_frames_tables(con, sample_pct=sample_pct, selected_scope=scope)
+        _create_tour_memberships(con, scope)
         days = con.sql("SELECT * FROM vr_days").fetchnumpy()
-        trips = con.sql("SELECT * FROM vr_trips").fetchnumpy()
+        trips = con.sql("""
+            SELECT v.*, m.tour_id, m.tour_size, m.is_complete_scope_tour
+            FROM vr_trips v JOIN vr_tour_membership m USING (day_id, num_dep)
+        """).fetchnumpy()
+        tours = con.sql("""
+            SELECT v.day_id, m.tour_id, m.tour_size, any_value(v.pond_jour) pond_jour
+            FROM vr_trips v JOIN vr_tour_membership m USING (day_id, num_dep)
+            WHERE m.is_complete_scope_tour
+            GROUP BY v.day_id, m.tour_id, m.tour_size
+        """).fetchnumpy()
         official_data = _official_scope_data(con, survey, sample_pct)
         scope_data = scope_diagnostics(
             con,
@@ -1763,6 +1802,7 @@ def load_frames(
         }
         motive_shares, distance_doc = _AUX_BY_SURVEY[survey.SURVEY_NAME]
         aux = {
+            "tours": {k: _plain_array(v) for k, v in tours.items()},
             "raw_motive_shares": motive_shares(con),
             "distance_doc": distance_doc(con),
             "official_scope_data": official_data,
@@ -3580,6 +3620,89 @@ def trip_delimitation_stay_rows(frames: SurveyFrames) -> list[dict]:
     return rows
 
 
+def trip_delimitation_tour_row(frames: SurveyFrames) -> dict:
+    """Section 9.9: complete home-based tours per day and trips per tour."""
+    tours = frames.aux["tours"]
+    sizes = np.asarray(tours["tour_size"], dtype=int)
+    weights = np.asarray(tours["pond_jour"], dtype=float)
+    days = np.asarray(frames.days["pond_jour"], dtype=float)
+    day_weight = float(days[np.isfinite(days) & (days > 0)].sum())
+    if day_weight <= 0:
+        raise ValueError("tour rates require positive travel-day weight")
+    valid = np.isfinite(weights) & (weights > 0) & (sizes > 0)
+    total = float(weights[valid].sum())
+    row = {
+        "survey": frames.name,
+        "n_tours": int(valid.sum()),
+        "n_trips": int(sizes[valid].sum()),
+        "tours_per_day": total / day_weight,
+        "trips_per_tour": (
+            float(np.sum(weights[valid] * sizes[valid]) / total)
+            if total > 0 else float("nan")
+        ),
+    }
+    for label, band in (
+        ("2", sizes == 2), ("3", sizes == 3), ("4", sizes == 4),
+        ("5_plus", sizes >= 5),
+    ):
+        selected = valid & band
+        row[f"n_tours_{label}"] = int(selected.sum())
+        row[f"n_trips_{label}"] = int(sizes[selected].sum())
+        row[f"share_{label}"] = (
+            float(weights[selected].sum() / total) if total > 0 else float("nan")
+        )
+    return row
+
+
+_TOUR_BANDS = ("2", "3", "4", "5_plus")
+
+
+def _format_trip_delimitation_tours(rows: list[dict]) -> list[str]:
+    lines = [
+        "##### Trips per tour",
+        "",
+        "Tours end on arrival at a residence (codes 1.1–1.3); they are "
+        "identified before trip filtering. Only complete tours whose every "
+        "trip is in the selected scope are included. Tours/day divides by "
+        "all selected days with trips, including days with no complete "
+        "in-scope tour. Shares are weighted by tour; each band shows its "
+        "unweighted tour and trip counts, with values hidden under 50 trips.",
+        "",
+        "| Survey | Tours | Trips | Tours/day | Trips/tour | "
+        "2 trips (tours / trips / share) | 3 trips | 4 trips | 5+ trips |",
+        "|---|---:|---:|---:|---:|---|---|---|---|",
+    ]
+    for row in rows:
+        cells = [
+            f"{row[f'n_tours_{band}']} / {row[f'n_trips_{band}']} / "
+            f"{_suppress(row[f'n_trips_{band}'], _pct(row[f'share_{band}']))}"
+            for band in _TOUR_BANDS
+        ]
+        lines.append(
+            f"| {row['survey']} | {row['n_tours']} | {row['n_trips']} | "
+            f"{_suppress(row['n_trips'], _num(row['tours_per_day'], 3))} | "
+            f"{_suppress(row['n_trips'], _num(row['trips_per_tour'], 3))} | "
+            + " | ".join(cells) + " |"
+        )
+    return lines
+
+
+def _trip_delimitation_tour_csv_rows(rows: list[dict]) -> list[dict]:
+    records = []
+    for row in rows:
+        record = {key: row[key] for key in ("survey", "n_tours", "n_trips")}
+        for key in ("tours_per_day", "trips_per_tour"):
+            record[key] = _csv_value(row[key], row["n_trips"])
+        for band in _TOUR_BANDS:
+            for prefix in ("n_tours", "n_trips"):
+                record[f"{prefix}_{band}"] = row[f"{prefix}_{band}"]
+            record[f"share_{band}"] = _csv_value(
+                row[f"share_{band}"], row[f"n_trips_{band}"]
+            )
+        records.append(record)
+    return records
+
+
 _STAY_BANDS = ("0", "1_4", "5_9", "10_14", "15_29", "30_59", "60_plus")
 
 
@@ -4615,6 +4738,10 @@ def _format_c6(
         *trip_delimitation_stay_rows(frames_2008),
         *trip_delimitation_stay_rows(frames_2019),
     ]
+    tour_rows = [
+        trip_delimitation_tour_row(frames_2008),
+        trip_delimitation_tour_row(frames_2019),
+    ]
     whole_ratios, whole_bands = whole_km_sensitivity(
         frames_2008, frames_2019, *samples["B"], n_reps=n_reps, seed=seed + 40_000
     )
@@ -4629,6 +4756,7 @@ def _format_c6(
         results["c6_clock_speed"] = clock_speed
         results["c6_trip_delimitation_purposes"] = purpose_rows
         results["c6_trip_delimitation_stays"] = stay_rows
+        results["c6_trip_delimitation_tours"] = tour_rows
         results["c6_whole_km_ratios"] = whole_ratios
         results["c6_whole_km_bands"] = whole_bands
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
@@ -4642,6 +4770,8 @@ def _format_c6(
         "#### Trip delimitation",
         "",
         *_format_trip_delimitation_stays(stay_rows),
+        "",
+        *_format_trip_delimitation_tours(tour_rows),
         "",
         *_format_trip_delimitation_purposes(purpose_rows),
     ]
@@ -6223,6 +6353,14 @@ def _format_scope_diagnostics(
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the step-12 report."""
     selected_scope = results["scope"]
+    if results.get("c6_trip_delimitation_tours") is not None:
+        csv_rows = _trip_delimitation_tour_csv_rows(
+            results["c6_trip_delimitation_tours"]
+        )
+        _write_report_table_csv(
+            md_path, "trip_delimitation_tours",
+            list(csv_rows[0]) if csv_rows else [], csv_rows,
+        )
     if results.get("c6_trip_delimitation_stays") is not None:
         csv_rows = _trip_delimitation_stay_csv_rows(
             results["c6_trip_delimitation_stays"]
