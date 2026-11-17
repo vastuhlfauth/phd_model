@@ -388,12 +388,15 @@ def survey_cells(
         categories = cube_categories(survey)
     cells: dict[tuple[str, str], CubeCell] = {}
     for scope_id, frame in survey.frames.items():
-        if not np.isin(frame.household, households).all():
+        try:
+            _, day_index = daily_energy._bootstrap_household_codes(
+                frame.household, households
+            )
+        except ValueError as exc:
             raise ValueError(
                 f"{survey.name}: trip-day households missing from the Kish "
                 f"roster in scope {scope_id}"
-            )
-        day_index = np.searchsorted(households, frame.household)
+            ) from exc
         kept = frame.kept
         weight = frame.weight
         travel = kept & (frame.trips > 0)

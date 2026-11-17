@@ -2299,7 +2299,9 @@ def test_c5_uses_full_roster_denominator_and_reports_published_gaps() -> None:
     assert "-98.7" in week_trip_row
 
 
-def test_c6_speed_uses_weighted_totals_and_crow_fly_zero_share() -> None:
+def test_c6_speed_uses_weighted_totals_and_crow_fly_zero_share(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     sample = variation_report.SpeedSample(
         household=np.array(["h1", "h2", "h3", "h4"]),
         weight=np.ones(4),
@@ -2311,10 +2313,32 @@ def test_c6_speed_uses_weighted_totals_and_crow_fly_zero_share() -> None:
         residence_zone=np.array(["11", "12", "13", ""]),
     )
     selected = np.ones(4, dtype=bool)
+    original_mapping = variation_report.daily_energy._bootstrap_household_codes
+    mapping_calls = []
+
+    def count_mapping(households, universe):
+        mapping_calls.append(1)
+        return original_mapping(households, universe)
+
+    monkeypatch.setattr(
+        variation_report.daily_energy, "_bootstrap_household_codes", count_mapping
+    )
 
     producer = variation_report._bootstrap_speed_estimate(
         sample, "producer", selected, n_reps=40, seed=4
     )
+    assert len(mapping_calls) <= 1
+    rng = np.random.default_rng(4)
+    expected_replicates = []
+    for _ in range(40):
+        counts = variation_report.daily_energy.draw_household_multipliers(
+            sample.household, rng
+        )
+        expected_replicates.append(
+            60.0 * np.sum(counts * sample.producer_km)
+            / np.sum(counts * sample.duration_min)
+        )
+    np.testing.assert_allclose(producer.speed_kmh.replicates, expected_replicates)
     crow = variation_report._bootstrap_speed_estimate(
         replace(sample, crow_fly_km=np.array([0.0, 3.0, 3.0, 2.1])),
         "crow-fly",
@@ -2387,7 +2411,30 @@ def test_c6_crow_fly_distribution_excludes_zeros_and_lumps_over_5km() -> None:
     assert band_line == "| 1.5-2 km | 1 | - | 1 | - |"
 
 
-def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
+def test_c6_standardized_speed_with_weighted_cells_and_empty_draw() -> None:
+    data = {
+        "cell": np.array([0, 0, 1, 1]),
+        "weight": np.array([1.0, 2.0, 1.0, 1.0]),
+        "distance": np.array([2.0, 4.0, 8.0, 10.0]),
+        "duration": np.array([10.0, 20.0, 30.0, 50.0]),
+    }
+    common = np.array([0, 1])
+    mix = np.array([0.75, 0.25])
+    draws = np.array([2.0, 1.0, 1.0, 1.0])
+    expected_distance = 0.75 * 3.0 + 0.25 * 9.0
+    expected_time = 0.75 * 15.0 + 0.25 * 40.0
+    assert variation_report._standardized_speed_value(
+        data, draws, common, mix
+    ) == pytest.approx(60.0 * expected_distance / expected_time)
+    draws[2:] = 0.0
+    assert np.isnan(
+        variation_report._standardized_speed_value(data, draws, common, mix)
+    )
+
+
+def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def sample(
         first_cell_n: int,
         second_cell_n: int,
@@ -2408,6 +2455,16 @@ def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
             residence_zone=np.array(["11"] * n),
         )
 
+    original_mapping = variation_report.daily_energy._bootstrap_household_codes
+    mapping_calls = []
+
+    def count_mapping(households, universe):
+        mapping_calls.append(1)
+        return original_mapping(households, universe)
+
+    monkeypatch.setattr(
+        variation_report.daily_energy, "_bootstrap_household_codes", count_mapping
+    )
     cells, n_2008, n_2019, speed_2008, speed_2019 = (
         variation_report._standardized_car_speed(
             sample(50, 50, 30.0, 70.0),
@@ -2423,6 +2480,7 @@ def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant() -> None:
     assert speed_2019.estimate == pytest.approx(60.0 * 5.0 / 18.0)
     assert np.isfinite(speed_2019.interval).all()
     assert variation_report._ratio_metric(speed_2008, speed_2019) is not None
+    assert len(mapping_calls) <= 2
 
 
 def test_c6_split_speed_shares_household_draws_within_each_survey(

@@ -368,6 +368,13 @@ def test_household_draws_are_shared_across_scopes() -> None:
         )
 
 
+def test_cube_rejects_households_missing_from_roster() -> None:
+    survey = _unit_survey()
+    survey.frames["round-dest-local"].household[0] = "outside"
+    with pytest.raises(ValueError, match="missing from the Kish roster"):
+        scope_cube.survey_cells(survey, n_reps=3, seed=0)
+
+
 def test_ratio_reuses_shared_replicate_ratio_ci() -> None:
     """Doubling every duration doubles the point ratio exactly, and the
     interval equals the shared ``bootstrap_replicate_ratio_ci``'s."""

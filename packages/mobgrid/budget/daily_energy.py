@@ -989,9 +989,10 @@ def _bootstrap_household_codes(
     households = np.unique(
         household if household_universe is None else household_universe
     )
-    if not np.isin(household, households).all():
+    codes = np.searchsorted(households, household)
+    if np.any(codes >= len(households)) or np.any(households[codes] != household):
         raise ValueError("bootstrap observations include households outside the roster")
-    return households, np.searchsorted(households, household)
+    return households, codes
 
 
 def household_multiplier_matrix(
@@ -1001,8 +1002,9 @@ def household_multiplier_matrix(
     if n_reps <= 0:
         raise ValueError("n_reps must be positive")
     rng = np.random.default_rng(seed)
+    universe, codes = _bootstrap_household_codes(households, None)
     return np.stack([
-        draw_household_multipliers(households, rng) for _ in range(n_reps)
+        variation.household_multipliers(universe, rng)[codes] for _ in range(n_reps)
     ]).astype(float)
 
 

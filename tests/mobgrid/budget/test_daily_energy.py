@@ -55,6 +55,40 @@ def test_ratio_bootstrap_keeps_noncontributing_roster_households() -> None:
             household_universe_a=np.array(["a"]), n_reps=40,
         )
 
+
+def test_household_draw_matrix_maps_roster_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared draws preserve duplicates and avoid remapping for every replicate."""
+    households = np.array(["b", "a", "b", "c"], dtype=object)
+    seed = 12
+    rng = np.random.default_rng(seed)
+    expected = np.stack([
+        daily_energy.draw_household_multipliers(households, rng)
+        for _ in range(10)
+    ])
+    original = daily_energy._bootstrap_household_codes
+    calls = []
+
+    def count_mapping(observations, universe):
+        calls.append(1)
+        return original(observations, universe)
+
+    monkeypatch.setattr(daily_energy, "_bootstrap_household_codes", count_mapping)
+    actual = daily_energy.household_multiplier_matrix(households, n_reps=10, seed=seed)
+    np.testing.assert_array_equal(actual, expected)
+    assert len(calls) <= 1
+
+
+@pytest.mark.parametrize("missing", ["0", "b", "z"])
+def test_household_mapping_rejects_ids_outside_sorted_roster(missing: str) -> None:
+    with pytest.raises(ValueError, match="outside the roster"):
+        daily_energy._bootstrap_household_codes(
+            np.array([missing], dtype=object),
+            np.array(["a", "c"], dtype=object),
+        )
+
+
 @pytest.fixture
 def day_summary(tmp_path: Path, synthetic_emp_zip: Path) -> duckdb.DuckDBPyConnection:
     config = load_energy_config(CONFIG_PATH)

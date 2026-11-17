@@ -2557,10 +2557,11 @@ def _bootstrap_speed_estimate(
     reps_speed = np.full(n_reps, np.nan)
     reps_zero = np.full(n_reps, np.nan) if measure == "crow-fly" else None
     rng = np.random.default_rng(seed)
+    households, household_codes = daily_energy._bootstrap_household_codes(
+        household, sample.household_universe
+    )
     for rep in range(n_reps):
-        multiplier = daily_energy.draw_household_multipliers(
-            household, rng, sample.household_universe
-        )
+        multiplier = variation.household_multipliers(households, rng)[household_codes]
         rep_weight = weight * multiplier
         rep_total = float(np.sum(rep_weight))
         rep_time = float(np.sum(rep_weight * duration))
@@ -2759,21 +2760,18 @@ def _standardized_speed_value(
     active_cells = common_cells[mix[common_cells] > 0]
     if len(active_cells) == 0:
         return float("nan")
-    distance_mean = np.zeros(len(mix))
-    time_mean = np.zeros_like(distance_mean)
-    for cell in active_cells:
-        selected = sample["cell"] == cell
-        total = float(np.sum(weight[selected]))
-        if total <= 0:
-            return float("nan")
-        distance_mean[cell] = float(
-            np.sum(weight[selected] * sample["distance"][selected]) / total
-        )
-        time_mean[cell] = float(
-            np.sum(weight[selected] * sample["duration"][selected]) / total
-        )
-    weighted_distance = float(np.sum(mix[active_cells] * distance_mean[active_cells]))
-    weighted_time = float(np.sum(mix[active_cells] * time_mean[active_cells]))
+    cell = sample["cell"]
+    totals = np.bincount(cell, weights=weight, minlength=len(mix))[active_cells]
+    if np.any(totals <= 0):
+        return float("nan")
+    distances = np.bincount(
+        cell, weights=weight * sample["distance"], minlength=len(mix)
+    )[active_cells]
+    times = np.bincount(
+        cell, weights=weight * sample["duration"], minlength=len(mix)
+    )[active_cells]
+    weighted_distance = float(np.sum(mix[active_cells] * distances / totals))
+    weighted_time = float(np.sum(mix[active_cells] * times / totals))
     return (
         60.0 * weighted_distance / weighted_time if weighted_time > 0 else float("nan")
     )
@@ -2876,6 +2874,18 @@ def _standardized_speed_pair(
         ]))
         codes_a = np.searchsorted(mix_union, data_a["household"])
         codes_mix = np.searchsorted(mix_union, mix["household"])
+    elif separate_sample_draws:
+        universe_a, codes_a = daily_energy._bootstrap_household_codes(
+            data_a["household"], data_a.get("household_universe")
+        )
+    if separate_sample_draws:
+        universe_b, codes_b = daily_energy._bootstrap_household_codes(
+            data_b["household"], data_b.get("household_universe")
+        )
+    if separate_mix_draw:
+        universe_mix, codes_mix = daily_energy._bootstrap_household_codes(
+            mix["household"], mix.get("household_universe")
+        )
     for rep in range(n_reps):
         if share_mix_households:
             all_multipliers = variation.household_multipliers(
@@ -2896,18 +2906,16 @@ def _standardized_speed_pair(
                 multiplier_a = draw_a[codes_a]
                 mix_multiplier = draw_a[codes_mix]
             else:
-                multiplier_a = daily_energy.draw_household_multipliers(
-                    data_a["household"], rng_a, data_a.get("household_universe")
-                )
-            multiplier_b = daily_energy.draw_household_multipliers(
-                data_b["household"], rng_b, data_b.get("household_universe")
-            )
+                multiplier_a = variation.household_multipliers(
+                    universe_a, rng_a
+                )[codes_a]
+            multiplier_b = variation.household_multipliers(universe_b, rng_b)[codes_b]
         if shared_mix:
             mix_multiplier = multiplier_a
         elif not share_mix_households and not mix_shares_a:
-            mix_multiplier = daily_energy.draw_household_multipliers(
-                mix["household"], rng_mix, mix.get("household_universe")
-            )
+            mix_multiplier = variation.household_multipliers(
+                universe_mix, rng_mix
+            )[codes_mix]
         cell_weight = np.bincount(
             mix["cell"],
             weights=mix["weight"] * mix_multiplier,
