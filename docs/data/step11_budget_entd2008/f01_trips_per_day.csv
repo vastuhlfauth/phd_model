@@ -1,7 +1,7 @@
 figure,panel,scope,survey,group,subgroup,quantity,unit,days,basis,n,mean,ci_low,ci_high,median,p25,p75,ratio,ratio_ci_low,ratio_ci_high
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,1,,% of person-days,%,Monday-Friday,per day with trips,,0.8196880207961845,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,2.5,,% of person-days,%,Monday-Friday,per day with trips,,8.625579025860205,,,,,,,,
-f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,4,,% of person-days,%,Monday-Friday,per day with trips,,24.823286351231353,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,1,,% of person-days,%,Monday-Friday,per day with trips,,0.8196880207961844,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,2.5,,% of person-days,%,Monday-Friday,per day with trips,,8.625579025860212,,,,,,,,
+f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,4,,% of person-days,%,Monday-Friday,per day with trips,,24.823286351231395,,,,,,,,
 f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,5.0,,% of person-days,%,Monday-Friday,per day with trips,,7.750462028345864,,,,,,,,
 f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,6,,% of person-days,%,Monday-Friday,per day with trips,,8.20810242818471,,,,,,,,
 f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,7.5,,% of person-days,%,Monday-Friday,per day with trips,,2.779375895746259,,,,,,,,
@@ -14,15 +14,15 @@ f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · lo
 f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,16,,% of person-days,%,Monday-Friday,per day with trips,,0.03846775274117822,,,,,,,,
 f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,17.5,,% of person-days,%,Monday-Friday,per day with trips,,0.018583473295414828,,,,,,,,
 f01_trips_per_day,(A) Distribution,Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,19,,% of person-days,%,Monday-Friday,per day with trips,,0.03136420736619831,,,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Children 6–17,,Mean trips per day,,Monday-Friday,per day with trips,1253,3.2769959975379215,3.1683015448589544,3.3890828684795737,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Employed,,Mean trips per day,,Monday-Friday,per day with trips,7197,4.05862757867784,3.986511411130898,4.14249256691129,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Unemployed,,Mean trips per day,,Monday-Friday,per day with trips,596,3.7537422427551843,3.531243657802686,4.015314164679207,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Retired,,Mean trips per day,,Monday-Friday,per day with trips,3635,3.251391990881551,3.1433247775234925,3.3519965030947434,,,,,,
-f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Other inactive,,Mean trips per day,,Monday-Friday,per day with trips,1324,3.7556487778926324,3.586036842985857,3.9588317575023773,,,,,,
-f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Dense,,Mean trips per day,,Monday-Friday,per day with trips,1996,3.718342562849986,3.5441994738949347,3.8631129242545685,,,,,,
-f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Intermediate,,Mean trips per day,,Monday-Friday,per day with trips,5726,3.7054131996959345,3.6170183697476594,3.7903508840347233,,,,,,
-f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Sparse,,Mean trips per day,,Monday-Friday,per day with trips,1779,3.810393109602104,3.661215505359789,3.9512940969414188,,,,,,
-f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Very sparse,,Mean trips per day,,Monday-Friday,per day with trips,4505,3.6977867941001663,3.6131400618035503,3.790891049044538,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Children 6–17,,Mean trips per day,,Monday-Friday,per day with trips,1253,3.2769959975379197,3.168301544858955,3.3890828684795737,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Employed,,Mean trips per day,,Monday-Friday,per day with trips,7197,4.058627578677834,3.986511411130898,4.142492566911289,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Unemployed,,Mean trips per day,,Monday-Friday,per day with trips,596,3.7537422427551848,3.531243657802686,4.015314164679207,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Retired,,Mean trips per day,,Monday-Friday,per day with trips,3635,3.2513919908815527,3.1433247775234916,3.3519965030947443,,,,,,
+f01_trips_per_day,"(B) By population category, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Other inactive,,Mean trips per day,,Monday-Friday,per day with trips,1324,3.7556487778926337,3.586036842985857,3.9588317575023777,,,,,,
+f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Dense,,Mean trips per day,,Monday-Friday,per day with trips,1996,3.718342562849986,3.5441994738949343,3.8631129242545685,,,,,,
+f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Intermediate,,Mean trips per day,,Monday-Friday,per day with trips,5726,3.705413199695933,3.617018369747659,3.7903508840347224,,,,,,
+f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Sparse,,Mean trips per day,,Monday-Friday,per day with trips,1779,3.8103931096021064,3.6612155053597886,3.9512940969414188,,,,,,
+f01_trips_per_day,"(C) By density class, stacked by motive",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Very sparse,,Mean trips per day,,Monday-Friday,per day with trips,4505,3.6977867941001663,3.6131400618035503,3.7908910490445384,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -106,7 +106,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,overall,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,3.1740042777364494,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,3.17400427773645,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -120,14 +120,14 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,overall,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,3.934028993484266,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,3.934028993484267,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,overall,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,3.311723192114212,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,3.3117231921142127,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -141,14 +141,14 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,overall,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,3.10198202389517,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,3.1019820238951703,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,overall,Train,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,2.5628074242932084,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,2.562807424293208,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -162,7 +162,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,overall,Other,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,2.8376195163122557,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,1324,2.8376195163122553,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -176,7 +176,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Children 6–17,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.2102690984944435,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.210269098494443,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -190,14 +190,14 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Children 6–17,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.395377041619985,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.395377041619984,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Children 6–17,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4201825484728836,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4201825484728827,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -239,14 +239,14 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Employed,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,4.058627578677839,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,4.05862757867784,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Employed,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.584275418796387,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.584275418796388,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -267,7 +267,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Employed,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.704099766693619,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.7040997666936177,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -281,7 +281,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Employed,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.2274132950460324,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.2274132950460315,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -302,7 +302,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Employed,Other,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.3438113232197377,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.3438113232197373,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -316,7 +316,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Unemployed,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.612872323971757,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.6128723239717573,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -365,7 +365,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Unemployed,Multimodal,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,5.416402525872988,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,5.416402525872989,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -379,35 +379,35 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Retired,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.251391990881551,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.25139199088155,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Retired,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.6179530957805883,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.617953095780589,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Retired,Cycle,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.940165253204374,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.9401652532043734,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Retired,Car driver,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4912881152076554,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4912881152076563,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Retired,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.678551375753592,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,2.678551375753593,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -449,14 +449,14 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Other inactive,overall,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.755648777892632,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.7556487778926333,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Other inactive,Walking only,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.292856376325595,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.2928563763255956,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -477,7 +477,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Other inactive,Car passenger (household),"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4713148824136173,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.4713148824136204,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -491,7 +491,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Other inactive,Urban PT,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.0891694000949332,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,3.0891694000949346,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
@@ -505,7 +505,7 @@ subgroup can exceed its row/column total if other subgroups pull
 the weighted average down -- not an error, see the report)",Round-trip days · destination purposes · local (≤ 80 km),ENTD 2008,Other inactive,Multimodal,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull
-the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,5.111854777865467,,,,,,,,
+the weighted average down -- not an error, see the report)",,Monday-Friday,per day with trips,,5.111854777865469,,,,,,,,
 f01_trips_per_day,"(D) Mean trips per day by population category x main-mode group
 (row/col 'overall' = marginal, weighted means, as in (B)/(C); a
 subgroup can exceed its row/column total if other subgroups pull

@@ -355,67 +355,67 @@ Among described weekdays with trips (all motives), the producer-weighted share w
 
 | Category | n respondents | min/person/day | 95% CI |
 |---|---:|---:|---|
-| children_6_17 | 1502 | 42.3 | [39.7, 45.1] |
-| employed | 8658 | 61.1 | [59.5, 63.1] |
-| unemployed | 796 | 47.2 | [42.5, 52.3] |
-| retired | 5709 | 34.6 | [33.0, 36.5] |
-| other_inactive | 1876 | 45.9 | [42.7, 49.2] |
-| overall | 18542 | 49.6 | [48.6, 50.8] |
+| children_6_17 | 1502 | 44.8 | [42.3, 47.9] |
+| employed | 8658 | 65.7 | [63.9, 67.7] |
+| unemployed | 796 | 49.2 | [44.2, 55.2] |
+| retired | 5709 | 35.7 | [34.2, 37.4] |
+| other_inactive | 1876 | 49.0 | [45.3, 51.8] |
+| overall | 18542 | 52.6 | [51.6, 53.7] |
 
 ### By population category x density class (weekday budget)
 
 | Category | Density | n respondents | min/person/day | 95% CI |
 |---|---|---:|---:|---|
-| children_6_17 | dense | 141 | 40.1 | [32.6, 46.7] |
-| children_6_17 | intermediate | 577 | 44.1 | [39.4, 48.6] |
-| children_6_17 | sparse | 211 | 37.9 | [33.3, 43.1] |
-| children_6_17 | very_sparse | 573 | 43.4 | [38.9, 47.8] |
-| employed | dense | 1243 | 67.5 | [63.7, 71.6] |
-| employed | intermediate | 3432 | 65.7 | [62.9, 68.9] |
-| employed | sparse | 1065 | 54.8 | [49.3, 59.5] |
-| employed | very_sparse | 2918 | 54.6 | [52.5, 57.2] |
-| unemployed | dense | 123 | 58.5 | [42.0, 83.6] |
-| unemployed | intermediate | 352 | 48.1 | [41.6, 55.9] |
-| unemployed | sparse | 91 | 34.7 | [22.5, 50.9] |
-| unemployed | very_sparse | 230 | 45.2 | [36.4, 54.1] |
-| retired | dense | 630 | 39.9 | [34.3, 45.1] |
-| retired | intermediate | 2157 | 37.6 | [34.9, 40.6] |
-| retired | sparse | 788 | 30.0 | [25.9, 34.5] |
-| retired | very_sparse | 2134 | 30.8 | [28.3, 33.9] |
-| other_inactive | dense | 394 | 47.6 | [41.5, 55.6] |
-| other_inactive | intermediate | 749 | 45.9 | [41.4, 50.3] |
-| other_inactive | sparse | 241 | 47.6 | [38.4, 55.6] |
-| other_inactive | very_sparse | 492 | 42.8 | [34.8, 50.1] |
+| children_6_17 | dense | 141 | 42.8 | [35.9, 50.7] |
+| children_6_17 | intermediate | 577 | 46.7 | [42.2, 51.6] |
+| children_6_17 | sparse | 211 | 39.9 | [34.4, 46.2] |
+| children_6_17 | very_sparse | 573 | 45.9 | [41.6, 50.5] |
+| employed | dense | 1243 | 72.3 | [68.5, 76.8] |
+| employed | intermediate | 3432 | 70.5 | [67.4, 73.8] |
+| employed | sparse | 1065 | 60.3 | [55.7, 67.1] |
+| employed | very_sparse | 2918 | 58.2 | [55.6, 61.2] |
+| unemployed | dense | 123 | 61.3 | [43.8, 86.2] |
+| unemployed | intermediate | 352 | 49.6 | [43.4, 55.9] |
+| unemployed | sparse | 91 | 37.7 | [25.0, 54.0] |
+| unemployed | very_sparse | 230 | 46.8 | [38.0, 55.4] |
+| retired | dense | 630 | 41.8 | [36.7, 47.7] |
+| retired | intermediate | 2157 | 38.8 | [35.7, 42.0] |
+| retired | sparse | 788 | 30.7 | [27.2, 35.1] |
+| retired | very_sparse | 2134 | 31.7 | [29.2, 34.6] |
+| other_inactive | dense | 394 | 52.1 | [45.5, 59.1] |
+| other_inactive | intermediate | 749 | 49.5 | [45.4, 54.3] |
+| other_inactive | sparse | 241 | 48.7 | [39.4, 58.9] |
+| other_inactive | very_sparse | 492 | 45.2 | [37.9, 52.3] |
 
 ### By population category x income quintile (weekday budget)
 
 | Category | Income quintile | n respondents | min/person/day | 95% CI |
 |---|---|---:|---:|---|
-| children_6_17 | q1 | 287 | 45.7 | [39.0, 53.8] |
-| children_6_17 | q2 | 379 | 42.8 | [37.6, 48.0] |
-| children_6_17 | q3 | 286 | 41.3 | [36.5, 46.4] |
-| children_6_17 | q4 | 313 | 40.0 | [35.4, 44.2] |
-| children_6_17 | q5 | 237 | 40.2 | [33.7, 46.1] |
-| employed | q1 | 743 | 59.8 | [54.6, 64.3] |
-| employed | q2 | 1266 | 56.5 | [53.2, 60.8] |
-| employed | q3 | 1758 | 59.2 | [54.5, 63.7] |
-| employed | q4 | 2180 | 59.7 | [56.6, 63.6] |
-| employed | q5 | 2711 | 68.2 | [64.8, 71.8] |
-| unemployed | q1 | 336 | 40.6 | [34.4, 48.3] |
-| unemployed | q2 | 160 | 52.1 | [39.8, 69.1] |
-| unemployed | q3 | 125 | 48.5 | [37.8, 62.1] |
-| unemployed | q4 | 89 | 56.9 | [42.2, 70.8] |
-| unemployed | q5 | 86 | 59.0 | [47.2, 73.7] |
-| retired | q1 | 1229 | 24.3 | [21.6, 27.5] |
-| retired | q2 | 983 | 30.2 | [26.3, 33.7] |
-| retired | q3 | 1190 | 36.5 | [32.7, 39.7] |
-| retired | q4 | 880 | 38.8 | [34.9, 43.4] |
-| retired | q5 | 1427 | 43.8 | [40.3, 47.0] |
-| other_inactive | q1 | 764 | 45.4 | [40.4, 51.2] |
-| other_inactive | q2 | 371 | 45.0 | [38.3, 52.2] |
-| other_inactive | q3 | 256 | 41.6 | [35.0, 50.4] |
-| other_inactive | q4 | 195 | 52.9 | [43.0, 62.5] |
-| other_inactive | q5 | 290 | 48.3 | [40.0, 56.7] |
+| children_6_17 | q1 | 287 | 48.1 | [42.0, 56.4] |
+| children_6_17 | q2 | 379 | 44.8 | [39.0, 49.8] |
+| children_6_17 | q3 | 286 | 43.9 | [38.6, 49.6] |
+| children_6_17 | q4 | 313 | 42.4 | [37.9, 48.0] |
+| children_6_17 | q5 | 237 | 43.6 | [36.9, 51.5] |
+| employed | q1 | 743 | 62.7 | [58.1, 68.2] |
+| employed | q2 | 1266 | 60.0 | [56.1, 64.4] |
+| employed | q3 | 1758 | 63.4 | [58.5, 69.5] |
+| employed | q4 | 2180 | 64.6 | [61.1, 68.2] |
+| employed | q5 | 2711 | 74.7 | [71.4, 77.8] |
+| unemployed | q1 | 336 | 42.0 | [35.1, 49.1] |
+| unemployed | q2 | 160 | 53.8 | [41.0, 70.2] |
+| unemployed | q3 | 125 | 51.6 | [38.2, 63.0] |
+| unemployed | q4 | 89 | 60.0 | [47.2, 73.6] |
+| unemployed | q5 | 86 | 62.7 | [49.2, 75.0] |
+| retired | q1 | 1229 | 24.9 | [22.1, 27.8] |
+| retired | q2 | 983 | 31.3 | [28.2, 34.9] |
+| retired | q3 | 1190 | 37.2 | [33.5, 40.7] |
+| retired | q4 | 880 | 40.4 | [35.5, 45.1] |
+| retired | q5 | 1427 | 45.6 | [42.7, 49.3] |
+| other_inactive | q1 | 764 | 48.0 | [42.0, 53.6] |
+| other_inactive | q2 | 371 | 47.6 | [40.2, 54.6] |
+| other_inactive | q3 | 256 | 46.9 | [37.5, 55.9] |
+| other_inactive | q4 | 195 | 54.9 | [44.0, 66.4] |
+| other_inactive | q5 | 290 | 52.7 | [45.0, 60.8] |
 
 ## Quirks: `distcor`/`v2_mduree` fill rate and mean change (section 9.9)
 

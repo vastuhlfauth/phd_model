@@ -162,12 +162,12 @@ Direct producer-weighted local-trip total divided by the full respondent roster.
 
 | Category | 2008 (min) | 2008 95% CI | 2019 (min) | 2019 95% CI | 2019 - 2008 |
 |---|---|---|---|---|---|
-| children_6_17 | 42.3 | [39.7, 45.1] | 42.6 | [39.9, 45.7] | +0.3 |
-| employed | 61.1 | [59.5, 63.1] | 70.6 | [68.8, 72.9] | +9.5 |
-| unemployed | 47.2 | [42.5, 52.3] | 54.2 | [48.2, 60.9] | +7.0 |
-| retired | 34.6 | [33.0, 36.5] | 39.2 | [37.6, 40.9] | +4.6 |
-| other_inactive | 45.9 | [42.7, 49.2] | 52.9 | [48.6, 58.1] | +7.0 |
-| overall | 49.6 | [48.6, 50.8] | 55.2 | [53.9, 56.7] | +5.6 |
+| children_6_17 | 44.8 | [42.3, 47.9] | 46.5 | [43.2, 49.8] | +1.7 |
+| employed | 65.7 | [63.9, 67.7] | 75.3 | [72.9, 78.2] | +9.6 |
+| unemployed | 49.2 | [44.2, 55.2] | 57.8 | [50.0, 64.5] | +8.6 |
+| retired | 35.7 | [34.2, 37.4] | 40.4 | [38.7, 42.4] | +4.8 |
+| other_inactive | 49.0 | [45.3, 51.8] | 57.2 | [51.4, 62.6] | +8.2 |
+| overall | 52.6 | [51.6, 53.7] | 58.6 | [57.4, 60.0] | +6.1 |
 
 
 ## Temporal equivalence, 2008 to 2019
@@ -178,23 +178,23 @@ Ratios are 2019/2008; the 90% CI pairs replicate b from two independent 200-repl
 
 | Category | n 2008 | n 2019 | Ratio 2019/2008 | 90% CI | ±15% verdict | ±10% verdict |
 |---|---|---|---|---|---|---|
-| children_6_17 | 1253 | 861 | 1.052 | [0.983, 1.127] | equivalent | inconclusive |
-| employed | 7197 | 4045 | 1.119 | [1.085, 1.155] | inconclusive | inconclusive |
-| unemployed | 596 | 502 | 1.149 | [1.019, 1.278] | inconclusive | inconclusive |
-| retired | 3635 | 3222 | 1.082 | [1.036, 1.120] | equivalent | inconclusive |
-| other_inactive | 1324 | 778 | 1.135 | [1.046, 1.225] | inconclusive | inconclusive |
-| overall | 14006 | 9418 | 1.098 | [1.078, 1.128] | equivalent | inconclusive |
+| children_6_17 | 1253 | 861 | 1.052 | [0.971, 1.118] | equivalent | inconclusive |
+| employed | 7197 | 4045 | 1.119 | [1.087, 1.157] | inconclusive | inconclusive |
+| unemployed | 596 | 502 | 1.149 | [1.022, 1.301] | inconclusive | inconclusive |
+| retired | 3635 | 3222 | 1.082 | [1.037, 1.124] | equivalent | inconclusive |
+| other_inactive | 1324 | 778 | 1.135 | [1.050, 1.231] | inconclusive | inconclusive |
+| overall | 14006 | 9418 | 1.098 | [1.072, 1.120] | equivalent | inconclusive |
 
 ### Daily time, weekday per-person budgets
 
 | Category | n 2008 | n 2019 | Ratio 2019/2008 | 90% CI | ±15% verdict | ±10% verdict |
 |---|---|---|---|---|---|---|
-| children_6_17 | 1502 | 1256 | 1.006 | [0.930, 1.077] | equivalent | equivalent |
-| employed | 8658 | 5741 | 1.155 | [1.114, 1.192] | inconclusive | different |
-| unemployed | 796 | 740 | 1.148 | [0.978, 1.344] | inconclusive | inconclusive |
-| retired | 5709 | 4907 | 1.133 | [1.079, 1.199] | inconclusive | inconclusive |
-| other_inactive | 1876 | 1168 | 1.153 | [1.035, 1.265] | inconclusive | inconclusive |
-| overall | 18542 | 13825 | 1.112 | [1.082, 1.138] | equivalent | inconclusive |
+| children_6_17 | 1502 | 1256 | 1.038 | [0.955, 1.113] | equivalent | inconclusive |
+| employed | 8658 | 5741 | 1.146 | [1.102, 1.186] | inconclusive | different |
+| unemployed | 796 | 740 | 1.175 | [1.015, 1.339] | inconclusive | inconclusive |
+| retired | 5709 | 4907 | 1.133 | [1.073, 1.191] | inconclusive | inconclusive |
+| other_inactive | 1876 | 1168 | 1.168 | [1.064, 1.295] | inconclusive | inconclusive |
+| overall | 18542 | 13825 | 1.115 | [1.085, 1.142] | equivalent | inconclusive |
 
 ### Daily time, weekday days with trips by category × density proxy
 

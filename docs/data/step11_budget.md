@@ -355,78 +355,78 @@ Among described weekdays with trips (all motives), the producer-weighted share w
 
 | Category | n respondents | min/person/day | 95% CI |
 |---|---:|---:|---|
-| children_6_17 | 1256 | 42.6 | [39.9, 45.7] |
-| employed | 5741 | 70.6 | [68.8, 72.9] |
-| unemployed | 740 | 54.2 | [48.2, 60.9] |
-| retired | 4907 | 39.2 | [37.6, 40.9] |
-| other_inactive | 1168 | 52.9 | [48.6, 58.1] |
-| overall | 13825 | 55.2 | [53.9, 56.7] |
+| children_6_17 | 1256 | 46.5 | [43.2, 49.8] |
+| employed | 5741 | 75.3 | [72.9, 78.2] |
+| unemployed | 740 | 57.8 | [50.0, 64.5] |
+| retired | 4907 | 40.4 | [38.7, 42.4] |
+| other_inactive | 1168 | 57.2 | [51.4, 62.6] |
+| overall | 13825 | 58.6 | [57.4, 60.0] |
 
 #### Sensitivity: all days (Monday-Sunday)
 
 | Category | n respondents | min/person/day | 95% CI |
 |---|---:|---:|---|
-| children_6_17 | 1256 | 40.6 | [38.0, 43.0] |
-| employed | 5741 | 63.8 | [62.1, 65.5] |
-| unemployed | 740 | 51.1 | [45.5, 56.3] |
-| retired | 4907 | 36.4 | [35.2, 37.9] |
-| other_inactive | 1168 | 50.9 | [47.2, 55.7] |
-| overall | 13825 | 50.9 | [49.9, 52.0] |
+| children_6_17 | 1256 | 45.1 | [41.9, 48.0] |
+| employed | 5741 | 69.4 | [67.4, 71.0] |
+| unemployed | 740 | 54.6 | [48.8, 60.2] |
+| retired | 4907 | 37.8 | [36.2, 39.3] |
+| other_inactive | 1168 | 55.7 | [51.7, 60.2] |
+| overall | 13825 | 54.8 | [53.7, 55.9] |
 
 ### By population category x density class (weekday budget)
 
 | Category | Density | n respondents | min/person/day | 95% CI |
 |---|---|---:|---:|---|
-| children_6_17 | dense | 463 | 48.9 | [43.7, 55.2] |
-| children_6_17 | intermediate | 352 | 38.1 | [32.7, 43.5] |
-| children_6_17 | sparse | 400 | 39.1 | [33.9, 44.4] |
+| children_6_17 | dense | 463 | 51.3 | [45.4, 57.0] |
+| children_6_17 | intermediate | 352 | 41.9 | [36.5, 47.5] |
+| children_6_17 | sparse | 400 | 43.9 | [38.0, 50.3] |
 | children_6_17 | very_sparse | 41 | - | - |
-| employed | dense | 2182 | 73.3 | [69.8, 77.5] |
-| employed | intermediate | 1502 | 64.2 | [59.9, 68.8] |
-| employed | sparse | 1834 | 73.1 | [69.2, 77.8] |
-| employed | very_sparse | 223 | 66.8 | [54.3, 77.4] |
-| unemployed | dense | 325 | 63.0 | [53.3, 72.1] |
-| unemployed | intermediate | 218 | 52.0 | [40.9, 68.1] |
-| unemployed | sparse | 177 | 41.0 | [31.7, 50.2] |
+| employed | dense | 2182 | 78.7 | [74.6, 81.9] |
+| employed | intermediate | 1502 | 69.3 | [65.1, 74.8] |
+| employed | sparse | 1834 | 76.7 | [72.7, 80.9] |
+| employed | very_sparse | 223 | 70.6 | [59.2, 81.9] |
+| unemployed | dense | 325 | 68.2 | [56.8, 79.6] |
+| unemployed | intermediate | 218 | 55.4 | [40.9, 70.6] |
+| unemployed | sparse | 177 | 42.5 | [33.9, 50.7] |
 | unemployed | very_sparse | 20 | - | - |
-| retired | dense | 1521 | 46.5 | [43.1, 50.4] |
-| retired | intermediate | 1512 | 36.4 | [33.6, 39.3] |
-| retired | sparse | 1660 | 35.2 | [32.7, 37.8] |
-| retired | very_sparse | 214 | 36.0 | [28.9, 44.2] |
-| other_inactive | dense | 579 | 61.1 | [54.4, 68.6] |
-| other_inactive | intermediate | 318 | 49.0 | [40.6, 58.5] |
-| other_inactive | sparse | 246 | 42.4 | [33.2, 51.2] |
+| retired | dense | 1521 | 48.4 | [44.5, 52.0] |
+| retired | intermediate | 1512 | 37.4 | [34.3, 40.5] |
+| retired | sparse | 1660 | 36.3 | [33.7, 39.0] |
+| retired | very_sparse | 214 | 36.4 | [30.1, 43.4] |
+| other_inactive | dense | 579 | 65.6 | [59.0, 72.7] |
+| other_inactive | intermediate | 318 | 51.8 | [41.8, 63.7] |
+| other_inactive | sparse | 246 | 47.2 | [36.8, 57.8] |
 | other_inactive | very_sparse | 25 | - | - |
 
 ### By population category x income quintile (weekday budget)
 
 | Category | Income quintile | n respondents | min/person/day | 95% CI |
 |---|---|---:|---:|---|
-| children_6_17 | q1 | 345 | 44.1 | [37.4, 50.6] |
-| children_6_17 | q2 | 282 | 37.9 | [33.0, 43.9] |
-| children_6_17 | q3 | 232 | 44.4 | [36.4, 51.9] |
-| children_6_17 | q4 | 238 | 40.1 | [32.6, 47.6] |
-| children_6_17 | q5 | 159 | 48.6 | [40.6, 57.2] |
-| employed | q1 | 545 | 61.6 | [54.7, 68.2] |
-| employed | q2 | 899 | 69.2 | [63.9, 75.8] |
-| employed | q3 | 1229 | 69.1 | [64.3, 73.8] |
-| employed | q4 | 1407 | 69.8 | [65.4, 73.8] |
-| employed | q5 | 1661 | 77.5 | [73.7, 81.3] |
-| unemployed | q1 | 414 | 54.7 | [45.9, 64.6] |
-| unemployed | q2 | 145 | 45.3 | [35.6, 57.4] |
-| unemployed | q3 | 86 | 58.8 | [41.7, 77.5] |
-| unemployed | q4 | 59 | 65.9 | [44.1, 90.6] |
+| children_6_17 | q1 | 345 | 46.4 | [40.5, 52.2] |
+| children_6_17 | q2 | 282 | 41.2 | [36.1, 45.8] |
+| children_6_17 | q3 | 232 | 48.9 | [40.8, 56.7] |
+| children_6_17 | q4 | 238 | 46.3 | [39.2, 54.8] |
+| children_6_17 | q5 | 159 | 53.9 | [44.2, 64.1] |
+| employed | q1 | 545 | 64.8 | [58.5, 71.7] |
+| employed | q2 | 899 | 72.5 | [66.7, 79.3] |
+| employed | q3 | 1229 | 73.9 | [68.7, 80.1] |
+| employed | q4 | 1407 | 75.9 | [71.6, 81.2] |
+| employed | q5 | 1661 | 82.6 | [78.4, 87.8] |
+| unemployed | q1 | 414 | 57.0 | [48.6, 65.8] |
+| unemployed | q2 | 145 | 49.1 | [37.8, 61.2] |
+| unemployed | q3 | 86 | 69.4 | [49.6, 88.7] |
+| unemployed | q4 | 59 | 69.2 | [49.4, 91.2] |
 | unemployed | q5 | 36 | - | - |
-| retired | q1 | 646 | 28.1 | [24.6, 32.4] |
-| retired | q2 | 1065 | 35.3 | [32.3, 39.3] |
-| retired | q3 | 1034 | 36.1 | [32.8, 39.8] |
-| retired | q4 | 1078 | 44.3 | [41.1, 48.5] |
-| retired | q5 | 1084 | 48.3 | [43.8, 52.7] |
-| other_inactive | q1 | 549 | 49.1 | [41.8, 56.8] |
-| other_inactive | q2 | 269 | 54.7 | [45.3, 64.2] |
-| other_inactive | q3 | 160 | 52.0 | [38.9, 65.4] |
-| other_inactive | q4 | 98 | 60.0 | [41.3, 76.8] |
-| other_inactive | q5 | 92 | 59.1 | [36.2, 83.5] |
+| retired | q1 | 646 | 28.9 | [25.0, 33.6] |
+| retired | q2 | 1065 | 35.8 | [32.5, 39.3] |
+| retired | q3 | 1034 | 36.9 | [33.5, 41.5] |
+| retired | q4 | 1078 | 46.0 | [42.5, 49.3] |
+| retired | q5 | 1084 | 51.0 | [46.6, 55.8] |
+| other_inactive | q1 | 549 | 52.2 | [45.5, 60.6] |
+| other_inactive | q2 | 269 | 61.2 | [51.6, 72.7] |
+| other_inactive | q3 | 160 | 56.7 | [45.5, 69.8] |
+| other_inactive | q4 | 98 | 66.9 | [50.2, 85.4] |
+| other_inactive | q5 | 92 | 60.9 | [40.9, 83.0] |
 
 ## Mean daily energy and time by main-mode group (point 3)
 
