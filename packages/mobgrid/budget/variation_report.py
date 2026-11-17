@@ -417,13 +417,14 @@ def _create_frames_tables(
             ({mode7_sql}) AS mode7,
             coalesce({motive_group_sql}, 'unknown') AS motive_group,
             e.declared_km, e.crow_fly_km, e.vac_scol,
-            e.departure_min, e.arrival_min,
+            e.departure_min, e.arrival_min, s.stay_min,
             p.sex, p.recall_lag, p.described_weekday_name,
             p.described_month_name,
             CAST(p.described_date AS VARCHAR) AS described_date,
             p.is_idf, p.cars_band,
             p.residence_aa_class
         FROM trip_legs t
+        JOIN scope_trips s ON s.day_id = t.day_id AND s.num_dep = t.num_dep
         LEFT JOIN vr_person p ON p.ident_ind = t.ident_ind
         LEFT JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
         WHERE t.typejour = 1 AND t.pond_jour > 0
@@ -3537,6 +3538,98 @@ def trip_delimitation_purpose_rows(frames: SurveyFrames) -> list[dict]:
     return rows
 
 
+def trip_delimitation_stay_rows(frames: SurveyFrames) -> list[dict]:
+    """Section 9.9: weighted between-trip stays in minutes by arriving mode."""
+    trips = frames.trips
+    stays = np.asarray(trips["stay_min"], dtype=float)
+    weights = np.asarray(trips["pond_jour"], dtype=float)
+    modes = _text_values(trips["mode7"])
+    days = np.asarray(frames.days["pond_jour"], dtype=float)
+    day_weight = float(days[np.isfinite(days) & (days > 0)].sum())
+    if day_weight <= 0:
+        raise ValueError("stay rates require positive travel-day weight")
+    bands = {
+        "0": stays == 0,
+        "1_4": (stays > 0) & (stays < 5),
+        "5_9": (stays >= 5) & (stays < 10),
+        "10_14": (stays >= 10) & (stays < 15),
+        "15_29": (stays >= 15) & (stays < 30),
+        "30_59": (stays >= 30) & (stays < 60),
+        "60_plus": stays >= 60,
+    }
+    valid = (
+        np.isfinite(stays) & (stays >= 0) & (stays < 1440)
+        & np.isfinite(weights) & (weights > 0)
+    )
+    rows = []
+    for mode in MODE7_LABELS:
+        selected = valid & (modes == mode)
+        n = int(selected.sum())
+        if not n:
+            continue
+        total = float(weights[selected].sum())
+        row = {"survey": frames.name, "mode": mode, "n": n}
+        for label, band in bands.items():
+            members = selected & band
+            row[f"n_{label}"] = int(members.sum())
+            row[f"share_{label}"] = float(weights[members].sum() / total)
+        short = selected & (stays < 5)
+        row["n_short"] = int(short.sum())
+        row["short_per_day"] = float(weights[short].sum() / day_weight)
+        rows.append(row)
+    return rows
+
+
+_STAY_BANDS = ("0", "1_4", "5_9", "10_14", "15_29", "30_59", "60_plus")
+
+
+def _format_trip_delimitation_stays(rows: list[dict]) -> list[str]:
+    lines = [
+        "##### Stays between trips",
+        "",
+        "The arrival trip is in the selected weekday scope; its next trip "
+        "is the next recorded trip of the original described day, even if "
+        "excluded by the scope. Stay is next departure minus arrival modulo "
+        "24 hours. Shares use stays with both times; short stays/day uses "
+        "all selected days with trips. Each entry gives n / share; cells "
+        "below 50 trips are hidden. The 1–4 band includes all positive "
+        "stays shorter than five minutes.",
+        "",
+        "| Survey | Arriving mode | n stays | 0 | 1–4 | 5–9 | 10–14 | "
+        "15–29 | 30–59 | 60+ | n <5 | <5/day |",
+        "|---|---|---:|---|---|---|---|---|---|---|---:|---:|",
+    ]
+    for row in rows:
+        cells = [
+            f"{row[f'n_{band}']} / "
+            f"{_suppress(row[f'n_{band}'], _pct(row[f'share_{band}']))}"
+            for band in _STAY_BANDS
+        ]
+        lines.append(
+            f"| {row['survey']} | {row['mode']} | {row['n']} | "
+            + " | ".join(cells)
+            + f" | {row['n_short']} | "
+            + _suppress(row["n_short"], _num(row["short_per_day"], 3))
+            + " |"
+        )
+    return lines
+
+
+def _trip_delimitation_stay_csv_rows(rows: list[dict]) -> list[dict]:
+    records = []
+    for row in rows:
+        record = {key: row[key] for key in ("survey", "mode", "n")}
+        for band in _STAY_BANDS:
+            record[f"n_{band}"] = row[f"n_{band}"]
+            record[f"share_{band}"] = _csv_value(
+                row[f"share_{band}"], row[f"n_{band}"]
+            )
+        record["n_short"] = row["n_short"]
+        record["short_per_day"] = _csv_value(row["short_per_day"], row["n_short"])
+        records.append(record)
+    return records
+
+
 def _format_trip_delimitation_purposes(rows: list[dict]) -> list[str]:
     lines = [
         "##### Escort and short-stop purposes",
@@ -4518,6 +4611,10 @@ def _format_c6(
         *trip_delimitation_purpose_rows(frames_2008),
         *trip_delimitation_purpose_rows(frames_2019),
     ]
+    stay_rows = [
+        *trip_delimitation_stay_rows(frames_2008),
+        *trip_delimitation_stay_rows(frames_2019),
+    ]
     whole_ratios, whole_bands = whole_km_sensitivity(
         frames_2008, frames_2019, *samples["B"], n_reps=n_reps, seed=seed + 40_000
     )
@@ -4531,6 +4628,7 @@ def _format_c6(
         results["c6_clock_gaps"] = clock_gap_rows
         results["c6_clock_speed"] = clock_speed
         results["c6_trip_delimitation_purposes"] = purpose_rows
+        results["c6_trip_delimitation_stays"] = stay_rows
         results["c6_whole_km_ratios"] = whole_ratios
         results["c6_whole_km_bands"] = whole_bands
     lines += ["", *_format_c6_speed_limit(speed_limit_rows, day_share)]
@@ -4542,6 +4640,8 @@ def _format_c6(
     lines += [
         "",
         "#### Trip delimitation",
+        "",
+        *_format_trip_delimitation_stays(stay_rows),
         "",
         *_format_trip_delimitation_purposes(purpose_rows),
     ]
@@ -6123,6 +6223,15 @@ def _format_scope_diagnostics(
 def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     """Write the step-12 report."""
     selected_scope = results["scope"]
+    if results.get("c6_trip_delimitation_stays") is not None:
+        csv_rows = _trip_delimitation_stay_csv_rows(
+            results["c6_trip_delimitation_stays"]
+        )
+        fields = ["survey", "mode", "n"]
+        for band in _STAY_BANDS:
+            fields += [f"n_{band}", f"share_{band}"]
+        fields += ["n_short", "short_per_day"]
+        _write_report_table_csv(md_path, "trip_delimitation_stays", fields, csv_rows)
     if results.get("c6_trip_delimitation_purposes") is not None:
         csv_rows = _trip_delimitation_purpose_csv_rows(
             results["c6_trip_delimitation_purposes"]

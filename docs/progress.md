@@ -2,6 +2,16 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: stays between trips (2026-11-17)
+
+- Added weighted stay distributions by survey and arriving-trip mode, and
+  under-five-minute stays per day with trips, with a matching CSV and
+  suppression below 50 trips. Consecutive trips are identified in the full
+  described-day chain before selecting the arriving trip's scope; missing
+  times do not enter the stay distribution.
+- Five targeted tests passed; Ruff passed. No figures or real-data report
+  were run.
+
 ### Step 12: trip-delimitation purposes (2026-11-17)
 
 - Added weighted weekday trips per day with trips and minutes per trip by

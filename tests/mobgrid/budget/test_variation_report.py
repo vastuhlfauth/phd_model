@@ -1132,6 +1132,8 @@ def test_frame_aggregation_keeps_missing_distance_days(
                          ('b', 'd3', 1, NULL, 20.0))
                 v(day_id, ident_dep, num_dep, distance_km, duration_min);
             CREATE TABLE scope_trips AS SELECT day_id, num_dep,
+                CASE WHEN day_id = 'a' AND num_dep = 1 THEN 3.0
+                    ELSE NULL END AS stay_min,
                 TRUE AS is_round, TRUE AS is_destination, 1 AS mobloc
                 FROM trip_legs;
             CREATE VIEW vr_person AS SELECT DISTINCT ident_ind, 1 AS sex,
@@ -1149,6 +1151,10 @@ def test_frame_aggregation_keeps_missing_distance_days(
             sample_pct=None,
             selected_scope=scope.Scope.parse("alldays-allpurp-daytable"),
         )
+        stays = con.sql(
+            "SELECT stay_min FROM vr_trips ORDER BY day_id, ident_ind, stay_min"
+        ).fetchall()
+        assert stays == [(3.0,), (None,), (None,)]
         frames = SurveyFrames(
             "synthetic",
             {
@@ -2800,6 +2806,30 @@ def test_c6_mode_mix_speed_isolates_the_mode_shift() -> None:
     assert by_csv["as observed"]["ratio"] == pytest.approx(observed_ratio)
     # within walk has only 20 trips in 2019: suppressed in the CSV too.
     assert by_csv["within walk"]["ratio"] == ""
+
+
+def test_trip_delimitation_stays_use_arriving_mode_and_day_denominator() -> None:
+    """Section 9.9: weighted stays are allocated to the arriving trip."""
+    frames = _frames(
+        days={"pond_jour": [1.0, 3.0]},
+        trips={
+            "pond_jour": [1.0, 1.0, 3.0, 3.0, 3.0],
+            "mode7": ["walk", "car_driver", "walk", "walk", "walk"],
+            "stay_min": [0.0, 3.0, 4.0, 70.0, np.nan],
+        },
+    )
+    rows = variation_report.trip_delimitation_stay_rows(frames)
+    walk = next(row for row in rows if row["mode"] == "walk")
+    assert walk["n"] == 3
+    assert walk["share_0"] == pytest.approx(1 / 7)
+    assert walk["share_1_4"] == pytest.approx(3 / 7)
+    assert walk["share_60_plus"] == pytest.approx(3 / 7)
+    assert walk["short_per_day"] == pytest.approx(1.0)
+    car = next(row for row in rows if row["mode"] == "car_driver")
+    assert car["short_per_day"] == pytest.approx(.25)
+    exported = variation_report._trip_delimitation_stay_csv_rows(rows)
+    assert all(row["short_per_day"] == "" for row in exported)
+    assert all(row["share_0"] == "" for row in exported)
 
 
 def test_trip_delimitation_purpose_rates_and_suppression() -> None:
