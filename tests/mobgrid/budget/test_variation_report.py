@@ -2958,6 +2958,39 @@ def test_trip_delimitation_purpose_rates_and_suppression() -> None:
     assert row["minutes_per_trip"] == ""
 
 
+def test_clock_speed_ratio_keeps_point_but_rejects_incomplete_bootstrap() -> None:
+    """C6: a single surviving draw is not a 90% household-bootstrap CI."""
+    metric_a = variation_report.SpeedMetric(
+        10.0, (0.0, 0.0), np.array([10.0, np.nan, np.nan])
+    )
+    metric_b = variation_report.SpeedMetric(
+        8.0, (0.0, 0.0), np.array([8.0, 8.5, np.nan])
+    )
+    ratio = variation_report._complete_bootstrap_speed_ratio(metric_a, metric_b)
+    assert ratio is not None
+    assert ratio.estimate == pytest.approx(.8)
+    assert np.isnan(ratio.interval).all()
+    assert np.isfinite(ratio.replicates).sum() == 1
+    missing = replace(metric_a, replicates=np.full(3, np.nan))
+    ratio = variation_report._complete_bootstrap_speed_ratio(missing, metric_b)
+    assert ratio is not None
+    assert ratio.estimate == pytest.approx(.8)
+    assert np.isnan(ratio.interval).all()
+    row = {
+        "modes": "All", "subset": "both endpoints not round", "cells": 1,
+        "n_2008": 100, "n_2019": 100,
+        "n_common_2008": 100, "n_common_2019": 100,
+        "share_2008": .5, "share_2019": .4, "ratio": ratio,
+    }
+    assert "0.800 [CI unavailable]" in "\n".join(
+        variation_report._format_clock_speed([row])
+    )
+    csv_row = variation_report._clock_speed_csv_rows([row])[0]
+    assert csv_row["ratio"] == pytest.approx(.8)
+    assert csv_row["valid_replicates"] == 0
+    assert csv_row["ci_low"] == csv_row["ci_high"] == ""
+
+
 def test_clock_time_classes_and_standardized_subset_ratios() -> None:
     """Section 9.9 / C6: classify endpoints, preserve the 2008 target mix."""
     classes = variation_report.clock_time_class(

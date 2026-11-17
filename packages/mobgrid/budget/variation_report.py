@@ -3690,7 +3690,7 @@ def trip_delimitation_speed_rows(
         cells, n_a, n_b, speed_a, speed_b = _standardized_speed_pair(
             *data, n_reps=n_reps, seed=seed
         )
-        ratio = _ratio_metric(speed_a, speed_b)
+        ratio = _complete_bootstrap_speed_ratio(speed_a, speed_b)
         rows.append({
             "group": label, "cells": cells,
             "n_2008": counts[0], "n_2019": counts[1],
@@ -3713,8 +3713,9 @@ def _format_trip_delimitation_speeds(rows: list[dict]) -> list[str]:
         "trips in incomplete or partially excluded tours. Speeds use crow-fly "
         "2–80 km, positive duration and known density, standardised to the "
         "2008 group's band × density mix on common cells. Ratios have 90% "
-        "independent household-bootstrap intervals; the number of valid "
-        "paired replicates is shown. Values under 50 trips are hidden.",
+        "independent household-bootstrap intervals; a CI is unavailable if "
+        "any draw loses an active cell. Valid paired replicates are shown. "
+        "Values under 50 trips are hidden.",
         "",
         "| Tour | n 2008 | Share 2008 | n 2019 | Share 2019 | "
         "n common 2008 | n common 2019 | Valid draws | Ratio [90% CI] |",
@@ -3723,6 +3724,12 @@ def _format_trip_delimitation_speeds(rows: list[dict]) -> list[str]:
     for row in rows:
         n = min(row["n_common_2008"], row["n_common_2019"])
         ratio = row["ratio"]
+        if ratio is None:
+            ratio_cell = "-"
+        elif np.isfinite(ratio.interval).all():
+            ratio_cell = _metric_cell(ratio, n, 3)
+        else:
+            ratio_cell = _suppress(n, f"{_num(ratio.estimate, 3)} [CI unavailable]")
         lines.append(
             f"| {row['group']} | {row['n_2008']} | "
             f"{_suppress(row['n_2008'], _pct(row['share_2008']))} | "
@@ -3730,7 +3737,7 @@ def _format_trip_delimitation_speeds(rows: list[dict]) -> list[str]:
             f"{_suppress(row['n_2019'], _pct(row['share_2019']))} | "
             f"{row['n_common_2008']} | {row['n_common_2019']} | "
             f"{row['valid_replicates']} | "
-            f"{_metric_cell(ratio, n, 3) if ratio is not None else '-'} |"
+            f"{ratio_cell} |"
         )
     return lines
 
@@ -3891,6 +3898,33 @@ def _trip_delimitation_purpose_csv_rows(rows: list[dict]) -> list[dict]:
     ]
 
 
+def _complete_bootstrap_speed_ratio(
+    metric_a: SpeedMetric, metric_b: SpeedMetric
+) -> SpeedMetric | None:
+    """C6: retain the point ratio, but require every bootstrap draw for its CI."""
+    if (
+        not np.isfinite(metric_a.estimate)
+        or not np.isfinite(metric_b.estimate)
+        or metric_a.estimate <= 0
+        or metric_b.estimate <= 0
+    ):
+        return None
+    if len(metric_a.replicates) == 0 or len(metric_a.replicates) != len(
+        metric_b.replicates
+    ):
+        raise ValueError("speed ratio requires equal nonempty bootstrap draws")
+    valid = (
+        np.isfinite(metric_a.replicates) & (metric_a.replicates > 0)
+        & np.isfinite(metric_b.replicates) & (metric_b.replicates > 0)
+    )
+    ratios = np.full(len(valid), np.nan)
+    ratios[valid] = metric_b.replicates[valid] / metric_a.replicates[valid]
+    estimate = metric_b.estimate / metric_a.estimate
+    if np.all(valid):
+        return _metric_interval(estimate, ratios, percentiles=(5, 95))
+    return SpeedMetric(estimate, (float("nan"), float("nan")), ratios)
+
+
 def clock_speed_rows(
     sample_2008: SpeedSample, sample_2019: SpeedSample, *, n_reps: int, seed: int
 ) -> list[dict]:
@@ -3938,7 +3972,7 @@ def clock_speed_rows(
                     if base_b["weight"].sum() > 0 else np.nan
                 ),
                 "speed_2008": speed_a, "speed_2019": speed_b,
-                "ratio": _ratio_metric(speed_a, speed_b),
+                "ratio": _complete_bootstrap_speed_ratio(speed_a, speed_b),
             })
     return rows
 
@@ -3955,23 +3989,36 @@ def _format_clock_speed(rows: list[dict]) -> list[str]:
         "cells, with the 2008 mix resampled in the same draw as its subset. "
         "Shares are weighted fractions of each year's eligible trips before "
         "common-cell restriction; n common counts supported trips. Missing "
-        "clock times belong to no subset. Values under 50 trips are hidden; "
-        "both-precise rows require 50 eligible trips in each year.",
+        "clock times belong to no subset. An interval is unavailable if any "
+        "bootstrap draw loses an active cell; the valid paired-draw count "
+        "is shown rather than treating a few surviving draws as a CI. "
+        "Values under 50 trips are hidden; both-precise rows require 50 "
+        "eligible trips in each year.",
         "",
         "| Modes | Subset | n 2008 | n common 2008 | Share 2008 | n 2019 | "
-        "n common 2019 | Share 2019 | Speed ratio 2019/2008 [90% CI] |",
-        "|---|---|---:|---:|---|---:|---:|---|---|",
+        "n common 2019 | Share 2019 | Valid draws | "
+        "Speed ratio 2019/2008 [90% CI] |",
+        "|---|---|---:|---:|---|---:|---:|---|---:|---|",
     ]
     for row in rows:
         n_ratio = min(row["n_common_2008"], row["n_common_2019"])
         ratio = row["ratio"]
+        valid_draws = int(np.isfinite(ratio.replicates).sum()) if ratio else 0
+        if ratio is None:
+            ratio_cell = "-"
+        elif np.isfinite(ratio.interval).all():
+            ratio_cell = _metric_cell(ratio, n_ratio, 3)
+        else:
+            ratio_cell = _suppress(
+                n_ratio, f"{_num(ratio.estimate, 3)} [CI unavailable]"
+            )
         lines.append(
             f"| {row['modes']} | {row['subset']} | {row['n_2008']} | "
             f"{row['n_common_2008']} | "
             f"{_suppress(row['n_2008'], _pct(row['share_2008']))} | "
             f"{row['n_2019']} | {row['n_common_2019']} | "
             f"{_suppress(row['n_2019'], _pct(row['share_2019']))} | "
-            f"{_metric_cell(ratio, n_ratio, 3) if ratio is not None else '-'} |"
+            f"{valid_draws} | {ratio_cell} |"
         )
     return lines
 
@@ -3988,6 +4035,9 @@ def _clock_speed_csv_rows(rows: list[dict]) -> list[dict]:
             )},
             **{f"share_{year}": _csv_value(row[f"share_{year}"], row[f"n_{year}"])
                for year in (2008, 2019)},
+            "valid_replicates": (
+                int(np.isfinite(ratio.replicates).sum()) if ratio is not None else 0
+            ),
             "ratio": _csv_value(ratio.estimate, n) if ratio is not None else "",
             "ci_low": _csv_value(ratio.interval[0], n) if ratio is not None else "",
             "ci_high": _csv_value(ratio.interval[1], n) if ratio is not None else "",

@@ -2,6 +2,24 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: clock-speed bootstrap safeguard (2026-11-17)
+
+- Sparse mode × distance × density cells can disappear in a household
+  draw. The standardised estimator discards that draw, and the previous
+  ratio code silently calculated an interval from however few paired draws
+  survived, or suppressed the point ratio when none survived. A synthetic
+  11-cell example retained only 16 of 200 paired draws.
+- Clock-speed and the new tour-speed tables now retain the point ratio,
+  show the valid draw count, and explicitly mark the CI unavailable unless
+  every draw is valid. CSVs likewise leave unavailable bounds blank. This
+  is a conservative reporting safeguard, not a way to recover the
+  requested CIs; a justified sparse-cell estimation method remains open.
+- Survey questionnaires were located, but the local environment has no PDF
+  text reader and the online questionnaire fetch did not expose readable
+  pages. Questionnaire/guide page references and stop rules remain open.
+- Final changed-module selection: 13 passed, 0 failed; Ruff passed. Neither
+  the full suite nor a real-data report or any figures were run.
+
 ### Step 12: simple versus chained tour speeds (2026-11-17)
 
 - Added the C6 standardised car-driver speed comparison and weighted trip
