@@ -749,6 +749,9 @@ def _bootstrap_scope_trip_metrics(
         "day_minutes",
         "day_km",
         "threshold_base_weight",
+        "round_trips",
+        "round_minutes",
+        "round_km",
     )
     household_metrics = con.sql("""
         SELECT ident_men, population_category, mode_group,
@@ -836,20 +839,28 @@ def _bootstrap_scope_trip_metrics(
                 AS activity_km,
             sum(weight) FILTER (WHERE NOT drop_distance AND NOT drop_group8
                 AND NOT (outward_15 OR (return_home AND prior_15))
-                AND NOT is_round) AS day_trips,
+                AND NOT drop_round AND NOT is_round) AS day_trips,
             sum(weight * duration_min) FILTER (WHERE NOT drop_distance
                 AND NOT drop_group8
                 AND NOT (outward_15 OR (return_home AND prior_15))
-                AND NOT is_round AND duration_min IS NOT NULL
+                AND NOT drop_round AND NOT is_round AND duration_min IS NOT NULL
                 AND isfinite(duration_min)) AS day_minutes,
             sum(weight * distance_km) FILTER (WHERE NOT drop_distance
                 AND NOT drop_group8
                 AND NOT (outward_15 OR (return_home AND prior_15))
-                AND NOT is_round AND distance_km IS NOT NULL
+                AND NOT drop_round AND NOT is_round AND distance_km IS NOT NULL
                 AND isfinite(distance_km)) AS day_km,
             sum(weight) FILTER (
                 WHERE NOT drop_distance AND NOT drop_group8
-            ) AS threshold_base_weight
+            ) AS threshold_base_weight,
+            sum(weight) FILTER (WHERE NOT drop_distance AND NOT drop_group8
+                AND drop_round) AS round_trips,
+            sum(weight * duration_min) FILTER (WHERE NOT drop_distance
+                AND NOT drop_group8 AND drop_round AND isfinite(duration_min))
+                AS round_minutes,
+            sum(weight * distance_km) FILTER (WHERE NOT drop_distance
+                AND NOT drop_group8 AND drop_round AND isfinite(distance_km))
+                AS round_km
         FROM scope_diag_trips
         GROUP BY GROUPING SETS (
             (ident_men, population_category, mode_group),
@@ -936,6 +947,7 @@ def _bootstrap_scope_trip_metrics(
         for rule, offset in (
             ("distance", 18),
             ("group 8", 21),
+            ("professional rounds", 31),
             ("activity", 24),
             ("day", 27),
         ):
@@ -1018,6 +1030,8 @@ def scope_diagnostics(
             coalesce(s.mobloc IS DISTINCT FROM 1, TRUE) AS drop_distance,
             coalesce(s.mobloc = 1 AND s.motive IN (8.1, 8.2, 8.3, 8.4), FALSE)
                 AS drop_group8,
+            coalesce(s.destination_purpose IN ('9.4', '9.95'), FALSE)
+                AS drop_round,
             coalesce(s.destination_purpose IN ('1.1', '1.2', '1.3'), FALSE)
                 AS return_home,
             coalesce(s.mode_group IN ('walk', 'cycle') AND (
@@ -1422,16 +1436,16 @@ def scope_diagnostics(
                     AS activity_km,
                 sum(weight) FILTER (WHERE NOT drop_distance AND NOT drop_group8
                     AND NOT (outward_15 OR (return_home AND prior_15))
-                    AND NOT is_round) AS day_trips,
+                    AND NOT drop_round AND NOT is_round) AS day_trips,
                 sum(weight * duration_min) FILTER (WHERE NOT drop_distance
                     AND NOT drop_group8
                     AND NOT (outward_15 OR (return_home AND prior_15))
-                    AND NOT is_round AND duration_min IS NOT NULL
+                    AND NOT drop_round AND NOT is_round AND duration_min IS NOT NULL
                     AND isfinite(duration_min)) AS day_minutes,
                 sum(weight * distance_km) FILTER (WHERE NOT drop_distance
                     AND NOT drop_group8
                     AND NOT (outward_15 OR (return_home AND prior_15))
-                    AND NOT is_round AND distance_km IS NOT NULL
+                    AND NOT drop_round AND NOT is_round AND distance_km IS NOT NULL
                     AND isfinite(distance_km)) AS day_km,
                 sum(weight) FILTER (
                     WHERE NOT drop_distance AND NOT drop_group8
@@ -1444,7 +1458,15 @@ def scope_diagnostics(
                 sum(weight) FILTER (
                     WHERE NOT drop_distance AND NOT drop_group8
                     AND (outward_30 OR (return_home AND prior_30)))
-                    AS activity_30_trips
+                    AS activity_30_trips,
+                sum(weight) FILTER (WHERE NOT drop_distance AND NOT drop_group8
+                    AND drop_round) AS round_trips,
+                sum(weight * duration_min) FILTER (WHERE NOT drop_distance
+                    AND NOT drop_group8 AND drop_round AND isfinite(duration_min))
+                    AS round_minutes,
+                sum(weight * distance_km) FILTER (WHERE NOT drop_distance
+                    AND NOT drop_group8 AND drop_round AND isfinite(distance_km))
+                    AS round_km
             FROM scope_diag_trips
             GROUP BY GROUPING SETS (
                 (population_category, mode_group),
@@ -1460,13 +1482,15 @@ def scope_diagnostics(
             group8_trips, group8_minutes, group8_km,
             activity_trips, activity_minutes, activity_km,
             day_trips, day_minutes, day_km,
-            activity_5_trips, activity_15_trips, activity_30_trips
+            activity_5_trips, activity_15_trips, activity_30_trips,
+            round_trips, round_minutes, round_km
         FROM grouped
     """).fetchall()
     rule_drops = []
     rule_indices = (
         ("distance", 5),
         ("group 8", 8),
+        ("professional rounds", 20),
         ("activity", 11),
         ("day", 14),
     )

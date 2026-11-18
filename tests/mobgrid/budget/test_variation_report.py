@@ -177,6 +177,13 @@ def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
         diagnostics = variation_report.scope_diagnostics(
             con, survey_name="ENTD 2008", sample_pct=None, n_reps=30, seed=2
         )
+        con.sql("""
+            UPDATE scope_input SET destination_purpose = '9.95',
+                destination_motive = 9.4, motive = 9.4 WHERE day_id = 'open'
+        """)
+        rounds = variation_report.scope_diagnostics(
+            con, survey_name="ENTD 2008", sample_pct=None, n_reps=30, seed=2
+        )
         con.sql("UPDATE q_tcm_individu SET SITUA = NULL")
         con.sql("UPDATE trip_legs SET population_category = 'unknown'")
         unknown = variation_report.scope_diagnostics(
@@ -230,6 +237,18 @@ def test_scope_diagnostics_report_open_days_rule_drops_and_coverage() -> None:
     assert drops["distance"]["km_share"] == pytest.approx(30 / 36)
     assert drops["activity"]["trip_share"] == pytest.approx(4 / 8)
     assert drops["day"]["trip_share"] == pytest.approx(1 / 8)
+    round_drops = {
+        row["rule"]: row for row in rounds["rule_drops"]
+        if row["population_category"] == "overall" and row["mode_group"] == "all modes"
+    }
+    assert list(round_drops)[:5] == [
+        "distance", "group 8", "professional rounds", "activity", "day"
+    ]
+    assert round_drops["professional rounds"]["trips"] == 1
+    assert round_drops["professional rounds"]["minutes"] == 20
+    assert round_drops["professional rounds"]["km"] == 2
+    assert round_drops["professional rounds"]["trip_share_ci95"] is not None
+    assert round_drops["day"]["trips"] == 0
 
     coverage = next(
         row

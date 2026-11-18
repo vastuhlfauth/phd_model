@@ -2,6 +2,13 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: professional-round diagnostics (2026-11-18)
+
+- Sequential scope removals now show professional rounds after group 8,
+  with weighted trips/minutes/km and household-bootstrap intervals.
+  Open-day removals no longer double-count excluded rounds.
+- Focused diagnostic regression passed; Ruff passed. No real-data run.
+
 ### Step 12: professional-round destination rule (2026-11-18)
 
 - Section 9.9 now excludes recorded EMP 9.4 / ENTD 9.95 destinations
