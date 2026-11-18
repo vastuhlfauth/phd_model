@@ -1131,7 +1131,7 @@ def test_frame_aggregation_keeps_missing_distance_days(
                          ('a', 'd2', 2, NULL, 30.0),
                          ('b', 'd3', 1, NULL, 20.0))
                 v(day_id, ident_dep, num_dep, distance_km, duration_min);
-            CREATE TABLE scope_trips AS SELECT day_id, num_dep,
+            CREATE TABLE scope_trips AS SELECT day_id, num_dep, 2.0 AS destination_motive,
                 CASE WHEN day_id = 'a' AND num_dep = 1 THEN 3.0
                     ELSE NULL END AS stay_min,
                 TRUE AS is_round, TRUE AS is_destination, 1 AS mobloc
@@ -2630,6 +2630,46 @@ def test_car_speed_by_departure_boundaries_and_work_shares(tmp_path: Path) -> No
     text = (tmp_path / "report_car_speed_by_departure.csv").read_text(encoding="utf-8")
     assert len(text.splitlines()) == 6
     assert "Morning peak" in text
+
+
+def test_professional_rounds_remove_all_modes_and_drop_round_only_days() -> None:
+    def frames(multiplier):
+        sizes = [50, 50, 50, 50]
+        day_id = np.tile(np.arange(100), 2)
+        return _frames(
+            {
+                "day_id": np.arange(100),
+                "ident_men": [f"h{i}" for i in range(100)],
+                "pond_jour": np.repeat([1.0, 2.0], 50),
+            },
+            {
+                "day_id": day_id,
+                "ident_men": [f"h{i}" for i in day_id],
+                "pond_jour": np.repeat([1.0, 2.0, 1.0, 2.0], sizes),
+                "destination_motive": np.repeat([9.4, 9.4, 1.1, 9.4], sizes),
+                "motive": [9.4] * 200,
+                "duration_min": multiplier * np.repeat([40.0, 60.0, 20.0, 30.0], sizes),
+                "distance_km": np.repeat([12.0, 18.0, 8.0, 10.0], sizes),
+                "crow_fly_km": np.repeat([6.0, 9.0, 4.0, 5.0], sizes),
+                "mode7": np.repeat(["car_driver"] * 3 + ["walk"], sizes),
+                "home_density": ["dense"] * 200,
+                "residence_aa_class": [""] * 200,
+            },
+        )
+
+    rounds, (speed, day) = variation_report.professional_rounds_tables(
+        frames(1), frames(2), n_reps=10, seed=3
+    )
+    assert rounds[0]["trip_share"] == pytest.approx(3 / 4)
+    assert rounds[0]["minute_share"] == pytest.approx(160 / 180)
+    assert rounds[0]["minutes_per_trip"] == pytest.approx(160 / 3)
+    assert rounds[0]["producer_km_per_trip"] == 16.0
+    assert rounds[0]["crow_fly_km_per_trip"] == 8.0
+    assert speed["n_2008"] == 50
+    assert speed["ratio"] == pytest.approx(0.5)
+    assert day["n_2008"] == 50
+    assert (day["estimate_2008"], day["estimate_2019"]) == (20.0, 40.0)
+    assert (day["ratio"], day["ratio_ci_low"], day["ratio_ci_high"]) == (2.0, 2.0, 2.0)
 
 
 def test_c6_speed_limit_check_standardizes_each_split_to_the_2008_mix() -> None:

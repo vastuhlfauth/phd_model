@@ -413,7 +413,7 @@ def _create_frames_tables(
             t.population_category,
             t.residence_density AS home_density,
             t.income_quintile,
-            t.age, t.duration_min, t.distance_km, t.motive,
+            t.age, t.duration_min, t.distance_km, t.motive, s.destination_motive,
             ({mode7_sql}) AS mode7,
             coalesce({motive_group_sql}, 'unknown') AS motive_group,
             e.declared_km, e.crow_fly_km, e.vac_scol,
@@ -4037,6 +4037,102 @@ def car_speed_by_departure(
     ]
 
 
+def _weighted_trip_mean(
+    sample: SpeedSample, selected: np.ndarray, values: np.ndarray
+) -> tuple[int, float]:
+    valid = selected & np.isfinite(values) & (values >= 0)
+    n = int(valid.sum())
+    return n, float(np.average(values[valid], weights=sample.weight[valid])) if n else np.nan
+
+
+def _nonround_day_inputs(
+    frames: SurveyFrames, sample: SpeedSample, nonround: np.ndarray
+) -> tuple[int, np.ndarray, np.ndarray, np.ndarray]:
+    """Reaggregate time in minutes and keep weekdays with remaining trips."""
+    days = frames.days
+    selected = nonround & np.isfinite(sample.duration_min) & (sample.duration_min >= 0)
+    indices = _trip_day_index(frames)[selected]
+    n_days = len(days["day_id"])
+    duration = np.bincount(indices, weights=sample.duration_min[selected], minlength=n_days)
+    day_weight = days["pond_jour"].astype(float)
+    retained = (
+        (np.bincount(indices, minlength=n_days) > 0)
+        & np.isfinite(day_weight) & (day_weight > 0)
+    )
+    return (
+        int(retained[indices].sum()), days["ident_men"][retained].astype(str),
+        day_weight[retained], duration[retained],
+    )
+
+
+def professional_rounds_tables(
+    a: SurveyFrames, b: SurveyFrames, *, n_reps: int, seed: int
+) -> tuple[list[dict], list[dict]]:
+    """Summarise car-driver rounds and remove recorded rounds as a sensitivity."""
+    samples = (_speed_sample(a, "B"), _speed_sample(b, "B"))
+    # ENTD destination 9.95 is already mapped to EMP 9.4 in scope_trips.
+    rounds_a = np.asarray(a.trips["destination_motive"], dtype=float) == 9.4
+    rounds_b = np.asarray(b.trips["destination_motive"], dtype=float) == 9.4
+    rows = []
+    for year, sample, rounds in zip((2008, 2019), samples, (rounds_a, rounds_b), strict=True):
+        car = _car_mask(sample)
+        selected = car & rounds
+        n = int(selected.sum())
+        timed = car & np.isfinite(sample.duration_min) & (sample.duration_min >= 0)
+        row = {
+            "year": year,
+            "n": n,
+            "trip_share": _csv_value(_weighted_share(sample.weight[car], rounds[car]), n),
+            "minute_share": _csv_value(
+                _weighted_share(sample.weight[timed] * sample.duration_min[timed], rounds[timed]),
+                int((timed & rounds).sum()),
+            ),
+        }
+        for label, values in (
+            ("minutes_per_trip", sample.duration_min),
+            ("producer_km_per_trip", sample.producer_km),
+            ("crow_fly_km_per_trip", sample.crow_fly_km),
+        ):
+            n_valid, mean = _weighted_trip_mean(sample, selected, values)
+            row[label] = _csv_value(mean, n_valid)
+        rows.append(row)
+
+    _, n_a, n_b, speed_a, speed_b = _standardized_speed_pair(
+        _speed_cells(samples[0], selected=~rounds_a),
+        _speed_cells(samples[1], selected=~rounds_b),
+        n_reps=n_reps, seed=seed,
+    )
+    speed = {
+        "measure": "Standardised car-driver speed (km/h)",
+        "n_2008": n_a, "n_2019": n_b,
+        "estimate_2008": _csv_value(speed_a.estimate, n_a),
+        "estimate_2019": _csv_value(speed_b.estimate, n_b),
+        **_metric_csv_fields(
+            "ratio", _complete_bootstrap_speed_ratio(speed_a, speed_b), min(n_a, n_b)
+        ),
+    }
+
+    n_a, hh_a, wt_a, minutes_a = _nonround_day_inputs(a, samples[0], ~rounds_a)
+    n_b, hh_b, wt_b, minutes_b = _nonround_day_inputs(b, samples[1], ~rounds_b)
+    point_a = float(np.average(minutes_a, weights=wt_a)) if n_a else np.nan
+    point_b = float(np.average(minutes_b, weights=wt_b)) if n_b else np.nan
+    ratio = low = high = ""
+    if min(n_a, n_b) >= MIN_CELL_N and point_a > 0 and point_b > 0:
+        ratio, (low, high) = daily_energy.bootstrap_ratio_ci(
+            hh_a, wt_a, minutes_a, hh_b, wt_b, minutes_b, n_reps=n_reps, seed=seed,
+            household_universe_a=samples[0].household_universe,
+            household_universe_b=samples[1].household_universe,
+        )
+    daily = {
+        "measure": "Minutes per day with trips (all modes)",
+        "n_2008": n_a, "n_2019": n_b,
+        "estimate_2008": _csv_value(point_a, n_a),
+        "estimate_2019": _csv_value(point_b, n_b),
+        "ratio": ratio, "ratio_ci_low": low, "ratio_ci_high": high,
+    }
+    return rows, [speed, daily]
+
+
 def _format_c6_csv_table(title: str, note: str, rows: list[dict]) -> list[str]:
     """Render the same suppressed values as the CSV, with rounded display."""
     keys = list(rows[0])
@@ -5018,6 +5114,9 @@ def _format_c6(
     car_departure = car_speed_by_departure(
         frames_2008, frames_2019, n_reps=n_reps, seed=seed
     )
+    car_rounds, without_rounds = professional_rounds_tables(
+        frames_2008, frames_2019, n_reps=n_reps, seed=seed
+    )
     purpose_rows = [
         *trip_delimitation_purpose_rows(frames_2008),
         *trip_delimitation_purpose_rows(frames_2019),
@@ -5047,6 +5146,8 @@ def _format_c6(
         results["c6_clock_speed"] = clock_speed
         results["c6_car_speed_by_purpose"] = car_purpose
         results["c6_car_speed_by_departure"] = car_departure
+        results["c6_professional_rounds"] = car_rounds
+        results["c6_without_professional_rounds"] = without_rounds
         results["c6_trip_delimitation_purposes"] = purpose_rows
         results["c6_trip_delimitation_stays"] = stay_rows
         results["c6_trip_delimitation_tours"] = tour_rows
@@ -5104,6 +5205,21 @@ def _format_c6(
         "for work (harmonised motive 9.1), are of all car-driver trips. Peak "
         "patterns can be consistent with congestion but do not identify its effect.",
         car_departure,
+    )]
+    lines += ["", *_format_c6_csv_table(
+        "Professional rounds by car drivers",
+        "Recorded destination code EMP 9.4 / ENTD 9.95, not return legs attributed "
+        "to rounds. Shares are of all car-driver trips or minutes, respectively. "
+        "Means use trips with a known, non-negative value for each measure.",
+        car_rounds,
+    )]
+    lines += ["", *_format_c6_csv_table(
+        "Counterfactual without professional rounds",
+        _CAR_SPEED_METHOD + " The speed row uses only car drivers; daily minutes "
+        "exclude rounds in all modes and use weekdays with at least one remaining "
+        "trip. Counts are contributing trips, not days. The daily-time ratio uses "
+        "the shared 90% household-bootstrap CI.",
+        without_rounds,
     )]
     return lines
 
@@ -6730,6 +6846,8 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
         )
     _write_c6_csv_table(md_path, results, "car_speed_by_purpose")
     _write_c6_csv_table(md_path, results, "car_speed_by_departure")
+    _write_c6_csv_table(md_path, results, "professional_rounds")
+    _write_c6_csv_table(md_path, results, "without_professional_rounds")
     for key, suffix, convert in (
         ("c6_whole_km_ratios", "whole_km_speed", _whole_km_ratio_csv_rows),
         ("c6_whole_km_bands", "whole_km_shift_share", _whole_km_band_csv_rows),
