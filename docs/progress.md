@@ -2,6 +2,17 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: commuting, peak hours and professional rounds (2026-11-18)
+
+- Added the supplied questionnaire wording, plus weekday speed comparisons
+  by harmonised purpose and departure period, a counterfactual excluding
+  recorded professional rounds, and commute distance and duration tables.
+  Each new table has a CSV sidecar and suppresses estimates based on fewer
+  than 50 trips. Speed comparisons use each subset's 2008 mix on common support.
+- Six focused synthetic cases and Ruff passed. No figures or real-data
+  report were run; whether the slowdown is concentrated in commuting or
+  peak hours remains to be checked on the regenerated report.
+
 ### Step 12: clock-speed bootstrap safeguard (2026-11-17)
 
 - Sparse mode × distance × density cells can disappear in a household

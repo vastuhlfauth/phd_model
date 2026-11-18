@@ -1131,7 +1131,8 @@ def test_frame_aggregation_keeps_missing_distance_days(
                          ('a', 'd2', 2, NULL, 30.0),
                          ('b', 'd3', 1, NULL, 20.0))
                 v(day_id, ident_dep, num_dep, distance_km, duration_min);
-            CREATE TABLE scope_trips AS SELECT day_id, num_dep, 2.0 AS destination_motive,
+            CREATE TABLE scope_trips AS SELECT day_id, num_dep,
+                2.0 AS destination_motive,
                 CASE WHEN day_id = 'a' AND num_dep = 1 THEN 3.0
                     ELSE NULL END AS stay_min,
                 TRUE AS is_round, TRUE AS is_destination, 1 AS mobloc
@@ -2670,6 +2671,42 @@ def test_professional_rounds_remove_all_modes_and_drop_round_only_days() -> None
     assert day["n_2008"] == 50
     assert (day["estimate_2008"], day["estimate_2019"]) == (20.0, 40.0)
     assert (day["ratio"], day["ratio_ci_low"], day["ratio_ci_high"]) == (2.0, 2.0, 2.0)
+
+
+def test_commute_distance_and_duration_ratios_and_crow_fly_bands() -> None:
+    def frames(distance, duration):
+        sizes = [50, 50, 49, 50, 1, 50]
+        n = sum(sizes)
+        return _frames({}, {
+            "ident_men": [f"h{i}" for i in range(n)],
+            "pond_jour": np.repeat([1.0, 2.0, 1.0, 1.0, 1.0, 1.0], sizes),
+            "motive": np.repeat([9.1, 9.1, 9.1, 9.1, 9.2, 9.1], sizes),
+            "duration_min": np.repeat(duration, sizes),
+            "distance_km": [100.0] * n,
+            "crow_fly_km": np.repeat(distance, sizes),
+            "mode7": np.repeat(["car_driver"] * 5 + ["walk"], sizes),
+            "home_density": ["dense"] * n,
+            "residence_aa_class": [""] * n,
+        })
+
+    averages, bands = variation_report.commute_distance_time_tables(
+        frames([0, 5, 80, np.nan, 40, 4], [10, 20, 10, 15, 60, 10]),
+        frames([2, 10, 81, np.nan, 40, 4], [20, 40, 20, 30, 60, 10]),
+    )
+    km, minutes = averages
+    assert (km["n_2008"], minutes["n_2008"]) == (149, 199)
+    assert km["estimate_2008"] == pytest.approx((100 * 5 + 49 * 80) / 199)
+    assert km["ratio"] == pytest.approx((50 * 2 + 100 * 10 + 49 * 81) / 4420)
+    assert minutes["estimate_2008"] == pytest.approx(3740 / 249)
+    assert minutes["ratio"] == 2.0
+    by_band = {row["band"]: row for row in bands}
+    assert by_band["Under 2 km"]["share_2008"] == pytest.approx(50 / 249)
+    assert by_band["5-10 km"]["share_2008"] == pytest.approx(100 / 249)
+    assert by_band["10-20 km"]["share_2019"] == pytest.approx(100 / 249)
+    assert by_band["40-80 km"]["n_2008"] == 49
+    assert by_band["40-80 km"]["share_2008"] == ""
+    assert by_band["Over 80 km"]["n_2019"] == 49
+    assert by_band["Unknown"]["share_2019"] == pytest.approx(50 / 249)
 
 
 def test_c6_speed_limit_check_standardizes_each_split_to_the_2008_mix() -> None:

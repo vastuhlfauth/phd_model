@@ -3934,7 +3934,9 @@ _CAR_SPEED_METHOD = (
 
 
 def _car_mask(sample: SpeedSample) -> np.ndarray:
-    return (sample.mode == "car_driver") & np.isfinite(sample.weight) & (sample.weight > 0)
+    return (
+        (sample.mode == "car_driver") & np.isfinite(sample.weight) & (sample.weight > 0)
+    )
 
 
 def _weighted_share(values: np.ndarray, selected: np.ndarray) -> float:
@@ -4031,7 +4033,9 @@ def car_speed_by_departure(
     return [
         {
             "period": label,
-            **_car_subset_speed_row(samples, (mask_a, mask_b), n_reps=n_reps, seed=seed),
+            **_car_subset_speed_row(
+                samples, (mask_a, mask_b), n_reps=n_reps, seed=seed
+            ),
         }
         for label, mask_a, mask_b in zip(labels, *masks, strict=True)
     ]
@@ -4042,7 +4046,9 @@ def _weighted_trip_mean(
 ) -> tuple[int, float]:
     valid = selected & np.isfinite(values) & (values >= 0)
     n = int(valid.sum())
-    return n, float(np.average(values[valid], weights=sample.weight[valid])) if n else np.nan
+    if not n:
+        return 0, np.nan
+    return n, float(np.average(values[valid], weights=sample.weight[valid]))
 
 
 def _nonround_day_inputs(
@@ -4053,7 +4059,9 @@ def _nonround_day_inputs(
     selected = nonround & np.isfinite(sample.duration_min) & (sample.duration_min >= 0)
     indices = _trip_day_index(frames)[selected]
     n_days = len(days["day_id"])
-    duration = np.bincount(indices, weights=sample.duration_min[selected], minlength=n_days)
+    duration = np.bincount(
+        indices, weights=sample.duration_min[selected], minlength=n_days
+    )
     day_weight = days["pond_jour"].astype(float)
     retained = (
         (np.bincount(indices, minlength=n_days) > 0)
@@ -4074,7 +4082,8 @@ def professional_rounds_tables(
     rounds_a = np.asarray(a.trips["destination_motive"], dtype=float) == 9.4
     rounds_b = np.asarray(b.trips["destination_motive"], dtype=float) == 9.4
     rows = []
-    for year, sample, rounds in zip((2008, 2019), samples, (rounds_a, rounds_b), strict=True):
+    years = (2008, 2019)
+    for year, sample, rounds in zip(years, samples, (rounds_a, rounds_b), strict=True):
         car = _car_mask(sample)
         selected = car & rounds
         n = int(selected.sum())
@@ -4082,9 +4091,13 @@ def professional_rounds_tables(
         row = {
             "year": year,
             "n": n,
-            "trip_share": _csv_value(_weighted_share(sample.weight[car], rounds[car]), n),
+            "trip_share": _csv_value(
+                _weighted_share(sample.weight[car], rounds[car]), n
+            ),
             "minute_share": _csv_value(
-                _weighted_share(sample.weight[timed] * sample.duration_min[timed], rounds[timed]),
+                _weighted_share(
+                    sample.weight[timed] * sample.duration_min[timed], rounds[timed]
+                ),
                 int((timed & rounds).sum()),
             ),
         }
@@ -4131,6 +4144,50 @@ def professional_rounds_tables(
         "ratio": ratio, "ratio_ci_low": low, "ratio_ci_high": high,
     }
     return rows, [speed, daily]
+
+
+def commute_distance_time_tables(
+    a: SurveyFrames, b: SurveyFrames,
+) -> tuple[list[dict], list[dict]]:
+    """Weighted crow-fly km and minutes per car-driver commute (motive 9.1)."""
+    samples = (_speed_sample(a, "B"), _speed_sample(b, "B"))
+    work = tuple(
+        _car_mask(sample) & (np.asarray(frames.trips["motive"], dtype=float) == 9.1)
+        for frames, sample in zip((a, b), samples, strict=True)
+    )
+    averages = []
+    for label, attr in (
+        ("Crow-fly km per trip", "crow_fly_km"), ("Minutes per trip", "duration_min"),
+    ):
+        (n_a, mean_a), (n_b, mean_b) = (
+            _weighted_trip_mean(sample, selected, getattr(sample, attr))
+            for sample, selected in zip(samples, work, strict=True)
+        )
+        averages.append({
+            "measure": label, "n_2008": n_a, "n_2019": n_b,
+            "estimate_2008": _csv_value(mean_a, n_a),
+            "estimate_2019": _csv_value(mean_b, n_b),
+            "ratio": _csv_value(mean_b / mean_a if mean_a > 0 else None, min(n_a, n_b)),
+        })
+
+    labels = ("Under 2 km", *SPEED_BAND_LABELS, "Over 80 km", "Unknown")
+    bands = [{"band": label} for label in labels]
+    for year, sample, selected in zip((2008, 2019), samples, work, strict=True):
+        km = sample.crow_fly_km[selected]
+        weight = sample.weight[selected]
+        core_band = _speed_band_index(km)
+        known = np.isfinite(km) & (km >= 0)
+        masks = (
+            known & (km < 2),
+            *(core_band == i for i in range(len(SPEED_BAND_LABELS))),
+            known & (km > 80),
+            ~known,
+        )
+        for row, mask in zip(bands, masks, strict=True):
+            n = int(mask.sum())
+            row[f"n_{year}"] = n
+            row[f"share_{year}"] = _csv_value(_weighted_share(weight, mask), n)
+    return averages, bands
 
 
 def _format_c6_csv_table(title: str, note: str, rows: list[dict]) -> list[str]:
@@ -5110,12 +5167,17 @@ def _format_c6(
     )
     clock_minute_rows, clock_gap_rows = clock_time_rows(frames_2008, frames_2019)
     clock_speed = clock_speed_rows(*samples["B"], n_reps=n_reps, seed=seed)
-    car_purpose = car_speed_by_purpose(frames_2008, frames_2019, n_reps=n_reps, seed=seed)
+    car_purpose = car_speed_by_purpose(
+        frames_2008, frames_2019, n_reps=n_reps, seed=seed
+    )
     car_departure = car_speed_by_departure(
         frames_2008, frames_2019, n_reps=n_reps, seed=seed
     )
     car_rounds, without_rounds = professional_rounds_tables(
         frames_2008, frames_2019, n_reps=n_reps, seed=seed
+    )
+    commute_means, commute_bands = commute_distance_time_tables(
+        frames_2008, frames_2019
     )
     purpose_rows = [
         *trip_delimitation_purpose_rows(frames_2008),
@@ -5148,6 +5210,8 @@ def _format_c6(
         results["c6_car_speed_by_departure"] = car_departure
         results["c6_professional_rounds"] = car_rounds
         results["c6_without_professional_rounds"] = without_rounds
+        results["c6_commute_distance_time"] = commute_means
+        results["c6_commute_crow_fly_bands"] = commute_bands
         results["c6_trip_delimitation_purposes"] = purpose_rows
         results["c6_trip_delimitation_stays"] = stay_rows
         results["c6_trip_delimitation_tours"] = tour_rows
@@ -5220,6 +5284,20 @@ def _format_c6(
         "trip. Counts are contributing trips, not days. The daily-time ratio uses "
         "the shared 90% household-bootstrap CI.",
         without_rounds,
+    )]
+    lines += ["", *_format_c6_csv_table(
+        "Car-driver commutes: distance and duration",
+        "Usual workplace (harmonised motive 9.1). Each weighted mean uses trips "
+        "with a known, non-negative value for that measure; ratios are 2019/2008. "
+        "Estimates based on fewer than 50 trips are blank.",
+        commute_means,
+    )]
+    lines += ["", *_format_c6_csv_table(
+        "Car-driver commutes: crow-fly distance bands",
+        "Shares are of all car-driver usual-workplace trips. C6 speed bands "
+        "include their lower bound, and the final one includes 80 km. The "
+        "additional rows cover shorter, longer and unknown distances.",
+        commute_bands,
     )]
     return lines
 
@@ -6848,6 +6926,8 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
     _write_c6_csv_table(md_path, results, "car_speed_by_departure")
     _write_c6_csv_table(md_path, results, "professional_rounds")
     _write_c6_csv_table(md_path, results, "without_professional_rounds")
+    _write_c6_csv_table(md_path, results, "commute_distance_time")
+    _write_c6_csv_table(md_path, results, "commute_crow_fly_bands")
     for key, suffix, convert in (
         ("c6_whole_km_ratios", "whole_km_speed", _whole_km_ratio_csv_rows),
         ("c6_whole_km_bands", "whole_km_shift_share", _whole_km_band_csv_rows),
