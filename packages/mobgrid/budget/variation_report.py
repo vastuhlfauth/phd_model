@@ -4008,6 +4008,35 @@ def car_speed_by_purpose(
     ]
 
 
+def car_speed_by_departure(
+    a: SurveyFrames, b: SurveyFrames, *, n_reps: int, seed: int
+) -> list[dict]:
+    """Compare weekday car-driver speeds by reported minutes since midnight."""
+    samples = (_speed_sample(a, "B"), _speed_sample(b, "B"))
+    masks = []
+    for frames, sample in zip((a, b), samples, strict=True):
+        if sample.departure_min is None:
+            raise ValueError("departure-period checks require departure minutes")
+        departure = sample.departure_min.astype(float)
+        morning = (departure >= 7 * 60) & (departure < 9 * 60 + 30)
+        evening = (departure >= 16 * 60 + 30) & (departure < 19 * 60 + 30)
+        off_peak = (departure >= 0) & (departure < 24 * 60) & ~(morning | evening)
+        work = _car_purpose_masks(frames)["Work at usual workplace"]
+        masks.append((morning, evening, off_peak, work & (morning | evening),
+                      work & off_peak))
+    labels = (
+        "Morning peak (07:00–09:29)", "Evening peak (16:30–19:29)",
+        "Other hours", "Usual workplace: either peak", "Usual workplace: off-peak",
+    )
+    return [
+        {
+            "period": label,
+            **_car_subset_speed_row(samples, (mask_a, mask_b), n_reps=n_reps, seed=seed),
+        }
+        for label, mask_a, mask_b in zip(labels, *masks, strict=True)
+    ]
+
+
 def _format_c6_csv_table(title: str, note: str, rows: list[dict]) -> list[str]:
     """Render the same suppressed values as the CSV, with rounded display."""
     keys = list(rows[0])
@@ -4986,6 +5015,9 @@ def _format_c6(
     clock_minute_rows, clock_gap_rows = clock_time_rows(frames_2008, frames_2019)
     clock_speed = clock_speed_rows(*samples["B"], n_reps=n_reps, seed=seed)
     car_purpose = car_speed_by_purpose(frames_2008, frames_2019, n_reps=n_reps, seed=seed)
+    car_departure = car_speed_by_departure(
+        frames_2008, frames_2019, n_reps=n_reps, seed=seed
+    )
     purpose_rows = [
         *trip_delimitation_purpose_rows(frames_2008),
         *trip_delimitation_purpose_rows(frames_2019),
@@ -5014,6 +5046,7 @@ def _format_c6(
         results["c6_clock_gaps"] = clock_gap_rows
         results["c6_clock_speed"] = clock_speed
         results["c6_car_speed_by_purpose"] = car_purpose
+        results["c6_car_speed_by_departure"] = car_departure
         results["c6_trip_delimitation_purposes"] = purpose_rows
         results["c6_trip_delimitation_stays"] = stay_rows
         results["c6_trip_delimitation_tours"] = tour_rows
@@ -5063,6 +5096,14 @@ def _format_c6(
         "returns to a residence are attributed to the origin activity; study includes "
         "childcare and leisure includes visits.",
         car_purpose,
+    )]
+    lines += ["", *_format_c6_csv_table(
+        "Car-driver speed by departure time",
+        _CAR_SPEED_METHOD + " Missing or invalid clock times are unclassified, "
+        "but remain in the denominator of shares. All shares, including those "
+        "for work (harmonised motive 9.1), are of all car-driver trips. Peak "
+        "patterns can be consistent with congestion but do not identify its effect.",
+        car_departure,
     )]
     return lines
 
@@ -6688,6 +6729,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             list(csv_rows[0]) if csv_rows else [], csv_rows,
         )
     _write_c6_csv_table(md_path, results, "car_speed_by_purpose")
+    _write_c6_csv_table(md_path, results, "car_speed_by_departure")
     for key, suffix, convert in (
         ("c6_whole_km_ratios", "whole_km_speed", _whole_km_ratio_csv_rows),
         ("c6_whole_km_bands", "whole_km_shift_share", _whole_km_band_csv_rows),

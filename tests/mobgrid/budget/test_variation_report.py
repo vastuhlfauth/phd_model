@@ -2596,6 +2596,42 @@ def test_car_speed_by_purpose_uses_own_mix_and_all_car_shares() -> None:
     assert other["trip_share_2008"] == other["ratio"] == ""
 
 
+def test_car_speed_by_departure_boundaries_and_work_shares(tmp_path: Path) -> None:
+    def frames(duration):
+        clocks = [419, 420, 569, 570, 989, 990, 1169, 1170, np.nan]
+        n = len(clocks) * 50
+        return _frames({}, {
+            "ident_men": [f"h{i}" for i in range(n)],
+            "pond_jour": np.repeat(np.arange(1, 10), 50),
+            "motive": np.repeat([2.1, 9.1, 2.1, 9.1, 2.1, 9.1, 2.1, 9.1, 9.1], 50),
+            "duration_min": np.repeat(duration, 50),
+            "distance_km": [8.0] * n,
+            "crow_fly_km": [8.0] * n,
+            "mode7": ["car_driver"] * n,
+            "home_density": ["dense"] * n,
+            "residence_aa_class": [""] * n,
+            "departure_min": np.repeat(clocks, 50),
+        })
+
+    rows = variation_report.car_speed_by_departure(
+        frames([10.0] * 9), frames([10, 20, 20, 10, 10, 20, 20, 10, 10]),
+        n_reps=10, seed=3,
+    )
+    assert [row["n_2008"] for row in rows] == [100, 100, 200, 100, 100]
+    assert [row["trip_share_2008"] for row in rows] == pytest.approx(
+        np.array([5, 13, 18, 8, 12]) / 45
+    )
+    assert [row["ratio"] for row in rows] == pytest.approx([0.5, 0.5, 1, 0.5, 1])
+
+    variation_report._write_c6_csv_table(
+        tmp_path / "report.md", {"c6_car_speed_by_departure": rows},
+        "car_speed_by_departure",
+    )
+    text = (tmp_path / "report_car_speed_by_departure.csv").read_text(encoding="utf-8")
+    assert len(text.splitlines()) == 6
+    assert "Morning peak" in text
+
+
 def test_c6_speed_limit_check_standardizes_each_split_to_the_2008_mix() -> None:
     """3a: EMP before/after at the 2008 mix (90 vs 80 km/h), the ENTD
     season control (60 vs 50 km/h) and the ratio of ratios."""
