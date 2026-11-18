@@ -235,6 +235,7 @@ def create_scope_views(
         SELECT p.*, d.starts_at_residence, d.ends_at_residence, d.is_round,
             NOT (
                 coalesce(motive IN (8.1, 8.2, 8.3, 8.4), FALSE)
+                OR coalesce(destination_purpose IN ('9.4', '9.95'), FALSE)
                 OR outward_activity
                 OR (coalesce(destination_purpose IN ('1.1', '1.2', '1.3'), FALSE)
                     AND prior_activity)

@@ -112,6 +112,39 @@ def test_invalid_day_order_is_rejected() -> None:
         scope.create_scope_views(con, activity_stay_min=15)
 
 
+@pytest.mark.parametrize("round_code", ["9.4", "9.95"])
+def test_recorded_professional_round_only_is_excluded(scoped_days, round_code) -> None:
+    """Section 9.9: exclude the round, not its harmonised return trip."""
+    scoped_days.execute("""
+        INSERT INTO scope_input VALUES
+          ('rounds', 1, '1.1', ?, 9.4, 9.4, 1, 'car_driver', 1,
+            '08:00', '09:00'),
+          ('rounds', 2, ?, '1.1', 1.1, 9.4, 2, 'car_driver', 1,
+            '09:00', '09:30')
+    """, [round_code, round_code])
+    assert scoped_days.sql("""
+        SELECT is_destination FROM scope_trips
+        WHERE day_id = 'rounds' ORDER BY num_dep
+    """).fetchall() == [(False,), (True,)]
+    assert scoped_days.sql("""
+        SELECT count(*) FROM scope_trips
+        WHERE day_id = 'rounds' AND TRUE
+    """).fetchone()[0] == 2
+
+
+@pytest.mark.parametrize("purpose", ["9.2", "9.3", "9.5"])
+def test_other_professional_car_purposes_are_kept(scoped_days, purpose) -> None:
+    """Section 9.9: other professional destinations remain in scope."""
+    scoped_days.execute("""
+        INSERT INTO scope_input VALUES
+          ('professional', 1, '1.1', ?, ?, ?, 1, 'car_driver', 1,
+            '08:00', '08:30')
+    """, [purpose, float(purpose), float(purpose)])
+    assert scoped_days.sql("""
+        SELECT is_destination FROM scope_trips WHERE day_id = 'professional'
+    """).fetchone() == (True,)
+
+
 def test_independent_switches_use_full_day(
     scoped_days: duckdb.DuckDBPyConnection,
 ) -> None:

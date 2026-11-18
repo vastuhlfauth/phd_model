@@ -2,6 +2,13 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: professional-round destination rule (2026-11-18)
+
+- Section 9.9 now excludes recorded EMP 9.4 / ENTD 9.95 destinations
+  under `dest`; the following trip remains eligible even with motive 9.4.
+- Synthetic acceptance tests cover both codes and retain 9.2, 9.3 and 9.5.
+  Scope tests: 10 passed; Ruff passed. No real-data report run.
+
 ### Step 12: commuting, peak hours and professional rounds (2026-11-18)
 
 - Added the supplied questionnaire wording, plus weekday speed comparisons
