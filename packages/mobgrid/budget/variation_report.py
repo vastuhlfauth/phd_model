@@ -4923,6 +4923,23 @@ def _format_c6(
         "",
         "#### Trip delimitation",
         "",
+        "**What the questionnaires say.** **EMP 2019, §3.2.1 (PDF p. 21):** "
+        "« Nous allons passer en revue les uns après les autres tous les déplacements "
+        "que vous avez réalisés [mjour] dernier entre 4 heures du matin et 4 heures "
+        "le jour suivant, quels que soient leur mode ou leur longueur. N'oubliez pas "
+        "de mentionner vos déplacements ou vos promenades à pied. » Interviewer "
+        "instruction: « N'oubliez pas de demander si la personne ne s'est pas arrêtée "
+        "durant le déplacement qu'elle a déclaré. N'oubliez pas non plus les "
+        "« petits déplacements » : accompagner un enfant, acheter du pain, le "
+        "journal, l'essence, promener le chien. » **ENTD 2008, §6.2.1 (PDF p. 87):** "
+        "« Nous allons passer en revue tous les déplacements que vous avez réalisés "
+        "[mjourdep] dernier entre 4 heures du matin et 4 heures le jour suivant. » "
+        "No prompt about stops or small trips. **Professional rounds** (ENTD §6.2.6, "
+        "PDF p. 93; EMP §3.2.7, PDF p. 31): both record one trip, with the number "
+        "of stops, total distance and farthest commune. EMP adds: « Décrire une "
+        "tournée sans interruption prolongée. Si, par exemple, vous vous êtes "
+        "arrêté pour manger, cela marque la fin d'une tournée. »",
+        "",
         *_format_trip_delimitation_stays(stay_rows),
         "",
         *_format_trip_delimitation_tours(tour_rows),
