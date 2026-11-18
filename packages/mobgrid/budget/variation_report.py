@@ -3925,6 +3925,111 @@ def _complete_bootstrap_speed_ratio(
     return SpeedMetric(estimate, (float("nan"), float("nan")), ratios)
 
 
+_CAR_SPEED_METHOD = (
+    "C6 crow-fly speed (2–80 km), standardised to each subset's 2008 "
+    "distance-band × residence-density trip mix on common support. "
+    "Ratios are 2019/2008, with 90% household-bootstrap CIs only when every "
+    "draw is valid. Estimates based on fewer than 50 trips are blank."
+)
+
+
+def _car_mask(sample: SpeedSample) -> np.ndarray:
+    return (sample.mode == "car_driver") & np.isfinite(sample.weight) & (sample.weight > 0)
+
+
+def _weighted_share(values: np.ndarray, selected: np.ndarray) -> float:
+    total = values.sum()
+    return float(values[selected].sum() / total) if total > 0 else np.nan
+
+
+def _car_subset_speed_row(
+    samples: tuple[SpeedSample, SpeedSample],
+    selections: tuple[np.ndarray, np.ndarray],
+    *,
+    n_reps: int,
+    seed: int,
+    minute_shares: bool = False,
+) -> dict:
+    row = {}
+    inputs = []
+    for year, sample, selected in zip((2008, 2019), samples, selections, strict=True):
+        car = _car_mask(sample)
+        n = int(np.count_nonzero(car & selected))
+        row[f"n_{year}"] = n
+        row[f"trip_share_{year}"] = _csv_value(
+            _weighted_share(sample.weight[car], selected[car]), n
+        )
+        if minute_shares:
+            timed = car & np.isfinite(sample.duration_min) & (sample.duration_min >= 0)
+            row[f"minute_share_{year}"] = _csv_value(
+                _weighted_share(
+                    sample.weight[timed] * sample.duration_min[timed], selected[timed]
+                ),
+                int(np.count_nonzero(timed & selected)),
+            )
+        inputs.append(_speed_cells(sample, selected=selected))
+    _, n_a, n_b, speed_a, speed_b = _standardized_speed_pair(
+        *inputs, n_reps=n_reps, seed=seed
+    )
+    ratio = _complete_bootstrap_speed_ratio(speed_a, speed_b)
+    row.update(n_speed_2008=n_a, n_speed_2019=n_b)
+    row.update(_metric_csv_fields("ratio", ratio, min(n_a, n_b)))
+    return row
+
+
+def _car_purpose_masks(frames: SurveyFrames) -> dict[str, np.ndarray]:
+    motive = np.asarray(frames.trips["motive"], dtype=float)
+    return {
+        "Work at usual workplace": motive == 9.1,
+        "Other professional": (motive >= 9.2) & (motive <= 9.5),
+        "Escort or pick-up": (motive >= 6) & (motive < 7),
+        "Shopping": (motive >= 2) & (motive < 3),
+        "Leisure": ((motive >= 5) & (motive < 6)) | ((motive >= 7) & (motive < 8)),
+        "Personal business": (motive >= 3) & (motive < 5),
+        "Study": np.isin(motive, [1.4, 1.5]),
+    }
+
+
+def car_speed_by_purpose(
+    a: SurveyFrames, b: SurveyFrames, *, n_reps: int, seed: int
+) -> list[dict]:
+    """Compare weekday car-driver speeds and weighted shares by harmonised motive."""
+    samples = (_speed_sample(a, "B"), _speed_sample(b, "B"))
+    masks_a, masks_b = _car_purpose_masks(a), _car_purpose_masks(b)
+    return [
+        {
+            "purpose": label,
+            **_car_subset_speed_row(
+                samples, (mask, masks_b[label]), n_reps=n_reps, seed=seed,
+                minute_shares=True,
+            ),
+        }
+        for label, mask in masks_a.items()
+    ]
+
+
+def _format_c6_csv_table(title: str, note: str, rows: list[dict]) -> list[str]:
+    """Render the same suppressed values as the CSV, with rounded display."""
+    keys = list(rows[0])
+
+    def cell(key: str, value: str | float | int) -> str:
+        if value == "":
+            return "-"
+        if isinstance(value, float):
+            return _pct(value) if "share" in key else _num(value, 3)
+        return str(value)
+
+    return [
+        f"#### {title}", "", note, "",
+        "| " + " | ".join(key.replace("_", " ") for key in keys) + " |",
+        "| " + " | ".join("---" for _ in keys) + " |",
+        *(
+            "| " + " | ".join(cell(key, row[key]) for key in keys) + " |"
+            for row in rows
+        ),
+    ]
+
+
 def clock_speed_rows(
     sample_2008: SpeedSample, sample_2019: SpeedSample, *, n_reps: int, seed: int
 ) -> list[dict]:
@@ -4880,6 +4985,7 @@ def _format_c6(
     )
     clock_minute_rows, clock_gap_rows = clock_time_rows(frames_2008, frames_2019)
     clock_speed = clock_speed_rows(*samples["B"], n_reps=n_reps, seed=seed)
+    car_purpose = car_speed_by_purpose(frames_2008, frames_2019, n_reps=n_reps, seed=seed)
     purpose_rows = [
         *trip_delimitation_purpose_rows(frames_2008),
         *trip_delimitation_purpose_rows(frames_2019),
@@ -4907,6 +5013,7 @@ def _format_c6(
         results["c6_clock_minutes"] = clock_minute_rows
         results["c6_clock_gaps"] = clock_gap_rows
         results["c6_clock_speed"] = clock_speed
+        results["c6_car_speed_by_purpose"] = car_purpose
         results["c6_trip_delimitation_purposes"] = purpose_rows
         results["c6_trip_delimitation_stays"] = stay_rows
         results["c6_trip_delimitation_tours"] = tour_rows
@@ -4949,6 +5056,14 @@ def _format_c6(
         *_format_trip_delimitation_speeds(tour_speed_rows),
     ]
     lines += ["", *_format_whole_km_sensitivity(whole_ratios, whole_bands)]
+    lines += ["", *_format_c6_csv_table(
+        "Car-driver speed by purpose",
+        _CAR_SPEED_METHOD + " Shares use all car-driver trips or minutes, including "
+        "trips outside the speed sample. Purposes use the harmonised trip motive: "
+        "returns to a residence are attributed to the origin activity; study includes "
+        "childcare and leisure includes visits.",
+        car_purpose,
+    )]
     return lines
 
 
@@ -6216,6 +6331,11 @@ def _write_report_table_csv(
     return path
 
 
+def _write_c6_csv_table(md_path: Path, results: dict, suffix: str) -> None:
+    if (rows := results.get(f"c6_{suffix}")) is not None:
+        _write_report_table_csv(md_path, suffix, list(rows[0]), rows)
+
+
 def _csv_value(value: float | None, n: int) -> float | str:
     """One unrounded CSV estimate; blank when suppressed or unavailable."""
     if value is None or n < MIN_CELL_N or not np.isfinite(value):
@@ -6567,6 +6687,7 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             md_path, "speed_clock_rounding",
             list(csv_rows[0]) if csv_rows else [], csv_rows,
         )
+    _write_c6_csv_table(md_path, results, "car_speed_by_purpose")
     for key, suffix, convert in (
         ("c6_whole_km_ratios", "whole_km_speed", _whole_km_ratio_csv_rows),
         ("c6_whole_km_bands", "whole_km_shift_share", _whole_km_band_csv_rows),

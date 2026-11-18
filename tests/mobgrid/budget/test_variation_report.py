@@ -2568,6 +2568,34 @@ def _period_speed_sample(
     )
 
 
+def test_car_speed_by_purpose_uses_own_mix_and_all_car_shares() -> None:
+    def frames(counts, durations):
+        sizes = [*counts, 49, 1]
+        n = sum(sizes)
+        return _frames({}, {
+            "ident_men": [f"h{i}" for i in range(n)],
+            "pond_jour": np.repeat([1.0, 2.0, 1.0, 3.0], sizes),
+            "motive": np.repeat([9.1, 9.1, 9.2, 1.4], sizes),
+            "duration_min": np.repeat([*durations, 20.0, 10.0], sizes),
+            "distance_km": np.repeat([4.0, 8.0, 8.0, np.nan], sizes),
+            "crow_fly_km": np.repeat([4.0, 8.0, 8.0, np.nan], sizes),
+            "mode7": ["car_driver"] * n,
+            "home_density": ["dense"] * n,
+            "residence_aa_class": [""] * n,
+        })
+
+    a = frames([60, 60], [12, 12])
+    b = frames([120, 60], [24, 12])
+    work, other, *_ = variation_report.car_speed_by_purpose(
+        a, b, n_reps=20, seed=3
+    )
+    assert work["ratio"] == pytest.approx((12 + 2 * 12) / (24 + 2 * 12))
+    assert work["trip_share_2008"] == pytest.approx(180 / 232)
+    assert work["minute_share_2008"] == pytest.approx(2160 / 3170)
+    assert work["ratio_ci_low"] < work["ratio"] < work["ratio_ci_high"]
+    assert other["trip_share_2008"] == other["ratio"] == ""
+
+
 def test_c6_speed_limit_check_standardizes_each_split_to_the_2008_mix() -> None:
     """3a: EMP before/after at the 2008 mix (90 vs 80 km/h), the ENTD
     season control (60 vs 50 km/h) and the ratio of ratios."""
