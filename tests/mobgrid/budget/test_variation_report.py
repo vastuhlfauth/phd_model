@@ -2467,6 +2467,11 @@ def test_c6_standardized_speed_with_weighted_cells_and_empty_draw() -> None:
     assert np.isnan(
         variation_report._standardized_speed_value(data, draws, common, mix)
     )
+    assert np.isnan(
+        variation_report._standardized_speed_value(
+            data, draws, common, np.array([1.0, 0.0])
+        )
+    )
 
 
 def test_c6_standardized_car_speed_holds_the_2008_cell_mix_constant(
@@ -2625,6 +2630,8 @@ def test_car_speed_by_purpose_uses_own_mix_and_all_car_shares() -> None:
     assert work["minute_share_2008"] == pytest.approx(2160 / 3170)
     assert work["ratio_ci_low"] < work["ratio"] < work["ratio_ci_high"]
     assert other["trip_share_2008"] == other["ratio"] == ""
+    assert work["valid_replicates"] == 20
+    assert "valid_replicates" in other
 
 
 def test_car_speed_by_departure_boundaries_and_work_shares(tmp_path: Path) -> None:
@@ -2653,6 +2660,7 @@ def test_car_speed_by_departure_boundaries_and_work_shares(tmp_path: Path) -> No
         np.array([5, 13, 18, 8, 12]) / 45
     )
     assert [row["ratio"] for row in rows] == pytest.approx([0.5, 0.5, 1, 0.5, 1])
+    assert all(row["valid_replicates"] == 10 for row in rows)
 
     variation_report._write_c6_csv_table(
         tmp_path / "report.md", {"c6_car_speed_by_departure": rows},
@@ -2661,6 +2669,45 @@ def test_car_speed_by_departure_boundaries_and_work_shares(tmp_path: Path) -> No
     text = (tmp_path / "report_car_speed_by_departure.csv").read_text(encoding="utf-8")
     assert len(text.splitlines()) == 6
     assert "Morning peak" in text
+
+
+@pytest.mark.parametrize("missing", [10, 11, 200])
+def test_car_subset_ci_uses_fixed_cells_and_95_percent_valid_draws(
+    missing: int, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C6: 190/200 paired draws suffice; a lost full-sample cell is invalid."""
+    n = 61
+    sample = variation_report.SpeedSample(
+        household=np.array([f"h{i}" for i in range(n)]),
+        weight=np.ones(n), duration_min=np.full(n, 10.0),
+        producer_km=np.array([3.0] * 60 + [7.0]),
+        crow_fly_km=np.array([3.0] * 60 + [7.0]),
+        mode=np.full(n, "car_driver"), density=np.full(n, "dense"),
+        residence_zone=np.full(n, ""),
+    )
+    calls = 0
+
+    def draws(households, rng):
+        nonlocal calls
+        multiplier = np.ones(len(households))
+        if calls % 2 == 0 and calls // 2 < missing:
+            multiplier[np.flatnonzero(households == "h60")] = 0
+        calls += 1
+        return multiplier
+
+    monkeypatch.setattr(variation_report.variation, "household_multipliers", draws)
+    row = variation_report._car_subset_speed_row(
+        (sample, replace(sample, duration_min=sample.duration_min * 2)),
+        (np.ones(n, dtype=bool), np.ones(n, dtype=bool)),
+        n_reps=200, seed=3,
+    )
+    assert row["n_speed_2008"] == row["n_speed_2019"] == 61
+    assert row["ratio"] == pytest.approx(0.5)
+    assert row["valid_replicates"] == 200 - missing
+    if missing == 10:
+        assert row["ratio_ci_low"] == row["ratio_ci_high"] == pytest.approx(0.5)
+    else:
+        assert row["ratio_ci_low"] == row["ratio_ci_high"] == ""
 
 
 def test_professional_rounds_remove_all_modes_and_drop_round_only_days() -> None:
@@ -2731,6 +2778,11 @@ def test_professional_rounds_remove_all_modes_and_drop_round_only_days() -> None
     text = "\n".join(variation_report._format_measurement_ledger(full))
     assert "h. professional rounds (duration includes stops in EMP 2019)" in text
     assert "Car-driver speed ratio (with rounds; without rounds)" in text
+    b.trips["destination_purpose"][:50] = "9.2"
+    effect = variation_report._professional_rounds_ledger_row(
+        a, b, n_reps=10, seed=3
+    )
+    assert effect.effect[:2] == pytest.approx([-20, -1])
 
 
 def test_commute_distance_and_duration_ratios_and_crow_fly_bands() -> None:

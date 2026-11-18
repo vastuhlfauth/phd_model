@@ -2844,7 +2844,7 @@ def _standardized_speed_value(
     mix: np.ndarray,
 ) -> float:
     weight = sample["weight"] * multiplier
-    active_cells = common_cells[mix[common_cells] > 0]
+    active_cells = common_cells
     if len(active_cells) == 0:
         return float("nan")
     cell = sample["cell"]
@@ -3945,9 +3945,12 @@ def _trip_delimitation_purpose_csv_rows(rows: list[dict]) -> list[dict]:
 
 
 def _complete_bootstrap_speed_ratio(
-    metric_a: SpeedMetric, metric_b: SpeedMetric
+    metric_a: SpeedMetric, metric_b: SpeedMetric, *,
+    minimum_valid_fraction: float = 1.0,
 ) -> SpeedMetric | None:
-    """C6: retain the point ratio, but require every bootstrap draw for its CI."""
+    """C6: retain the point ratio; gate the CI on paired valid draws."""
+    if not 0 < minimum_valid_fraction <= 1:
+        raise ValueError("minimum_valid_fraction must be in (0, 1]")
     if (
         not np.isfinite(metric_a.estimate)
         or not np.isfinite(metric_b.estimate)
@@ -3966,7 +3969,7 @@ def _complete_bootstrap_speed_ratio(
     ratios = np.full(len(valid), np.nan)
     ratios[valid] = metric_b.replicates[valid] / metric_a.replicates[valid]
     estimate = metric_b.estimate / metric_a.estimate
-    if np.all(valid):
+    if valid.sum() >= minimum_valid_fraction * len(valid):
         return _metric_interval(estimate, ratios, percentiles=(5, 95))
     return SpeedMetric(estimate, (float("nan"), float("nan")), ratios)
 
@@ -3974,8 +3977,14 @@ def _complete_bootstrap_speed_ratio(
 _CAR_SPEED_METHOD = (
     "C6 crow-fly speed (2–80 km), standardised to each subset's 2008 "
     "distance-band × residence-density trip mix on common support. "
-    "Ratios are 2019/2008, with 90% household-bootstrap CIs only when every "
-    "draw is valid. Estimates based on fewer than 50 trips are blank."
+    "Common cells are fixed on the full samples, not reselected in each draw. "
+    "Estimates based on fewer than 50 trips are blank."
+)
+_CAR_SUBSET_SPEED_METHOD = (
+    _CAR_SPEED_METHOD + " "
+    "Ratios are 2019/2008, with 90% household-bootstrap CIs from valid paired "
+    "draws when at least 95% are valid (190 of 200); every row reports the "
+    "valid draw count."
 )
 
 
@@ -4019,9 +4028,14 @@ def _car_subset_speed_row(
     _, n_a, n_b, speed_a, speed_b = _standardized_speed_pair(
         *inputs, n_reps=n_reps, seed=seed
     )
-    ratio = _complete_bootstrap_speed_ratio(speed_a, speed_b)
+    ratio = _complete_bootstrap_speed_ratio(
+        speed_a, speed_b, minimum_valid_fraction=0.95
+    )
     row.update(n_speed_2008=n_a, n_speed_2019=n_b)
     row.update(_metric_csv_fields("ratio", ratio, min(n_a, n_b)))
+    row["valid_replicates"] = (
+        int(np.isfinite(ratio.replicates).sum()) if ratio is not None else 0
+    )
     return row
 
 
@@ -5303,15 +5317,16 @@ def _format_c6(
     lines += ["", *_format_whole_km_sensitivity(whole_ratios, whole_bands)]
     lines += ["", *_format_c6_csv_table(
         "Car-driver speed by purpose",
-        _CAR_SPEED_METHOD + " Shares use all car-driver trips or minutes, including "
-        "trips outside the speed sample. Purposes use the harmonised trip motive: "
+        _CAR_SUBSET_SPEED_METHOD + " Shares use all car-driver trips or minutes, "
+        "including trips outside the speed sample. Purposes use the harmonised "
+        "trip motive: "
         "returns to a residence are attributed to the origin activity; study includes "
         "childcare and leisure includes visits.",
         car_purpose,
     )]
     lines += ["", *_format_c6_csv_table(
         "Car-driver speed by departure time",
-        _CAR_SPEED_METHOD + " Missing or invalid clock times are unclassified, "
+        _CAR_SUBSET_SPEED_METHOD + " Missing or invalid clock times are unclassified, "
         "but remain in the denominator of shares. All shares, including those "
         "for work (harmonised motive 9.1), are of all car-driver trips. Peak "
         "patterns can be consistent with congestion but do not identify its effect.",
@@ -5328,7 +5343,8 @@ def _format_c6(
     )]
     lines += ["", *_format_c6_csv_table(
         "Counterfactual without professional rounds",
-        _CAR_SPEED_METHOD + " The speed row uses only car drivers; daily minutes "
+        _CAR_SPEED_METHOD + " The speed ratio CI requires every paired draw. "
+        "The speed row uses only car drivers; daily minutes "
         "exclude rounds in all modes and use weekdays with at least one remaining "
         "trip. Counts are contributing trips, not days. The daily-time ratio uses "
         "the shared 90% household-bootstrap CI.",

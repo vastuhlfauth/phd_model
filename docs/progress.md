@@ -2,6 +2,25 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: subset speed intervals (2026-11-18)
+
+- Common standardisation cells are fixed on the full samples; a draw
+  missing any of them is invalid, even if its 2008 mix gives it zero weight.
+- Purpose/departure rows report paired valid draw counts in Markdown and
+  CSV. Their 90% CIs use valid draws when at least 95% survive (190/200).
+  Other speed-table CI gates remain unchanged. Boundary regressions cover
+  190, 189 and zero valid draws, retaining the point ratio in every case.
+- Final focused selection: 46 passed, 0 failed. Changed-file Ruff and
+  source syntax checks passed; modified signatures have compatible callers.
+  No full suite, real-data reports, figures or downloads were run.
+- Regenerate the four reference-scope reports and the eight-scope cube:
+  `python -m mobgrid.budget.emp --out docs\data\step11_budget`
+  `python -m mobgrid.budget.emp --survey entd2008 --out docs\data\step11_budget_entd2008`
+  `python -m mobgrid.budget.emp --compare --out docs\data\step11_compare`
+  `python -m mobgrid.budget.variation_report --out docs\data\step12_variation --entd2008-zoning-data-path data\raw\entd2008\ENTD2008_avec_zonages_EMP`
+  `python -m mobgrid.budget.scope_cube --out docs\data\scope_cube`
+  Add `--scope all` to the first four commands for all scope variants.
+
 ### Step 12: professional-round ledger and preserved audit (2026-11-18)
 
 - The variation loader retains a pre-round-exclusion sample, keeping the
