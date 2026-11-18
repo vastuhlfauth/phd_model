@@ -2,6 +2,19 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 12: professional-round ledger and preserved audit (2026-11-18)
+
+- The variation loader retains a pre-round-exclusion sample, keeping the
+  selected day/distance rules and other destination exclusions unchanged.
+  The car-driver rounds table uses this sample and raw destination codes.
+- Ledger row h gives the kept-minus-excluded effect on the 2019-minus-2008
+  change in minutes/day and trips/day, plus speed ratios with/without
+  rounds and the source section. This is a point sensitivity, excluded
+  from the existing non-additive residual envelope.
+- Cube output explains the new shared destination rule; synthetic totals
+  verify the round is removed and its return remains. Focused validation:
+  15 passed, Ruff passed. No real-data report run.
+
 ### Step 12: professional-round diagnostics (2026-11-18)
 
 - Sequential scope removals now show professional rounds after group 8,

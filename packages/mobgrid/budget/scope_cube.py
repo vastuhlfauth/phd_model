@@ -1061,6 +1061,10 @@ def write_markdown(md_path: Path, out_dir: Path, results: dict) -> None:
             else ""
         ),
         "",
+        "Destination purposes exclude group 8, walking/cycling as the activity, "
+        "and recorded professional rounds (EMP 9.4 / ENTD 9.95). Only the "
+        "round is removed, not the trip from its last stop (section 9.9).",
+        "",
         "Bases: *person-days* is the person-weekday universe (5 × the "
         "individual weight), from which the day switch's dropped trip-days "
         "are removed, as in section 9.9's open-day rule; *described days* "

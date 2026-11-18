@@ -12,6 +12,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+import duckdb
 import numpy as np
 import pytest
 from mobgrid.budget import daily_energy, scope_cube
@@ -36,6 +37,47 @@ _EMP_K_DEPLOC_HEADER = (
 
 N_RESPONDENTS = 72
 N_NOT_ROUND = 6
+
+
+@pytest.mark.parametrize("code", ["9.4", "9.95"])
+def test_cube_destination_round_rule_preserves_last_stop_return(code: str) -> None:
+    """Section 9.9: cube totals inherit recorded-purpose round exclusion."""
+    with duckdb.connect() as con:
+        con.sql("""
+            CREATE TABLE scope_input AS
+            SELECT 'day' AS day_id, num_dep, origin_purpose, destination_purpose,
+                destination_motive, 9.4 AS motive, 1 AS moridom,
+                'car_driver' AS mode_group, 1 AS mobloc,
+                TIME '08:00' AS departure_time, TIME '09:00' AS arrival_time
+            FROM (VALUES (1, '1.1', '9.4', 9.4), (2, '9.4', '1.1', 1.1))
+                v(num_dep, origin_purpose, destination_purpose, destination_motive)
+        """)
+        con.execute(
+            "UPDATE scope_input SET destination_purpose = ? WHERE num_dep = 1",
+            [code],
+        )
+        scope_module.create_scope_views(con, activity_stay_min=15)
+        con.sql("""
+            CREATE TABLE trip_legs AS SELECT day_id, num_dep,
+                CAST(num_dep AS VARCHAR) AS ident_dep, 1 AS typejour,
+                1.0 AS pond_jour, 10.0 AS distance_km,
+                CASE WHEN num_dep = 1 THEN 60.0 ELSE 20.0 END AS duration_min
+            FROM scope_input;
+            CREATE TABLE vr_trip_ext AS SELECT ident_dep, 5.0 AS crow_fly_km
+                FROM trip_legs;
+            CREATE TABLE cube_day_base AS SELECT 'day' AS day_id,
+                'person' AS ident_ind, 'household' AS ident_men,
+                'employed' AS population_category, 1.0 AS pond_jour,
+                TRUE AS is_round
+        """)
+        dest = scope_cube._scope_day_frame(con, scope_module.REFERENCE_SCOPE, None)
+        allpurp = scope_cube._scope_day_frame(
+            con, scope_module.Scope.parse("round-allpurp-local"), None
+        )
+    assert dest.trips == pytest.approx([1])
+    assert dest.minutes == pytest.approx([20])
+    assert allpurp.trips == pytest.approx([2])
+    assert allpurp.minutes == pytest.approx([80])
 
 
 def _variations(i: int) -> tuple[bool, bool, bool]:

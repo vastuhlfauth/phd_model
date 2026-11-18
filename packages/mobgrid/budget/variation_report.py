@@ -394,8 +394,15 @@ def _create_frames_tables(
     *,
     sample_pct: float | None,
     selected_scope: scope_module.Scope,
+    keep_professional_rounds: bool = False,
 ) -> None:
     """Materialise weekday trip/day tables with C7's text household IDs."""
+    trip_filter = selected_scope.trip_filter_sql("t")
+    if keep_professional_rounds:
+        trip_filter = trip_filter.replace(
+            "is_destination",
+            "(is_destination OR destination_purpose IN ('9.4', '9.95'))",
+        )
     mode7_sql = """
         CASE t.mode_group
             WHEN 'cycle' THEN 'bike'
@@ -414,6 +421,7 @@ def _create_frames_tables(
             t.residence_density AS home_density,
             t.income_quintile,
             t.age, t.duration_min, t.distance_km, t.motive, s.destination_motive,
+            s.destination_purpose,
             ({mode7_sql}) AS mode7,
             coalesce({motive_group_sql}, 'unknown') AS motive_group,
             e.declared_km, e.crow_fly_km, e.vac_scol,
@@ -428,7 +436,7 @@ def _create_frames_tables(
         LEFT JOIN vr_person p ON p.ident_ind = t.ident_ind
         LEFT JOIN vr_trip_ext e ON e.ident_dep = t.ident_dep
         WHERE t.typejour = 1 AND t.pond_jour > 0
-            AND ({selected_scope.trip_filter_sql("t")})
+            AND ({trip_filter})
             AND ({_sample_sql(sample_pct)})
     """)
     con.sql("""
@@ -1794,6 +1802,18 @@ def load_frames(
             con, activity_stay_min=activity_stay_min
         )
         _PERSON_EXT_BY_SURVEY[survey.SURVEY_NAME](con)
+        _create_frames_tables(
+            con, sample_pct=sample_pct, selected_scope=scope,
+            keep_professional_rounds=True,
+        )
+        with_rounds = SurveyFrames(
+            survey.SURVEY_NAME,
+            {k: _plain_array(v) for k, v in
+             con.sql("SELECT * FROM vr_days").fetchnumpy().items()},
+            {k: _plain_array(v) for k, v in
+             con.sql("SELECT * FROM vr_trips").fetchnumpy().items()},
+            {},
+        )
         _create_frames_tables(con, sample_pct=sample_pct, selected_scope=scope)
         _create_tour_memberships(con, scope)
         days = con.sql("SELECT * FROM vr_days").fetchnumpy()
@@ -1834,7 +1854,9 @@ def load_frames(
             "household_universe": c7_data["reference"].person_household,
             "scope_diagnostics": scope_data,
             "age_eligibility": scope_module.age_eligibility_summary(con),
+            "with_professional_rounds": with_rounds,
         }
+        with_rounds.aux["household_universe"] = aux["household_universe"]
         if survey is emp2019:
             aux["sequence_motive_summary"] = emp2019.sequence_motive_summary(
                 con, sample_pct=sample_pct
@@ -4101,10 +4123,11 @@ def professional_rounds_tables(
     a: SurveyFrames, b: SurveyFrames, *, n_reps: int, seed: int
 ) -> tuple[list[dict], list[dict]]:
     """Summarise car-driver rounds and remove recorded rounds as a sensitivity."""
+    a = a.aux.get("with_professional_rounds", a)
+    b = b.aux.get("with_professional_rounds", b)
     samples = (_speed_sample(a, "B"), _speed_sample(b, "B"))
-    # ENTD destination 9.95 is already mapped to EMP 9.4 in scope_trips.
-    rounds_a = np.asarray(a.trips["destination_motive"], dtype=float) == 9.4
-    rounds_b = np.asarray(b.trips["destination_motive"], dtype=float) == 9.4
+    rounds_a = np.isin(a.trips["destination_purpose"], ["9.4", "9.95"])
+    rounds_b = np.isin(b.trips["destination_purpose"], ["9.4", "9.95"])
     rows = []
     years = (2008, 2019)
     for year, sample, rounds in zip(years, samples, (rounds_a, rounds_b), strict=True):
@@ -5296,7 +5319,9 @@ def _format_c6(
     )]
     lines += ["", *_format_c6_csv_table(
         "Professional rounds by car drivers",
-        "Recorded destination code EMP 9.4 / ENTD 9.95, not return legs attributed "
+        "Before the professional-round exclusion, with the selected day and "
+        "distance rules unchanged. Recorded destination code EMP 9.4 / ENTD "
+        "9.95, not return legs attributed "
         "to rounds. Shares are of all car-driver trips or minutes, respectively. "
         "Means use trips with a known, non-negative value for each measure.",
         car_rounds,
@@ -9370,6 +9395,7 @@ class MeasurementLedgerRow:
     #: (producer, crow-fly) order; other rows keep ``None`` and print ``-``.
     km_effect: np.ndarray | None = None
     km_bounds: np.ndarray | None = None
+    speed_ratios: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -9601,6 +9627,60 @@ def _calendar_and_recall_effects(
     )
 
 
+def _professional_rounds_ledger_row(
+    a: SurveyFrames, b: SurveyFrames, *, n_reps: int, seed: int
+) -> MeasurementLedgerRow:
+    """Section 9.9: kept-minus-excluded change, in minutes/day and trips/day."""
+    points = []
+    counts = []
+    ratios = []
+    frames = tuple(f.aux["with_professional_rounds"] for f in (a, b))
+    samples = tuple(_speed_sample(f, "B") for f in frames)
+    rounds = tuple(
+        np.isin(f.trips["destination_purpose"], ["9.4", "9.95"]) for f in frames
+    )
+    for keep in (True, False):
+        selections = tuple(
+            np.ones(len(r), dtype=bool) if keep else ~r for r in rounds
+        )
+        levels = []
+        for f, sample, selected in zip(frames, samples, selections, strict=True):
+            _, _, weights, minutes = _nonround_day_inputs(f, sample, selected)
+            valid = (
+                selected & np.isfinite(sample.duration_min) & (sample.duration_min >= 0)
+            )
+            indices = _trip_day_index(f)[valid]
+            trips = np.bincount(indices, minlength=len(f.days["day_id"]))
+            retained = (trips > 0) & np.isfinite(f.days["pond_jour"])
+            retained &= f.days["pond_jour"] > 0
+            counts.append(int(retained.sum()))
+            levels.append(np.array([
+                np.average(minutes, weights=weights) if len(weights) else np.nan,
+                np.average(trips[retained], weights=f.days["pond_jour"][retained])
+                if retained.any() else np.nan,
+            ]))
+        points.append(levels[1] - levels[0])
+        _, na, nb, sa, sb = _standardized_speed_pair(
+            *(_speed_cells(s, selected=m) for s, m in
+              zip(samples, selections, strict=True)),
+            n_reps=n_reps, seed=seed,
+        )
+        ratios.append(
+            sb.estimate / sa.estimate
+            if min(na, nb) >= MIN_CELL_N and sa.estimate > 0 else np.nan
+        )
+    return MeasurementLedgerRow(
+        "h", "professional rounds (duration includes stops in EMP 2019)",
+        np.array([*(points[0] - points[1]), np.nan]),
+        np.full((3, 2), np.nan), "C6 / section 9.9", min(counts),
+        "Effect = (2019 - 2008) with rounds minus (2019 - 2008) without "
+        "rounds, on days with remaining trips, all modes. Point sensitivity, "
+        "not additive to the residual. Speed ratios use each variant's "
+        "2008 mix on common support.",
+        speed_ratios=(ratios[0], ratios[1]),
+    )
+
+
 def measurement_ledger(
     a: SurveyFrames,
     b: SurveyFrames,
@@ -9804,6 +9884,8 @@ def measurement_ledger(
         )
     )
     residual_effects = {row.key: row.bounds for row in rows if row.key in "abefg"}
+    if "with_professional_rounds" in a.aux and "with_professional_rounds" in b.aux:
+        rows.append(_professional_rounds_ledger_row(a, b, n_reps=n_reps, seed=seed))
     residual_bounds = (
         observed[:, None]
         - np.sum([residual_effects[key] for key in "abef"], axis=0)[:, ::-1]
@@ -9889,8 +9971,9 @@ def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
         "| Difference | Effect on time change (min/day) | "
         "Effect on trips/day change | Effect on min/trip change | "
         "Effect on km/trip change (producer; crow-fly) | "
+        "Car-driver speed ratio (with rounds; without rounds) | "
         "Interval or bounds (T; N; M) | Source section |",
-        "|---|---:|---:|---:|---|---|---|",
+        "|---|---:|---:|---:|---|---|---|---|",
     ]
     for row in ledger.rows:
         cells = [
@@ -9905,6 +9988,10 @@ def _format_measurement_ledger(ledger: MeasurementLedger) -> list[str]:
             )
         ]
         cells.append(_km_effect_cell(row))
+        cells.append(
+            _suppress(row.n, "; ".join(_num(v, 3) for v in row.speed_ratios))
+            if row.speed_ratios is not None else "-"
+        )
         bounds = "; ".join(
             f"[{_num(low, 3)}, {_num(high, 3)}]" for low, high in row.bounds
         )

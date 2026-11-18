@@ -1152,6 +1152,7 @@ def test_frame_aggregation_keeps_missing_distance_days(
                 v(day_id, ident_dep, num_dep, distance_km, duration_min);
             CREATE TABLE scope_trips AS SELECT day_id, num_dep,
                 2.0 AS destination_motive,
+                '2.1' AS destination_purpose,
                 CASE WHEN day_id = 'a' AND num_dep = 1 THEN 3.0
                     ELSE NULL END AS stay_min,
                 TRUE AS is_round, TRUE AS is_destination, 1 AS mobloc
@@ -1186,6 +1187,16 @@ def test_frame_aggregation_keeps_missing_distance_days(
             {},
             {},
         )
+        con.sql("""
+            UPDATE scope_trips SET destination_purpose = '9.4',
+                is_destination = FALSE WHERE day_id = 'a' AND num_dep = 1
+        """)
+        for keep, expected in ((False, 2), (True, 3)):
+            variation_report._create_frames_tables(
+                con, sample_pct=None, selected_scope=scope.REFERENCE_SCOPE,
+                keep_professional_rounds=keep,
+            )
+            assert con.sql("SELECT count(*) FROM vr_trips").fetchone()[0] == expected
     days = variation_report.person_days_from_frames(frames)
     assert days.trips == pytest.approx([2.0, 1.0])
     assert days.time_min == pytest.approx([40.0, 20.0])
@@ -1837,7 +1848,7 @@ def test_measurement_ledger_suppresses_small_cells() -> None:
         rows=tuple(replace(row, n=49) for row in ledger.rows),
     )
     text = "\n".join(variation_report._format_measurement_ledger(small))
-    assert "| a. Duration rounding | - | - | - | - | - | C1 |" in text
+    assert "| a. Duration rounding | - | - | - | - | - | - | C1 |" in text
     assert "| Observed change | - | - | - |" in text
     assert "100.0%" not in text
 
@@ -2022,7 +2033,7 @@ def test_measurement_ledger_does_not_leak_a_suppressed_recall_effect() -> None:
         ),
     )
     text = "\n".join(variation_report._format_measurement_ledger(ledger))
-    assert "| b. Recall lag | - | - | - | - | - | A1 |" in text
+    assert "| b. Recall lag | - | - | - | - | - | - | A1 |" in text
     assert "| Residual (removing a, b, e, f) | - | - | - |" in text
     assert "| Residual (also removing g, composition) | - | - | - |" in text
 
@@ -2667,6 +2678,9 @@ def test_professional_rounds_remove_all_modes_and_drop_round_only_days() -> None
                 "ident_men": [f"h{i}" for i in day_id],
                 "pond_jour": np.repeat([1.0, 2.0, 1.0, 2.0], sizes),
                 "destination_motive": np.repeat([9.4, 9.4, 1.1, 9.4], sizes),
+                "destination_purpose": np.repeat(
+                    ["9.95", "9.95", "1.1", "9.95"], sizes
+                ),
                 "motive": [9.4] * 200,
                 "duration_min": multiplier * np.repeat([40.0, 60.0, 20.0, 30.0], sizes),
                 "distance_km": np.repeat([12.0, 18.0, 8.0, 10.0], sizes),
@@ -2690,6 +2704,33 @@ def test_professional_rounds_remove_all_modes_and_drop_round_only_days() -> None
     assert day["n_2008"] == 50
     assert (day["estimate_2008"], day["estimate_2019"]) == (20.0, 40.0)
     assert (day["ratio"], day["ratio_ci_low"], day["ratio_ci_high"]) == (2.0, 2.0, 2.0)
+    a, b = frames(1), frames(2)
+    a.aux["with_professional_rounds"] = a
+    b.aux["with_professional_rounds"] = b
+    filtered_a, filtered_b = _frames({}, {}), _frames({}, {})
+    filtered_a.aux["with_professional_rounds"] = a
+    filtered_b.aux["with_professional_rounds"] = b
+    pre_rows, _ = variation_report.professional_rounds_tables(
+        filtered_a, filtered_b, n_reps=10, seed=3
+    )
+    assert pre_rows == rounds
+    effect = variation_report._professional_rounds_ledger_row(
+        a, b, n_reps=10, seed=3
+    )
+    assert effect.key == "h"
+    # Kept: 80 min/day, 2 trips/day; excluded: 20 min/day, 1 trip/day.
+    assert effect.effect[:2] == pytest.approx([60, 0])
+    assert effect.speed_ratios == pytest.approx((0.5, 0.5))
+    a0, b0, results = _ledger_inputs()
+    a0.aux["with_professional_rounds"] = a
+    b0.aux["with_professional_rounds"] = b
+    full = variation_report.measurement_ledger(
+        a0, b0, results, config=_measurement_config(),
+        n_reps=N_REPS, seed=0,
+    )
+    text = "\n".join(variation_report._format_measurement_ledger(full))
+    assert "h. professional rounds (duration includes stops in EMP 2019)" in text
+    assert "Car-driver speed ratio (with rounds; without rounds)" in text
 
 
 def test_commute_distance_and_duration_ratios_and_crow_fly_bands() -> None:
