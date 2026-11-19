@@ -2,6 +2,20 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income supplement: controls groundwork (2026-11-19)
+
+- Added cache-roster joins for income, residence proxy, car bands and
+  weekday; both survey car-count inputs retain missing values explicitly.
+- Added pooled-weight estimates with shared paired draws and a documented
+  common-support collapse: pool cars within density, then pool density and
+  cars within a quintile if a density is absent in one year. Added
+  weighted log-regression design, bootstrap and percentage-effect helpers,
+  plus the quintile-by-density table with suppression and warning flags.
+- Synthetic checks: 21 passed; changed-file Ruff passed. Remaining:
+  survey attribute extraction and joins, invoking the complete models,
+  real-data edge cases for empty person-denominator cells, the CLI, report,
+  CSVs and conclusion grid. No real-data report ran. Runtime is unmeasured.
+
 ### Zahavi income supplement: level and gap calculations (2026-11-19)
 
 - Added weekday travel-day and per-person estimators using the Z1 shared
