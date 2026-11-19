@@ -2,6 +2,19 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income correction: vehicle definitions (2026-11-19)
+
+- The ENTD questionnaire and dictionary identify `V1_JNBVEH` as a
+  household passenger-car count. The EMP dictionary defines `JNBVEH` as
+  cars, light commercial vehicles and camper vans. The report now states
+  the differing coverage and quotes the verified ENTD question and EMP
+  questionnaire introduction.
+- The EMP public vehicle table lacks a vehicle-type field; detailed
+  vehicle descriptions are limited to five. A complete passenger-car-only
+  household count cannot be reconstructed reliably from the available
+  files, so the original counts are retained with the limitation stated.
+  The exact EMP count-question wording remains unverified.
+
 ### Zahavi income correction: reweighting (2026-11-19)
 
 - Joint cells below the configured respondent minimum are pooled within

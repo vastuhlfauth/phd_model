@@ -827,6 +827,8 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
     }
     report = out.with_suffix(".md").read_text(encoding="utf-8")
     assert "unknown" in report and "2019" in report and "M2" in report
+    assert "V1_JNBVEH" in report and "JNBVEH" in report
+    assert "light commercial vehicles" in report and "not directly comparable" in report
     with (out / "support.csv").open(encoding="utf-8", newline="") as stream:
         audit = list(csv.DictReader(stream))
     q5 = next(

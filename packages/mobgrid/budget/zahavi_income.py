@@ -1699,7 +1699,28 @@ def run_report(
         "",
         "ENTD unknown income remains a separate sixth group; 2019 has no equivalent. "
         "Residence density is the urban-unit-status × size proxy in both years. "
-        "Cars are grouped 0, 1, 2+; their exact survey coverage needs verification.",
+        "Vehicles are grouped 0, 1, 2+; the underlying counts are "
+        "not directly comparable.",
+        "",
+        "### Household vehicle definitions",
+        "",
+        "ENTD 2008 `Q_MENAGE.V1_JNBVEH` counts passenger cars at the "
+        "household's disposal. The questionnaire asks: « De combien de voitures "
+        "particulières votre ménage dispose-t-il au total ? » The dictionary "
+        "does not list vans or camper vans in this count. "
+        "[ENTD questionnaire](https://www.statistiques.developpement-durable.gouv.fr/media/2309/download?inline).",
+        "",
+        "EMP 2019 `Q_MENAGE.JNBVEH` counts passenger cars, light commercial "
+        "vehicles and camper vans at the household's disposal. The questionnaire "
+        "introduces the subject as « questions sur les véhicules dont dispose "
+        "éventuellement votre ménage »; the exact JNBVEH count question could "
+        "not be verified. "
+        "[EMP questionnaire](https://www.statistiques.developpement-durable.gouv.fr/sites/default/files/2022-07/questionnaire_emp2019.pdf).",
+        "",
+        "The public EMP vehicle table does not identify vehicle type and the "
+        "questionnaire limits detailed vehicle descriptions to five, so its "
+        "count cannot reliably be narrowed to passenger cars for every "
+        "household. The original counts are retained with this limitation.",
         "",
         "Levels and gaps use 95% household-bootstrap intervals; cross-year ratios "
         "use 90% intervals. Individual survey household draws are independent, "
