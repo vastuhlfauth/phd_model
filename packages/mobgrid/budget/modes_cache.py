@@ -54,11 +54,22 @@ def input_signature(
         raw_files = [data_path / name for name in sorted(entd2008.RAW_FILES)]
     else:
         raise ValueError(f"unsupported survey: {survey.__name__}")
+    budget_dir = Path(__file__).parent
+    reconstruction_files = (
+        "modes_cache.py",
+        "scope.py",
+        "trip_legs.py",
+        "emp2019.py",
+        "entd2008.py",
+        "daily_energy.py",
+        "variation.py",
+        "variation_report.py",
+    )
     files = [
         *raw_files,
         config_path,
-        *sorted(Path(__file__).parent.glob("*.py")),
-        *sorted((Path(__file__).parent.parent / "energy").glob("*.py")),
+        *(budget_dir / name for name in reconstruction_files),
+        *sorted((budget_dir.parent / "energy").glob("*.py")),
     ]
     digest.update(
         json.dumps(
@@ -158,11 +169,20 @@ def load_survey(
                 columns = list(zip(*roster, strict=True))
                 con.register(
                     "cache_roster",
-                    pa.table(dict(zip(
-                        ("ident_ind", "ident_men", "population_category", "weight"),
-                        columns,
-                        strict=True,
-                    ))),
+                    pa.table(
+                        dict(
+                            zip(
+                                (
+                                    "ident_ind",
+                                    "ident_men",
+                                    "population_category",
+                                    "weight",
+                                ),
+                                columns,
+                                strict=True,
+                            )
+                        )
+                    ),
                 )
                 _copy(con, "SELECT * FROM cache_roster", staging.roster)
                 _copy(

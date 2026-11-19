@@ -2,6 +2,29 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi mode supplement CLI (2026-11-19)
+
+- Completed the report CLI and six CSVs, using the signed survey caches,
+  shared household draws and all eight scope switches. Missing or invalid
+  caches are built automatically; report-only code edits do not invalidate
+  trip-leg caches. Stages are timed and a dated log and summary are written.
+- The reference-scope stability table checks the rounded 52.0/57.0
+  minutes/person against the scope cube and warns on a discrepancy; this
+  comparison remains unverified on real data. B3 point terms are quoted
+  from the existing report; missing mode-level intervals use its estimator
+  and the shared draws only when source and cached trip counts agree.
+  Km/trip and speed shares are approximate because the source terms are
+  rounded; mismatched counts leave new intervals unavailable with a warning.
+- Synthetic cache builds took 14.05 s and 13.49 s; the subsequent tiny
+  one-scope report took roughly 1-2 s. These timings do not support a
+  reliable estimate for national data or all scopes. No real-data report
+  was run; the earlier pending notes below are historical.
+- Final validation: 18 synthetic tests passed across the two touched
+  modules; Ruff passed on the changed Python files.
+- Run `python -m mobgrid.budget.zahavi_modes --out docs\data\step12_modes`.
+  The existing reference-scope B3 report must be present at the configured
+  source path. No separate cache command is needed.
+
 ### Zahavi B3 quotation (2026-11-19)
 
 - Added direct quotation of the existing reference-scope B3 tables, with
