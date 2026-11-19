@@ -995,6 +995,25 @@ def reweighted_metrics(
                     supported,
                 )
             )
+        if support is not None:
+            group = f"reweight_input_{basis}"
+            existing = {
+                (row["term"], row["year"]) for row in support if row["group"] == group
+            }
+            labels_raw = sorted({term for term, _ in existing})
+            for year, draws in ((2008, draws_a), (2019, draws_b)):
+                for label in labels_raw:
+                    if (label, year) not in existing:
+                        support.append(
+                            {
+                                "group": group,
+                                "term": label,
+                                "year": year,
+                                "respondents": 0,
+                                "households": 0,
+                                "empty_draws": len(draws.multipliers),
+                            }
+                        )
         cell_people = [
             item[0].people.person[item[2]]
             if basis == "person"

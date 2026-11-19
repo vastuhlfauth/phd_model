@@ -8,6 +8,9 @@ Read this file at the start of every task and update it at the end.
   with counts by valid/total draw count; regression summaries also count
   rank-deficient draws and nonfinite effects. Individual coefficients
   retain their own 95%-valid-draw requirement.
+- The final support audit also emits zero-respondent, zero-household rows
+  for original reweighting cells absent from one year, with all that year's
+  draws marked empty.
 - Synthetic income tests: 38 passed; Ruff passed. The real report was not
   rerun.
 

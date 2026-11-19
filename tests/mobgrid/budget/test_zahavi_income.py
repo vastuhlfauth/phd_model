@@ -512,12 +512,25 @@ def test_person_reweighting_collapses_cells_emptied_by_open_day():
     a, b = sample("a", True), sample("b", False)
     da = zahavi_modes.Draws(a.people.household, np.ones((20, 2)), 0)
     db = zahavi_modes.Draws(b.people.household, np.ones((20, 2)), 0)
+    support = []
     ma, mb, collapsed = zahavi_income.reweighted_metrics(
-        a, b, da, db, minimum_n=1, max_lost_share=0.01
+        a, b, da, db, minimum_n=1, max_lost_share=0.01, support=support
     )
     assert ma["person", "q1"][1].value == pytest.approx(10)
     assert mb["person", "q1"][1].value == pytest.approx(15)
     assert ("person", "q1|sparse|1", "q1|all|all") in collapsed
+    absent = next(
+        row
+        for row in support
+        if row["group"] == "reweight_input_travel_day"
+        and row["term"] == "q1|sparse|1"
+        and row["year"] == 2008
+    )
+    assert (absent["respondents"], absent["households"], absent["empty_draws"]) == (
+        0,
+        0,
+        20,
+    )
 
 
 def test_reweighting_retains_draw_with_small_lost_target_share():
