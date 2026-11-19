@@ -679,6 +679,8 @@ def _b3_sample(
         ).fetchnumpy()
     days = {key: vr._plain_array(value) for key, value in days.items()}
     trips = {key: vr._plain_array(value) for key, value in trips.items()}
+    days["ident_men"] = vr._text_values(days["ident_men"])
+    trips["ident_men"] = vr._text_values(trips["ident_men"])
     return vr.trip_sample_from_frames(
         vr.SurveyFrames("cached", days, trips, {}), vr._text_values(trips["mode7"])
     )

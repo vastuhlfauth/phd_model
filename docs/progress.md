@@ -2,6 +2,20 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi B3 cached household-ID correction (2026-11-19)
+
+- Reproduced the reported B3 interval crash with numeric Parquet household
+  IDs: the draw roster used text IDs but the B3 sample retained integers.
+  The B3 cache reader now uses the same text-normalisation helper as the
+  roster and other cached samples. Existing caches remain valid.
+- The user's run measured cache construction at 22.1 min (ENTD) and
+  9.4 min (EMP); the reference-scope analysis reached B3 after about
+  1.8 min. All-scope completion time remains unmeasured.
+- Rerun the same report command; no cache rebuild is required. No real-data
+  report was run by the assistant.
+- Validation: numeric-ID regression failed before the fix; all 15 tests
+  in the touched mode-report module now pass, and changed-file Ruff passes.
+
 ### Zahavi mode supplement CLI (2026-11-19)
 
 - Completed the report CLI and six CSVs, using the signed survey caches,

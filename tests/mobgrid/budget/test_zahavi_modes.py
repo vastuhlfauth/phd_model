@@ -232,7 +232,10 @@ def test_missing_b3_mode_intervals_use_shared_household_draws() -> None:
     assert intervals["car_driver"]["mix"] == pytest.approx((0.0, 0.0))
 
 
-def test_report_reads_cached_parquet_and_writes_all_csvs(tmp_path: Path) -> None:
+@pytest.mark.parametrize("household_sql", ["'h' || i::VARCHAR", "i"])
+def test_report_reads_cached_parquet_and_writes_all_csvs(
+    tmp_path: Path, household_sql: str
+) -> None:
     caches = []
     for year in (2008, 2019):
         root = tmp_path / str(year)
@@ -241,23 +244,23 @@ def test_report_reads_cached_parquet_and_writes_all_csvs(tmp_path: Path) -> None
         caches.append(cache)
         with duckdb.connect() as con:
             con.execute(
-                """
-                COPY (SELECT 'h' || i::VARCHAR ident_men, 5.0 weight
+                f"""
+                COPY (SELECT {household_sql} ident_men, 5.0 weight
                       FROM range(60) t(i)) TO ? (FORMAT PARQUET)
             """,
                 [str(cache.roster)],
             )
             con.execute(
-                """
-                COPY (SELECT 'd' || i::VARCHAR day_id, 'h' || i::VARCHAR ident_men,
+                f"""
+                COPY (SELECT 'd' || i::VARCHAR day_id, {household_sql} ident_men,
                              1.0 pond_jour, TRUE is_round FROM range(60) t(i))
                 TO ? (FORMAT PARQUET)
             """,
                 [str(cache.day_base)],
             )
             con.execute(
-                """
-                COPY (SELECT 'd' || i::VARCHAR day_id, 'h' || i::VARCHAR ident_men,
+                f"""
+                COPY (SELECT 'd' || i::VARCHAR day_id, {household_sql} ident_men,
                              1.0 pond_jour, 'walk' mode7, 5.0 + i % 10 duration_min,
                              2.0 crow_fly_km, 4.0 distance_km FROM range(60) t(i))
                 TO ? (FORMAT PARQUET)
@@ -265,8 +268,8 @@ def test_report_reads_cached_parquet_and_writes_all_csvs(tmp_path: Path) -> None
                 [str(cache.trips(scope.REFERENCE_SCOPE))],
             )
             con.execute(
-                """
-                COPY (SELECT 'h' || i::VARCHAR ident_men, 1.0 pond_jour,
+                f"""
+                COPY (SELECT {household_sql} ident_men, 1.0 pond_jour,
                              'walking_only' day_mode_group,
                              5.0 + i % 10 total_time_min FROM range(60) t(i))
                 TO ? (FORMAT PARQUET)
