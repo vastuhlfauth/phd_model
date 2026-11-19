@@ -4,18 +4,23 @@ Read this file at the start of every task and update it at the end.
 
 ### Step 6: OSM network pilot pipeline
 
-- Added buffered pilot/national study areas, resumable staged OSM extraction,
-  mode-specific directed edges, directional bike classes, and the CLI report
-  for section 14.5. The WGS84 bounds filter control-node candidates and
-  bracket exact polygon checks; all nodes of retained ways are preserved.
-- Edge fields and access/bike rules are documented in
-  [docs/data/osm_edges.md](docs/data/osm_edges.md). The CLI writes connectivity,
-  length, maxspeed, and bike-infrastructure checks to
-  `docs/data/step06_osm_pilot.md`; that report has not been generated here.
-- Open point: symbolic `maxspeed=walk` is provisionally 5 km/h, marked
-  `TODO(confirm)` in `config/network.yaml`.
-- Focused validation: 34 synthetic tests and the Monaco pilot test passed;
-  Ruff passed. CLI help was checked. Gironde and national runs were not run.
+- OSM extraction reads all nodes in the WGS84 area bounds, joins unnested way
+  references to nodes covered by the once-simplified area, then reads only
+  out-of-bounds nodes needed by retained ways. The stages are resumable and
+  the extraction signature is version 3.
+- Directed edges apply configured access exclusions, count direction-filtered
+  controls along each edge, and record same-mode `to_degree`. Lengths use
+  DuckDB's ellipsoidal spheroid function on ordered node coordinates (WGS84
+  parameters, numerically GRS80-equivalent at sub-millimetre edge precision);
+  geometry remains EPSG:3035.
+- Edge fields and rules are documented in
+  [docs/data/osm_edges.md](docs/data/osm_edges.md). The CLI can write the
+  connectivity report to `docs/data/step06_osm_pilot.md`; it was not generated.
+- Open points: area simplification tolerance is provisionally 10 m and
+  `maxspeed=walk` is provisionally 5 km/h; both are marked `TODO(confirm)` in
+  `config/network.yaml`.
+- Final focused validation: 13 synthetic tests passed, 1 pilot test deselected,
+  and Ruff passed. No PBF/pilot or national run was performed.
 - Run the pilot with:
   `python -m mobgrid.osm.extract --state 2021 --area pilot`
   `python -m mobgrid.osm.edges --state 2021 --area pilot --report docs/data/step06_osm_pilot.md`

@@ -17,8 +17,11 @@
   from the in-box node pass. Each completed stage is reused only when its
   input signature and required schema are current.
 - **Base outputs:** `data/base/network/{state}/{area}/edges.parquet` and
-  `nodes.parquet`. Coordinates and lengths use EPSG:3035 metres; edge geometry
-  is WKB. No elevation or travel times are populated in this step.
+  `nodes.parquet`. Node coordinates and edge geometry use EPSG:3035; edge
+  lengths are ellipsoidal metres summed from the ordered OSM node coordinates.
+  DuckDB's spheroid function uses WGS84 parameters, numerically equivalent to
+  GRS80 at sub-millimetre precision for road-edge lengths. No elevation or
+  travel times are populated in this step.
 
 ## Edge columns
 
@@ -29,7 +32,7 @@
 | `is_forward` | bool | True follows the stored way reference order |
 | `mode` | string | One row for each permitted direction and mode: car, bike or foot |
 | `node_ids` | list[int64] | Ordered OSM node ids along the segment |
-| `length_m` | float64 | EPSG:3035 geometry length in metres |
+| `length_m` | float64 | Ellipsoidal length in metres from the ordered node latitude/longitude coordinates |
 | `highway` | string, nullable | OSM road class |
 | `maxspeed_kmh` | float64, nullable | Parsed maxspeed in km/h |
 | `motorroad` | bool | `motorroad=yes` (also accepts `true` and `1`) |

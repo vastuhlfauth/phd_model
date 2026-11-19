@@ -393,6 +393,12 @@ def _build_segments_sql() -> str:
         SELECT r.way_id, r.way_tags, r.from_node_id, r.to_node_id,
                r.from_sequence, r.to_sequence,
                list(p.node_id ORDER BY p.node_sequence) AS node_ids,
+               ST_Length_Spheroid(
+                   ST_MakeLine(
+                       list(ST_Point(p.lat, p.lon)
+                            ORDER BY p.node_sequence)
+                   )
+               ) AS length_m,
                ST_MakeLine(list(p.point ORDER BY p.node_sequence)) AS geom
         FROM ranges r
         JOIN _osm_way_points p
@@ -430,13 +436,13 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
     return f"""
         WITH directions AS (
             SELECT way_id, way_tags, from_node_id, to_node_id,
-                   node_ids, geom, true AS is_forward
+                   node_ids, length_m, geom, true AS is_forward
             FROM _osm_way_segments
             UNION ALL
             SELECT way_id, way_tags, to_node_id AS from_node_id,
                    from_node_id AS to_node_id,
                    list_reverse(node_ids) AS node_ids,
-                   ST_Reverse(geom) AS geom, false AS is_forward
+                   length_m, ST_Reverse(geom) AS geom, false AS is_forward
             FROM _osm_way_segments
         ),
         control_counts AS (
@@ -477,7 +483,7 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                    {accesses["car"]} AS car_access,
                    {accesses["bike"]} AS bike_access,
                    {accesses["foot"]} AS foot_access,
-                   ST_Length(d.geom) AS length_m,
+                   d.length_m,
                    {maxspeed} AS maxspeed_kmh,
                    coalesce(
                        lower(d.way_tags['motorroad']) IN ('yes', 'true', '1'),

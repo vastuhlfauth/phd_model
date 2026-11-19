@@ -2,6 +2,9 @@ import duckdb
 from common.grid import cell_id
 from mobgrid.osm.config import load_network_config
 from mobgrid.osm.edges import (
+    _build_graph_nodes,
+    _build_points_sql,
+    _build_segments_sql,
     build_directed_edges,
     connectivity_summaries,
     write_step06_report,
@@ -378,6 +381,50 @@ def test_directional_control_counts_and_to_degree(tmp_path) -> None:
         [result.edges_path],
     ).fetchall()
     assert degree == [(3,)]
+
+
+def test_edge_length_uses_ellipsoidal_node_coordinates(tmp_path) -> None:
+    connection = duckdb.connect()
+    ways_path = tmp_path / "ways.parquet"
+    nodes_path = tmp_path / "nodes.parquet"
+    connection.execute("""
+        CREATE TABLE ways (
+            way_id BIGINT,
+            tags MAP(VARCHAR, VARCHAR),
+            refs BIGINT[]
+        );
+        INSERT INTO ways VALUES
+            (1, map {'highway':'residential'}, [1, 2]);
+        CREATE TABLE nodes (
+            node_id BIGINT,
+            tags MAP(VARCHAR, VARCHAR),
+            lat DOUBLE,
+            lon DOUBLE
+        );
+        INSERT INTO nodes VALUES
+            (1, map(), 0, 0),
+            (2, map(), 0, 1);
+    """)
+    connection.execute("COPY ways TO ? (FORMAT PARQUET)", [str(ways_path)])
+    connection.execute("COPY nodes TO ? (FORMAT PARQUET)", [str(nodes_path)])
+
+    connection.execute("LOAD spatial")
+    connection.execute(
+        _build_points_sql(
+            str(ways_path).replace("\\", "/"),
+            str(nodes_path).replace("\\", "/"),
+        )
+    )
+    _build_graph_nodes(connection)
+    connection.execute(_build_segments_sql())
+    lengths = connection.execute(
+        """
+        SELECT length_m, geom IS NOT NULL
+        FROM _osm_way_segments
+        WHERE way_id = 1
+        """,
+    ).fetchall()
+    assert lengths == [(111_319.49079327357, True)]
 
 
 def test_pilot_report_contains_connectivity_and_edge_checks(tmp_path) -> None:
