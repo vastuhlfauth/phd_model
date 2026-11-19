@@ -2,6 +2,15 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi mode distributions (2026-11-19)
+
+- Added cached weekday trip, mode-user-day and step-11 day-mode-group
+  samples, with weighted ECDFs and Gaussian densities on minute grids.
+  Each group uses a pooled bandwidth with equal total weight per survey;
+  zero-variance densities are explicitly unavailable. Small cells are blank.
+- Three synthetic tests passed; Ruff passed. CLI/CSV wiring and the remaining
+  comparison, stability and B3 tables are still outstanding.
+
 ### Zahavi mode-report cache (2026-11-19)
 
 - Added a survey cache API for all eight weekday scopes: signed Parquet
