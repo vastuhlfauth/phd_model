@@ -2,6 +2,28 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income supplement: partial groundwork (2026-11-19)
+
+- Added independent helpers in `zahavi_income.py` for the existing survey
+  income quintiles, unknown-income shares, paired Q5-minus-Q1 gap changes,
+  pooled joint-cell weights on common support, and numpy weighted least
+  squares. No shared function or cache signature was modified.
+- Synthetic checks: 6 passed; changed Python files pass Ruff. Pylance
+  reports no syntax errors in the new module. The real-data income report
+  was not run and no files under `data/` or the mode outputs were written.
+- Incomplete: report/CLI, per-person and day levels, ratio and gap tables,
+  collapse of empty cells, bootstrap regression models, density tables,
+  conclusion grid, and item-by-item commits. No runtime estimate for the
+  unimplemented CLI is available.
+- The public ENTD release lists household-vehicle and vehicle-description
+  files, but neither is locally available. Identify and validate the
+  household car-count variable before implementing the 2008 car control;
+  do not infer that the variable is absent. See `docs/data/entd2008.md`.
+- The existing cache stores income and density for trip days but not the
+  full roster's income or both surveys' requested density proxy; join
+  validated respondent attributes without rebuilding or modifying Z1's
+  signed caches. Use temporary files for any extraction.
+
 ### Zahavi B3 cached household-ID correction (2026-11-19)
 
 - Reproduced the reported B3 interval crash with numeric Parquet household
