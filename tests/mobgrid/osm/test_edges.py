@@ -72,7 +72,11 @@ def _raw_tables(tmp_path):
                       'access':'no;yes'}, [67, 68]),
             (35, map {'highway':'pedestrian'}, [69, 70]),
             (36, map {'highway':'residential',
-                      'junction':'circular'}, [71, 72])
+                      'junction':'circular'}, [71, 72]),
+            (37, map {'highway':'residential'}, [73, 74, 75]),
+            (38, map {'highway':'residential'}, [76, 77, 78]),
+            (39, map {'highway':'residential'}, [79, 80, 81]),
+            (40, map {'highway':'residential'}, [82, 83, 84])
     """)
     connection.execute("""
         CREATE TABLE nodes (
@@ -83,12 +87,21 @@ def _raw_tables(tmp_path):
         )
     """)
     node_rows = []
-    for node_id in range(1, 73):
+    for node_id in range(1, 85):
         tags = (
             "map {'highway':'traffic_signals'}"
             if node_id == 3
             else "map {'highway':'stop'}"
             if node_id == 2
+            else "map {'highway':'traffic_signals', "
+            "'traffic_signals:direction':'forward'}"
+            if node_id == 74
+            else "map {'highway':'crossing', 'direction':'both'}"
+            if node_id == 77
+            else "map {'highway':'give_way', 'direction':'backward'}"
+            if node_id == 80
+            else "map {'highway':'mini_roundabout', 'direction':'both'}"
+            if node_id == 83
             else "map()::MAP(VARCHAR, VARCHAR)"
         )
         node_rows.append(
@@ -138,7 +151,8 @@ def test_splits_ways_at_shared_graph_nodes_and_reverses_node_order(tmp_path) -> 
     ]
     endpoint = connection.execute(
         """
-        SELECT signal_count, junction_count, length_m, geometry_wkb
+        SELECT signal_count, stop_count, crossing_count,
+               mini_roundabout_count, length_m, geometry_wkb
         FROM read_parquet(?)
         WHERE way_id = 1 AND mode = 'foot' AND is_forward
           AND from_node_id = 2 AND to_node_id = 3
@@ -146,9 +160,9 @@ def test_splits_ways_at_shared_graph_nodes_and_reverses_node_order(tmp_path) -> 
         [result.edges_path],
     ).fetchone()
     assert endpoint is not None
-    assert endpoint[0:2] == (1, 0)
-    assert endpoint[2] > 0
-    assert endpoint[3] is not None
+    assert endpoint[0:4] == (1, 0, 0, 0)
+    assert endpoint[4] > 0
+    assert endpoint[5] is not None
     grid_ids = connection.execute(
         """
         SELECT cell_1km_id, tile_id,
@@ -307,6 +321,63 @@ def test_unusable_highways_access_lists_and_pedestrian_bike_access(
         (35, "bike"),
         (35, "foot"),
     ]
+
+
+def test_directional_control_counts_and_to_degree(tmp_path) -> None:
+    connection, result = _build(tmp_path)
+    signal_counts = connection.execute(
+        """
+        SELECT is_forward, signal_count
+        FROM read_parquet(?)
+        WHERE way_id = 37 AND mode = 'foot'
+        ORDER BY is_forward DESC
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert signal_counts == [(True, 1), (False, 0)]
+
+    crossing_counts = connection.execute(
+        """
+        SELECT is_forward, stop_count, crossing_count, mini_roundabout_count
+        FROM read_parquet(?)
+        WHERE way_id = 38 AND mode = 'foot'
+        ORDER BY is_forward DESC
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert crossing_counts == [(True, 0, 1, 0), (False, 0, 1, 0)]
+
+    stop_counts = connection.execute(
+        """
+        SELECT is_forward, stop_count
+        FROM read_parquet(?)
+        WHERE way_id = 39 AND mode = 'foot'
+        ORDER BY is_forward DESC
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert stop_counts == [(True, 0), (False, 1)]
+
+    mini_roundabout_counts = connection.execute(
+        """
+        SELECT is_forward, mini_roundabout_count
+        FROM read_parquet(?)
+        WHERE way_id = 40 AND mode = 'foot'
+        ORDER BY is_forward DESC
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert mini_roundabout_counts == [(True, 1), (False, 1)]
+
+    degree = connection.execute(
+        """
+        SELECT DISTINCT to_degree
+        FROM read_parquet(?)
+        WHERE mode = 'foot' AND to_node_id = 2
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert degree == [(3,)]
 
 
 def test_pilot_report_contains_connectivity_and_edge_checks(tmp_path) -> None:

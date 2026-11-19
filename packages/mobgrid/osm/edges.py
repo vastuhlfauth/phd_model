@@ -47,7 +47,10 @@ EDGE_COLUMNS = {
     "lanes_bus",
     "lanes_psv",
     "signal_count",
-    "junction_count",
+    "stop_count",
+    "crossing_count",
+    "mini_roundabout_count",
+    "to_degree",
     "cell_1km_id",
     "tile_id",
     "geometry_wkb",
@@ -291,6 +294,29 @@ def direction_sql(mode: Mode, config: NetworkConfig) -> str:
     """
 
 
+def _control_direction_sql(
+    tags_expression: str,
+    is_forward_expression: str,
+    *,
+    signal: bool = False,
+) -> str:
+    direction = f"lower(trim({tags_expression}['direction']))"
+    if signal:
+        signal_direction = (
+            f"lower(trim({tags_expression}['traffic_signals:direction']))"
+        )
+        direction = (
+            f"coalesce(nullif({signal_direction}, ''), "
+            f"nullif({direction}, ''))"
+        )
+    return (
+        f"CASE WHEN {direction} = 'forward' "
+        f"THEN {is_forward_expression} "
+        f"WHEN {direction} = 'backward' "
+        f"THEN NOT ({is_forward_expression}) ELSE TRUE END"
+    )
+
+
 def _write_parquet_atomic(
     connection: duckdb.DuckDBPyConnection, query: str, destination: Path
 ) -> None:
@@ -312,7 +338,7 @@ def _input_signature(
         }
     return hashlib.sha256(
         json.dumps(
-            {"version": 1, "inputs": inputs, "config": config.model_dump(mode="json")},
+            {"version": 2, "inputs": inputs, "config": config.model_dump(mode="json")},
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()
@@ -395,6 +421,12 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
     )
     maxspeed = maxspeed_sql("way_tags", config)
     tile_size = config.tile_size_m
+    signal_direction = _control_direction_sql(
+        "n.tags", "d.is_forward", signal=True
+    )
+    node_direction = _control_direction_sql(
+        "n.tags", "d.is_forward"
+    )
     return f"""
         WITH directions AS (
             SELECT way_id, way_tags, from_node_id, to_node_id,
@@ -407,8 +439,41 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                    ST_Reverse(geom) AS geom, false AS is_forward
             FROM _osm_way_segments
         ),
+        control_counts AS (
+            SELECT d.way_id, d.from_node_id, d.to_node_id, d.is_forward,
+                   sum(
+                       CASE WHEN lower(n.tags['highway']) = 'traffic_signals'
+                                 AND {signal_direction}
+                            THEN 1 ELSE 0 END
+                   )::TINYINT AS signal_count,
+                   sum(
+                       CASE WHEN lower(n.tags['highway']) IN ('stop', 'give_way')
+                                 AND {node_direction}
+                            THEN 1 ELSE 0 END
+                   )::TINYINT AS stop_count,
+                   sum(
+                       CASE WHEN lower(n.tags['highway']) = 'crossing'
+                                 AND {node_direction}
+                            THEN 1 ELSE 0 END
+                   )::TINYINT AS crossing_count,
+                   sum(
+                       CASE WHEN lower(n.tags['highway']) = 'mini_roundabout'
+                                 AND {node_direction}
+                            THEN 1 ELSE 0 END
+                   )::TINYINT AS mini_roundabout_count
+            FROM directions d
+            CROSS JOIN UNNEST(d.node_ids) WITH ORDINALITY
+                AS edge_node(node_id, node_sequence)
+            JOIN read_parquet('{nodes_path}') n USING (node_id)
+            WHERE edge_node.node_sequence > 1
+            GROUP BY d.way_id, d.from_node_id, d.to_node_id, d.is_forward
+        ),
         attributes AS (
             SELECT d.*,
+                   controls.signal_count,
+                   controls.stop_count,
+                   controls.crossing_count,
+                   controls.mini_roundabout_count,
                    {accesses["car"]} AS car_access,
                    {accesses["bike"]} AS bike_access,
                    {accesses["foot"]} AS foot_access,
@@ -426,19 +491,17 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                    d.way_tags['busway'] AS busway,
                    d.way_tags['lanes:bus'] AS lanes_bus,
                    d.way_tags['lanes:psv'] AS lanes_psv,
-                   CASE WHEN lower(n.tags['highway']) = 'traffic_signals'
-                        THEN 1::TINYINT ELSE 0::TINYINT END AS signal_count,
-                   CASE WHEN lower(n.tags['highway']) IN
-                       ('stop', 'give_way', 'crossing', 'mini_roundabout')
-                        THEN 1::TINYINT ELSE 0::TINYINT END AS junction_count,
                    floor(ST_Y(ST_Centroid(d.geom)) / 1000)::BIGINT
                        * 100000
                      + floor(ST_X(ST_Centroid(d.geom)) / 1000)::BIGINT
                        AS cell_1km_id,
                    tiles.tile_id
             FROM directions d
-            JOIN read_parquet('{nodes_path}') n
-              ON n.node_id = d.to_node_id
+            JOIN control_counts controls
+              ON controls.way_id = d.way_id
+             AND controls.from_node_id = d.from_node_id
+             AND controls.to_node_id = d.to_node_id
+             AND controls.is_forward = d.is_forward
             JOIN _osm_segment_tiles tiles
               ON tiles.northing_m = floor(
                     ST_Y(ST_Centroid(d.geom)) / {tile_size}
@@ -451,16 +514,38 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
             SELECT attributes.*, mode
             FROM attributes
             CROSS JOIN (VALUES {mode_values}) AS modes(mode)
+        ),
+        allowed_edges AS (
+            SELECT *
+            FROM per_mode
+            WHERE {allowed_by_mode}
+        ),
+        neighbours AS (
+            SELECT mode, from_node_id AS node_id,
+                   to_node_id AS neighbour_id
+            FROM allowed_edges
+            UNION
+            SELECT mode, to_node_id AS node_id,
+                   from_node_id AS neighbour_id
+            FROM allowed_edges
+        ),
+        node_degrees AS (
+            SELECT mode, node_id,
+                   count(DISTINCT neighbour_id) AS to_degree
+            FROM neighbours
+            GROUP BY mode, node_id
         )
-        SELECT way_id, from_node_id, to_node_id, is_forward, mode, node_ids,
-               length_m, highway, maxspeed_kmh, motorroad, lanes,
-               car_access, bike_access, foot_access,
+        SELECT e.way_id, e.from_node_id, e.to_node_id, e.is_forward,
+               e.mode, e.node_ids, e.length_m, e.highway, e.maxspeed_kmh,
+               e.motorroad, e.lanes, e.car_access, e.bike_access, e.foot_access,
                {bike_class} AS bike_infra,
-               surface, smoothness, busway, lanes_bus, lanes_psv,
-               signal_count, junction_count, cell_1km_id, tile_id,
-               ST_AsWKB(geom) AS geometry_wkb
-        FROM per_mode
-        WHERE {allowed_by_mode}
+               e.surface, e.smoothness, e.busway, e.lanes_bus, e.lanes_psv,
+               e.signal_count, e.stop_count, e.crossing_count,
+               e.mini_roundabout_count, coalesce(d.to_degree, 0) AS to_degree,
+               e.cell_1km_id, e.tile_id, ST_AsWKB(e.geom) AS geometry_wkb
+        FROM allowed_edges e
+        LEFT JOIN node_degrees d
+          ON d.mode = e.mode AND d.node_id = e.to_node_id
     """
 
 

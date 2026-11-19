@@ -38,7 +38,8 @@
 | `bike_infra` | string, nullable | Direction-specific class from the table below |
 | `surface`, `smoothness` | string, nullable | Raw OSM values |
 | `busway`, `lanes_bus`, `lanes_psv` | string, nullable | Raw bus-lane values |
-| `signal_count`, `junction_count` | int8 | Control-node indicators at `to_node_id` |
+| `signal_count`, `stop_count`, `crossing_count`, `mini_roundabout_count` | int8 | Direction-filtered control-node counts along the edge, excluding its first node |
+| `to_degree` | int64 | Distinct neighbouring graph nodes of `to_node_id` for this mode, considering incoming and outgoing edges |
 | `cell_1km_id` | int64 | 1 km cell id of the edge-geometry centroid |
 | `tile_id` | int64 | Configured tile id of the edge-geometry centroid |
 | `geometry_wkb` | binary | Directed EPSG:3035 line geometry |
@@ -64,9 +65,14 @@ only when every listed value is one of `no`, `private`, `agricultural`,
 | Foot | `foot`, `access` | Sidewalks and footway, path, steps, pedestrian and living-street classes permit walking; motorways, motorway links, and trunk + `motorroad=yes` are excluded | Both directions |
 
 Traffic-control tags are read for `highway=traffic_signals`, `stop`,
-`give_way`, `crossing` and `mini_roundabout`. `signal_count` is one for a
-traffic-signal endpoint; `junction_count` is one for a stop, give-way,
-crossing or mini-roundabout endpoint.
+`give_way`, `crossing` and `mini_roundabout`. Each directed edge counts its
+ordered OSM nodes except its first: signals contribute to `signal_count`,
+stops and give-ways to `stop_count`, crossings to `crossing_count`, and
+mini-roundabouts to `mini_roundabout_count`. `traffic_signals:direction`
+overrides `direction` for signals; other controls use `direction`. Values
+`forward` and `backward` are relative to the stored way order and are compared
+with the edge's `is_forward` flag. `to_degree` counts distinct neighboring
+graph nodes among edges permitted for the same mode, in either direction.
 
 ## Bike infrastructure classes
 
