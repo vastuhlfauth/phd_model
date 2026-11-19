@@ -2,6 +2,16 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income supplement: level and gap calculations (2026-11-19)
+
+- Added weekday travel-day and per-person estimators using the Z1 shared
+  household multipliers, including zero-trip people and subtracting open
+  days. Level and ratio rows suppress small cells and keep the 2008
+  unknown-income group separate; gap rows calculate 95% intervals from
+  paired household draws.
+- Synthetic checks: 11 passed; Ruff passed. Cache joins and report/CLI
+  integration remain outstanding; no real-data report ran.
+
 ### Zahavi income supplement: ENTD car input (2026-11-19)
 
 - Added a standalone CP1252 household-car loader using `V1_JNBVEH` and
