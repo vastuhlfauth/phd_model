@@ -1,11 +1,53 @@
 """Income-supplement calculations for the daily budget (section 9.9)."""
 
+from pathlib import Path
+from shutil import copyfileobj
 from types import ModuleType
 
 import duckdb
 import numpy as np
 
 from mobgrid.budget.zahavi_modes import Metric
+
+
+def load_entd_household_cars(source: Path, scratch: Path) -> dict[str, str]:
+    """Load ENTD household car-count bands from CP1252, section 9.9."""
+    scratch.mkdir(parents=True, exist_ok=True)
+    encoded = scratch / source.name
+    with source.open(encoding="cp1252") as inp, encoded.open(
+        "w", encoding="utf-8", newline=""
+    ) as out:
+        copyfileobj(inp, out)
+    with duckdb.connect() as con:
+        con.execute(
+            """CREATE TEMP TABLE cars AS SELECT
+                trim(idENT_MEN) AS ident_men, V1_JNBVEH AS count_text
+            FROM read_csv(?, delim=';', nullstr='',
+                types={'idENT_MEN': 'VARCHAR', 'V1_JNBVEH': 'VARCHAR'})""",
+            [str(encoded)],
+        )
+        duplicates = con.execute(
+            """SELECT ident_men FROM cars GROUP BY ident_men
+               HAVING ident_men IS NULL OR ident_men = '' OR count(*) > 1 LIMIT 1"""
+        ).fetchone()
+        if duplicates:
+            raise ValueError(f"Duplicate or empty household ID: {duplicates[0]!r}")
+        invalid = con.execute(
+            """SELECT count_text FROM cars WHERE count_text IS NOT NULL AND
+               (NOT regexp_full_match(trim(count_text), '[0-9]+') OR
+                TRY_CAST(count_text AS INTEGER) IS NULL) LIMIT 1"""
+        ).fetchone()
+        if invalid:
+            raise ValueError(f"Invalid household car count: {invalid[0]!r}")
+        rows = con.execute(
+            """SELECT ident_men, CASE
+                WHEN count_text IS NULL THEN 'unknown'
+                WHEN CAST(count_text AS INTEGER) = 0 THEN '0'
+                WHEN CAST(count_text AS INTEGER) = 1 THEN '1'
+                ELSE '2+' END
+               FROM cars"""
+        ).fetchall()
+    return dict(rows)
 
 
 def income_by_person(

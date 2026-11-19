@@ -2,6 +2,19 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income supplement: ENTD car input (2026-11-19)
+
+- Added a standalone CP1252 household-car loader using `V1_JNBVEH` and
+  household IDs, retaining the existing signed mode caches. Counts are
+  grouped 0, 1 and 2+; blanks remain unknown, and malformed counts and
+  duplicate IDs fail explicitly.
+- The supplied 20,178-household file has no blank counts. All 18,632 Kish
+  respondents match a household with a nonblank count. Exact vehicle
+  coverage against EMP 2019 still needs questionnaire verification.
+- Synthetic loader and income tests: 8 passed; changed-file Ruff passed.
+  The loader is not yet wired into a report. No real-data report ran and
+  no files under `data/` were written.
+
 ### Zahavi income supplement: partial groundwork (2026-11-19)
 
 - Added independent helpers in `zahavi_income.py` for the existing survey

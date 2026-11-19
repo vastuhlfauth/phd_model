@@ -37,6 +37,24 @@ def test_unknown_income_shares_use_distinct_bases():
     assert day_weight == pytest.approx(0.5)
 
 
+def test_entd_household_car_count_reads_cp1252_and_keeps_unknown(tmp_path):
+    source = tmp_path / "source.csv"
+    source.write_text(
+        "idENT_MEN;V1_JNBVEH;label\n"
+        "00001;0;véhicule\n00002;1;x\n00003;3;x\n00004;;x\n",
+        encoding="cp1252",
+    )
+    actual = zahavi_income.load_entd_household_cars(source, tmp_path / "scratch")
+    assert actual == {"00001": "0", "00002": "1", "00003": "2+", "00004": "unknown"}
+
+
+def test_entd_household_car_count_rejects_duplicate_households(tmp_path):
+    source = tmp_path / "source.csv"
+    source.write_text("idENT_MEN;V1_JNBVEH\n1;0\n1;1\n", encoding="cp1252")
+    with pytest.raises(ValueError, match="Duplicate"):
+        zahavi_income.load_entd_household_cars(source, tmp_path / "scratch")
+
+
 def test_gap_change_interval_uses_paired_replicates():
     q1_2008 = zahavi_income.Metric(10.0, np.array([9.0, 10.0, 11.0]))
     q5_2008 = zahavi_income.Metric(20.0, np.array([19.0, 20.0, 21.0]))
