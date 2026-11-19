@@ -2,6 +2,15 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi mode comparisons (2026-11-19)
+
+- Added weighted interpolated and step deciles, trip-duration thresholds,
+  weighted KS distances and paired household-bootstrap intervals. Crow-fly
+  band comparisons preserve the same-commune flag when rounding EMP
+  distances to whole kilometres.
+- Seven synthetic tests passed; Ruff passed. Report/CSV wiring is pending;
+  no real-data report was run.
+
 ### Zahavi mode distributions (2026-11-19)
 
 - Added cached weekday trip, mode-user-day and step-11 day-mode-group

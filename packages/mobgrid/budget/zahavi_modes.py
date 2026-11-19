@@ -9,7 +9,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 
-from mobgrid.budget import daily_energy, modes_cache
+from mobgrid.budget import daily_energy, modes_cache, scope_cube
 from mobgrid.budget import scope as scope_module
 from mobgrid.budget import variation_report as vr
 
@@ -132,3 +132,227 @@ def distribution_rows(
                     "kde": float(kde[index]) if n >= minimum_n else None,
                 })
     return rows
+
+
+def weighted_deciles(sample: Observations, probabilities: np.ndarray) -> np.ndarray:
+    """Interpolate weighted cumulative support points, in minutes."""
+    valid = (
+        np.isfinite(sample.values) & np.isfinite(sample.weights) & (sample.weights > 0)
+    )
+    if not valid.any():
+        return np.full(len(probabilities), np.nan)
+    values, inverse = np.unique(sample.values[valid], return_inverse=True)
+    weights = np.bincount(inverse, weights=sample.weights[valid])
+    cumulative = np.cumsum(weights) / weights.sum()
+    return np.interp(probabilities, cumulative, values)
+
+
+def threshold_shares(sample: Observations, thresholds: list[float]) -> np.ndarray:
+    """Weighted shares of trips with duration at or above each threshold."""
+    total = sample.weights.sum()
+    if total <= 0:
+        return np.full(len(thresholds), np.nan)
+    return np.asarray([
+        np.sum(sample.weights[sample.values >= threshold]) / total
+        for threshold in thresholds
+    ])
+
+
+def weighted_ks(a: Observations, b: Observations) -> float:
+    """Weighted two-sample KS distance, with no p-value."""
+    if a.weights.sum() <= 0 or b.weights.sum() <= 0:
+        return float("nan")
+    points = np.union1d(a.values, b.values)
+
+    def cdf(sample: Observations) -> np.ndarray:
+        order = np.argsort(sample.values, kind="stable")
+        cumulative = np.r_[0.0, np.cumsum(sample.weights[order])]
+        indices = np.searchsorted(sample.values[order], points, side="right")
+        return cumulative[indices] / cumulative[-1]
+
+    return float(np.max(np.abs(cdf(a) - cdf(b))))
+
+
+def crow_fly_bands(distance: np.ndarray, *, rounded: bool) -> np.ndarray:
+    """Assign B4b crow-fly bands, preserving the observed same-commune flag."""
+    km = vr._rounded_crow_fly_km(distance) if rounded else distance
+    index = vr.distance_band_index(km)
+    labels = np.asarray(vr.DISTANCE_BAND_LABELS, dtype=object)[index]
+    labels[(km < 2) & (distance > 0)] = "under 2 km"
+    labels[distance == 0] = "same commune"
+    return labels
+
+
+def read_band_samples(
+    cache: modes_cache.SurveyCache,
+    selected: scope_module.Scope,
+    *,
+    rounded: bool,
+) -> dict[tuple[str, str], Observations]:
+    """Read published or rounded crow-fly trip bands from the cache."""
+    with duckdb.connect() as con:
+        raw = con.execute(
+            """SELECT mode7, duration_min, pond_jour, ident_men, crow_fly_km
+               FROM read_parquet(?)""",
+            [str(cache.trips(selected))],
+        ).fetchnumpy()
+    raw = {name: vr._plain_array(value) for name, value in raw.items()}
+    km = np.asarray(raw["crow_fly_km"], dtype=float)
+    values = np.asarray(raw["duration_min"], dtype=float)
+    weights = np.asarray(raw["pond_jour"], dtype=float)
+    mode = vr._text_values(raw["mode7"])
+    household = vr._text_values(raw["ident_men"])
+    valid = (
+        np.isfinite(km) & (km >= 0) & np.isfinite(values) & (values >= 0)
+        & np.isfinite(weights) & (weights > 0)
+    )
+    labels = crow_fly_bands(km, rounded=rounded)
+    wanted = ("same commune", "under 2 km", *vr.SPEED_BAND_LABELS)
+    return {
+        (str(group), band): Observations(values[mask], weights[mask], household[mask])
+        for group in vr.MODE7_LABELS for band in wanted
+        if (mask := valid & (mode == group) & (labels == band)).any()
+    }
+
+
+@dataclass(frozen=True)
+class Draws:
+    """One survey's shared household bootstrap draws."""
+
+    households: np.ndarray
+    multipliers: np.ndarray
+
+    def weights(self, sample: Observations, replicate: int) -> np.ndarray:
+        _, codes = daily_energy._bootstrap_household_codes(
+            sample.household, self.households
+        )
+        return sample.weights * self.multipliers[replicate, codes]
+
+
+def make_draws(
+    household: np.ndarray, *, n_reps: int, seed: int | np.random.SeedSequence
+) -> Draws:
+    """Draw households once for all scopes and mode statistics, section 9.9."""
+    universe = np.unique(household)
+    return Draws(
+        universe, scope_cube.multiplier_matrix(universe, n_reps=n_reps, seed=seed)
+    )
+
+
+def _interval(values: np.ndarray) -> tuple[float, float]:
+    valid = values[np.isfinite(values)]
+    if len(valid) < np.ceil(0.95 * len(values)):
+        LOGGER.warning(
+            "Only %d of %d bootstrap draws are valid", len(valid), len(values)
+        )
+        return float("nan"), float("nan")
+    low, high = np.percentile(valid, [2.5, 97.5])
+    return float(low), float(high)
+
+
+def comparison_rows(
+    samples_a: dict[tuple[str, str], Observations],
+    samples_b: dict[tuple[str, str], Observations],
+    draws_a: Draws,
+    draws_b: Draws,
+    *,
+    thresholds: list[float],
+    minimum_n: int,
+    selected: scope_module.Scope = scope_module.REFERENCE_SCOPE,
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """Weighted deciles, threshold changes and KS with paired draws."""
+    if len(draws_a.multipliers) != len(draws_b.multipliers):
+        raise ValueError("the two surveys must have the same number of draws")
+    probabilities = np.arange(1, 10) / 10
+    empty = Observations(np.array([]), np.array([]), np.array([]))
+    deciles, shares, distances = [], [], []
+    for kind, group in sorted(samples_a.keys() | samples_b.keys()):
+        a = samples_a.get((kind, group), empty)
+        b = samples_b.get((kind, group), empty)
+        n_a, n_b = len(a.values), len(b.values)
+        base = {"scope": selected.id, "kind": kind, "mode": group,
+                "n_2008": n_a, "n_2019": n_b}
+        qa = weighted_deciles(a, probabilities)
+        qb = weighted_deciles(b, probabilities)
+        step_a = vr._weighted_quantile_values(a.values, a.weights, tuple(probabilities))
+        step_b = vr._weighted_quantile_values(b.values, b.weights, tuple(probabilities))
+        ta = threshold_shares(a, thresholds)
+        tb = threshold_shares(b, thresholds)
+        n_reps = len(draws_a.multipliers)
+        qdiff = np.full((n_reps, len(probabilities)), np.nan)
+        tdiff = np.full((n_reps, len(thresholds)), np.nan)
+        ks_reps = np.full(n_reps, np.nan)
+        if min(n_a, n_b) >= minimum_n:
+            for rep in range(n_reps):
+                aa = Observations(a.values, draws_a.weights(a, rep), a.household)
+                bb = Observations(b.values, draws_b.weights(b, rep), b.household)
+                qdiff[rep] = weighted_deciles(bb, probabilities) - weighted_deciles(
+                    aa, probabilities
+                )
+                tdiff[rep] = threshold_shares(bb, thresholds) - threshold_shares(
+                    aa, thresholds
+                )
+                ks_reps[rep] = weighted_ks(aa, bb)
+        for idx, probability in enumerate(probabilities):
+            low, high = _interval(qdiff[:, idx]) if min(n_a, n_b) >= minimum_n else (
+                np.nan, np.nan
+            )
+            deciles.append({
+                **base, "decile": int(round(probability * 10)),
+                "interpolated_2008": qa[idx] if n_a >= minimum_n else np.nan,
+                "interpolated_2019": qb[idx] if n_b >= minimum_n else np.nan,
+                "step_2008": step_a[idx] if n_a >= minimum_n else np.nan,
+                "step_2019": step_b[idx] if n_b >= minimum_n else np.nan,
+                "shift": qb[idx] - qa[idx] if min(n_a, n_b) >= minimum_n else np.nan,
+                "ci_low": low, "ci_high": high,
+            })
+        if kind == "trip":
+            for idx, threshold in enumerate(thresholds):
+                low, high = (
+                    _interval(tdiff[:, idx])
+                    if min(n_a, n_b) >= minimum_n else (np.nan, np.nan)
+                )
+                shares.append({
+                    **base, "threshold_min": threshold,
+                    "share_2008": ta[idx] if n_a >= minimum_n else np.nan,
+                    "share_2019": tb[idx] if n_b >= minimum_n else np.nan,
+                    "change_points": (
+                        100 * (tb[idx] - ta[idx]) if min(n_a, n_b) >= minimum_n
+                        else np.nan
+                    ),
+                    "ci_low_points": 100 * low, "ci_high_points": 100 * high,
+                })
+        low, high = (
+            _interval(ks_reps) if min(n_a, n_b) >= minimum_n else (np.nan, np.nan)
+        )
+        distances.append({
+            **base, "D": weighted_ks(a, b) if min(n_a, n_b) >= minimum_n else np.nan,
+            "ci_low": low, "ci_high": high,
+        })
+    return deciles, shares, distances
+
+
+def band_decile_rows(
+    samples_a: dict[tuple[str, str], Observations],
+    samples_b: dict[tuple[str, str], Observations],
+    draws_a: Draws,
+    draws_b: Draws,
+    *,
+    minimum_n: int,
+    variant: str,
+    selected: scope_module.Scope = scope_module.REFERENCE_SCOPE,
+) -> list[dict]:
+    """Interpolate trip-duration deciles by mode and crow-fly band."""
+    def keyed(samples: dict[tuple[str, str], Observations]) -> dict:
+        return {("band", f"{mode}|{band}"): sample
+                for (mode, band), sample in samples.items()}
+
+    deciles, _, _ = comparison_rows(
+        keyed(samples_a), keyed(samples_b), draws_a, draws_b,
+        thresholds=[], minimum_n=minimum_n, selected=selected,
+    )
+    for row in deciles:
+        row["mode"], row["band"] = row["mode"].split("|", 1)
+        row["distance_variant"] = variant
+        del row["kind"]
+    return deciles
