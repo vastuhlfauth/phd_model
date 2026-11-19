@@ -105,7 +105,15 @@ def _raw_tables(tmp_path):
             (63, map {'highway':'steps', 'access':'yes'}, [129, 130]),
             (64, map {'highway':'steps', 'bicycle':'yes'}, [131, 132]),
             (65, map {'highway':'pedestrian', 'access':'yes'}, [133, 134]),
-            (66, map {'highway':'pedestrian', 'bicycle':'yes'}, [135, 136])
+            (66, map {'highway':'pedestrian', 'bicycle':'yes'}, [135, 136]),
+            (67, map {'highway':'residential',
+                      'zone:traffic':'FR:urban'}, [137, 138]),
+            (68, map {'highway':'residential',
+                      'source:maxspeed':'FR:rural'}, [139, 140]),
+            (69, map {'highway':'residential',
+                      'maxspeed:type':'FR:zone30'}, [141, 142]),
+            (70, map {'highway':'residential',
+                      'zone:maxspeed':'FR:motorway'}, [143, 144])
     """)
     connection.execute("""
         CREATE TABLE nodes (
@@ -116,7 +124,7 @@ def _raw_tables(tmp_path):
         )
     """)
     node_rows = []
-    for node_id in range(1, 137):
+    for node_id in range(1, 145):
         tags = (
             "map {'highway':'traffic_signals'}"
             if node_id == 3
@@ -300,6 +308,25 @@ def test_access_exclusions_and_maxspeed_parsing(tmp_path) -> None:
         (10, None),
         (11, None),
         (12, 30.0),
+    ]
+
+
+def test_speed_context_uses_all_kept_hint_tags(tmp_path) -> None:
+    connection, result = _build(tmp_path)
+    contexts = connection.execute(
+        """
+        SELECT DISTINCT way_id, speed_context
+        FROM read_parquet(?)
+        WHERE way_id BETWEEN 67 AND 70 AND mode = 'car'
+        ORDER BY way_id
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert contexts == [
+        (67, "urban"),
+        (68, "rural"),
+        (69, "zone30"),
+        (70, "motorway"),
     ]
 
 

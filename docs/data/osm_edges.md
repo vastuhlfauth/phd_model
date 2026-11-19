@@ -35,6 +35,7 @@
 | `length_m` | float64 | Ellipsoidal length in metres from the ordered node latitude/longitude coordinates |
 | `highway` | string, nullable | OSM road class |
 | `maxspeed_kmh` | float64, nullable | Parsed maxspeed in km/h |
+| `speed_context` | string, nullable | Context parsed from `zone:traffic`, `source:maxspeed`, `maxspeed:type` or `zone:maxspeed` (`urban`, `rural`, `zone30`, `motorway`); retained independently of numeric maxspeed |
 | `motorroad` | bool | `motorroad=yes` (also accepts `true` and `1`) |
 | `lanes` | string, nullable | Raw `lanes` value |
 | `car_access`, `bike_access`, `foot_access` | bool | Effective access flags before one-way filtering |
@@ -51,6 +52,9 @@
 EPSG:3035), `tags` (OSM tag map), and `graph_node` (bool). Graph nodes are way
 ends and nodes shared by at least two kept ways. Other retained way nodes and
 area traffic-control nodes are also present with `graph_node=false`.
+The extracted way tag maps also retain `zone:traffic`, `source:maxspeed`,
+`maxspeed:type`, `zone:maxspeed`, `tracktype`, `service` and `area` for
+downstream speed and surface processing.
 
 ## Access and direction rules
 

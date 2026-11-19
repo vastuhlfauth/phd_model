@@ -35,6 +35,7 @@ EDGE_COLUMNS = {
     "length_m",
     "highway",
     "maxspeed_kmh",
+    "speed_context",
     "motorroad",
     "lanes",
     "car_access",
@@ -379,7 +380,7 @@ def _input_signature(
         }
     return hashlib.sha256(
         json.dumps(
-            {"version": 2, "inputs": inputs, "config": config.model_dump(mode="json")},
+            {"version": 3, "inputs": inputs, "config": config.model_dump(mode="json")},
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()
@@ -467,6 +468,16 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
         "way_tags", "is_forward", "bike_access", config
     )
     maxspeed = maxspeed_sql("way_tags", config)
+    speed_context_cases = " ".join(
+        f"WHEN {_sql_text(token.casefold())} THEN {_sql_text(context)}"
+        for token, context in config.speed_context_values.items()
+    )
+    speed_context = "coalesce(" + ", ".join(
+        "CASE lower(trim(way_tags["
+        + _sql_text(tag)
+        + f"])) {speed_context_cases} END"
+        for tag in config.speed_context_tags
+    ) + ")"
     tile_size = config.tile_size_m
     signal_direction = _control_direction_sql(
         "n.tags", "d.is_forward", signal=True
@@ -526,6 +537,7 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                    {accesses["foot"]} AS foot_access,
                    d.length_m,
                    {maxspeed} AS maxspeed_kmh,
+                   {speed_context} AS speed_context,
                    coalesce(
                        lower(d.way_tags['motorroad']) IN ('yes', 'true', '1'),
                        false
@@ -584,6 +596,7 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
         )
         SELECT e.way_id, e.from_node_id, e.to_node_id, e.is_forward,
                e.mode, e.node_ids, e.length_m, e.highway, e.maxspeed_kmh,
+               e.speed_context,
                e.motorroad, e.lanes, e.car_access, e.bike_access, e.foot_access,
                {bike_class} AS bike_infra,
                e.surface, e.smoothness, e.busway, e.lanes_bus, e.lanes_psv,

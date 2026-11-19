@@ -42,6 +42,15 @@ def test_network_config_loads_state_sources_and_tile_size() -> None:
     assert config.tile_size_m == 50_000
     assert config.area_simplify_tolerance_m == 10
     assert config.maxspeed_tokens_kmh["FR:urban"] == 50
+    assert {
+        "zone:traffic",
+        "source:maxspeed",
+        "maxspeed:type",
+        "zone:maxspeed",
+        "tracktype",
+        "service",
+        "area",
+    } <= set(config.kept_tags)
 
 
 def test_point_in_area_uses_configured_simplified_polygon() -> None:
@@ -86,7 +95,12 @@ def test_extraction_passes_keep_area_ways_and_all_their_nodes(tmp_path) -> None:
             refs BIGINT[]
         );
         INSERT INTO osm_ways VALUES
-            ('way', 10, map {'highway':'residential'}, [1, 2]),
+            ('way', 10, map {
+                'highway':'residential', 'zone:traffic':'FR:urban',
+                'source:maxspeed':'FR:rural', 'maxspeed:type':'FR:zone30',
+                'zone:maxspeed':'FR:motorway', 'tracktype':'grade2',
+                'service':'driveway', 'area':'yes'
+            }, [1, 2]),
             ('way', 11, map {'highway':'service'}, [3, 4]),
             ('way', 12, map {'railway':'platform'}, [2, 3]),
             ('relation', 13, map {'highway':'residential'}, [2]);
@@ -116,6 +130,22 @@ def test_extraction_passes_keep_area_ways_and_all_their_nodes(tmp_path) -> None:
     assert connection.execute(
         "SELECT way_id FROM kept_ways ORDER BY way_id"
     ).fetchall() == [(10,), (12,)]
+    assert connection.execute(
+        """
+        SELECT tags['zone:traffic'], tags['source:maxspeed'],
+               tags['maxspeed:type'], tags['zone:maxspeed'],
+               tags['tracktype'], tags['service'], tags['area']
+        FROM kept_ways WHERE way_id = 10
+        """
+    ).fetchone() == (
+        "FR:urban",
+        "FR:rural",
+        "FR:zone30",
+        "FR:motorway",
+        "grade2",
+        "driveway",
+        "yes",
+    )
     connection.execute("COPY kept_ways TO ? (FORMAT PARQUET)", [str(ways_path)])
     connection.execute("""
         CREATE TABLE nodes_in_bbox AS

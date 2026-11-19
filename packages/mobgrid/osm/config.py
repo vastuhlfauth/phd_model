@@ -44,6 +44,10 @@ class NetworkConfig(BaseModel):
     control_highways: tuple[str, ...]
     signal_highways: tuple[str, ...]
     maxspeed_tokens_kmh: dict[str, float | None]
+    speed_context_tags: tuple[str, ...]
+    speed_context_values: dict[
+        str, Literal["urban", "rural", "zone30", "motorway"]
+    ]
     mph_to_kmh: float = Field(gt=0)
     busway_values: tuple[str, ...]
     bike_classes: dict[

@@ -39,6 +39,13 @@ kept_tags:
   - lanes:psv
   - surface
   - smoothness
+  - zone:traffic
+  - source:maxspeed
+  - maxspeed:type
+  - zone:maxspeed
+  - tracktype
+  - service
+  - area
 unusable_highways:
   - construction
   - proposed
@@ -166,6 +173,16 @@ maxspeed_tokens_kmh:
   # TODO(confirm): map the symbolic walking speed to 5 km/h.
   walk: 5
   none: null
+speed_context_tags:
+  - zone:traffic
+  - source:maxspeed
+  - maxspeed:type
+  - zone:maxspeed
+speed_context_values:
+  FR:urban: urban
+  FR:rural: rural
+  FR:zone30: zone30
+  FR:motorway: motorway
 mph_to_kmh: 1.609344
 busway_values:
   - lane
