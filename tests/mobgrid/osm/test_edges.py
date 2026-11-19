@@ -1,3 +1,5 @@
+import logging
+
 import duckdb
 from common.grid import cell_id
 from mobgrid.osm.config import load_network_config
@@ -166,6 +168,27 @@ def _build(tmp_path):
         config=load_network_config("config/network.yaml"),
     )
     return connection, result
+
+
+def test_edge_build_logs_elapsed_time_for_each_stage(tmp_path, caplog) -> None:
+    with caplog.at_level(logging.INFO, logger="mobgrid.osm.edges"):
+        _build(tmp_path)
+
+    stages = (
+        "load-spatial",
+        "expand-way-nodes",
+        "identify-graph-nodes",
+        "assign-segments",
+        "assign-tiles",
+        "write-directed-edges",
+        "write-graph-nodes",
+        "write-cache-metadata",
+        "count-output-rows",
+    )
+    assert all(
+        f"edge-build stage {stage} elapsed " in caplog.text
+        for stage in stages
+    )
 
 
 def test_splits_ways_at_shared_graph_nodes_and_reverses_node_order(tmp_path) -> None:
@@ -503,6 +526,100 @@ def test_edge_length_uses_ellipsoidal_node_coordinates(tmp_path) -> None:
         """,
     ).fetchall()
     assert lengths == [(111_319.49079327357, True)]
+
+
+def test_linear_segmentation_matches_range_join_for_loops_and_closed_ways(
+    tmp_path,
+) -> None:
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    ways_path = tmp_path / "segment_ways.parquet"
+    nodes_path = tmp_path / "segment_nodes.parquet"
+    connection.execute("""
+        CREATE TABLE ways (
+            way_id BIGINT,
+            tags MAP(VARCHAR, VARCHAR),
+            refs BIGINT[]
+        );
+        INSERT INTO ways VALUES
+            (1, map {'highway':'residential'}, [1, 2, 3, 2, 4]),
+            (2, map {'highway':'residential'}, [5, 2, 6]),
+            (3, map {'highway':'residential'}, [7, 8, 9, 7]),
+            (4, map {'highway':'residential'}, [10, 9, 11]),
+            (5, map {'highway':'residential'}, [12, 13, 14, 12]);
+        CREATE TABLE nodes AS
+        SELECT node_id, map()::MAP(VARCHAR, VARCHAR) AS tags,
+               44.0 AS lat, 3.0 + node_id * 0.001 AS lon
+        FROM range(1, 15) AS ids(node_id);
+    """)
+    connection.execute(
+        "COPY ways TO ? (FORMAT PARQUET)", [str(ways_path)]
+    )
+    connection.execute(
+        "COPY nodes TO ? (FORMAT PARQUET)", [str(nodes_path)]
+    )
+    connection.execute(
+        _build_points_sql(
+            str(ways_path).replace("\\", "/"),
+            str(nodes_path).replace("\\", "/"),
+        )
+    )
+    _build_graph_nodes(connection)
+
+    old_range_query = """
+        CREATE OR REPLACE TEMP TABLE _osm_way_segments_old AS
+        WITH graph_way_nodes AS (
+            SELECT p.*
+            FROM _osm_way_points p
+            JOIN _osm_graph_node_ids g USING (node_id)
+        ),
+        ranges AS (
+            SELECT way_id, way_tags, node_id AS from_node_id,
+                   node_sequence AS from_sequence,
+                   lead(node_id) OVER (
+                       PARTITION BY way_id ORDER BY node_sequence
+                   ) AS to_node_id,
+                   lead(node_sequence) OVER (
+                       PARTITION BY way_id ORDER BY node_sequence
+                   ) AS to_sequence
+            FROM graph_way_nodes
+        )
+        SELECT r.way_id, r.way_tags, r.from_node_id, r.to_node_id,
+               r.from_sequence, r.to_sequence,
+               list(p.node_id ORDER BY p.node_sequence) AS node_ids,
+               ST_Length_Spheroid(
+                   ST_MakeLine(
+                       list(ST_Point(p.lat, p.lon)
+                            ORDER BY p.node_sequence)
+                   )
+               ) AS length_m,
+               ST_MakeLine(list(p.point ORDER BY p.node_sequence)) AS geom
+        FROM ranges r
+        JOIN _osm_way_points p
+          ON p.way_id = r.way_id
+         AND p.node_sequence BETWEEN r.from_sequence AND r.to_sequence
+        WHERE r.to_node_id IS NOT NULL
+        GROUP BY r.way_id, r.way_tags, r.from_node_id, r.to_node_id,
+                 r.from_sequence, r.to_sequence
+    """
+    connection.execute(old_range_query)
+    old_edges = connection.execute("""
+        SELECT way_id, from_sequence, to_sequence, from_node_id, to_node_id,
+               node_ids, length_m, ST_AsWKB(geom)
+        FROM _osm_way_segments_old
+        ORDER BY way_id, from_sequence
+    """).fetchall()
+
+    assert "NODE_SEQUENCE BETWEEN" not in _build_segments_sql().upper()
+    connection.execute(_build_segments_sql())
+    new_edges = connection.execute("""
+        SELECT way_id, from_sequence, to_sequence, from_node_id, to_node_id,
+               node_ids, length_m, ST_AsWKB(geom)
+        FROM _osm_way_segments
+        ORDER BY way_id, from_sequence
+    """).fetchall()
+
+    assert new_edges == old_edges
 
 
 def test_pilot_report_contains_connectivity_and_edge_checks(tmp_path) -> None:

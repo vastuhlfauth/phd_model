@@ -55,6 +55,9 @@ area traffic-control nodes are also present with `graph_node=false`.
 The extracted way tag maps also retain `zone:traffic`, `source:maxspeed`,
 `maxspeed:type`, `zone:maxspeed`, `tracktype`, `service` and `area` for
 downstream speed and surface processing.
+Segments are assigned by the cumulative graph-node count along each way;
+interior graph nodes also serve as the preceding segment's endpoint. This
+avoids joining every way point against sequence ranges.
 
 ## Access and direction rules
 

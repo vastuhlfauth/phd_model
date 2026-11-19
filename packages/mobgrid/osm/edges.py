@@ -416,39 +416,46 @@ def _build_points_sql(ways_path: str, nodes_path: str) -> str:
 def _build_segments_sql() -> str:
     return """
         CREATE OR REPLACE TEMP TABLE _osm_way_segments AS
-        WITH graph_way_nodes AS (
-            SELECT p.*
+        WITH numbered_points AS (
+            SELECT p.*,
+                   g.node_id IS NOT NULL AS is_graph_node,
+                   sum(CASE WHEN g.node_id IS NOT NULL THEN 1 ELSE 0 END)
+                       OVER (
+                           PARTITION BY p.way_id
+                           ORDER BY p.node_sequence
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                       ) AS graph_node_count,
+                   max(p.node_sequence) OVER (
+                       PARTITION BY p.way_id
+                   ) AS last_sequence
             FROM _osm_way_points p
-            JOIN _osm_graph_node_ids g USING (node_id)
+            LEFT JOIN _osm_graph_node_ids g USING (node_id)
         ),
-        ranges AS (
-            SELECT way_id, way_tags, node_id AS from_node_id,
-                   node_sequence AS from_sequence,
-                   lead(node_id) OVER (
-                       PARTITION BY way_id ORDER BY node_sequence
-                   ) AS to_node_id,
-                   lead(node_sequence) OVER (
-                       PARTITION BY way_id ORDER BY node_sequence
-                   ) AS to_sequence
-            FROM graph_way_nodes
+        segment_points AS (
+            SELECT *, graph_node_count - 1 AS segment_index
+            FROM numbered_points
+            WHERE NOT is_graph_node
+               OR node_sequence < last_sequence
+            UNION ALL
+            SELECT *, graph_node_count - 2 AS segment_index
+            FROM numbered_points
+            WHERE is_graph_node AND graph_node_count > 1
         )
-        SELECT r.way_id, r.way_tags, r.from_node_id, r.to_node_id,
-               r.from_sequence, r.to_sequence,
-               list(p.node_id ORDER BY p.node_sequence) AS node_ids,
+        SELECT way_id, any_value(way_tags) AS way_tags,
+               arg_min(node_id, node_sequence) AS from_node_id,
+               arg_max(node_id, node_sequence) AS to_node_id,
+               min(node_sequence) AS from_sequence,
+               max(node_sequence) AS to_sequence,
+               list(node_id ORDER BY node_sequence) AS node_ids,
                ST_Length_Spheroid(
                    ST_MakeLine(
-                       list(ST_Point(p.lat, p.lon)
-                            ORDER BY p.node_sequence)
+                       list(ST_Point(lat, lon) ORDER BY node_sequence)
                    )
                ) AS length_m,
-               ST_MakeLine(list(p.point ORDER BY p.node_sequence)) AS geom
-        FROM ranges r
-        JOIN _osm_way_points p
-          ON p.way_id = r.way_id
-         AND p.node_sequence BETWEEN r.from_sequence AND r.to_sequence
-        WHERE r.to_node_id IS NOT NULL
-        GROUP BY r.way_id, r.way_tags, r.from_node_id, r.to_node_id,
-                 r.from_sequence, r.to_sequence
+               ST_MakeLine(list(point ORDER BY node_sequence)) AS geom
+        FROM segment_points
+        GROUP BY way_id, segment_index
+        HAVING count(*) > 1
     """
 
 
@@ -687,6 +694,14 @@ def _build_nodes_query(nodes_path: str) -> str:
     """
 
 
+def _log_stage_elapsed(stage: str, started_at: float) -> None:
+    logger.info(
+        "edge-build stage %s elapsed %.3f seconds",
+        stage,
+        time.perf_counter() - started_at,
+    )
+
+
 def _write_metadata(path: Path, signature: str) -> None:
     temporary = path.with_suffix(".tmp.json")
     temporary.write_text(
@@ -742,25 +757,43 @@ def build_directed_edges(
             logger.info("reusing cached directed edges in %s", output)
             return _summary_from_files(connection, edges_path, output_nodes_path)
 
+    stage_started = time.perf_counter()
     connection.execute("LOAD spatial")
+    _log_stage_elapsed("load-spatial", stage_started)
     ways_source = _sql_path(ways)
     nodes_source = _sql_path(nodes)
+    stage_started = time.perf_counter()
     connection.execute(_build_points_sql(ways_source, nodes_source))
+    _log_stage_elapsed("expand-way-nodes", stage_started)
+    stage_started = time.perf_counter()
     _build_graph_nodes(connection)
+    _log_stage_elapsed("identify-graph-nodes", stage_started)
+    stage_started = time.perf_counter()
     connection.execute(_build_segments_sql())
+    _log_stage_elapsed("assign-segments", stage_started)
+    stage_started = time.perf_counter()
     _register_segment_tiles(connection, config.tile_size_m)
+    _log_stage_elapsed("assign-tiles", stage_started)
+    stage_started = time.perf_counter()
     _write_parquet_atomic(
         connection,
         _build_edges_query(config, nodes_source),
         edges_path,
     )
+    _log_stage_elapsed("write-directed-edges", stage_started)
+    stage_started = time.perf_counter()
     _write_parquet_atomic(
         connection,
         _build_nodes_query(nodes_source),
         output_nodes_path,
     )
+    _log_stage_elapsed("write-graph-nodes", stage_started)
+    stage_started = time.perf_counter()
     _write_metadata(metadata_path, signature)
+    _log_stage_elapsed("write-cache-metadata", stage_started)
+    stage_started = time.perf_counter()
     summary = _summary_from_files(connection, edges_path, output_nodes_path)
+    _log_stage_elapsed("count-output-rows", stage_started)
     logger.info(
         "wrote %s directed mode edges and %s nodes to %s",
         summary.edge_count,
@@ -1090,6 +1123,7 @@ def main(argv: list[str] | None = None) -> int:
             output_directory,
             config=config,
         )
+        report_started = time.perf_counter()
         write_step06_report(
             connection,
             result.edges_path,
@@ -1097,6 +1131,7 @@ def main(argv: list[str] | None = None) -> int:
             state=args.state,
             area=args.area,
         )
+        _log_stage_elapsed("connectivity-and-report", report_started)
     finally:
         connection.close()
     summary_path = args.summary or _artifact_path(task, "_summary.md")
