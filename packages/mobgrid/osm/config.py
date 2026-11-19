@@ -19,6 +19,8 @@ class AccessRule(BaseModel):
     precedence: tuple[str, ...]
     denied: tuple[str, ...]
     excluded_highways: tuple[str, ...]
+    included_highways: tuple[str, ...] = ()
+    sidewalk_values: tuple[str, ...] = ()
     default_allowed: bool
 
 

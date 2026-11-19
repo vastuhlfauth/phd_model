@@ -25,6 +25,9 @@ kept_tags:
   - cycleway:left:oneway
   - cycleway:right:oneway
   - bicycle_road
+  - busway:left
+  - busway:right
+  - busway:both
   - maxspeed
   - lanes
   - busway
@@ -59,6 +62,9 @@ access_rules:
     excluded_highways:
       - motorway
       - motorway_link
+      - footway
+      - steps
+      - pedestrian
     default_allowed: true
   foot:
     precedence:
@@ -70,6 +76,18 @@ access_rules:
     excluded_highways:
       - motorway
       - motorway_link
+    included_highways:
+      - footway
+      - path
+      - steps
+      - pedestrian
+      - living_street
+    sidewalk_values:
+      - "yes"
+      - both
+      - left
+      - right
+      - separate
     default_allowed: true
 oneway_yes:
   - "yes"
