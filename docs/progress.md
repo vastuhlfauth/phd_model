@@ -2,6 +2,15 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi B3 quotation (2026-11-19)
+
+- Added direct quotation of the existing reference-scope B3 tables, with
+  suppression and signed km/trip and speed shares of the within-mode term.
+  Shares are approximate because the source publishes rounded mode terms.
+- B3 provides aggregate intervals but not per-mode intervals; these remain
+  unavailable rather than silently recomputing the decomposition. Ten
+  synthetic tests passed; Ruff passed. CLI wiring remains outstanding.
+
 ### Zahavi mode stability calculations (2026-11-19)
 
 - Added mode-user, day-mode-group and per-person weighted means and shared

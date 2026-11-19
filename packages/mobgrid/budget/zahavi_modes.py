@@ -521,3 +521,56 @@ def stability_rows(
             })
         rows.append(row)
     return rows
+
+
+def b3_excerpt(report: Path, *, minimum_n: int) -> str:
+    """Quote B3 without recomputing its decomposition, section 9.9."""
+    text = report.read_text(encoding="utf-8")
+    if f"`{scope_module.REFERENCE_SCOPE.id}`" not in text.split("## ", 1)[0]:
+        raise ValueError(f"B3 source is not the reference scope: {report}")
+    marker = "## B3. Mode shift-share, 2008 -> 2019"
+    if marker not in text:
+        raise ValueError(f"B3 section is missing: {report}")
+    section = text.split(marker, 1)[1].split("\n## ", 1)[0]
+    lines = []
+    fractions = []
+    for line in section.splitlines():
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if line.startswith("|") and cells[0] in vr.MODE7_LABELS:
+            if len(cells) != 15:
+                raise ValueError(f"unrecognised B3 mode row: {line}")
+            n_a, n_b = int(cells[1]), int(cells[2])
+            if min(n_a, n_b) < minimum_n:
+                cells[3:] = ["-"] * 12
+                line = "| " + " | ".join(cells) + " |"
+            else:
+                try:
+                    within, km, speed = (float(cells[i]) for i in (8, 9, 10))
+                except ValueError as exc:
+                    raise ValueError(f"invalid B3 mode terms: {line}") from exc
+                if within:
+                    fractions.append(
+                        f"| {cells[0]} | {n_a} | {n_b} | {km / within:.1%} | "
+                        f"{speed / within:.1%} |"
+                    )
+                else:
+                    fractions.append(f"| {cells[0]} | {n_a} | {n_b} | - | - |")
+        lines.append(line)
+    if not any("trips volume" in line for line in lines):
+        raise ValueError(f"B3 aggregate table is missing: {report}")
+    return "\n".join([
+        "## B3: quoted mode decomposition",
+        *lines,
+        "",
+        "B3's aggregate intervals are quoted above. Its per-mode terms have "
+        "no confidence intervals in the source; those intervals are unavailable "
+        "without additional bootstrap calculations.",
+        "",
+        "Shares below divide B3's rounded km and speed terms by its rounded "
+        "within-mode term; they are signed and approximate, can exceed 100%, "
+        "and exclude the separately reported selection residual.",
+        "",
+        "| Mode | n 2008 | n 2019 | km/trip / within | speed / within |",
+        "|---|---:|---:|---:|---:|",
+        *fractions,
+    ])

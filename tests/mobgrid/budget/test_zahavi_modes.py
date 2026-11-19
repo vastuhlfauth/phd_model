@@ -169,3 +169,31 @@ def test_mode_shares_use_trip_and_minute_weights() -> None:
     assert n == 2
     assert trip_share == pytest.approx(3 / 4)
     assert minute_share == pytest.approx(50 / 80)
+
+
+def test_b3_quote_preserves_existing_terms_and_hides_small_mode(tmp_path: Path) -> None:
+    report = tmp_path / "step12.md"
+    report.write_text(
+        "# Variation (`round-dest-local`)\n"
+        "## B3. Mode shift-share, 2008 -> 2019\n"
+        "| Term | Minutes/day | 95% CI |\n"
+        "|---|---|---|\n"
+        "| trips volume | -2.6 | [-3.8, -1.5] |\n"
+        "| mode | n 2008 | n 2019 | share 2008 | share 2019 | "
+        "min/trip 2008 | min/trip 2019 | mix (min) | within (min) | "
+        "of which km/trip | of which speed | interaction (min) | "
+        "distance-known share 2008 | distance-known share 2019 | "
+        "within selection (min) |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        "| walk | 100 | 120 | 20% | 21% | 10 | 12 | 0.2 | 2 | 0.5 | "
+        "1 | 0.1 | 100% | 100% | 0.5 |\n"
+        "| train | 5 | 120 | 1% | 1% | 40 | 45 | 1 | 2 | 1 | "
+        "1 | 0 | 100% | 100% | 0 |\n"
+        "## B4a. Next\n",
+        encoding="utf-8",
+    )
+    quoted = modes.b3_excerpt(report, minimum_n=50)
+    assert "[-3.8, -1.5]" in quoted
+    assert "25.0%" in quoted
+    assert "| train | 5 | 120 | - |" in quoted
+    assert "| train | 5 | 120 | 1%" not in quoted
