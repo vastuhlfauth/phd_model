@@ -43,10 +43,10 @@ The reference constant (section 9.9, 27 October 2026 decision): is mean daily tr
 | children_6_17 | intermediate | 472 | 52.4 | [48.0, 57.4] | 25.0 | 42.0 | 67.0 |
 | children_6_17 | sparse | 159 | 43.7 | [40.7, 51.5] | 20.0 | 35.0 | 60.0 |
 | children_6_17 | very_sparse | 343 | 46.5 | [48.9, 58.6] | 20.0 | 38.0 | 60.0 |
-| employed | dense | 1017 | 77.3 | [73.1, 81.1] | 44.0 | 71.0 | 100.0 |
-| employed | intermediate | 2872 | 77.3 | [74.5, 80.3] | 40.0 | 65.0 | 100.0 |
-| employed | sparse | 849 | 69.3 | [63.2, 74.8] | 34.0 | 60.0 | 89.0 |
-| employed | very_sparse | 2314 | 68.2 | [65.6, 70.8] | 35.0 | 60.0 | 88.0 |
+| employed | dense | 1017 | 76.9 | [72.7, 80.6] | 43.0 | 70.0 | 100.0 |
+| employed | intermediate | 2872 | 75.2 | [72.7, 77.7] | 40.0 | 63.0 | 100.0 |
+| employed | sparse | 849 | 67.6 | [61.3, 72.9] | 32.0 | 58.0 | 85.0 |
+| employed | very_sparse | 2314 | 67.1 | [64.6, 69.6] | 34.0 | 60.0 | 87.0 |
 | unemployed | dense | 91 | 76.4 | [55.3, 101.6] | 35.0 | 60.0 | 94.0 |
 | unemployed | intermediate | 275 | 62.2 | [54.5, 69.4] | 30.0 | 50.0 | 90.0 |
 | unemployed | sparse | 64 | 56.6 | [47.6, 65.3] | 30.0 | 50.0 | 78.0 |
@@ -65,7 +65,7 @@ The reference constant (section 9.9, 27 October 2026 decision): is mean daily tr
 | Category | dense/very_sparse | max/min | CV across classes |
 |---|---|---|---|
 | children_6_17 | 0.98 | 1.20 | 0.07 |
-| employed | 1.13 | 1.13 | 0.06 |
+| employed | 1.15 | 1.15 | 0.06 |
 | unemployed | 1.15 | 1.35 | 0.11 |
 | retired | 1.03 | 1.23 | 0.08 |
 | other_inactive | 0.96 | 1.05 | 0.02 |
@@ -80,10 +80,10 @@ Ratio of each density-class mean to its population-category mean; 90% household-
 | children_6_17 | intermediate | 494 | 1.030 | [0.968, 1.090] | equivalent | equivalent |
 | children_6_17 | sparse | 176 | 0.893 | [0.811, 0.992] | inconclusive | inconclusive |
 | children_6_17 | very_sparse | 463 | 1.056 | [0.981, 1.126] | equivalent | inconclusive |
-| employed | dense | 1046 | 1.050 | [1.011, 1.101] | equivalent | inconclusive |
-| employed | intermediate | 2929 | 1.050 | [1.025, 1.074] | equivalent | equivalent |
-| employed | sparse | 864 | 0.935 | [0.874, 1.001] | equivalent | inconclusive |
-| employed | very_sparse | 2358 | 0.928 | [0.901, 0.956] | equivalent | equivalent |
+| employed | dense | 1046 | 1.064 | [1.025, 1.112] | equivalent | inconclusive |
+| employed | intermediate | 2929 | 1.044 | [1.021, 1.065] | equivalent | equivalent |
+| employed | sparse | 864 | 0.932 | [0.873, 0.996] | equivalent | inconclusive |
+| employed | very_sparse | 2358 | 0.932 | [0.904, 0.959] | equivalent | equivalent |
 | other_inactive | dense | 293 | 0.972 | [0.899, 1.052] | equivalent | inconclusive |
 | other_inactive | intermediate | 546 | 1.003 | [0.940, 1.058] | equivalent | equivalent |
 | other_inactive | sparse | 177 | 0.992 | [0.885, 1.128] | equivalent | inconclusive |
@@ -108,11 +108,11 @@ Household income per consumption unit (modified OECD scale), in quintiles comput
 | children_6_17 | q3 | 208 | 48.3 | [45.4, 56.0] | 20.0 | 40.0 | 61.0 |
 | children_6_17 | q4 | 236 | 45.2 | [42.6, 51.9] | 20.0 | 40.0 | 60.0 |
 | children_6_17 | q5 | 187 | 47.6 | [42.0, 57.7] | 24.0 | 40.0 | 60.0 |
-| employed | q1 | 593 | 70.1 | [66.0, 76.4] | 38.0 | 60.0 | 90.0 |
-| employed | q2 | 1066 | 67.5 | [62.9, 71.3] | 34.0 | 60.0 | 90.0 |
-| employed | q3 | 1437 | 71.4 | [66.0, 76.6] | 40.0 | 60.0 | 90.0 |
-| employed | q4 | 1762 | 72.6 | [68.8, 75.8] | 37.0 | 60.0 | 95.0 |
-| employed | q5 | 2194 | 82.8 | [79.4, 86.5] | 45.0 | 73.0 | 109.0 |
+| employed | q1 | 593 | 69.5 | [65.6, 75.6] | 37.0 | 60.0 | 90.0 |
+| employed | q2 | 1066 | 66.3 | [62.0, 70.1] | 34.0 | 57.0 | 90.0 |
+| employed | q3 | 1437 | 69.0 | [64.8, 72.6] | 38.0 | 60.0 | 90.0 |
+| employed | q4 | 1762 | 71.7 | [67.9, 75.0] | 36.0 | 60.0 | 95.0 |
+| employed | q5 | 2194 | 80.7 | [77.1, 83.7] | 43.0 | 70.0 | 105.0 |
 | unemployed | q1 | 240 | 58.3 | [51.0, 65.7] | 30.0 | 45.0 | 80.0 |
 | unemployed | q2 | 118 | 70.5 | [56.4, 90.5] | 34.0 | 57.0 | 85.0 |
 | unemployed | q3 | 93 | 72.5 | [55.2, 83.3] | 35.0 | 68.0 | 100.0 |
@@ -134,7 +134,7 @@ Household income per consumption unit (modified OECD scale), in quintiles comput
 | Category | q5/q1 | max/min | CV across classes |
 |---|---|---|---|
 | children_6_17 | 0.91 | 1.16 | 0.05 |
-| employed | 1.18 | 1.23 | 0.07 |
+| employed | 1.16 | 1.22 | 0.07 |
 | unemployed | 1.21 | 1.24 | 0.08 |
 | retired | 1.29 | 1.29 | 0.09 |
 | other_inactive | 1.01 | 1.12 | 0.04 |
@@ -150,11 +150,11 @@ Ratio of each income-quintile mean to its population-category mean; 90% househol
 | children_6_17 | q3 | 239 | 1.003 | [0.917, 1.081] | equivalent | equivalent |
 | children_6_17 | q4 | 263 | 0.926 | [0.845, 1.027] | inconclusive | inconclusive |
 | children_6_17 | q5 | 202 | 0.971 | [0.848, 1.089] | inconclusive | inconclusive |
-| employed | q1 | 608 | 0.972 | [0.914, 1.037] | equivalent | equivalent |
-| employed | q2 | 1091 | 0.914 | [0.878, 0.954] | equivalent | inconclusive |
-| employed | q3 | 1455 | 0.968 | [0.919, 1.013] | equivalent | equivalent |
-| employed | q4 | 1804 | 0.979 | [0.943, 1.014] | equivalent | equivalent |
-| employed | q5 | 2239 | 1.125 | [1.087, 1.164] | inconclusive | inconclusive |
+| employed | q1 | 608 | 0.986 | [0.929, 1.050] | equivalent | equivalent |
+| employed | q2 | 1091 | 0.917 | [0.878, 0.960] | equivalent | inconclusive |
+| employed | q3 | 1455 | 0.956 | [0.914, 0.989] | equivalent | equivalent |
+| employed | q4 | 1804 | 0.988 | [0.952, 1.021] | equivalent | equivalent |
+| employed | q5 | 2239 | 1.119 | [1.083, 1.157] | inconclusive | inconclusive |
 | other_inactive | q1 | 525 | 0.997 | [0.935, 1.056] | equivalent | equivalent |
 | other_inactive | q2 | 266 | 0.968 | [0.894, 1.051] | equivalent | inconclusive |
 | other_inactive | q3 | 176 | 1.004 | [0.903, 1.119] | equivalent | inconclusive |
@@ -199,10 +199,10 @@ Missing-income breakdown, of 18542 respondents: 0 (0.0%) with no matching househ
 | children_6_17 | intermediate | 494 | 3.37 | [3.17, 3.55] | 2.00 | 3.00 | 4.00 |
 | children_6_17 | sparse | 176 | 3.40 | [3.17, 3.65] | 2.00 | 3.00 | 4.00 |
 | children_6_17 | very_sparse | 463 | 3.07 | [2.89, 3.25] | 2.00 | 2.00 | 4.00 |
-| employed | dense | 1046 | 3.99 | [3.78, 4.26] | 2.00 | 4.00 | 5.00 |
-| employed | intermediate | 2929 | 3.97 | [3.84, 4.09] | 2.00 | 4.00 | 5.00 |
-| employed | sparse | 864 | 4.24 | [4.01, 4.45] | 2.00 | 4.00 | 6.00 |
-| employed | very_sparse | 2358 | 4.13 | [3.98, 4.28] | 2.00 | 4.00 | 5.00 |
+| employed | dense | 1046 | 3.96 | [3.76, 4.24] | 2.00 | 4.00 | 5.00 |
+| employed | intermediate | 2929 | 3.91 | [3.79, 4.03] | 2.00 | 4.00 | 5.00 |
+| employed | sparse | 864 | 4.20 | [3.99, 4.40] | 2.00 | 4.00 | 6.00 |
+| employed | very_sparse | 2358 | 4.09 | [3.94, 4.24] | 2.00 | 4.00 | 5.00 |
 | unemployed | dense | 93 | 3.60 | [3.07, 4.05] | 2.00 | 4.00 | 5.00 |
 | unemployed | intermediate | 276 | 3.87 | [3.50, 4.33] | 2.00 | 4.00 | 5.00 |
 | unemployed | sparse | 65 | 3.69 | [3.06, 4.30] | 2.00 | 3.00 | 4.00 |
@@ -225,11 +225,11 @@ Missing-income breakdown, of 18542 respondents: 0 (0.0%) with no matching househ
 | children_6_17 | q3 | 239 | 3.01 | [2.76, 3.24] | 2.00 | 2.00 | 4.00 |
 | children_6_17 | q4 | 263 | 3.20 | [2.99, 3.44] | 2.00 | 3.00 | 4.00 |
 | children_6_17 | q5 | 202 | 3.29 | [3.02, 3.54] | 2.00 | 3.00 | 4.00 |
-| employed | q1 | 608 | 4.23 | [3.94, 4.51] | 2.00 | 4.00 | 6.00 |
-| employed | q2 | 1091 | 4.02 | [3.84, 4.19] | 2.00 | 4.00 | 5.00 |
-| employed | q3 | 1455 | 4.13 | [3.94, 4.39] | 2.00 | 4.00 | 5.00 |
-| employed | q4 | 1804 | 3.96 | [3.83, 4.12] | 2.00 | 4.00 | 5.00 |
-| employed | q5 | 2239 | 4.05 | [3.90, 4.20] | 2.00 | 4.00 | 5.00 |
+| employed | q1 | 608 | 4.21 | [3.92, 4.48] | 2.00 | 4.00 | 5.00 |
+| employed | q2 | 1091 | 3.99 | [3.80, 4.16] | 2.00 | 4.00 | 5.00 |
+| employed | q3 | 1455 | 4.07 | [3.87, 4.26] | 2.00 | 4.00 | 5.00 |
+| employed | q4 | 1804 | 3.93 | [3.80, 4.10] | 2.00 | 4.00 | 5.00 |
+| employed | q5 | 2239 | 3.98 | [3.84, 4.13] | 2.00 | 4.00 | 5.00 |
 | unemployed | q1 | 241 | 3.73 | [3.43, 4.10] | 2.00 | 3.00 | 5.00 |
 | unemployed | q2 | 121 | 3.65 | [3.32, 4.07] | 2.00 | 3.00 | 4.00 |
 | unemployed | q3 | 94 | 3.80 | [3.29, 4.27] | 2.00 | 4.00 | 4.00 |
@@ -256,10 +256,10 @@ Missing-income breakdown, of 18542 respondents: 0 (0.0%) with no matching househ
 | children_6_17 | intermediate | 494 | 17.12 | [15.43, 19.24] | 9.00 | 14.50 | 20.00 |
 | children_6_17 | sparse | 176 | 15.67 | [13.67, 17.89] | 6.00 | 10.00 | 20.00 |
 | children_6_17 | very_sparse | 463 | 19.13 | [17.45, 20.81] | 8.50 | 14.50 | 27.50 |
-| employed | dense | 1046 | 22.06 | [20.70, 23.45] | 11.67 | 18.33 | 28.57 |
-| employed | intermediate | 2929 | 22.28 | [21.39, 23.26] | 10.83 | 16.00 | 28.00 |
-| employed | sparse | 864 | 19.19 | [17.08, 21.72] | 8.50 | 13.75 | 22.50 |
-| employed | very_sparse | 2358 | 18.94 | [18.25, 19.76] | 10.00 | 15.00 | 24.00 |
+| employed | dense | 1046 | 22.04 | [20.65, 23.43] | 11.67 | 18.00 | 28.57 |
+| employed | intermediate | 2929 | 22.15 | [21.27, 23.15] | 10.75 | 15.80 | 27.75 |
+| employed | sparse | 864 | 20.30 | [16.78, 24.93] | 8.50 | 13.75 | 22.50 |
+| employed | very_sparse | 2358 | 18.86 | [18.17, 19.69] | 10.00 | 15.00 | 23.83 |
 | unemployed | dense | 93 | 22.71 | [16.36, 31.84] | 9.50 | 20.00 | 24.33 |
 | unemployed | intermediate | 276 | 17.14 | [15.49, 19.19] | 10.00 | 15.00 | 21.25 |
 | unemployed | sparse | 65 | 17.44 | [13.86, 20.54] | 10.00 | 15.00 | 24.17 |
@@ -282,11 +282,11 @@ Missing-income breakdown, of 18542 respondents: 0 (0.0%) with no matching househ
 | children_6_17 | q3 | 239 | 18.71 | [16.80, 21.12] | 10.00 | 15.00 | 22.50 |
 | children_6_17 | q4 | 263 | 16.24 | [14.19, 18.20] | 7.67 | 12.50 | 19.50 |
 | children_6_17 | q5 | 202 | 16.36 | [13.65, 19.71] | 7.75 | 12.50 | 18.50 |
-| employed | q1 | 608 | 20.19 | [18.35, 21.96] | 10.00 | 15.00 | 25.00 |
-| employed | q2 | 1091 | 19.23 | [17.93, 20.46] | 10.00 | 14.38 | 25.00 |
-| employed | q3 | 1455 | 19.58 | [18.19, 21.00] | 10.00 | 15.00 | 23.33 |
-| employed | q4 | 1804 | 20.67 | [19.62, 21.88] | 10.00 | 16.25 | 25.00 |
-| employed | q5 | 2239 | 23.78 | [22.61, 24.94] | 11.43 | 18.75 | 30.00 |
+| employed | q1 | 608 | 20.18 | [18.36, 21.92] | 10.00 | 15.00 | 25.00 |
+| employed | q2 | 1091 | 19.10 | [17.87, 20.25] | 10.00 | 14.14 | 24.75 |
+| employed | q3 | 1455 | 20.41 | [18.04, 23.84] | 10.00 | 15.00 | 23.00 |
+| employed | q4 | 1804 | 20.61 | [19.56, 21.82] | 10.00 | 16.00 | 25.00 |
+| employed | q5 | 2239 | 23.63 | [22.52, 24.78] | 11.43 | 18.25 | 30.00 |
 | unemployed | q1 | 241 | 16.72 | [14.70, 19.19] | 10.00 | 13.75 | 22.00 |
 | unemployed | q2 | 121 | 21.43 | [17.15, 27.69] | 10.00 | 16.67 | 25.00 |
 | unemployed | q3 | 94 | 20.18 | [16.12, 24.02] | 10.00 | 16.56 | 22.00 |
@@ -307,22 +307,22 @@ Missing-income breakdown, of 18542 respondents: 0 (0.0%) with no matching househ
 
 | Group | n | weighted n | mean trips/day | 95% CI | p25 trips/day | median trips/day | p75 trips/day |
 |---|---|---|---|---|---|---|---|
-| intermediate | 5726 | 95,273,919 | 3.71 | [3.62, 3.78] | 2.00 | 3.00 | 4.00 |
-| very_sparse | 4505 | 51,333,894 | 3.70 | [3.61, 3.79] | 2.00 | 3.00 | 4.00 |
-| sparse | 1779 | 36,466,649 | 3.81 | [3.67, 3.96] | 2.00 | 4.00 | 5.00 |
-| dense | 1996 | 30,327,473 | 3.72 | [3.57, 3.89] | 2.00 | 4.00 | 4.00 |
+| intermediate | 5726 | 95,273,919 | 3.68 | [3.59, 3.75] | 2.00 | 3.00 | 4.00 |
+| very_sparse | 4505 | 51,333,894 | 3.68 | [3.59, 3.77] | 2.00 | 3.00 | 4.00 |
+| sparse | 1779 | 36,466,649 | 3.79 | [3.65, 3.93] | 2.00 | 4.00 | 5.00 |
+| dense | 1996 | 30,327,473 | 3.71 | [3.56, 3.88] | 2.00 | 4.00 | 4.00 |
 
 | Group | n | weighted n | mean trips/day | 95% CI | p25 trips/day | median trips/day | p75 trips/day |
 |---|---|---|---|---|---|---|---|
-| q4 | 2871 | 44,632,567 | 3.75 | [3.65, 3.87] | 2.00 | 4.00 | 5.00 |
-| q5 | 3767 | 44,151,568 | 3.83 | [3.72, 3.94] | 2.00 | 4.00 | 5.00 |
-| q3 | 2743 | 42,731,943 | 3.72 | [3.58, 3.85] | 2.00 | 3.00 | 5.00 |
-| q2 | 2369 | 42,199,390 | 3.66 | [3.56, 3.77] | 2.00 | 3.00 | 4.00 |
-| q1 | 2256 | 39,686,467 | 3.65 | [3.53, 3.78] | 2.00 | 3.00 | 4.00 |
+| q4 | 2871 | 44,632,567 | 3.73 | [3.63, 3.85] | 2.00 | 3.00 | 5.00 |
+| q5 | 3767 | 44,151,568 | 3.79 | [3.68, 3.91] | 2.00 | 4.00 | 5.00 |
+| q3 | 2743 | 42,731,943 | 3.68 | [3.56, 3.80] | 2.00 | 3.00 | 4.00 |
+| q2 | 2369 | 42,199,390 | 3.65 | [3.55, 3.76] | 2.00 | 3.00 | 4.00 |
+| q1 | 2256 | 39,686,467 | 3.64 | [3.53, 3.78] | 2.00 | 3.00 | 4.00 |
 
 | Group | n | weighted n | mean min/trip | 95% CI | p25 min/trip | median min/trip | p75 min/trip |
 |---|---|---|---|---|---|---|---|
-| employed | 7197 | 105,969,118 | 20.89 | [20.37, 21.60] | 10.00 | 15.60 | 26.29 |
+| employed | 7197 | 105,969,118 | 20.99 | [20.34, 21.95] | 10.00 | 15.12 | 26.25 |
 | retired | 3635 | 42,708,861 | 17.90 | [17.19, 18.59] | 10.00 | 14.30 | 21.67 |
 | children_6_17 | 1253 | 36,391,035 | 17.10 | [16.00, 18.55] | 8.33 | 13.33 | 21.25 |
 | other_inactive | 1324 | 19,741,354 | 20.02 | [18.91, 21.73] | 10.00 | 15.00 | 25.00 |
@@ -330,18 +330,18 @@ Missing-income breakdown, of 18542 respondents: 0 (0.0%) with no matching househ
 
 | Group | n | weighted n | mean min/trip | 95% CI | p25 min/trip | median min/trip | p75 min/trip |
 |---|---|---|---|---|---|---|---|
-| intermediate | 5726 | 95,273,919 | 20.20 | [19.58, 20.81] | 10.00 | 15.00 | 23.89 |
-| very_sparse | 4505 | 51,333,894 | 19.11 | [18.41, 19.79] | 10.00 | 15.00 | 25.00 |
-| sparse | 1779 | 36,466,649 | 17.68 | [16.50, 18.74] | 8.00 | 13.00 | 21.25 |
-| dense | 1996 | 30,327,473 | 19.96 | [19.00, 20.94] | 10.00 | 16.25 | 25.00 |
+| intermediate | 5726 | 95,273,919 | 20.14 | [19.53, 20.76] | 10.00 | 15.00 | 23.75 |
+| very_sparse | 4505 | 51,333,894 | 19.06 | [18.37, 19.75] | 10.00 | 15.00 | 25.00 |
+| sparse | 1779 | 36,466,649 | 18.21 | [16.39, 20.43] | 8.00 | 12.71 | 20.71 |
+| dense | 1996 | 30,327,473 | 19.95 | [18.99, 20.95] | 10.00 | 16.25 | 25.00 |
 
 | Group | n | weighted n | mean min/trip | 95% CI | p25 min/trip | median min/trip | p75 min/trip |
 |---|---|---|---|---|---|---|---|
-| q4 | 2871 | 44,632,567 | 19.51 | [18.64, 20.43] | 10.00 | 15.00 | 23.43 |
-| q5 | 3767 | 44,151,568 | 21.38 | [20.50, 22.13] | 10.00 | 16.00 | 28.17 |
-| q3 | 2743 | 42,731,943 | 19.26 | [18.30, 20.24] | 10.00 | 15.00 | 22.50 |
-| q2 | 2369 | 42,199,390 | 18.51 | [17.65, 19.33] | 10.00 | 14.71 | 23.00 |
-| q1 | 2256 | 39,686,467 | 18.57 | [17.54, 19.83] | 9.17 | 14.67 | 22.50 |
+| q4 | 2871 | 44,632,567 | 19.48 | [18.60, 20.40] | 10.00 | 15.00 | 23.33 |
+| q5 | 3767 | 44,151,568 | 21.29 | [20.43, 22.04] | 10.00 | 15.86 | 28.00 |
+| q3 | 2743 | 42,731,943 | 19.70 | [18.23, 21.32] | 10.00 | 15.00 | 22.50 |
+| q2 | 2369 | 42,199,390 | 18.45 | [17.62, 19.26] | 10.00 | 14.50 | 23.00 |
+| q1 | 2256 | 39,686,467 | 18.57 | [17.54, 19.82] | 9.17 | 14.67 | 22.50 |
 
 ## Per-person budget, days without trips included (section 9.9 point 2b)
 
@@ -356,11 +356,11 @@ Among described weekdays with trips (all motives), the producer-weighted share w
 | Category | n respondents | min/person/day | 95% CI |
 |---|---:|---:|---|
 | children_6_17 | 1502 | 44.8 | [42.3, 47.9] |
-| employed | 8658 | 65.7 | [63.9, 67.7] |
+| employed | 8658 | 64.4 | [62.6, 66.3] |
 | unemployed | 796 | 49.2 | [44.2, 55.2] |
 | retired | 5709 | 35.7 | [34.2, 37.4] |
 | other_inactive | 1876 | 49.0 | [45.3, 51.8] |
-| overall | 18542 | 52.6 | [51.6, 53.7] |
+| overall | 18542 | 52.0 | [51.1, 53.2] |
 
 ### By population category x density class (weekday budget)
 
@@ -370,10 +370,10 @@ Among described weekdays with trips (all motives), the producer-weighted share w
 | children_6_17 | intermediate | 577 | 46.7 | [42.2, 51.6] |
 | children_6_17 | sparse | 211 | 39.9 | [34.4, 46.2] |
 | children_6_17 | very_sparse | 573 | 45.9 | [41.6, 50.5] |
-| employed | dense | 1243 | 72.3 | [68.5, 76.8] |
-| employed | intermediate | 3432 | 70.5 | [67.4, 73.8] |
-| employed | sparse | 1065 | 60.3 | [55.7, 67.1] |
-| employed | very_sparse | 2918 | 58.2 | [55.6, 61.2] |
+| employed | dense | 1243 | 71.7 | [67.9, 76.2] |
+| employed | intermediate | 3432 | 68.6 | [65.8, 71.5] |
+| employed | sparse | 1065 | 58.8 | [54.3, 65.3] |
+| employed | very_sparse | 2918 | 57.3 | [54.7, 60.3] |
 | unemployed | dense | 123 | 61.3 | [43.8, 86.2] |
 | unemployed | intermediate | 352 | 49.6 | [43.4, 55.9] |
 | unemployed | sparse | 91 | 37.7 | [25.0, 54.0] |
@@ -396,11 +396,11 @@ Among described weekdays with trips (all motives), the producer-weighted share w
 | children_6_17 | q3 | 286 | 43.9 | [38.6, 49.6] |
 | children_6_17 | q4 | 313 | 42.4 | [37.9, 48.0] |
 | children_6_17 | q5 | 237 | 43.6 | [36.9, 51.5] |
-| employed | q1 | 743 | 62.7 | [58.1, 68.2] |
-| employed | q2 | 1266 | 60.0 | [56.1, 64.4] |
-| employed | q3 | 1758 | 63.4 | [58.5, 69.5] |
-| employed | q4 | 2180 | 64.6 | [61.1, 68.2] |
-| employed | q5 | 2711 | 74.7 | [71.4, 77.8] |
+| employed | q1 | 743 | 62.3 | [57.6, 67.6] |
+| employed | q2 | 1266 | 59.0 | [55.2, 63.3] |
+| employed | q3 | 1758 | 61.2 | [56.9, 65.6] |
+| employed | q4 | 2180 | 63.8 | [60.2, 67.2] |
+| employed | q5 | 2711 | 72.7 | [69.6, 75.6] |
 | unemployed | q1 | 336 | 42.0 | [35.1, 49.1] |
 | unemployed | q2 | 160 | 53.8 | [41.0, 70.2] |
 | unemployed | q3 | 125 | 51.6 | [38.2, 63.0] |
@@ -428,13 +428,13 @@ Among described weekdays with trips (all motives), the producer-weighted share w
 
 | Group | n | weighted n | mean time (min) | p25 time (min) | median time (min) | p75 time (min) | mean energy kh (kJ) | p25 energy kh (kJ) | median energy kh (kJ) | p75 energy kh (kJ) | 95% CI | mean energy compendium (kJ) | p25 energy compendium (kJ) | median energy compendium (kJ) | p75 energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| car_driver | 7633 | 109,133,294 | 64.7 | 30.0 | 55.0 | 85.0 | 341.1 | 164.4 | 272.6 | 441.0 | [330.1, 352.3] | 391.5 | 189.6 | 325.0 | 508.2 | [380.6, 402.0] |
-| walking_only | 1828 | 30,261,604 | 36.6 | 19.0 | 30.0 | 50.0 | 491.7 | 222.0 | 399.6 | 643.8 | [461.5, 519.9] | 375.4 | 169.5 | 305.0 | 491.4 | [352.3, 396.8] |
-| multimodal | 1190 | 20,092,398 | 95.7 | 55.0 | 84.0 | 124.0 | 451.7 | 157.3 | 341.0 | 653.0 | [418.8, 484.9] | 434.3 | 167.4 | 355.9 | 606.7 | [402.7, 464.3] |
+| car_driver | 7632 | 109,104,259 | 63.6 | 30.0 | 55.0 | 83.0 | 332.8 | 160.2 | 264.6 | 432.6 | [323.6, 341.3] | 383.2 | 189.6 | 325.0 | 498.3 | [373.7, 392.2] |
+| walking_only | 1831 | 30,307,869 | 36.5 | 19.0 | 30.0 | 50.0 | 491.3 | 222.0 | 399.6 | 643.8 | [461.4, 519.4] | 375.0 | 169.5 | 305.0 | 491.4 | [352.2, 396.5] |
+| multimodal | 1188 | 20,071,605 | 94.2 | 55.0 | 84.0 | 120.0 | 440.2 | 149.3 | 333.3 | 637.9 | [406.0, 473.6] | 423.1 | 159.2 | 343.3 | 575.0 | [391.0, 454.6] |
 | car_passenger_household | 887 | 17,732,092 | 48.2 | 22.0 | 40.0 | 60.0 | 188.5 | 47.5 | 116.3 | 222.6 | [173.4, 207.7] | 162.8 | 48.8 | 109.4 | 197.2 | [150.7, 178.5] |
-| urban_pt | 1045 | 13,941,820 | 91.2 | 56.0 | 80.0 | 115.0 | 614.1 | 299.8 | 537.4 | 802.6 | [576.2, 654.0] | 506.0 | 258.6 | 462.1 | 651.8 | [474.3, 535.7] |
-| car_passenger_carpool | 360 | 5,040,879 | 53.6 | 25.0 | 44.0 | 70.0 | 270.8 | 64.2 | 164.1 | 332.5 | [218.9, 323.9] | 228.0 | 68.3 | 150.7 | 287.6 | [186.1, 268.5] |
-| cycle | 265 | 4,480,824 | 45.5 | 22.0 | 38.0 | 60.0 | 623.4 | 325.1 | 530.4 | 826.7 | [535.2, 708.4] | 605.7 | 326.2 | 490.2 | 826.7 | [518.0, 687.4] |
+| urban_pt | 1044 | 13,936,892 | 91.0 | 56.0 | 80.0 | 115.0 | 613.2 | 299.8 | 532.5 | 802.6 | [575.2, 652.9] | 505.2 | 258.6 | 457.6 | 651.8 | [473.7, 535.2] |
+| car_passenger_carpool | 361 | 5,049,369 | 53.8 | 25.0 | 44.0 | 70.0 | 272.3 | 64.2 | 164.1 | 333.6 | [218.9, 326.9] | 229.2 | 68.3 | 150.7 | 289.7 | [186.4, 269.9] |
+| cycle | 265 | 4,480,824 | 45.4 | 22.0 | 38.0 | 60.0 | 622.8 | 325.1 | 530.4 | 826.7 | [534.5, 707.7] | 605.1 | 326.2 | 490.2 | 826.7 | [517.3, 686.9] |
 | train | 382 | 4,238,123 | 127.9 | 90.0 | 120.0 | 159.0 | 777.3 | 545.8 | 737.1 | 931.5 | [743.9, 824.3] | 655.4 | 468.5 | 609.0 | 792.2 | [626.9, 690.4] |
 | other | 50 | 799,698 | 73.5 | 45.0 | 62.0 | 80.0 | 279.3 | 133.2 | 222.0 | 310.8 | [231.8, 362.5] | 213.2 | 101.7 | 169.5 | 237.2 | [177.0, 276.7] |
 
@@ -443,14 +443,14 @@ Among described weekdays with trips (all motives), the producer-weighted share w
 
 Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above an upper speed bound only -- walk > 7 km/h, bike > 35 km/h, car (driver or passenger) > 130 km/h -- their declared distance is replaced by declared duration x the mode's own median speed (from its not-flagged trips). Cycling energy's main work term is time-based (round 4), but its "stops" sub-term still multiplies by distance and by the distance-derived ride speed squared (section 9.7), so a flagged bike trip's distance is corrected too, like walk and car (round 9).
 
-- car_driver: 119 of 29,817 trips corrected
-- car_passenger_carpool: 1 of 1,512 trips corrected
-- car_passenger_household: 8 of 3,409 trips corrected
-- cycle: 5 of 1,029 trips corrected
-- other: 0 of 1,501 trips corrected
+- car_driver: 117 of 29,545 trips corrected
+- car_passenger_carpool: 1 of 1,508 trips corrected
+- car_passenger_household: 8 of 3,405 trips corrected
+- cycle: 5 of 1,025 trips corrected
+- other: 0 of 1,491 trips corrected
 - train: 0 of 1,101 trips corrected
-- urban_pt: 0 of 3,012 trips corrected
-- walk: 176 of 9,617 trips corrected
+- urban_pt: 0 of 3,008 trips corrected
+- walk: 176 of 9,607 trips corrected
 
 ## Mean daily energy and time by main-mode group, overall and by population category (F4)
 
@@ -458,13 +458,13 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 
 | Group | n | weighted n | mean time (min) | p25 time (min) | median time (min) | p75 time (min) | mean energy kh (kJ) | p25 energy kh (kJ) | median energy kh (kJ) | p75 energy kh (kJ) | 95% CI | mean energy compendium (kJ) | p25 energy compendium (kJ) | median energy compendium (kJ) | p75 energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| car_driver | 7633 | 109,133,294 | 64.7 | 30.0 | 55.0 | 85.0 | 341.1 | 164.4 | 272.6 | 441.0 | [330.1, 352.3] | 391.5 | 189.6 | 325.0 | 508.2 | [380.6, 402.0] |
-| walking_only | 1828 | 30,261,604 | 36.6 | 19.0 | 30.0 | 50.0 | 491.7 | 222.0 | 399.6 | 643.8 | [461.5, 519.9] | 375.4 | 169.5 | 305.0 | 491.4 | [352.3, 396.8] |
-| multimodal | 1190 | 20,092,398 | 95.7 | 55.0 | 84.0 | 124.0 | 451.7 | 157.3 | 341.0 | 653.0 | [418.8, 484.9] | 434.3 | 167.4 | 355.9 | 606.7 | [402.7, 464.3] |
+| car_driver | 7632 | 109,104,259 | 63.6 | 30.0 | 55.0 | 83.0 | 332.8 | 160.2 | 264.6 | 432.6 | [323.6, 341.3] | 383.2 | 189.6 | 325.0 | 498.3 | [373.7, 392.2] |
+| walking_only | 1831 | 30,307,869 | 36.5 | 19.0 | 30.0 | 50.0 | 491.3 | 222.0 | 399.6 | 643.8 | [461.4, 519.4] | 375.0 | 169.5 | 305.0 | 491.4 | [352.2, 396.5] |
+| multimodal | 1188 | 20,071,605 | 94.2 | 55.0 | 84.0 | 120.0 | 440.2 | 149.3 | 333.3 | 637.9 | [406.0, 473.6] | 423.1 | 159.2 | 343.3 | 575.0 | [391.0, 454.6] |
 | car_passenger_household | 887 | 17,732,092 | 48.2 | 22.0 | 40.0 | 60.0 | 188.5 | 47.5 | 116.3 | 222.6 | [173.4, 207.7] | 162.8 | 48.8 | 109.4 | 197.2 | [150.7, 178.5] |
-| urban_pt | 1045 | 13,941,820 | 91.2 | 56.0 | 80.0 | 115.0 | 614.1 | 299.8 | 537.4 | 802.6 | [576.2, 654.0] | 506.0 | 258.6 | 462.1 | 651.8 | [474.3, 535.7] |
-| car_passenger_carpool | 360 | 5,040,879 | 53.6 | 25.0 | 44.0 | 70.0 | 270.8 | 64.2 | 164.1 | 332.5 | [218.9, 323.9] | 228.0 | 68.3 | 150.7 | 287.6 | [186.1, 268.5] |
-| cycle | 265 | 4,480,824 | 45.5 | 22.0 | 38.0 | 60.0 | 623.4 | 325.1 | 530.4 | 826.7 | [535.2, 708.4] | 605.7 | 326.2 | 490.2 | 826.7 | [518.0, 687.4] |
+| urban_pt | 1044 | 13,936,892 | 91.0 | 56.0 | 80.0 | 115.0 | 613.2 | 299.8 | 532.5 | 802.6 | [575.2, 652.9] | 505.2 | 258.6 | 457.6 | 651.8 | [473.7, 535.2] |
+| car_passenger_carpool | 361 | 5,049,369 | 53.8 | 25.0 | 44.0 | 70.0 | 272.3 | 64.2 | 164.1 | 333.6 | [218.9, 326.9] | 229.2 | 68.3 | 150.7 | 289.7 | [186.4, 269.9] |
+| cycle | 265 | 4,480,824 | 45.4 | 22.0 | 38.0 | 60.0 | 622.8 | 325.1 | 530.4 | 826.7 | [534.5, 707.7] | 605.1 | 326.2 | 490.2 | 826.7 | [517.3, 686.9] |
 | train | 382 | 4,238,123 | 127.9 | 90.0 | 120.0 | 159.0 | 777.3 | 545.8 | 737.1 | 931.5 | [743.9, 824.3] | 655.4 | 468.5 | 609.0 | 792.2 | [626.9, 690.4] |
 | other | 50 | 799,698 | 73.5 | 45.0 | 62.0 | 80.0 | 279.3 | 133.2 | 222.0 | 310.8 | [231.8, 362.5] | 213.2 | 101.7 | 169.5 | 237.2 | [177.0, 276.7] |
 
@@ -486,14 +486,14 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 
 | Group | n | weighted n | mean time (min) | p25 time (min) | median time (min) | p75 time (min) | mean energy kh (kJ) | p25 energy kh (kJ) | median energy kh (kJ) | p75 energy kh (kJ) | 95% CI | mean energy compendium (kJ) | p25 energy compendium (kJ) | median energy compendium (kJ) | p75 energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| car_driver | 4785 | 72,041,787 | 69.3 | 36.0 | 60.0 | 90.0 | 355.9 | 168.0 | 285.6 | 453.6 | [345.6, 368.9] | 413.9 | 216.7 | 346.7 | 528.5 | [402.5, 427.7] |
-| multimodal | 610 | 9,552,562 | 110.4 | 69.0 | 99.0 | 136.0 | 541.1 | 249.4 | 454.4 | 760.6 | [498.3, 591.5] | 528.3 | 280.0 | 476.0 | 715.7 | [490.5, 573.9] |
-| walking_only | 478 | 6,949,282 | 39.3 | 18.0 | 32.0 | 55.0 | 565.8 | 244.2 | 466.2 | 821.4 | [498.2, 624.7] | 431.9 | 186.4 | 355.9 | 627.0 | [380.3, 476.9] |
-| urban_pt | 512 | 6,088,037 | 93.3 | 60.0 | 85.0 | 119.0 | 656.0 | 363.2 | 582.4 | 840.9 | [609.0, 700.5] | 540.6 | 313.0 | 482.5 | 660.5 | [504.5, 575.8] |
+| car_driver | 4784 | 72,012,753 | 67.5 | 35.0 | 60.0 | 85.0 | 343.3 | 168.0 | 279.1 | 441.0 | [333.6, 353.6] | 401.3 | 216.7 | 335.3 | 514.6 | [390.5, 413.5] |
+| multimodal | 608 | 9,531,769 | 107.2 | 69.0 | 99.0 | 133.0 | 517.2 | 229.2 | 428.8 | 720.8 | [460.6, 572.3] | 504.8 | 258.9 | 446.3 | 666.3 | [458.8, 557.3] |
+| walking_only | 481 | 6,995,547 | 39.1 | 17.0 | 32.0 | 55.0 | 563.2 | 244.2 | 466.2 | 821.4 | [498.1, 618.6] | 429.9 | 186.4 | 355.9 | 627.0 | [380.2, 472.2] |
+| urban_pt | 511 | 6,083,109 | 93.1 | 60.0 | 85.0 | 118.0 | 653.9 | 362.4 | 573.4 | 837.2 | [605.3, 698.4] | 538.8 | 310.7 | 482.3 | 660.5 | [502.2, 572.9] |
 | train | 286 | 2,856,242 | 133.5 | 96.0 | 130.0 | 163.0 | 757.4 | 541.0 | 710.6 | 922.4 | [716.9, 811.4] | 644.7 | 458.3 | 621.9 | 773.6 | [608.1, 687.6] |
 | car_passenger_household | 142 | 2,147,021 | 60.5 | 30.0 | 50.0 | 85.0 | 219.5 | 67.5 | 120.0 | 290.1 | [158.0, 293.3] | 192.3 | 73.1 | 130.0 | 243.8 | [142.6, 251.3] |
-| car_passenger_carpool | 101 | 1,824,711 | 54.3 | 27.0 | 45.0 | 80.0 | 258.8 | 74.1 | 169.8 | 450.9 | [193.1, 343.5] | 220.5 | 72.2 | 152.8 | 357.1 | [169.3, 287.2] |
-| cycle | 117 | 1,675,882 | 59.2 | 30.0 | 60.0 | 90.0 | 805.9 | 396.4 | 783.0 | 1118.6 | [651.4, 962.5] | 786.1 | 380.7 | 783.6 | 1118.6 | [634.6, 930.8] |
+| car_passenger_carpool | 102 | 1,833,200 | 54.6 | 27.0 | 45.0 | 80.0 | 263.0 | 74.1 | 169.8 | 463.7 | [198.0, 343.8] | 223.8 | 72.2 | 152.8 | 357.7 | [172.0, 288.7] |
+| cycle | 117 | 1,675,882 | 59.1 | 30.0 | 60.0 | 90.0 | 804.4 | 396.4 | 783.0 | 1118.6 | [649.8, 960.4] | 784.7 | 380.7 | 783.6 | 1118.6 | [630.8, 928.6] |
 | other | 21 | 233,473 | 70.8 | 50.0 | 60.0 | 75.0 | 296.0 | 133.2 | 266.4 | 444.0 | [211.1, 384.4] | 225.9 | 101.7 | 203.4 | 338.9 | [161.1, 293.4] |
 
 ### unemployed
@@ -541,7 +541,7 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 
 | Group | n | weighted n | mean time (min) | p25 time (min) | median time (min) | p75 time (min) | mean energy kh (kJ) | p25 energy kh (kJ) | median energy kh (kJ) | p75 energy kh (kJ) | 95% CI | mean energy compendium (kJ) | p25 energy compendium (kJ) | median energy compendium (kJ) | p75 energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| employed | 7052 | 103,368,995 | 73.6 | 40.0 | 60.0 | 95.0 | 418.5 | 189.0 | 318.6 | 545.4 | [405.7, 429.0] | 437.1 | 216.7 | 368.3 | 568.9 | [424.5, 447.7] |
+| employed | 7052 | 103,368,995 | 72.1 | 38.0 | 60.0 | 95.0 | 407.3 | 180.2 | 314.6 | 531.5 | [395.5, 419.0] | 426.0 | 216.7 | 357.5 | 565.6 | [414.2, 437.1] |
 | retired | 3600 | 42,250,110 | 54.4 | 25.0 | 40.0 | 70.0 | 344.0 | 133.2 | 255.5 | 445.8 | [329.7, 357.4] | 336.1 | 146.3 | 264.9 | 449.8 | [322.2, 348.5] |
 | children_6_17 | 1091 | 32,365,130 | 48.7 | 21.0 | 40.0 | 60.0 | 319.2 | 88.8 | 237.8 | 466.2 | [291.0, 347.2] | 267.5 | 81.3 | 202.7 | 406.7 | [243.5, 291.0] |
 | other_inactive | 1305 | 19,322,345 | 65.3 | 30.0 | 55.0 | 87.0 | 450.6 | 177.6 | 329.5 | 615.4 | [418.4, 475.7] | 409.7 | 186.4 | 325.0 | 549.5 | [383.3, 431.5] |
@@ -551,14 +551,14 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 
 | Group | n | weighted n | mean time (min) | p25 time (min) | median time (min) | p75 time (min) | mean energy kh (kJ) | p25 energy kh (kJ) | median energy kh (kJ) | p75 energy kh (kJ) | 95% CI | mean energy compendium (kJ) | p25 energy compendium (kJ) | median energy compendium (kJ) | p75 energy compendium (kJ) | 95% CI |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| intermediate | 5622 | 92,923,172 | 66.9 | 30.0 | 55.0 | 90.0 | 419.6 | 177.6 | 318.7 | 562.8 | [405.3, 434.4] | 403.9 | 186.4 | 327.5 | 544.6 | [390.4, 416.7] |
-| very_sparse | 4319 | 47,830,467 | 62.5 | 30.0 | 53.0 | 82.0 | 293.9 | 126.0 | 237.6 | 378.0 | [283.4, 304.2] | 330.0 | 138.9 | 269.3 | 444.2 | [317.7, 341.6] |
-| sparse | 1741 | 35,436,377 | 59.2 | 27.0 | 45.0 | 77.0 | 344.3 | 130.5 | 252.6 | 441.0 | [322.0, 371.0] | 353.5 | 140.9 | 270.8 | 449.6 | [331.5, 380.6] |
-| dense | 1958 | 29,530,715 | 67.2 | 35.0 | 60.0 | 90.0 | 525.3 | 255.8 | 441.0 | 714.4 | [496.7, 547.0] | 464.9 | 227.5 | 406.7 | 641.3 | [441.6, 484.5] |
+| intermediate | 5622 | 92,923,172 | 65.9 | 30.0 | 55.0 | 90.0 | 412.7 | 170.4 | 312.4 | 555.0 | [398.0, 427.8] | 396.8 | 184.2 | 325.0 | 541.7 | [384.6, 408.9] |
+| very_sparse | 4319 | 47,830,467 | 61.8 | 30.0 | 52.0 | 80.0 | 289.6 | 126.0 | 235.1 | 378.0 | [278.5, 299.5] | 325.6 | 135.6 | 268.2 | 436.1 | [314.2, 336.6] |
+| sparse | 1741 | 35,436,377 | 58.4 | 26.0 | 45.0 | 75.0 | 337.0 | 127.3 | 252.0 | 428.9 | [314.2, 359.0] | 346.7 | 140.8 | 268.2 | 440.6 | [323.4, 369.0] |
+| dense | 1958 | 29,530,715 | 67.0 | 35.0 | 60.0 | 90.0 | 523.6 | 253.4 | 439.2 | 711.7 | [495.6, 545.6] | 463.3 | 227.5 | 406.3 | 637.8 | [440.4, 483.0] |
 
 ## Car passengers (F7)
 
-- Carpool trips: 23,582,630 of 92,701,902 weighted passenger trips (25.4% share).
+- Carpool trips: 23,530,007 of 92,612,128 weighted passenger trips (25.4% share).
 - Daily totals of both passenger groups: see `car_passenger_household`/`car_passenger_carpool` rows of the main-mode-group table above.
 - Mean walking trips per day: driver 0.22, household passenger 0.52, carpool passenger 0.68.
 - **Carpool premium** (the extra origin-side walk/wait before the car, section 9.6): `config.car.carpool_passenger.walk_to_meeting_point_min` = 5 min, `.wait_standing_min` = 3 min -- TODO(confirm), no survey or observed pickup pattern.
@@ -569,16 +569,16 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | declared (base case) | full | mean | 4.12 | 0.42 | car_passenger_household / train | 4.03 | 0.41 | car_passenger_household / train | 3.50 | 0.45 | walking_only / train |
 | declared (base case) | full | median | 6.34 | 0.53 | car_passenger_household / train | 5.57 | 0.48 | car_passenger_household / train | 4.00 | 0.51 | walking_only / train |
-| declared (base case) | core | mean | 2.28 | 0.29 | car_driver / train | 1.75 | 0.23 | walking_only / train | 3.50 | 0.42 | walking_only / train |
-| declared (base case) | core | median | 2.70 | 0.35 | car_driver / train | 2.00 | 0.29 | walking_only / train | 4.00 | 0.47 | walking_only / train |
-| declared + 1 min (car/bike/urban PT) | full | mean | 3.34 | 0.36 | car_passenger_household / train | 3.36 | 0.36 | car_passenger_household / train | 3.50 | 0.45 | walking_only / train |
+| declared (base case) | core | mean | 2.34 | 0.29 | car_driver / train | 1.75 | 0.24 | walking_only / train | 3.50 | 0.42 | walking_only / train |
+| declared (base case) | core | median | 2.79 | 0.36 | car_driver / train | 2.00 | 0.29 | walking_only / train | 4.00 | 0.47 | walking_only / train |
+| declared + 1 min (car/bike/urban PT) | full | mean | 3.34 | 0.37 | car_passenger_household / train | 3.36 | 0.36 | car_passenger_household / train | 3.50 | 0.45 | walking_only / train |
 | declared + 1 min (car/bike/urban PT) | full | median | 4.42 | 0.46 | car_passenger_household / train | 4.08 | 0.43 | car_passenger_household / train | 4.00 | 0.51 | walking_only / train |
-| declared + 1 min (car/bike/urban PT) | core | mean | 1.98 | 0.26 | car_driver / train | 1.75 | 0.22 | walking_only / train | 3.50 | 0.42 | walking_only / train |
-| declared + 1 min (car/bike/urban PT) | core | median | 2.30 | 0.32 | car_driver / train | 2.00 | 0.27 | walking_only / train | 4.00 | 0.47 | walking_only / train |
+| declared + 1 min (car/bike/urban PT) | core | mean | 2.03 | 0.26 | car_driver / train | 1.75 | 0.22 | walking_only / train | 3.50 | 0.42 | walking_only / train |
+| declared + 1 min (car/bike/urban PT) | core | median | 2.34 | 0.32 | car_driver / train | 2.00 | 0.27 | walking_only / train | 4.00 | 0.47 | walking_only / train |
 | former defaults, terminal legs x0.5 | full | mean | 2.38 | 0.25 | car_passenger_household / cycle | 2.79 | 0.29 | car_passenger_household / cycle | 3.50 | 0.45 | walking_only / train |
-| former defaults, terminal legs x0.5 | full | median | 2.59 | 0.27 | car_passenger_household / cycle | 2.88 | 0.31 | car_passenger_household / cycle | 4.00 | 0.51 | walking_only / train |
-| former defaults, terminal legs x0.5 | core | mean | 1.32 | 0.10 | car_driver / train | 1.30 | 0.10 | walking_only / train | 3.50 | 0.42 | walking_only / train |
-| former defaults, terminal legs x0.5 | core | median | 1.39 | 0.12 | car_driver / train | 1.46 | 0.14 | walking_only / train | 4.00 | 0.47 | walking_only / train |
+| former defaults, terminal legs x0.5 | full | median | 2.59 | 0.27 | car_passenger_household / cycle | 2.88 | 0.30 | car_passenger_household / cycle | 4.00 | 0.51 | walking_only / train |
+| former defaults, terminal legs x0.5 | core | mean | 1.34 | 0.10 | car_driver / train | 1.31 | 0.10 | walking_only / train | 3.50 | 0.42 | walking_only / train |
+| former defaults, terminal legs x0.5 | core | median | 1.41 | 0.13 | car_driver / train | 1.46 | 0.14 | walking_only / train | 4.00 | 0.47 | walking_only / train |
 | former defaults, terminal legs x1 | full | mean | 1.96 | 0.19 | car_passenger_household / train | 2.08 | 0.22 | car_passenger_household / train | 3.50 | 0.45 | walking_only / train |
 | former defaults, terminal legs x1 | full | median | 2.19 | 0.23 | car_passenger_household / train | 2.32 | 0.26 | car_passenger_household / train | 4.00 | 0.51 | walking_only / train |
 | former defaults, terminal legs x1 | core | mean | 1.46 | 0.15 | walking_only / train | 1.63 | 0.17 | walking_only / train | 3.50 | 0.42 | walking_only / train |
@@ -589,37 +589,37 @@ Trips are corrected, not dropped (section 9.9, step 11 round 5): flagged above a
 | former defaults, terminal legs x1.5 | core | median | 2.03 | 0.25 | walking_only / train | 2.21 | 0.26 | walking_only / train | 4.00 | 0.47 | walking_only / train |
 | weekdays only | full | mean | 4.12 | 0.42 | car_passenger_household / train | 4.03 | 0.41 | car_passenger_household / train | 3.50 | 0.45 | walking_only / train |
 | weekdays only | full | median | 6.34 | 0.53 | car_passenger_household / train | 5.57 | 0.48 | car_passenger_household / train | 4.00 | 0.51 | walking_only / train |
-| weekdays only | core | mean | 2.28 | 0.29 | car_driver / train | 1.75 | 0.23 | walking_only / train | 3.50 | 0.42 | walking_only / train |
-| weekdays only | core | median | 2.70 | 0.35 | car_driver / train | 2.00 | 0.29 | walking_only / train | 4.00 | 0.47 | walking_only / train |
+| weekdays only | core | mean | 2.34 | 0.29 | car_driver / train | 1.75 | 0.24 | walking_only / train | 3.50 | 0.42 | walking_only / train |
+| weekdays only | core | median | 2.79 | 0.36 | car_driver / train | 2.00 | 0.29 | walking_only / train | 4.00 | 0.47 | walking_only / train |
 | local trips only (MOBLOC=1) | full | mean | 4.12 | 0.42 | car_passenger_household / train | 4.03 | 0.41 | car_passenger_household / train | 3.50 | 0.45 | walking_only / train |
 | local trips only (MOBLOC=1) | full | median | 6.34 | 0.53 | car_passenger_household / train | 5.57 | 0.48 | car_passenger_household / train | 4.00 | 0.51 | walking_only / train |
-| local trips only (MOBLOC=1) | core | mean | 2.28 | 0.29 | car_driver / train | 1.75 | 0.23 | walking_only / train | 3.50 | 0.42 | walking_only / train |
-| local trips only (MOBLOC=1) | core | median | 2.70 | 0.35 | car_driver / train | 2.00 | 0.29 | walking_only / train | 4.00 | 0.47 | walking_only / train |
-| P0 = 52.5 W (section 9.7 reference) | full | mean | 4.24 | 0.45 | car_passenger_household / cycle | 4.80 | 0.46 | car_passenger_household / cycle | 3.50 | 0.45 | walking_only / train |
+| local trips only (MOBLOC=1) | core | mean | 2.34 | 0.29 | car_driver / train | 1.75 | 0.24 | walking_only / train | 3.50 | 0.42 | walking_only / train |
+| local trips only (MOBLOC=1) | core | median | 2.79 | 0.36 | car_driver / train | 2.00 | 0.29 | walking_only / train | 4.00 | 0.47 | walking_only / train |
+| P0 = 52.5 W (section 9.7 reference) | full | mean | 4.24 | 0.45 | car_passenger_household / cycle | 4.80 | 0.47 | car_passenger_household / cycle | 3.50 | 0.45 | walking_only / train |
 | P0 = 52.5 W (section 9.7 reference) | full | median | 6.34 | 0.54 | car_passenger_household / train | 5.57 | 0.51 | car_passenger_household / train | 4.00 | 0.51 | walking_only / train |
-| P0 = 52.5 W (section 9.7 reference) | core | mean | 2.28 | 0.29 | car_driver / train | 1.75 | 0.23 | walking_only / train | 3.50 | 0.42 | walking_only / train |
-| P0 = 52.5 W (section 9.7 reference) | core | median | 2.70 | 0.35 | car_driver / train | 2.00 | 0.29 | walking_only / train | 4.00 | 0.47 | walking_only / train |
+| P0 = 52.5 W (section 9.7 reference) | core | mean | 2.34 | 0.29 | car_driver / train | 1.75 | 0.24 | walking_only / train | 3.50 | 0.42 | walking_only / train |
+| P0 = 52.5 W (section 9.7 reference) | core | median | 2.79 | 0.36 | car_driver / train | 2.00 | 0.29 | walking_only / train | 4.00 | 0.47 | walking_only / train |
 
 ## Constancy test (point 3, 5): energy (Kolbl & Helbing's hypothesis)
 
-- Overall weighted mean daily energy: 392.6 kJ (kh), 386.8 kJ (compendium); Koelbl & Helbing's (2003) hypothesis is 615 kJ.
+- Overall weighted mean daily energy: 386.9 kJ (kh), 381.2 kJ (compendium); Koelbl & Helbing's (2003) hypothesis is 615 kJ.
 - Max/min ratio of the day-mode-group means (walking_only, cycle, car_driver, car_passenger_household, car_passenger_carpool, urban_pt, train): 4.12 (kh), 4.03 (compendium).
-- Method-of-moments gamma fit (point 5): shape=1.27, scale=310.2 kJ (kh); shape=1.49, scale=260.4 kJ (compendium). A zero weighted variance cannot be fit.- Mean trips per person and day: 3.72 (95% CI [3.68, 3.77]).
+- Method-of-moments gamma fit (point 5): shape=1.30, scale=296.7 kJ (kh); shape=1.53, scale=248.5 kJ (compendium). A zero weighted variance cannot be fit.- Mean trips per person and day: 3.70 (95% CI [3.65, 3.75]).
 
 ## Calibrated v0 and P0 (step 1)
 
 - **v0 estimator:** the ratio of weighted sums of distance and duration, sum(POND_JOUR*distance)/sum(POND_JOUR*duration), not an average of per-trip speeds (avoids the bias of averaging a ratio).
-- Overall v0: 3.65 km/h, n=9617 (configured: 4.8 km/h).
+- Overall v0: 3.65 km/h, n=9607 (configured: 4.8 km/h).
 - **P0 estimator:** the trip's own terminal-leg walk (27 October 2026 decision: `terminal_legs='declared'`, each trip's own `MTEMPSMAP`/`V2_MTEMPSMAP`, falling back to the section 9.4-9.7 defaults where missing) and the expected stop delays (section 9.7, Webster 1958) are subtracted from the declared duration at the naive speed before computing the ride speed; P0 is `bike.required_power_w` at the single ratio-estimated implied flat speed (not an average of per-trip, nonlinear P0 values). EMP 2019's own mode codes do not separate e-bikes from bicycles (`mtp` 2.1 includes "assistance electrique"), so they cannot be excluded or reported apart.
-- Overall P0: 26.0 W at an implied flat speed of 11.67 km/h, n=1029 (configured `config.bike.power.p0_w` = 34.8 W; section 9.7's reference: 52.5 W at 16 km/h). `config/energy.yaml` is not changed by this calibration.
+- Overall P0: 26.0 W at an implied flat speed of 11.68 km/h, n=1025 (configured `config.bike.power.p0_w` = 34.8 W; section 9.7's reference: 52.5 W at 16 km/h). `config/energy.yaml` is not changed by this calibration.
 
 | Age band (AGE6) | n walk | v0 (km/h) | n cycle | implied flat speed (km/h) | P0 (W) |
 |---|---|---|---|---|---|
 | 00 | 1003 | 3.56 | 123 | 10.55 | 21.6 |
 | 15 | 1491 | 3.97 | 162 | 13.03 | 32.2 |
-| 30 | 1402 | 3.82 | 159 | 12.79 | 31.0 |
-| 40 | 1310 | 3.69 | 148 | 9.77 | 18.9 |
-| 50 | 1503 | 3.76 | 187 | 12.89 | 31.5 |
+| 30 | 1398 | 3.82 | 159 | 12.79 | 31.0 |
+| 40 | 1310 | 3.69 | 146 | 9.79 | 18.9 |
+| 50 | 1497 | 3.78 | 185 | 12.90 | 31.5 |
 | 60 | 2908 | 3.24 | 250 | 10.08 | 19.9 |
 
 ## Declared vs modelled walk/wait minutes, by mode group (step 1)
@@ -628,11 +628,11 @@ Unweighted trip-level means. Since the 27 October 2026 decision, the declared va
 
 | Mode group | n | declared walk (min) | modelled walk (min) | declared wait (min) | modelled wait (min) |
 |---|---|---|---|---|---|
-| car_driver | 29817 | 1.0 | 4.7 | 0.0 | - |
-| car_passenger_carpool | 1512 | 1.5 | 5.1 | - | - |
-| car_passenger_household | 3409 | 1.0 | 4.6 | 15.0 | - |
+| car_driver | 29545 | 1.0 | 4.7 | 0.0 | - |
+| car_passenger_carpool | 1508 | 1.4 | 5.0 | - | - |
+| car_passenger_household | 3405 | 1.0 | 4.6 | 15.0 | - |
 | train | 1101 | 11.9 | 9.8 | 7.5 | 5.0 |
-| urban_pt | 3012 | 7.9 | 8.9 | 5.1 | 4.0 |
+| urban_pt | 3008 | 7.9 | 8.9 | 5.0 | 4.0 |
 
 ## Cycle group, after the fix (point 3)
 
@@ -640,15 +640,15 @@ Cycling energy's work term is now time-based at the single calibrated P0 (34.8 W
 
 | Variant | n | mean energy kh (kJ) | median energy kh (kJ) | mean energy cp (kJ) | median energy cp (kJ) |
 |---|---|---|---|---|---|
-| all days | 265 | 623.4 | 530.4 | 605.7 | 490.2 |
-| weekdays only | 265 | 623.4 | 530.4 | 605.7 | 490.2 |
+| all days | 265 | 622.8 | 530.4 | 605.1 | 490.2 |
+| weekdays only | 265 | 622.8 | 530.4 | 605.1 | 490.2 |
 
 ### Post-fix cycle-day decomposition (point 3)
 
 Ride work, unloaded pedalling and stops are the same formula in both rate sets (section 9.7's mechanical/physiological terms); only get/park (a standing activity rate) and the day's walking legs (c0) differ by rate set.
 
-- Mean ride time: 35.7 min; ride work: 310.9 kJ; unloaded pedalling: 193.6 kJ.
-- Stops: 54.4 kJ/day, 14.25 stops/day at `config.bike.stops.stops_per_km` = 2/km; 3.82 kJ/stop.
+- Mean ride time: 35.7 min; ride work: 310.6 kJ; unloaded pedalling: 193.4 kJ.
+- Stops: 54.4 kJ/day, 14.24 stops/day at `config.bike.stops.stops_per_km` = 2/km; 3.82 kJ/stop.
 - Get/park: 2 min/day fixed, 5.2 kJ (kh), 5.4 kJ (cp).
 - Walking trips of the same day: 5.2 min/day, 75.8 kJ (kh), 57.8 kJ (cp).
 
@@ -676,8 +676,8 @@ Trip motive uses `MMOTIFDES`, except returns home or to a residence (codes 1.1-1
 | 7.3 eat/drink out | 19 | 202,687 | 1.1% | 1.1% | 1.1% | 2.61 | 13.9 |
 | 9.5 other professional reason | 8 | 65,042 | 0.4% | 0.8% | 0.8% | 3.24 | 16.9 |
 | 7.5 cultural/sports show, conference | 11 | 152,198 | 0.8% | 0.7% | 0.7% | 2.51 | 13.2 |
-| 9.4 professional rounds/patient visits | 6 | 11,723 | 0.1% | 0.1% | 0.1% | 4.17 | 34.2 |
 | 7.7 stroll, no specific destination | 2 | 22,166 | 0.1% | 0.1% | 0.1% | 1.25 | 7.5 |
+| 9.4 professional rounds/patient visits | 2 | 3,908 | 0.0% | 0.1% | 0.1% | 7.75 | 47.5 |
 | 1.5 young-child childcare drop-off | 4 | 23,826 | 0.1% | 0.0% | 0.0% | 1.02 | 7.0 |
 | 6.3 pick up from station/airport | 2 | 12,750 | 0.1% | 0.0% | 0.0% | 0.70 | 5.0 |
 | 1.3 return to parents'/friends' home | 1 | 7,706 | 0.0% | 0.0% | 0.0% | 0.90 | 5.0 |
