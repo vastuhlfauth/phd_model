@@ -2,6 +2,14 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi mode stability calculations (2026-11-19)
+
+- Added mode-user, day-mode-group and per-person weighted means and shared
+  household intervals, plus trip and minute shares. The per-person path
+  calls the scope-cube's `daily_energy` estimator and removes open days.
+- Nine synthetic tests passed, including mode totals and open/zero days.
+  CLI output and the historical 52.0/57.0 minute check remain to be wired.
+
 ### Zahavi mode comparisons (2026-11-19)
 
 - Added weighted interpolated and step deciles, trip-duration thresholds,

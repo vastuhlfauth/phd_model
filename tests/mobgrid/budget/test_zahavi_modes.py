@@ -122,3 +122,50 @@ def test_comparison_outputs_and_suppression() -> None:
     assert np.isnan(deciles[0]["interpolated_2008"])
     assert np.isnan(thresholds[0]["change_points"])
     assert np.isnan(ks[0]["D"])
+
+
+def test_person_mode_minutes_sum_to_total_with_open_and_zero_days(
+    tmp_path: Path,
+) -> None:
+    cache = modes_cache.SurveyCache(tmp_path)
+    with duckdb.connect() as con:
+        con.execute("""
+            COPY (SELECT * FROM (VALUES
+              ('h1', 10.0), ('h2', 10.0)
+            ) t(ident_men, weight)) TO ? (FORMAT PARQUET)
+        """, [str(cache.roster)])
+        con.execute("""
+            COPY (SELECT * FROM (VALUES
+              ('d1', 'h1', 2.0, TRUE), ('d2', 'h1', 2.0, FALSE)
+            ) t(day_id, ident_men, pond_jour, is_round)) TO ? (FORMAT PARQUET)
+        """, [str(cache.day_base)])
+        con.execute("""
+            COPY (SELECT * FROM (VALUES
+              ('d1', 'walk', 10.0), ('d1', 'car_driver', 20.0)
+            ) t(day_id, mode7, duration_min)) TO ? (FORMAT PARQUET)
+        """, [str(cache.trips(scope.REFERENCE_SCOPE))])
+    draws = modes.make_draws(np.array(["h1", "h2"]), n_reps=20, seed=3)
+    metrics = modes.person_mode_metrics(cache, scope.REFERENCE_SCOPE, draws)
+    assert metrics["walk"].value == pytest.approx(20 / 18)
+    assert metrics["car_driver"].value == pytest.approx(40 / 18)
+    assert sum(metrics[mode].value for mode in modes.vr.MODE7_LABELS) == pytest.approx(
+        metrics["All"].value
+    )
+    assert sum(metrics[mode].replicates for mode in modes.vr.MODE7_LABELS) == (
+        pytest.approx(metrics["All"].replicates)
+    )
+
+
+def test_mode_shares_use_trip_and_minute_weights() -> None:
+    samples = {
+        ("trip", "walk"): modes.Observations(
+            np.array([10.0, 20.0]), np.array([1.0, 2.0]), np.array(["a", "b"])
+        ),
+        ("trip", "car_driver"): modes.Observations(
+            np.array([30.0]), np.array([1.0]), np.array(["c"])
+        ),
+    }
+    trip_share, minute_share, n = modes.mode_shares(samples, "walk")
+    assert n == 2
+    assert trip_share == pytest.approx(3 / 4)
+    assert minute_share == pytest.approx(50 / 80)

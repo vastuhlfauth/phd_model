@@ -221,6 +221,7 @@ class Draws:
 
     households: np.ndarray
     multipliers: np.ndarray
+    seed: int | np.random.SeedSequence
 
     def weights(self, sample: Observations, replicate: int) -> np.ndarray:
         _, codes = daily_energy._bootstrap_household_codes(
@@ -235,7 +236,7 @@ def make_draws(
     """Draw households once for all scopes and mode statistics, section 9.9."""
     universe = np.unique(household)
     return Draws(
-        universe, scope_cube.multiplier_matrix(universe, n_reps=n_reps, seed=seed)
+        universe, scope_cube.multiplier_matrix(universe, n_reps=n_reps, seed=seed), seed
     )
 
 
@@ -356,3 +357,167 @@ def band_decile_rows(
         row["distance_variant"] = variant
         del row["kind"]
     return deciles
+
+
+@dataclass(frozen=True)
+class Metric:
+    """Weighted estimate and its household replicates."""
+
+    value: float
+    replicates: np.ndarray
+
+
+def person_mode_metrics(
+    cache: modes_cache.SurveyCache,
+    selected: scope_module.Scope,
+    draws: Draws,
+) -> dict[str, Metric]:
+    """Per-person mode minutes, including zero days, section 9.9."""
+    columns = ", ".join(
+        f"coalesce(sum(t.duration_min) FILTER (WHERE t.mode7 = '{mode}'), 0) AS {mode}"
+        for mode in vr.MODE7_LABELS
+    )
+    with duckdb.connect() as con:
+        people = con.execute(
+            "SELECT ident_men, weight FROM read_parquet(?)", [str(cache.roster)]
+        ).fetchnumpy()
+        days = con.execute(
+            f"""
+            SELECT b.day_id, b.ident_men, b.pond_jour, b.is_round, {columns}
+            FROM read_parquet(?) b
+            LEFT JOIN read_parquet(?) t ON b.day_id = t.day_id
+            GROUP BY b.day_id, b.ident_men, b.pond_jour, b.is_round
+            """,
+            [str(cache.day_base), str(cache.trips(selected))],
+        ).fetchnumpy()
+    people = {k: vr._plain_array(v) for k, v in people.items()}
+    days = {k: vr._plain_array(v) for k, v in days.items()}
+    open_days = (
+        ~np.asarray(days["is_round"], dtype=bool)
+        if selected.days == "round"
+        else np.zeros(len(days["is_round"]), dtype=bool)
+    )
+    values = {mode: np.asarray(days[mode], dtype=float) for mode in vr.MODE7_LABELS}
+    values["All"] = np.sum(np.stack(list(values.values())), axis=0)
+    results = {}
+    for mode, duration in values.items():
+        point, reps = daily_energy.bootstrap_person_value_replicates(
+            vr._text_values(people["ident_men"]),
+            np.asarray(people["weight"], dtype=float),
+            vr._text_values(days["ident_men"]),
+            np.asarray(days["pond_jour"], dtype=float),
+            duration,
+            open_days=open_days,
+            n_reps=len(draws.multipliers),
+            seed=draws.seed,
+            household_universe=draws.households,
+        )
+        results[mode] = Metric(point, reps)
+    return results
+
+
+def mean_metric(sample: Observations, draws: Draws) -> Metric:
+    """Day-weighted mean and the shared household replicates, minutes."""
+    if not len(sample.values):
+        return Metric(float("nan"), np.full(len(draws.multipliers), np.nan))
+    point = float(np.sum(sample.values * sample.weights) / np.sum(sample.weights))
+    reps = np.full(len(draws.multipliers), np.nan)
+    for rep in range(len(reps)):
+        weights = draws.weights(sample, rep)
+        if weights.sum() > 0:
+            reps[rep] = np.sum(weights * sample.values) / weights.sum()
+    return Metric(point, reps)
+
+
+def mode_shares(
+    samples: dict[tuple[str, str], Observations], mode: str
+) -> tuple[float, float, int]:
+    """Weighted shares of trips and minutes attributable to a trip mode."""
+    trips = {
+        group: sample for (kind, group), sample in samples.items() if kind == "trip"
+    }
+    if mode not in trips:
+        return float("nan"), float("nan"), 0
+    total_weight = sum(float(sample.weights.sum()) for sample in trips.values())
+    total_minutes = sum(
+        float(np.sum(sample.weights * sample.values)) for sample in trips.values()
+    )
+    sample = trips[mode]
+    return (
+        float(sample.weights.sum() / total_weight),
+        float(np.sum(sample.weights * sample.values) / total_minutes)
+        if total_minutes > 0 else float("nan"),
+        len(sample.values),
+    )
+
+
+def stability_rows(
+    samples_a: dict[tuple[str, str], Observations],
+    samples_b: dict[tuple[str, str], Observations],
+    person_a: dict[str, Metric],
+    person_b: dict[str, Metric],
+    draws_a: Draws,
+    draws_b: Draws,
+    *,
+    minimum_n: int,
+    margin: float,
+    secondary_margin: float,
+    selected: scope_module.Scope = scope_module.REFERENCE_SCOPE,
+) -> list[dict]:
+    """Means and equivalence comparisons of three mode-budget estimands."""
+    empty = Observations(np.array([]), np.array([]), np.array([]))
+    rows = []
+    keys = sorted(
+        {key for key in samples_a.keys() | samples_b.keys() if key[0] != "trip"}
+        | {("per_person", mode) for mode in vr.MODE7_LABELS}
+    )
+    for kind, group in keys:
+        sample_kind = "mode_user_day" if kind == "per_person" else kind
+        a = samples_a.get((sample_kind, group), empty)
+        b = samples_b.get((sample_kind, group), empty)
+        n_a, n_b = len(a.values), len(b.values)
+        ma = person_a[group] if kind == "per_person" else mean_metric(a, draws_a)
+        mb = person_b[group] if kind == "per_person" else mean_metric(b, draws_b)
+        la, ha = _interval(ma.replicates) if n_a >= minimum_n else (np.nan, np.nan)
+        lb, hb = _interval(mb.replicates) if n_b >= minimum_n else (np.nan, np.nan)
+        ratio = low = high = np.nan
+        verdict = secondary_verdict = ""
+        if (
+            min(n_a, n_b) >= minimum_n
+            and np.isfinite(ma.value) and np.isfinite(mb.value)
+            and ma.value > 0 and mb.value > 0
+        ):
+            ratio, (low, high) = daily_energy.bootstrap_replicate_ratio_ci(
+                ma.value, ma.replicates, mb.value, mb.replicates
+            )
+            verdict = vr._equivalence_verdict((low, high), margin)
+            secondary_verdict = vr._equivalence_verdict((low, high), secondary_margin)
+        row = {
+            "scope": selected.id, "kind": kind, "mode": group,
+            "n_2008": n_a, "n_2019": n_b,
+            "mean_2008": ma.value if n_a >= minimum_n else np.nan,
+            "mean_2019": mb.value if n_b >= minimum_n else np.nan,
+            "ci_2008_low": la, "ci_2008_high": ha,
+            "ci_2019_low": lb, "ci_2019_high": hb,
+            "ratio": ratio, "ratio_ci_low": low, "ratio_ci_high": high,
+            "verdict_15": verdict, "verdict_10": secondary_verdict,
+        }
+        if kind == "per_person":
+            trip_a, minutes_a, trip_n_a = mode_shares(samples_a, group)
+            trip_b, minutes_b, trip_n_b = mode_shares(samples_b, group)
+            enough_a, enough_b = trip_n_a >= minimum_n, trip_n_b >= minimum_n
+            row.update({
+                "trip_n_2008": trip_n_a, "trip_n_2019": trip_n_b,
+                "trip_share_2008": trip_a if enough_a else np.nan,
+                "trip_share_2019": trip_b if enough_b else np.nan,
+                "trip_share_change_points": (
+                    100 * (trip_b - trip_a) if enough_a and enough_b else np.nan
+                ),
+                "minute_share_2008": minutes_a if enough_a else np.nan,
+                "minute_share_2019": minutes_b if enough_b else np.nan,
+                "minute_share_change_points": (
+                    100 * (minutes_b - minutes_a) if enough_a and enough_b else np.nan
+                ),
+            })
+        rows.append(row)
+    return rows
