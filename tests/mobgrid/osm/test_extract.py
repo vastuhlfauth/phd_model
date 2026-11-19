@@ -1,8 +1,17 @@
 import json
+from pathlib import Path
 
 import duckdb
+import pytest
 from mobgrid.osm.config import load_network_config
-from mobgrid.osm.extract import build_area, read_area_cache, write_area_cache
+from mobgrid.osm.extract import (
+    AreaGeometry,
+    build_area,
+    extract_osm_pbf,
+    read_area_cache,
+    write_area_cache,
+)
+from mobgrid.pt.osm_route_extraction import configure_extraction_connection
 
 
 def _polygon_feature(department: str, west: float) -> dict:
@@ -85,3 +94,52 @@ def test_national_area_excludes_corsica_and_overseas_departments(tmp_path) -> No
 
     assert area.west > -1
     assert area.east < 1
+
+
+@pytest.mark.pilot
+def test_monaco_pbf_extracts_cached_ways_and_nodes(tmp_path) -> None:
+    pbf = Path("data/raw/osm/220101/monaco-220101.osm.pbf")
+    if not pbf.is_file():
+        pytest.skip("Monaco OSM extract is not available")
+
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    configure_extraction_connection(connection, tmp_path / "interim")
+    area_wkb = connection.execute(
+        """
+        SELECT ST_AsWKB(ST_Transform(
+            ST_GeomFromText(
+                'POLYGON ((7.40 43.72, 7.46 43.72, 7.46 43.77, '
+                '7.40 43.77, 7.40 43.72))'
+            ),
+            'EPSG:4326', 'EPSG:3035', true
+        ))
+        """
+    ).fetchone()[0]
+    area = AreaGeometry(bytes(area_wkb), 7.4, 43.72, 7.46, 43.77)
+    cache = tmp_path / "osm" / "2021" / "monaco"
+    config = load_network_config("config/network.yaml")
+
+    summary = extract_osm_pbf(
+        connection,
+        pbf,
+        cache,
+        area,
+        config=config,
+    )
+    resumed = extract_osm_pbf(
+        connection,
+        pbf,
+        cache,
+        area,
+        config=config,
+    )
+
+    assert summary.way_count > 0
+    assert summary.node_count > 0
+    assert (resumed.way_count, resumed.node_count) == (
+        summary.way_count,
+        summary.node_count,
+    )
+    assert (cache / "_SUCCESS.json").is_file()
+    assert (cache / "_stages" / "ways_candidates.parquet").is_file()
