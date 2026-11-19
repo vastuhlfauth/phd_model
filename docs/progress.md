@@ -2,6 +2,20 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income correction: regression (2026-11-19)
+
+- Sparse observed predictor levels are pooled with configured adjacent
+  levels using respondent counts in both full samples, before drawing.
+  The report lists each merge and `support.csv` includes original levels
+  as well as fitted columns. Missing income remains a separate 2008
+  category rather than being assigned to a known quintile.
+- Bootstrap WLS drops empty columns only for that draw and retains
+  coefficients identifiable despite other rank deficiencies; each effect
+  keeps its own valid-draw interval. The pooled design never constructs
+  a 2019 interaction for 2008-only unknown income.
+- Synthetic checks: 32 passed; Ruff passed. Reweighting, car definition and
+  warning aggregation are not yet corrected. No real-data report ran.
+
 ### Zahavi income correction: support audit (2026-11-19)
 
 - Added per-scope `support.csv` with respondents, households and empty

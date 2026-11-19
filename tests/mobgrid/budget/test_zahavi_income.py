@@ -16,6 +16,14 @@ from mobgrid.budget import (
     zahavi_modes,
 )
 
+LEVEL_ORDER = {
+    "income": ["q1", "q2", "q3", "q4", "q5"],
+    "population": ["employed", "retired"],
+    "weekday": ["lundi", "mardi"],
+    "density": ["dense", "sparse"],
+    "cars": ["0", "1", "2+"],
+}
+
 
 def test_income_uses_existing_entd_quintiles_and_preserves_unknown():
     with duckdb.connect() as con:
@@ -460,6 +468,58 @@ def test_wls_bootstrap_uses_shared_household_multiplicities():
     assert np.isnan(reps[2]).all()
 
 
+def test_wls_keeps_estimable_coefficients_when_a_nuisance_level_is_empty():
+    x = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 0.0, 1.0],
+        ]
+    )
+    y = np.array([1.0, 1.0, 3.0, 3.0, 4.0])
+    households = np.array(["a", "b", "c", "d", "e"])
+    draws = zahavi_modes.Draws(households, np.array([[1, 1, 1, 1, 0]]), 0)
+    _, reps = zahavi_income.bootstrap_wls(x, y, np.ones(5), households, draws)
+    np.testing.assert_allclose(reps[0, :2], [1, 2])
+    assert np.isnan(reps[0, 2])
+
+
+def test_wls_retains_only_identifiable_coefficients_with_nonzero_collinearity():
+    x = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [1.0, 0.0, 1.0],
+        ]
+    )
+    households = np.array(["a", "b", "c", "d", "e"])
+    draws = zahavi_modes.Draws(households, np.array([[1, 1, 1, 1, 0]]), 0)
+    _, reps = zahavi_income.bootstrap_wls(
+        x, np.array([1.0, 1.0, 3.0, 3.0, 4.0]), np.ones(5), households, draws
+    )
+    assert reps[0, 0] == pytest.approx(1)
+    assert np.isnan(reps[0, 1:]).all()
+
+
+def test_regression_levels_merge_using_both_years_and_keep_unknown_separate():
+    a = {
+        "person": np.array(["a1", "a2", "a3", "a4"]),
+        "income": np.array(["q1", "q1", "q2", "unknown"]),
+    }
+    b = {"person": np.array(["b1", "b2", "b3"]), "income": np.array(["q1", "q2", "q2"])}
+    merged, changes = zahavi_income.merge_regression_levels(
+        [a, b], minimum_n=2, orders={"income": ["q1", "q2"]}
+    )
+    assert set(merged[0]["income"]) == {"q1+q2", "unknown"}
+    assert set(merged[1]["income"]) == {"q1+q2"}
+    assert ("income", "q1", "q1+q2") in changes
+    assert ("income", "q2", "q1+q2") in changes
+
+
 def test_support_counts_distinct_people_households_and_empty_draws():
     rows = zahavi_income.support_counts(
         person=np.array(["p1", "p1", "p2", "p3"]),
@@ -488,6 +548,14 @@ def test_pooled_design_uses_q1_baseline_and_survey_interactions():
         design,
         np.array([[1, 0, 0, 0], [1, 1, 0, 0], [1, 0, 1, 0], [1, 1, 1, 1]]),
     )
+    _, names = zahavi_income.regression_design(
+        income=np.array(["q1", "unknown", "q1", "q5"]),
+        population=np.array(["employed"] * 4),
+        weekday=np.array(["lundi"] * 4),
+        survey=np.array(["2008", "2008", "2019", "2019"]),
+    )
+    assert "income:unknown" in names
+    assert "survey:2019*income:unknown" not in names
 
 
 def test_regression_effects_are_log_coefficients_as_percent_differences():
@@ -545,7 +613,9 @@ def test_regression_models_include_controls_and_pooled_interaction():
 
     a, da = sample("a", 1.2)
     b, db = sample("b", 1.5)
-    rows = zahavi_income.regression_rows(a, b, da, db, minimum_n=1)
+    rows = zahavi_income.regression_rows(
+        a, b, da, db, minimum_n=1, level_order=LEVEL_ORDER
+    )
     m2 = next(
         r
         for r in rows
@@ -650,6 +720,7 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
         minimum_n=1,
         caution_n=2,
         margins=(0.15, 0.1),
+        regression_level_order=LEVEL_ORDER,
     )
     assert out.with_suffix(".md").is_file()
     assert {p.name for p in out.glob("*.csv")} == {
@@ -701,6 +772,7 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
                 "entd_cars": str(tmp_path / "cars.csv"),
                 "caution_cell_n": 2,
                 "checkpoint_dir": str(tmp_path / "checkpoints"),
+                "regression_level_order": LEVEL_ORDER,
             }
         ),
         encoding="utf-8",

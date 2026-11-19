@@ -41,6 +41,7 @@ class IncomeConfig(BaseModel):
     entd_cars: Path
     caution_cell_n: int = Field(gt=0)
     checkpoint_dir: Path
+    regression_level_order: dict[str, list[str]]
 
 
 @dataclass(frozen=True)
@@ -997,17 +998,20 @@ def regression_design(
     density: np.ndarray | None = None,
     cars: np.ndarray | None = None,
     survey: np.ndarray | None = None,
+    reference_income: str = "q1",
 ) -> tuple[np.ndarray, list[str]]:
     """Build reference-coded WLS predictors for section 9.9's income models."""
     variables = [income, population, weekday]
     variables += [x for x in (density, cars, survey) if x is not None]
     if not len(income) or any(x.ndim != 1 or len(x) != len(income) for x in variables):
         raise ValueError("Regression predictors must be nonempty matching arrays")
-    if any(np.any(x == "") for x in variables) or not np.any(income == "q1"):
+    if any(np.any(x == "") for x in variables) or not np.any(
+        income == reference_income
+    ):
         raise ValueError("Regression requires nonblank predictors and Q1")
     names = ["intercept"]
     columns = [np.ones(len(income), dtype=float)]
-    income_levels = [str(x) for x in np.unique(income) if x != "q1"]
+    income_levels = [str(x) for x in np.unique(income) if x != reference_income]
     for level in income_levels:
         names.append(f"income:{level}")
         columns.append((income == level).astype(float))
@@ -1061,13 +1065,95 @@ def bootstrap_wls(
         coef, _, rank, _ = np.linalg.lstsq(
             design * root[:, None], outcome * root, rcond=None
         )
+        active = np.any(design * root[:, None] != 0, axis=0)
         if rank == design.shape[1]:
             replicates[rep] = coef
+        elif np.any(active):
+            invalid += 1
+            matrix = (design * root[:, None])[:, active]
+            coef_active, _, active_rank, _ = np.linalg.lstsq(
+                matrix, outcome * root, rcond=None
+            )
+            if active_rank == matrix.shape[1]:
+                replicates[rep, active] = coef_active
+            else:
+                _, _, vh = np.linalg.svd(
+                    matrix, full_matrices=matrix.shape[0] < matrix.shape[1]
+                )
+                identifiable = np.linalg.norm(vh[active_rank:], axis=0) <= np.sqrt(
+                    np.finfo(float).eps
+                )
+                columns = np.flatnonzero(active)
+                replicates[rep, columns[identifiable]] = coef_active[identifiable]
         else:
             invalid += 1
     if invalid:
         LOGGER.warning("%d bootstrap regression draws are rank deficient", invalid)
     return point, replicates
+
+
+def merge_regression_levels(
+    samples: list[dict[str, np.ndarray]],
+    *,
+    minimum_n: int,
+    orders: dict[str, list[str]],
+) -> tuple[list[dict[str, np.ndarray]], list[tuple[str, str, str]]]:
+    """Pool sparse adjacent predictor levels across both years before WLS."""
+    if len(samples) != 2 or minimum_n <= 0:
+        raise ValueError("Two regression samples and a positive threshold are required")
+    merged = [dict(sample) for sample in samples]
+    changes = []
+    for variable, order in orders.items():
+        if len(order) != len(set(order)):
+            raise ValueError(f"Duplicate regression level for {variable}")
+        observed = set(np.concatenate([s[variable] for s in samples]).astype(str))
+        special = {"unknown"} if variable == "income" else set()
+        unexpected = observed - set(order) - special
+        if unexpected:
+            raise ValueError(
+                f"Unconfigured regression levels for {variable}: {unexpected}"
+            )
+        groups = [[level] for level in order if level in observed]
+        while len(groups) > 1:
+            counts = [
+                [
+                    len(np.unique(s["person"][np.isin(s[variable], group)]))
+                    for s in samples
+                ]
+                for group in groups
+            ]
+            rare = next(
+                (i for i, count in enumerate(counts) if min(count) < minimum_n), None
+            )
+            if rare is None:
+                break
+            neighbour = rare + 1 if rare + 1 < len(groups) else rare - 1
+            first = min(rare, neighbour)
+            groups[first : first + 2] = [groups[first] + groups[first + 1]]
+        if (
+            groups
+            and any(
+                len(np.unique(s["person"][np.isin(s[variable], groups[0])])) < minimum_n
+                for s in samples
+            )
+            and len(groups) == 1
+        ):
+            LOGGER.warning(
+                "%s: merged regression level still lacks %d respondents",
+                variable,
+                minimum_n,
+            )
+        mapping = {level: "+".join(group) for group in groups for level in group}
+        if variable == "income" and "unknown" in observed:
+            mapping["unknown"] = "unknown"
+        for sample in merged:
+            sample[variable] = np.array(
+                [mapping[str(value)] for value in sample[variable]]
+            )
+        changes.extend(
+            (variable, old, new) for old, new in mapping.items() if old != new
+        )
+    return merged, changes
 
 
 def regression_effects(
@@ -1133,16 +1219,65 @@ def regression_rows(
     draws_b: Draws,
     *,
     minimum_n: int,
+    level_order: dict[str, list[str]],
     support: list[dict] | None = None,
+    merges: list[tuple[str, str, str]] | None = None,
 ) -> list[dict]:
     """Fit M0, M1, M2 and pooled interaction WLS with shared household draws."""
     if len(draws_a.multipliers) != len(draws_b.multipliers):
         raise ValueError("Both surveys require the same number of bootstrap draws")
-    samples = [_regression_sample(a), _regression_sample(b)]
+    if set(level_order) != {"income", "population", "weekday", "density", "cars"}:
+        raise ValueError("Regression level orders must cover every predictor")
+    raw_samples = [_regression_sample(a), _regression_sample(b)]
+    if support is not None:
+        for variable in level_order:
+            labels = tuple(
+                sorted(set(np.concatenate([s[variable] for s in raw_samples])))
+            )
+            for year, sample, draws in zip(
+                (2008, 2019), raw_samples, (draws_a, draws_b), strict=True
+            ):
+                counts_for_levels = support_counts(
+                    person=sample["person"],
+                    household=sample["household"],
+                    values=sample[variable],
+                    labels=labels,
+                    draws=draws,
+                )
+                for label in labels:
+                    respondents, households, empty_draws = counts_for_levels[label]
+                    support.append(
+                        {
+                            "group": f"regression_input_{variable}",
+                            "term": label,
+                            "year": year,
+                            "respondents": respondents,
+                            "households": households,
+                            "empty_draws": empty_draws,
+                            "structural_zero": variable == "income"
+                            and label == "unknown"
+                            and year == 2019,
+                        }
+                    )
+    samples, merged_levels = merge_regression_levels(
+        raw_samples,
+        minimum_n=minimum_n,
+        orders=level_order,
+    )
+    if merges is not None:
+        merges.extend(merged_levels)
+    reference = next(
+        (
+            new
+            for variable, old, new in merged_levels
+            if variable == "income" and old == "q1"
+        ),
+        "q1",
+    )
     counts = [
         {
             q: len(np.unique(sample["person"][sample["income"] == q]))
-            for q in trip_legs.INCOME_QUINTILE_LABELS
+            for q in np.unique(sample["income"])
         }
         for sample in samples
     ]
@@ -1187,6 +1322,7 @@ def regression_rows(
             density=sample["density"] if level >= 1 else None,
             cars=sample["cars"] if level >= 2 else None,
             survey=sample.get("survey"),
+            reference_income=reference,
         )
         if support is not None:
             for support_year in (2008, 2019) if year == "pooled" else (int(year),):
@@ -1231,14 +1367,25 @@ def regression_rows(
             draws,
         )
         effects.insert(
-            0, {"term": "income:q1", "percent": 0.0, "ci_low": 0.0, "ci_high": 0.0}
+            0,
+            {
+                "term": f"income:{reference}",
+                "percent": 0.0,
+                "ci_low": 0.0,
+                "ci_high": 0.0,
+            },
         )
         for effect in effects:
             quintile = effect["term"].rsplit(":", 1)[-1]
             year_indices = (
-                (0, 1) if year == "pooled" else ((0,) if year == "2008" else (1,))
+                ((0,) if quintile == "unknown" else (0, 1))
+                if year == "pooled"
+                else ((0,) if year == "2008" else (1,))
             )
-            ns = [min(counts[i]["q1"], counts[i][quintile]) for i in year_indices]
+            ns = [
+                min(counts[i].get(reference, 0), counts[i].get(quintile, 0))
+                for i in year_indices
+            ]
             if min(ns) < minimum_n:
                 effect["percent"] = effect["ci_low"] = effect["ci_high"] = np.nan
             effect.update(
@@ -1292,8 +1439,14 @@ def _conclusion_rows(
                     ),
                     None,
                 )
+                has_q1 = any(
+                    item["year"] == str(year)
+                    and item["model"] == "M2"
+                    and item["term"] == "income:q1"
+                    for item in regressions
+                )
                 row[f"m2_q5_q1_{year}"] = (
-                    1 + m2["percent"] / 100 if m2 is not None else np.nan
+                    1 + m2["percent"] / 100 if m2 is not None and has_q1 else np.nan
                 )
             result.append(row)
     return result
@@ -1302,6 +1455,11 @@ def _conclusion_rows(
 def _gradient_statement(regressions: list[dict]) -> str:
     directions = []
     for year in ("2008", "2019"):
+        if not any(
+            row["year"] == year and row["model"] == "M2" and row["term"] == "income:q1"
+            for row in regressions
+        ):
+            return "The controlled Q5/Q1 gradient is unavailable after income merging."
         item = next(
             (
                 row
@@ -1345,6 +1503,7 @@ def run_report(
     minimum_n: int,
     caution_n: int,
     margins: tuple[float, float],
+    regression_level_order: dict[str, list[str]],
     checkpoint_dir: Path | None = None,
     warning_messages: list[str] | None = None,
 ) -> dict[str, float]:
@@ -1403,6 +1562,7 @@ def run_report(
         else:
             warning_start = len(warning_messages) if warning_messages is not None else 0
             support: list[dict] = []
+            regression_merges: list[tuple[str, str, str]] = []
             with modes._timed(timings, f"{selected.id} read"):
                 samples = [
                     read_cached_income(
@@ -1444,7 +1604,9 @@ def run_report(
                     draws_a,
                     draws_b,
                     minimum_n=minimum_n,
+                    level_order=regression_level_order,
                     support=support,
+                    merges=regression_merges,
                 )
             day_mask = ~samples[0].days.is_open
             respondent_share, day_share = unknown_income_shares(
@@ -1462,6 +1624,7 @@ def run_report(
                 "regressions": regressions,
                 "collapsed": collapsed,
                 "support": support,
+                "regression_merges": regression_merges,
                 "respondent_share": respondent_share,
                 "day_share": day_share,
                 "unknown_n": int(np.sum(samples[0].people.income == "unknown")),
@@ -1491,6 +1654,7 @@ def run_report(
         regressions = result["regressions"]
         collapsed = result["collapsed"]
         support = result["support"]
+        regression_merges = result["regression_merges"]
         respondent_share = result["respondent_share"]
         day_share = result["day_share"]
         unknown_n = result["unknown_n"]
@@ -1658,6 +1822,15 @@ def run_report(
             [
                 f"- {basis}: `{original}` → `{target}`."
                 for basis, original, target in collapsed
+            ]
+            or ["- None."]
+        )
+        report.append("")
+        report.extend(["### Merged regression levels", ""])
+        report.extend(
+            [
+                f"- {variable}: `{original}` → `{target}`."
+                for variable, original, target in regression_merges
             ]
             or ["- None."]
         )
@@ -1898,6 +2071,7 @@ def main(argv: list[str] | None = None) -> int:
                     variation_config.equivalence_margin,
                     variation_config.secondary_equivalence_margin,
                 ),
+                regression_level_order=income_config.regression_level_order,
                 checkpoint_dir=checkpoint,
                 warning_messages=counter.messages,
             )
