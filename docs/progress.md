@@ -2,6 +2,16 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Report runtime observation (2026-11-18)
+
+- The first EMP report was still running after about 57 minutes; its CPU
+  counter increased between observations. The later queued commands had
+  not started, and report/figure timestamps were unchanged.
+- The EMP CLI prints its completion message only after `run` and report
+  writing finish; there is no intermediate stage output. CPU activity does
+  not establish useful progress or identify the current function.
+  No running process was interrupted and no report was launched.
+
 ### Step 12: subset speed intervals (2026-11-18)
 
 - Common standardisation cells are fixed on the full samples; a draw
