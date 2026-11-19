@@ -160,15 +160,49 @@ def access_sql(mode: Mode, config: NetworkConfig) -> str:
     denied = "[" + ", ".join(
         _sql_text(value.casefold()) for value in rule.denied
     ) + "]"
-    denied_list = (
-        "NOT EXISTS ("
-        f"SELECT 1 FROM UNNEST(string_split(lower({access}), ';')) "
-        "AS access_value(value) "
-        f"WHERE trim(access_value.value) <> '' AND NOT list_contains("
-        f"{denied}, trim(access_value.value)))"
-    )
+
+    def fully_denied(value: str) -> str:
+        return (
+            "NOT EXISTS ("
+            f"SELECT 1 FROM UNNEST(string_split(lower({value}), ';')) "
+            "AS access_value(value) "
+            f"WHERE trim(access_value.value) <> '' AND NOT list_contains("
+            f"{denied}, trim(access_value.value)))"
+        )
+
+    denied_list = fully_denied(access)
     excluded = ", ".join(_sql_text(value) for value in rule.excluded_highways)
     included = ", ".join(_sql_text(value) for value in rule.included_highways)
+    mode_specific_access = [
+        f"nullif(way_tags[{_sql_text(key)}], '')"
+        for key in rule.precedence
+        if key != "access"
+    ]
+    mode_specific_access_sql = (
+        "coalesce(" + ", ".join(mode_specific_access) + ")"
+        if mode_specific_access
+        else "NULL"
+    )
+    mode_specific_highways = ", ".join(
+        _sql_text(value) for value in rule.mode_specific_only_highways
+    )
+    explicit_mode_access = (
+        f"({mode_specific_access_sql} IS NOT NULL AND "
+        f"NOT ({fully_denied(mode_specific_access_sql)}))"
+    )
+    if rule.explicit_allowed_values:
+        allowed_values = "[" + ", ".join(
+            _sql_text(value.casefold())
+            for value in rule.explicit_allowed_values
+        ) + "]"
+        explicit_mode_access += (
+            " AND EXISTS ("
+            "SELECT 1 FROM UNNEST(string_split("
+            f"lower({mode_specific_access_sql}), ';')) "
+            "AS mode_access_value(value) "
+            "WHERE list_contains("
+            f"{allowed_values}, trim(mode_access_value.value)))"
+        )
     hard_highways = (
         config.unusable_highways + rule.hard_excluded_highways
     )
@@ -209,9 +243,16 @@ def access_sql(mode: Mode, config: NetworkConfig) -> str:
         if included
         else ""
     )
+    specific_access_rule = (
+        f"WHEN lower(way_tags['highway']) IN "
+        f"({mode_specific_highways}) THEN ({explicit_mode_access}) "
+        if mode_specific_highways
+        else ""
+    )
     return (
         "CASE "
         f"WHEN {hard_exclusion} THEN FALSE "
+        f"{specific_access_rule}"
         f"WHEN {access} IS NOT NULL AND {denied_list} THEN FALSE "
         f"WHEN {access} IS NOT NULL THEN TRUE "
         f"{included_access}{sidewalk_access}"

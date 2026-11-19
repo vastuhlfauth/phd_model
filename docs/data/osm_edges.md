@@ -57,14 +57,20 @@ area traffic-control nodes are also present with `graph_node=false`.
 All rule values are configured in `config/network.yaml`. A mode-specific tag
 has precedence over generic `access`. Values are split on `;`; access is denied
 only when every listed value is one of `no`, `private`, `agricultural`,
-`forestry`, `delivery`, `emergency` or `use_sidepath`. The highway classes
+`forestry`, `delivery`, `emergency` or `use_sidepath`. Car access on footway,
+path, pedestrian, cycleway and bridleway requires an explicit `motorcar` or
+`motor_vehicle` value of `yes`, `destination`, `permissive`, `designated` or
+`customers`; generic `access` does not open these classes. Steps, corridors,
+bus stops, platforms and elevators never allow cars. Bike access on footway
+and steps requires an explicit `bicycle` tag; pedestrian ways remain open to
+bikes. The highway classes
 `construction`, `proposed`, `abandoned`, `razed`, `disused`, `raceway`,
 `bus_guideway`, `escape` and `elevator` are unconditionally excluded.
 
 | Mode | Access-tag precedence | Default/exclusion rules | Direction rules |
 |---|---|---|---|
-| Car | `motorcar`, `motor_vehicle`, `access` | `platform` and `busway` are unconditionally excluded; `track`, footway, path, steps, pedestrian, cycleway and bridleway require an explicit allowing access tag | `oneway=yes/1/true` forward only; `-1` reverse only; no/unknown permits both. Roundabouts, circular junctions and motorways imply forward one-way |
-| Bike | `bicycle`, `access` | Motorways, motorway links and `trunk` + `motorroad=yes` are unconditional exclusions; pedestrian ways are allowed at walking pace | `oneway:bicycle` overrides; `cycleway=opposite*` permits both directions; otherwise inherits `oneway`, with `cycleway:*:oneway=no` allowing both and `-1` allowing reverse travel |
+| Car | `motorcar`, `motor_vehicle`, `access` | `platform`, `busway`, steps, corridors, bus stops and elevators are unconditionally excluded; generic `access` cannot open footway, path, pedestrian, cycleway or bridleway | `oneway=yes/1/true` forward only; `-1` reverse only; no/unknown permits both. Roundabouts, circular junctions and motorways imply forward one-way |
+| Bike | `bicycle`, `access` | Motorways, motorway links and `trunk` + `motorroad=yes` are unconditional exclusions; footway and steps require explicit `bicycle`; pedestrian ways are allowed at walking pace | `oneway:bicycle` overrides; `cycleway=opposite*` permits both directions; otherwise inherits `oneway`, with `cycleway:*:oneway=no` allowing both and `-1` allowing reverse travel |
 | Foot | `foot`, `access` | Sidewalks and footway, path, steps, pedestrian and living-street classes permit walking; motorways, motorway links, and trunk + `motorroad=yes` are excluded | Both directions |
 
 Traffic-control tags are read for `highway=traffic_signals`, `stop`,

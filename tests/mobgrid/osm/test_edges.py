@@ -79,7 +79,33 @@ def _raw_tables(tmp_path):
             (37, map {'highway':'residential'}, [73, 74, 75]),
             (38, map {'highway':'residential'}, [76, 77, 78]),
             (39, map {'highway':'residential'}, [79, 80, 81]),
-            (40, map {'highway':'residential'}, [82, 83, 84])
+            (40, map {'highway':'residential'}, [82, 83, 84]),
+            (41, map {'highway':'footway', 'access':'yes'}, [85, 86]),
+            (42, map {'highway':'footway', 'motorcar':'yes'}, [87, 88]),
+            (43, map {'highway':'path', 'access':'yes'}, [89, 90]),
+            (44, map {'highway':'path', 'motor_vehicle':'yes'}, [91, 92]),
+            (45, map {'highway':'pedestrian', 'access':'yes'}, [93, 94]),
+            (46, map {'highway':'pedestrian', 'motorcar':'designated'}, [95, 96]),
+            (47, map {'highway':'cycleway', 'access':'yes'}, [97, 98]),
+            (48, map {'highway':'cycleway', 'motor_vehicle':'customers'}, [99, 100]),
+            (49, map {'highway':'bridleway', 'access':'yes'}, [101, 102]),
+            (50, map {'highway':'bridleway', 'motorcar':'permissive'}, [103, 104]),
+            (51, map {'highway':'steps', 'access':'yes'}, [105, 106]),
+            (52, map {'highway':'steps', 'motor_vehicle':'yes'}, [107, 108]),
+            (53, map {'highway':'corridor', 'access':'yes'}, [109, 110]),
+            (54, map {'highway':'corridor', 'motor_vehicle':'yes'}, [111, 112]),
+            (55, map {'highway':'bus_stop', 'access':'yes'}, [113, 114]),
+            (56, map {'highway':'bus_stop', 'motor_vehicle':'yes'}, [115, 116]),
+            (57, map {'highway':'platform', 'access':'yes'}, [117, 118]),
+            (58, map {'highway':'platform', 'motor_vehicle':'yes'}, [119, 120]),
+            (59, map {'highway':'elevator', 'access':'yes'}, [121, 122]),
+            (60, map {'highway':'elevator', 'motor_vehicle':'yes'}, [123, 124]),
+            (61, map {'highway':'footway', 'access':'yes'}, [125, 126]),
+            (62, map {'highway':'footway', 'bicycle':'yes'}, [127, 128]),
+            (63, map {'highway':'steps', 'access':'yes'}, [129, 130]),
+            (64, map {'highway':'steps', 'bicycle':'yes'}, [131, 132]),
+            (65, map {'highway':'pedestrian', 'access':'yes'}, [133, 134]),
+            (66, map {'highway':'pedestrian', 'bicycle':'yes'}, [135, 136])
     """)
     connection.execute("""
         CREATE TABLE nodes (
@@ -90,7 +116,7 @@ def _raw_tables(tmp_path):
         )
     """)
     node_rows = []
-    for node_id in range(1, 85):
+    for node_id in range(1, 137):
         tags = (
             "map {'highway':'traffic_signals'}"
             if node_id == 3
@@ -324,6 +350,31 @@ def test_unusable_highways_access_lists_and_pedestrian_bike_access(
         (35, "bike"),
         (35, "foot"),
     ]
+
+
+def test_nonroad_access_requires_mode_specific_tags(tmp_path) -> None:
+    connection, result = _build(tmp_path)
+    car_ways = connection.execute(
+        """
+        SELECT DISTINCT way_id
+        FROM read_parquet(?)
+        WHERE mode = 'car' AND way_id BETWEEN 41 AND 60
+        ORDER BY way_id
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert car_ways == [(42,), (44,), (46,), (48,), (50,)]
+
+    bike_ways = connection.execute(
+        """
+        SELECT DISTINCT way_id
+        FROM read_parquet(?)
+        WHERE mode = 'bike' AND way_id BETWEEN 61 AND 66
+        ORDER BY way_id
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert bike_ways == [(62,), (64,), (65,), (66,)]
 
 
 def test_directional_control_counts_and_to_degree(tmp_path) -> None:

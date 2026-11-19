@@ -66,6 +66,10 @@ access_rules:
     hard_excluded_highways:
       - platform
       - busway
+      - steps
+      - corridor
+      - bus_stop
+      - elevator
     excluded_highways:
       - track
       - footway
@@ -74,6 +78,18 @@ access_rules:
       - pedestrian
       - cycleway
       - bridleway
+    mode_specific_only_highways:
+      - footway
+      - path
+      - pedestrian
+      - cycleway
+      - bridleway
+    explicit_allowed_values:
+      - "yes"
+      - destination
+      - permissive
+      - designated
+      - customers
     default_allowed: true
   bike:
     precedence:
@@ -90,6 +106,9 @@ access_rules:
     excluded_highways:
       - motorway
       - motorway_link
+      - footway
+      - steps
+    mode_specific_only_highways:
       - footway
       - steps
     default_allowed: true

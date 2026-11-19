@@ -20,6 +20,8 @@ class AccessRule(BaseModel):
     denied: tuple[str, ...]
     hard_excluded_highways: tuple[str, ...] = ()
     excluded_highways: tuple[str, ...]
+    mode_specific_only_highways: tuple[str, ...] = ()
+    explicit_allowed_values: tuple[str, ...] = ()
     included_highways: tuple[str, ...] = ()
     sidewalk_values: tuple[str, ...] = ()
     default_allowed: bool
