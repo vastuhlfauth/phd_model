@@ -14,16 +14,36 @@ Read this file at the start of every task and update it at the end.
   parameters, numerically GRS80-equivalent at sub-millimetre edge precision);
   geometry remains EPSG:3035.
 - Edge fields and rules are documented in
-  [docs/data/osm_edges.md](docs/data/osm_edges.md). The CLI can write the
-  connectivity report to `docs/data/step06_osm_pilot.md`; it was not generated.
+  [docs/data/osm_edges.md](docs/data/osm_edges.md). The user generated the
+  connectivity report at `docs/data/step06_osm_pilot.md`.
 - Open points: area simplification tolerance is provisionally 10 m and
   `maxspeed=walk` is provisionally 5 km/h; both are marked `TODO(confirm)` in
   `config/network.yaml`.
 - Final focused validation: 13 synthetic tests passed, 1 pilot test deselected,
-  and Ruff passed. No PBF/pilot or national run was performed.
+  and Ruff passed. No PBF/pilot or national run was performed during validation.
+- User ran the 2021 pilot extraction on 2026-11-19: cached stages were reused,
+  yielding 438,593 ways and 3,688,154 nodes in 20.9 seconds, with no warnings.
+  This timing is for the cached run, not a fresh extraction.
+- User ran the 2021 pilot edge build: 4,464,264 directed mode edges and
+  3,688,154 nodes in 1,487.6 seconds, with no warnings. The connectivity report
+  was written; its acceptance results have not been assessed here.
 - Run the pilot with:
   `python -m mobgrid.osm.extract --state 2021 --area pilot`
   `python -m mobgrid.osm.edges --state 2021 --area pilot --report docs/data/step06_osm_pilot.md`
+- Follow-up fixes (2026-11-19): generic `access` no longer opens car-restricted
+  non-road classes; bicycle-only access on footway and steps is enforced.
+  Extraction retains the seven R2 hint tags, and edge rows now include nullable
+  `speed_context`. Segment assignment uses cumulative graph-node counts and
+  logs the elapsed time for every build stage, including connectivity/report.
+- Monaco edge benchmark (2,503 ways, 10,909 nodes; same 14,203 edges): the
+  prior range join took 2.180 s overall (0.097 s assigning segments); the
+  linear assignment took 2.934 s (0.153 s assigning segments). This is one
+  small sequential sample, not evidence of a pilot speedup. The requested
+  under-5-minute pilot target remains unverified; no 2021 pilot or national run
+  was performed.
+- Current focused validation: 17 OSM tests passed, 1 pilot test deselected;
+  Ruff passed. The report header now describes ellipsoidal lengths from the
+  ordered node latitude/longitude coordinates.
 
 ### Report runtime observation (2026-11-18)
 

@@ -635,6 +635,11 @@ def test_pilot_report_contains_connectivity_and_edge_checks(tmp_path) -> None:
     )
 
     text = report.read_text(encoding="utf-8")
+    assert (
+        "lengths are ellipsoidal metres computed from ordered OSM node "
+        "latitude/longitude coordinates"
+    ) in text
+    assert "lengths in metres in EPSG:3035" not in text
     assert "Edges and length by highway class and mode" in text
     assert "Largest strongly connected component" in text
     assert "| car |" in text
