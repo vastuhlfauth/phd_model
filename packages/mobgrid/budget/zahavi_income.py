@@ -42,6 +42,7 @@ class IncomeConfig(BaseModel):
     caution_cell_n: int = Field(gt=0)
     checkpoint_dir: Path
     regression_level_order: dict[str, list[str]]
+    max_lost_target_share: float = Field(gt=0, le=1)
 
 
 @dataclass(frozen=True)
@@ -746,13 +747,121 @@ def pooled_reweight(
     return weights_a * factor_a[cells_a], weights_b * factor_b[cells_b], target
 
 
+def collapse_sparse_joint_cells(
+    cells_a: np.ndarray,
+    people_a: np.ndarray,
+    cells_b: np.ndarray,
+    people_b: np.ndarray,
+    *,
+    minimum_n: int,
+    supported_a: np.ndarray | None = None,
+    supported_b: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, list[tuple[str, str]], list[str]]:
+    """Pool sparse joint categories on full-sample respondent counts."""
+    for cells, people in ((cells_a, people_a), (cells_b, people_b)):
+        if cells.ndim != 2 or cells.shape[1] != 3 or len(cells) != len(people):
+            raise ValueError("Joint cells and respondent IDs must match")
+    if minimum_n <= 0 or not len(cells_a) or not len(cells_b):
+        raise ValueError("Joint samples and threshold must be positive")
+    if supported_a is None:
+        supported_a = np.ones(len(cells_a), dtype=bool)
+    if supported_b is None:
+        supported_b = np.ones(len(cells_b), dtype=bool)
+    if supported_a.shape != (len(cells_a),) or supported_b.shape != (len(cells_b),):
+        raise ValueError("Joint-cell support masks must match the input rows")
+    combined = np.concatenate((cells_a, cells_b)).astype(str)
+    original, inverse = np.unique(combined, axis=0, return_inverse=True)
+    mapping = {tuple(row): tuple(row) for row in original}
+
+    def counts() -> dict[tuple[str, ...], list[int]]:
+        result = {target: [0, 0] for target in mapping.values()}
+        for year, (cells, people, supported) in enumerate(
+            ((cells_a, people_a, supported_a), (cells_b, people_b, supported_b))
+        ):
+            assigned = np.array(["|".join(mapping[tuple(row)]) for row in cells])
+            for target in result:
+                mask = (assigned == "|".join(target)) & supported
+                result[target][year] = len(np.unique(people[mask]))
+        return result
+
+    rare = {target for target, n in counts().items() if min(n) < minimum_n}
+    merge_cars = {q for q, _, car in rare if car in {"1", "2+"}}
+    for original_cell, (q, density, car) in mapping.items():
+        if q in merge_cars and car in {"1", "2+"}:
+            mapping[original_cell] = (q, density, "1+")
+    rare = {target for target, n in counts().items() if min(n) < minimum_n}
+    merge_density = {
+        q for q, density, _ in rare if density in {"sparse", "very_sparse"}
+    }
+    for original_cell, (q, density, car) in mapping.items():
+        if q in merge_density and density in {"sparse", "very_sparse"}:
+            mapping[original_cell] = (q, "sparse+very_sparse", car)
+    unsupported_quintiles = {target[0] for target, n in counts().items() if min(n) == 0}
+    for original_cell, (q, density, car) in mapping.items():
+        if q in unsupported_quintiles:
+            mapping[original_cell] = (q, "all", "all")
+    unresolved = sorted(
+        "|".join(target) for target, n in counts().items() if min(n) < minimum_n
+    )
+    targets = np.array(["|".join(mapping[tuple(row)]) for row in original])
+    mapped = targets[inverse]
+    collapsed = sorted(
+        ("|".join(cell), "|".join(target))
+        for cell, target in mapping.items()
+        if cell != target
+    )
+    return mapped[: len(cells_a)], mapped[len(cells_a) :], collapsed, unresolved
+
+
+def reweight_draw_target(
+    denominator_a: np.ndarray,
+    denominator_b: np.ndarray,
+    *,
+    max_lost_share: float,
+) -> tuple[np.ndarray, np.ndarray, float, bool]:
+    """Rescale the draw's pooled target onto cells present in both years."""
+    if denominator_a.ndim != 1 or denominator_a.shape != denominator_b.shape:
+        raise ValueError("Reweighting denominators must have matching shapes")
+    if not 0 < max_lost_share <= 1:
+        raise ValueError("Invalid maximum target loss")
+    if (
+        np.any(~np.isfinite(denominator_a))
+        or np.any(~np.isfinite(denominator_b))
+        or np.any(denominator_a < 0)
+        or np.any(denominator_b < 0)
+        or denominator_a.sum() <= 0
+        or denominator_b.sum() <= 0
+    ):
+        return (
+            np.zeros_like(denominator_a),
+            np.zeros_like(denominator_b),
+            float("nan"),
+            False,
+        )
+    shares_a = denominator_a / denominator_a.sum()
+    shares_b = denominator_b / denominator_b.sum()
+    target = (shares_a + shares_b) / 2
+    common = (denominator_a > 0) & (denominator_b > 0)
+    lost = float(target[~common].sum())
+    if lost >= max_lost_share or not common.any():
+        return np.zeros_like(target), np.zeros_like(target), lost, False
+    target = np.where(common, target / target[common].sum(), 0)
+    factor_a = np.divide(target, shares_a, out=np.zeros_like(target), where=common)
+    factor_b = np.divide(target, shares_b, out=np.zeros_like(target), where=common)
+    return factor_a, factor_b, lost, True
+
+
 def reweighted_metrics(
     a: CachedIncome,
     b: CachedIncome,
     draws_a: Draws,
     draws_b: Draws,
     *,
+    minimum_n: int,
+    max_lost_share: float,
     support: list[dict] | None = None,
+    draw_audit: list[dict] | None = None,
+    unresolved_cells: list[tuple[str, str]] | None = None,
 ) -> tuple[
     dict[tuple[str, str], tuple[int, Metric]],
     dict[tuple[str, str], tuple[int, Metric]],
@@ -766,7 +875,7 @@ def reweighted_metrics(
     quintiles = tuple(x for x in trip_legs.INCOME_QUINTILE_LABELS if x != "unknown")
     for basis in ("travel_day", "person"):
         prepared = []
-        for sample, draws in ((a, draws_a), (b, draws_b)):
+        for sample_year, (sample, draws) in enumerate(((a, draws_a), (b, draws_b))):
             people, days = sample.people, sample.days
             order = np.argsort(people.person)
             roster = people.person[order]
@@ -791,6 +900,48 @@ def reweighted_metrics(
                 supported = totals[inverse] > 0
             else:
                 supported = np.ones(len(cell_rows), dtype=bool)
+            if support is not None:
+                persons = (
+                    people.person[known_p] if basis == "person" else days.person[travel]
+                )
+                households = (
+                    people.household[known_p]
+                    if basis == "person"
+                    else days.household[travel]
+                )
+                weights = (
+                    effective_weight[known_p]
+                    if basis == "person"
+                    else days.weight[travel]
+                )
+                cell_labels = np.array(["|".join(row) for row in cell_rows])
+                labels_raw, codes = np.unique(cell_labels, return_inverse=True)
+                hh_indices = _household_indices(households, draws.households)
+                by_household = np.bincount(
+                    hh_indices * len(labels_raw) + codes,
+                    weights=weights,
+                    minlength=len(draws.households) * len(labels_raw),
+                ).reshape(len(draws.households), len(labels_raw))
+                empty = np.sum((draws.multipliers @ by_household) <= 0, axis=0)
+                raw_counts = support_counts(
+                    person=persons,
+                    household=households,
+                    values=cell_labels,
+                    labels=tuple(labels_raw),
+                    draws=draws,
+                )
+                for code, label in enumerate(labels_raw):
+                    respondents, n_households, _ = raw_counts[label]
+                    support.append(
+                        {
+                            "group": f"reweight_input_{basis}",
+                            "term": str(label),
+                            "year": 2008 if sample_year == 0 else 2019,
+                            "respondents": respondents,
+                            "households": n_households,
+                            "empty_draws": int(empty[code]),
+                        }
+                    )
             prepared.append(
                 (
                     sample,
@@ -804,12 +955,31 @@ def reweighted_metrics(
                     supported,
                 )
             )
-        mapped_a, mapped_b, collapsed = collapse_joint_cells(
+        cell_people = [
+            item[0].people.person[item[2]]
+            if basis == "person"
+            else item[0].days.person[item[3]]
+            for item in prepared
+        ]
+        mapped_a, mapped_b, collapsed, unresolved = collapse_sparse_joint_cells(
             prepared[0][7],
+            cell_people[0],
             prepared[1][7],
+            cell_people[1],
+            minimum_n=minimum_n,
             supported_a=prepared[0][8],
             supported_b=prepared[1][8],
         )
+        if unresolved:
+            LOGGER.warning(
+                "%s: %d cells remain below minimum support: %s",
+                basis,
+                len(unresolved),
+                ", ".join(unresolved),
+            )
+        if unresolved_cells is not None:
+            unresolved_cells.extend((basis, cell) for cell in unresolved)
+        unresolved_quintiles = {cell.split("|", 1)[0] for cell in unresolved}
         collapsed_rows.extend((basis, src, dest) for src, dest in collapsed)
         labels = np.unique(np.concatenate((mapped_a, mapped_b)))
         joint_codes = []
@@ -885,33 +1055,33 @@ def reweighted_metrics(
                 for year, (_, denominator) in enumerate(components):
                     empty_counts[year] += denominator <= 0
             denominator_a, denominator_b = components[0][1], components[1][1]
-            if (
-                np.any(denominator_a < 0)
-                or np.any(denominator_b < 0)
-                or denominator_a.sum() <= 0
-                or denominator_b.sum() <= 0
-                or np.any((denominator_a == 0) != (denominator_b == 0))
-            ):
+            factors_a, factors_b, lost, accepted = reweight_draw_target(
+                denominator_a,
+                denominator_b,
+                max_lost_share=1.0 if rep < 0 else max_lost_share,
+            )
+            if rep >= 0 and draw_audit is not None:
+                draw_audit.append(
+                    {
+                        "basis": basis,
+                        "draw": rep + 1,
+                        "lost_target_share": lost,
+                        "accepted": accepted,
+                    }
+                )
+            if not accepted:
                 if rep < 0:
                     raise ValueError(
                         "Collapsed cells do not have positive common support"
                     )
                 invalid += 1
                 continue
-            shares = [
-                denominator_a / denominator_a.sum(),
-                denominator_b / denominator_b.sum(),
-            ]
-            target = (shares[0] + shares[1]) / 2
             for year in range(2):
-                factors = np.divide(
-                    target,
-                    shares[year],
-                    out=np.zeros_like(target),
-                    where=shares[year] > 0,
-                )
+                factors = (factors_a, factors_b)[year]
                 numerator, denominator = components[year]
                 for quintile in quintiles:
+                    if quintile in unresolved_quintiles:
+                        continue
                     mask = groups == quintile
                     total = np.sum(denominator[mask] * factors[mask])
                     if total > 0:
@@ -944,6 +1114,7 @@ def reweighted_metrics(
                             "respondents": len(np.unique(persons[mask])),
                             "households": len(np.unique(households[mask])),
                             "empty_draws": int(empty_counts[year][code]),
+                            "below_minimum": str(label) in unresolved,
                         }
                     )
             for quintile in quintiles:
@@ -1504,6 +1675,7 @@ def run_report(
     caution_n: int,
     margins: tuple[float, float],
     regression_level_order: dict[str, list[str]],
+    max_lost_share: float,
     checkpoint_dir: Path | None = None,
     warning_messages: list[str] | None = None,
 ) -> dict[str, float]:
@@ -1536,9 +1708,12 @@ def run_report(
         "",
         "Reweighting excludes unknown income and targets the average of each "
         "survey's joint income × density × cars distribution, separately for "
-        "each estimation basis. Unsupported cells pool cars within density, "
-        "then pool density and cars within the quintile. A draw without "
-        "common support is invalid.",
+        "each estimation basis. Sparse car levels 1 and 2+ are pooled, then "
+        "sparse and very sparse density are pooled, within quintiles. Remaining "
+        "empty cells pool all density and car categories within a quintile. "
+        "Still-small cells make that quintile unavailable. Bootstrap targets "
+        f"are rescaled over common support only when lost share is below "
+        f"{100 * max_lost_share:g}%; each draw is recorded in reweighted.csv.",
         "",
         "M0 includes income, population category and weekday; M1 adds density; "
         "M2 adds cars. The pooled M2 model adds survey × quintile interactions. "
@@ -1563,6 +1738,8 @@ def run_report(
             warning_start = len(warning_messages) if warning_messages is not None else 0
             support: list[dict] = []
             regression_merges: list[tuple[str, str, str]] = []
+            reweight_draws: list[dict] = []
+            unresolved_cells: list[tuple[str, str]] = []
             with modes._timed(timings, f"{selected.id} read"):
                 samples = [
                     read_cached_income(
@@ -1593,7 +1770,15 @@ def run_report(
                 )
             with modes._timed(timings, f"{selected.id} reweighting"):
                 ra, rb, collapsed = reweighted_metrics(
-                    samples[0], samples[1], draws_a, draws_b, support=support
+                    samples[0],
+                    samples[1],
+                    draws_a,
+                    draws_b,
+                    minimum_n=minimum_n,
+                    max_lost_share=max_lost_share,
+                    support=support,
+                    draw_audit=reweight_draws,
+                    unresolved_cells=unresolved_cells,
                 )
                 reweighted = level_rows(ra, rb, minimum_n=minimum_n, margins=margins)
                 reweighted_gaps = gap_rows(ra, rb, minimum_n=minimum_n)
@@ -1625,6 +1810,8 @@ def run_report(
                 "collapsed": collapsed,
                 "support": support,
                 "regression_merges": regression_merges,
+                "reweight_draws": reweight_draws,
+                "unresolved_cells": unresolved_cells,
                 "respondent_share": respondent_share,
                 "day_share": day_share,
                 "unknown_n": int(np.sum(samples[0].people.income == "unknown")),
@@ -1655,6 +1842,8 @@ def run_report(
         collapsed = result["collapsed"]
         support = result["support"]
         regression_merges = result["regression_merges"]
+        reweight_draws = result["reweight_draws"]
+        unresolved_cells = result["unresolved_cells"]
         respondent_share = result["respondent_share"]
         day_share = result["day_share"]
         unknown_n = result["unknown_n"]
@@ -1682,6 +1871,18 @@ def run_report(
                 "collapsed_cell": target,
             }
             for basis, original, target in collapsed
+        )
+        all_reweighted.extend(
+            {"scope": selected.id, "row_type": "draw", **row} for row in reweight_draws
+        )
+        all_reweighted.extend(
+            {
+                "scope": selected.id,
+                "row_type": "below_minimum",
+                "basis": basis,
+                "original_cell": cell,
+            }
+            for basis, cell in unresolved_cells
         )
         all_regressions.extend(regressions)
         all_density.extend(density)
@@ -1825,6 +2026,29 @@ def run_report(
             ]
             or ["- None."]
         )
+        report.append("")
+        report.extend(["### Cells still below minimum support", ""])
+        report.extend(
+            [
+                f"- {basis}: `{cell}`; this quintile's reweighted "
+                "estimates are unavailable."
+                for basis, cell in unresolved_cells
+            ]
+            or ["- None."]
+        )
+        report.append("")
+        for basis in ("travel_day", "person"):
+            draws = [row for row in reweight_draws if row["basis"] == basis]
+            losses = [
+                row["lost_target_share"]
+                for row in draws
+                if np.isfinite(row["lost_target_share"])
+            ]
+            report.append(
+                f"- {basis}: {sum(row['accepted'] for row in draws)}/{len(draws)} "
+                f"draws retained; maximum lost target share "
+                f"{max(losses, default=float('nan')):.3%}."
+            )
         report.append("")
         report.extend(["### Merged regression levels", ""])
         report.extend(
@@ -2072,6 +2296,7 @@ def main(argv: list[str] | None = None) -> int:
                     variation_config.secondary_equivalence_margin,
                 ),
                 regression_level_order=income_config.regression_level_order,
+                max_lost_share=income_config.max_lost_target_share,
                 checkpoint_dir=checkpoint,
                 warning_messages=counter.messages,
             )

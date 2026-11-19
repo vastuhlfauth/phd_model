@@ -2,6 +2,21 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income correction: reweighting (2026-11-19)
+
+- Joint cells below the configured respondent minimum are pooled within
+  quintile: cars 1 and 2+ first, then sparse and very sparse density.
+  The existing fallback pools all density and car categories within a
+  quintile if a cell still has no common support. A remaining small cell
+  is reported explicitly and that quintile's reweighted estimates are
+  unavailable; no additional unrequested merge is invented.
+- Each draw records its lost pooled-target share in `reweighted.csv`.
+  The target is rescaled onto common cells only below the configured 1%
+  limit; the strict boundary and retained estimates have synthetic checks.
+  `support.csv` includes both original and collapsed cells.
+- Synthetic-only validation; no real-data report ran. Car wording and
+  warning aggregation remain outstanding.
+
 ### Zahavi income correction: regression (2026-11-19)
 
 - Sparse observed predictor levels are pooled with configured adjacent

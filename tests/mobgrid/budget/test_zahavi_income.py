@@ -355,6 +355,55 @@ def test_joint_cells_collapse_density_when_one_year_lacks_density():
     assert len(collapsed) == 2
 
 
+def test_sparse_joint_cells_pool_cars_then_sparse_density():
+    cells = np.array(
+        [
+            ["q1", "dense", "1"],
+            ["q1", "dense", "2+"],
+            ["q1", "sparse", "0"],
+            ["q1", "very_sparse", "0"],
+        ]
+    )
+    people = np.array(["p1", "p2", "p3", "p4"])
+    mapped_a, mapped_b, collapsed, unresolved = (
+        zahavi_income.collapse_sparse_joint_cells(
+            cells, people, cells, people, minimum_n=2
+        )
+    )
+    assert mapped_a.tolist() == mapped_b.tolist()
+    assert mapped_a.tolist() == [
+        "q1|dense|1+",
+        "q1|dense|1+",
+        "q1|sparse+very_sparse|0",
+        "q1|sparse+very_sparse|0",
+    ]
+    assert ("q1|dense|2+", "q1|dense|1+") in collapsed
+    assert unresolved == []
+
+
+def test_joint_cells_report_unresolved_small_group_without_inventing_a_merge():
+    cells = np.array([["q1", "dense", "0"]])
+    people = np.array(["p1"])
+    _, _, _, unresolved = zahavi_income.collapse_sparse_joint_cells(
+        cells, people, cells, people, minimum_n=2
+    )
+    assert unresolved == ["q1|dense|0"]
+
+
+def test_draw_reweighting_rescales_common_support_below_strict_loss_limit():
+    factors_a, factors_b, lost, accepted = zahavi_income.reweight_draw_target(
+        np.array([99.0, 1.0]), np.array([100.0, 0.0]), max_lost_share=0.01
+    )
+    assert accepted and lost == pytest.approx(0.005)
+    np.testing.assert_allclose(np.array([0.99, 0.01]) * factors_a, [1.0, 0.0])
+    np.testing.assert_allclose(np.array([1.0, 0.0]) * factors_b, [1.0, 0.0])
+    _, _, lost, accepted = zahavi_income.reweight_draw_target(
+        np.array([98.0, 2.0]), np.array([100.0, 0.0]), max_lost_share=0.01
+    )
+    assert lost == pytest.approx(0.01)
+    assert not accepted
+
+
 def test_joint_cells_reject_quintile_without_common_support():
     with pytest.raises(ValueError, match="quintile"):
         zahavi_income.collapse_joint_cells(
@@ -392,7 +441,9 @@ def test_reweighted_metrics_use_pooled_mix_for_each_quintile_and_basis():
     b = sample("b", [1, 3, 1, 3], [20, 40, 30, 50])
     da = zahavi_modes.Draws(a.people.household, np.ones((20, 4)), 0)
     db = zahavi_modes.Draws(b.people.household, np.ones((20, 4)), 0)
-    ma, mb, collapsed = zahavi_income.reweighted_metrics(a, b, da, db)
+    ma, mb, collapsed = zahavi_income.reweighted_metrics(
+        a, b, da, db, minimum_n=1, max_lost_share=0.01
+    )
     assert collapsed == []
     for basis in ("travel_day", "person"):
         assert ma[basis, "q1"][1].value == pytest.approx(20)
@@ -430,10 +481,52 @@ def test_person_reweighting_collapses_cells_emptied_by_open_day():
     a, b = sample("a", True), sample("b", False)
     da = zahavi_modes.Draws(a.people.household, np.ones((20, 2)), 0)
     db = zahavi_modes.Draws(b.people.household, np.ones((20, 2)), 0)
-    ma, mb, collapsed = zahavi_income.reweighted_metrics(a, b, da, db)
+    ma, mb, collapsed = zahavi_income.reweighted_metrics(
+        a, b, da, db, minimum_n=1, max_lost_share=0.01
+    )
     assert ma["person", "q1"][1].value == pytest.approx(10)
     assert mb["person", "q1"][1].value == pytest.approx(15)
     assert ("person", "q1|sparse|1", "q1|all|all") in collapsed
+
+
+def test_reweighting_retains_draw_with_small_lost_target_share():
+    def sample(prefix):
+        people = zahavi_income.People(
+            np.array([prefix + "1", prefix + "5"]),
+            np.array([prefix + "a", prefix + "b"]),
+            np.array(["q1", "q5"]),
+            np.array([1.0, 99.0]),
+        )
+        days = zahavi_income.Days(
+            people.person,
+            people.household,
+            people.income,
+            people.weight,
+            np.array([10.0, 30.0]),
+            np.zeros(2, dtype=bool),
+            np.ones(2, dtype=bool),
+        )
+        return zahavi_income.CachedIncome(
+            people,
+            days,
+            np.array(["employed"] * 2),
+            np.array(["dense"] * 2),
+            np.array(["1"] * 2),
+            np.array(["lundi"] * 2),
+        )
+
+    a, b = sample("a"), sample("b")
+    da = zahavi_modes.Draws(a.people.household, np.array([[0, 1]]), 0)
+    db = zahavi_modes.Draws(b.people.household, np.array([[1, 1]]), 0)
+    audit = []
+    ma, mb, _ = zahavi_income.reweighted_metrics(
+        a, b, da, db, minimum_n=1, max_lost_share=0.01, draw_audit=audit
+    )
+    assert ma["travel_day", "q5"][1].replicates[0] == pytest.approx(30)
+    assert mb["travel_day", "q5"][1].replicates[0] == pytest.approx(30)
+    assert audit[0]["accepted"] and audit[0]["lost_target_share"] == pytest.approx(
+        0.005
+    )
 
 
 def test_wls_matches_lstsq_with_sqrt_weights():
@@ -721,6 +814,7 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
         caution_n=2,
         margins=(0.15, 0.1),
         regression_level_order=LEVEL_ORDER,
+        max_lost_share=0.01,
     )
     assert out.with_suffix(".md").is_file()
     assert {p.name for p in out.glob("*.csv")} == {
@@ -747,6 +841,11 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
         row["group"] == "reweight_travel_day" and row["term"] == "q1|dense|0"
         for row in audit
     )
+    assert any(row["group"] == "reweight_input_travel_day" for row in audit)
+    with (out / "reweighted.csv").open(encoding="utf-8", newline="") as stream:
+        draw_rows = [row for row in csv.DictReader(stream) if row["row_type"] == "draw"]
+    assert len(draw_rows) == 40
+    assert all(float(row["lost_target_share"]) == 0 for row in draw_rows)
     assert "Support audit" in report
 
     mode_config = {
@@ -773,6 +872,7 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
                 "caution_cell_n": 2,
                 "checkpoint_dir": str(tmp_path / "checkpoints"),
                 "regression_level_order": LEVEL_ORDER,
+                "max_lost_target_share": 0.01,
             }
         ),
         encoding="utf-8",
