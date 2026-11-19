@@ -1,0 +1,17 @@
+series,n,years,speed_min_kmh,speed_max_kmh,minutes_min,minutes_max,slope_log_minutes_on_log_speed (n>=3)
+Denmark (national),4,2019–2025,41.0,42.9,55.2,58,-0.645
+Finland (Eurostat),2,1999–2005,32.6,35.5,70.7,84.3,
+Finland (national),2,1999–2016,32.5,33.5,73,83,
+France (national),4,1982–2019,19.1,26.9,54.7,62,0.152
+Germany (national),4,2002–2023,25,27.8,76,85,0.176
+Italy (national),2,2016–2019,28.8,29.8,50,58,
+Netherlands (Eurostat),2,1998–2006,30.5,32.0,59.9,66.1,
+Netherlands (national),8,1995–2007,30.5,32.2,60.0,63.0,-0.509
+Norway (Eurostat),2,2001–2005,33.3,35.8,62,68.2,
+Norway (national),3,1992–2014,32.6,36.3,59,78,1.879
+Sweden (Vilhelmson),3,1978–1991,33.9,35.2,79,81,-0.273
+Sweden (national),3,1978–2012.5,31.7,38.9,71,79,-0.47
+Switzerland (Eurostat),2,2000–2005,26.3,32.2,84.5,88.8,
+Switzerland (national),5,1994–2015,21.7,24.4,82.6,97.5,-0.376
+United Kingdom (Eurostat),2,2000–2005,30.1,30.3,59.2,63.3,
+United Kingdom (national),10,1965–2024,16.9,30.2,57.4,64.1,0.123
