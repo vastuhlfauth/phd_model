@@ -1,0 +1,4 @@
+# Input outside the Z1 signed caches and disclosure flag for the income table.
+entd_cars: data/raw/entd2008/q_menage.csv
+caution_cell_n: 100
+checkpoint_dir: data/interim/budget/zahavi_income

@@ -2,8 +2,17 @@
 
 import duckdb
 import numpy as np
+import pyarrow as pa
 import pytest
-from mobgrid.budget import entd2008, modes_cache, scope, zahavi_income, zahavi_modes
+import yaml
+from mobgrid.budget import (
+    emp2019,
+    entd2008,
+    modes_cache,
+    scope,
+    zahavi_income,
+    zahavi_modes,
+)
 
 
 def test_income_uses_existing_entd_quintiles_and_preserves_unknown():
@@ -70,6 +79,45 @@ def test_emp_household_car_count_preserves_unknown_and_rejects_duplicates():
         con.execute("INSERT INTO q_menage VALUES ('h1', 2)")
         with pytest.raises(ValueError, match="Duplicate"):
             zahavi_income.emp_household_cars(con)
+
+
+def test_emp_attributes_reuse_income_and_density_proxy():
+    with duckdb.connect() as con:
+        con.execute(
+            """CREATE TABLE k_individu AS SELECT * FROM (VALUES
+              ('p1', 1.0), ('p2', 1.0)
+            ) t(IDENT_IND, pond_indC)"""
+        )
+        con.execute(
+            """CREATE TABLE tcm_ind AS SELECT * FROM (VALUES
+              ('p1', 'h1'), ('p2', 'h2')
+            ) t(IDENT_IND, IDENT_MEN)"""
+        )
+        con.execute("CREATE TABLE tcm_ind_kish AS SELECT IDENT_IND FROM tcm_ind")
+        con.execute(
+            """CREATE TABLE tcm_men AS SELECT * FROM (VALUES
+              ('h1', 1, 'C', '7', 1), ('h2', 9, 'H', '0', 4)
+            ) t(IDENT_MEN, decile_rev_uc, STATUTCOM_UU_RES,
+                TUU2017_RES, DENSITECOM_RES)"""
+        )
+        income, density = zahavi_income.respondent_attributes(con, emp2019)
+        assert income == {"p1": "q3", "p2": "q5"}
+        assert density == {"p1": "dense", "p2": "very_sparse"}
+        con.execute("UPDATE tcm_men SET decile_rev_uc = NULL WHERE IDENT_MEN = 'h1'")
+        with pytest.raises(ValueError, match="missing imputed income"):
+            zahavi_income.respondent_attributes(con, emp2019)
+
+
+def test_emp_attribute_extraction_uses_only_temporary_output(
+    synthetic_emp_zip, tmp_path
+):
+    income, density, cars = zahavi_income.extract_attributes(
+        emp2019, synthetic_emp_zip, tmp_path / "scratch"
+    )
+    assert len(income) == len(density) == len(cars) == 13
+    assert density["1"] == "dense"
+    assert cars["M1"] == "0"
+    assert set(income.values()) <= {"q1", "q2", "q3", "q4", "q5"}
 
 
 def test_income_day_and_person_levels_include_zero_and_remove_open_days():
@@ -223,6 +271,21 @@ def test_level_rows_report_ratio_and_suppress_small_and_unknown():
     assert np.isnan(unknown["mean_2019"]) and np.isnan(unknown["ratio"])
 
 
+def test_ratio_interval_requires_sufficient_valid_paired_draws():
+    a = {("person", "q1"): (60, zahavi_income.Metric(10, np.full(20, 10.0)))}
+    draws = np.full(20, 11.0)
+    draws[:2] = np.nan
+    b = {("person", "q1"): (60, zahavi_income.Metric(11, draws))}
+    rows = zahavi_income.level_rows(a, b, minimum_n=50, margins=(0.15, 0.1))
+    q1 = next(r for r in rows if r["basis"] == "person" and r["quintile"] == "q1")
+    assert q1["ratio"] == pytest.approx(1.1)
+    assert np.isnan(q1["ratio_ci_low"]) and q1["verdict_15"] == ""
+    draws[1] = 11
+    rows = zahavi_income.level_rows(a, b, minimum_n=50, margins=(0.15, 0.1))
+    q1 = next(r for r in rows if r["basis"] == "person" and r["quintile"] == "q1")
+    assert q1["ratio_ci_low"] == pytest.approx(1.1)
+
+
 def test_gap_rows_use_paired_within_year_and_between_year_draws():
     a = {
         ("person", "q1"): (60, zahavi_income.Metric(10, np.array([9.0, 10.0, 11.0]))),
@@ -328,6 +391,41 @@ def test_reweighted_metrics_use_pooled_mix_for_each_quintile_and_basis():
         assert mb[basis, "q5"][1].value == pytest.approx(40)
 
 
+def test_person_reweighting_collapses_cells_emptied_by_open_day():
+    def sample(prefix, is_open):
+        people = zahavi_income.People(
+            np.array([f"{prefix}1", f"{prefix}2"]),
+            np.array([f"{prefix}h1", f"{prefix}h2"]),
+            np.array(["q1", "q1"]),
+            np.array([5.0, 5.0]),
+        )
+        days = zahavi_income.Days(
+            people.person,
+            people.household,
+            people.income,
+            people.weight,
+            np.array([10.0, 20.0]),
+            np.array([False, is_open]),
+            np.array([True, not is_open]),
+        )
+        return zahavi_income.CachedIncome(
+            people,
+            days,
+            np.array(["employed"] * 2),
+            np.array(["dense", "sparse"]),
+            np.array(["1", "1"]),
+            np.array(["lundi", "lundi"]),
+        )
+
+    a, b = sample("a", True), sample("b", False)
+    da = zahavi_modes.Draws(a.people.household, np.ones((20, 2)), 0)
+    db = zahavi_modes.Draws(b.people.household, np.ones((20, 2)), 0)
+    ma, mb, collapsed = zahavi_income.reweighted_metrics(a, b, da, db)
+    assert ma["person", "q1"][1].value == pytest.approx(10)
+    assert mb["person", "q1"][1].value == pytest.approx(15)
+    assert ("person", "q1|sparse|1", "q1|all|all") in collapsed
+
+
 def test_wls_matches_lstsq_with_sqrt_weights():
     x = np.array([[1.0, 0.0], [1.0, 1.0], [1.0, 2.0]])
     y = np.array([1.0, 3.0, 4.0])
@@ -388,3 +486,232 @@ def test_regression_effects_are_log_coefficients_as_percent_differences():
     assert rows[0]["percent"] == pytest.approx(100)
     assert rows[0]["ci_low"] == pytest.approx(100)
     assert rows[0]["ci_high"] == pytest.approx(100)
+
+
+def test_regression_models_include_controls_and_pooled_interaction():
+    def sample(prefix, q5_multiplier):
+        x = np.indices((2, 2, 2, 2, 2)).reshape(5, -1).T
+        n = len(x)
+        people = zahavi_income.People(
+            np.array([f"{prefix}{i:02}" for i in range(n)]),
+            np.array([f"{prefix}h{i:02}" for i in range(n)]),
+            np.where(x[:, 0] == 0, "q1", "q5"),
+            np.ones(n),
+        )
+        minutes = 10 * np.exp(
+            x[:, 0] * np.log(q5_multiplier)
+            + x[:, 1] * 0.1
+            + x[:, 2] * 0.2
+            + x[:, 3] * 0.05
+            + x[:, 4] * 0.03
+        )
+        days = zahavi_income.Days(
+            people.person,
+            people.household,
+            people.income,
+            people.weight,
+            minutes,
+            np.zeros(n, dtype=bool),
+            np.ones(n, dtype=bool),
+        )
+        data = zahavi_income.CachedIncome(
+            people,
+            days,
+            np.where(x[:, 4] == 0, "employed", "retired"),
+            np.where(x[:, 1] == 0, "dense", "sparse"),
+            np.where(x[:, 2] == 0, "0", "1"),
+            np.where(x[:, 3] == 0, "lundi", "mardi"),
+        )
+        draws = zahavi_modes.Draws(people.household, np.ones((20, n)), 0)
+        return data, draws
+
+    a, da = sample("a", 1.2)
+    b, db = sample("b", 1.5)
+    rows = zahavi_income.regression_rows(a, b, da, db, minimum_n=1)
+    m2 = next(
+        r
+        for r in rows
+        if r["year"] == "2008" and r["model"] == "M2" and r["term"] == "income:q5"
+    )
+    interaction = next(
+        r
+        for r in rows
+        if r["year"] == "pooled"
+        and r["model"] == "pooled"
+        and r["term"] == "survey:2019*income:q5"
+    )
+    assert m2["percent"] == pytest.approx(20)
+    assert interaction["percent"] == pytest.approx(25)
+
+
+def test_checkpoint_key_changes_when_input_changes(tmp_path):
+    source = tmp_path / "input"
+    source.write_text("first", encoding="utf-8")
+    cache = modes_cache.SurveyCache(tmp_path / "cache-signature")
+    first = zahavi_income.checkpoint_directory(tmp_path, [cache], (source,))
+    source.write_text("second", encoding="utf-8")
+    second = zahavi_income.checkpoint_directory(tmp_path, [cache], (source,))
+    assert first != second
+
+
+def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypatch):
+    def cache_and_attributes(prefix, multiplier):
+        x = np.indices((5, 2, 2, 2, 2)).reshape(5, -1).T
+        n = len(x)
+        people = np.array([f"{prefix}p{i:03}" for i in range(n)])
+        houses = np.array([f"{prefix}h{i:03}" for i in range(n)])
+        days = np.array([f"{prefix}d{i:03}" for i in range(n)])
+        income = np.array([f"q{i + 1}" for i in x[:, 0]])
+        density = np.where(x[:, 1] == 0, "dense", "sparse")
+        cars = np.where(x[:, 2] == 0, "0", "1")
+        weekday = np.where(x[:, 3] == 0, "lundi", "mardi")
+        population = np.where(x[:, 4] == 0, "employed", "retired")
+        minutes = 20 * np.exp(
+            x[:, 0] * np.log(multiplier)
+            + x[:, 1] * 0.1
+            + x[:, 2] * 0.2
+            + x[:, 3] * 0.05
+            + x[:, 4] * 0.03
+        )
+        cache = modes_cache.SurveyCache(tmp_path / prefix)
+        cache.root.mkdir()
+        tables = [
+            (
+                cache.roster,
+                dict(
+                    ident_ind=people,
+                    ident_men=houses,
+                    population_category=population,
+                    weight=np.ones(n),
+                ),
+            ),
+            (
+                cache.day_base,
+                dict(
+                    day_id=days,
+                    ident_ind=people,
+                    ident_men=houses,
+                    pond_jour=np.ones(n),
+                    is_round=np.ones(n, dtype=bool),
+                ),
+            ),
+            (
+                cache.days(scope.REFERENCE_SCOPE),
+                dict(day_id=days, total_time_min=minutes, income_quintile=income),
+            ),
+            (
+                cache.trips(scope.REFERENCE_SCOPE),
+                dict(day_id=days, described_weekday_name=weekday),
+            ),
+        ]
+        with duckdb.connect() as con:
+            for path, columns in tables:
+                con.register("synthetic", pa.table(columns))
+                con.execute("COPY synthetic TO ? (FORMAT PARQUET)", [str(path)])
+                con.unregister("synthetic")
+        attributes = (
+            dict(zip(people, income, strict=True)),
+            dict(zip(people, density, strict=True)),
+            dict(zip(houses, cars, strict=True)),
+        )
+        draws = zahavi_modes.Draws(houses, np.ones((20, n)), 0)
+        return cache, attributes, draws
+
+    cache_a, attr_a, draws_a = cache_and_attributes("a", 1.05)
+    cache_b, attr_b, draws_b = cache_and_attributes("b", 1.1)
+    out = tmp_path / "report"
+    zahavi_income.run_report(
+        out,
+        cache_a,
+        cache_b,
+        attr_a,
+        attr_b,
+        draws_a,
+        draws_b,
+        selected_scopes=[scope.REFERENCE_SCOPE],
+        minimum_n=1,
+        caution_n=2,
+        margins=(0.15, 0.1),
+    )
+    assert out.with_suffix(".md").is_file()
+    assert {p.name for p in out.glob("*.csv")} == {
+        "levels.csv",
+        "gaps.csv",
+        "reweighted.csv",
+        "regression.csv",
+        "quintile_density.csv",
+    }
+    report = out.with_suffix(".md").read_text(encoding="utf-8")
+    assert "unknown" in report and "2019" in report and "M2" in report
+
+    mode_config = {
+        "trip_grid_max_min": 240,
+        "day_grid_max_min": 360,
+        "minimum_cell_n": 1,
+        "thresholds_min": [15],
+        "bootstrap_reps": 20,
+        "seed": 0,
+        "cache_dir": str(tmp_path / "caches"),
+        "b3_report": str(tmp_path / "unused.md"),
+        "logs_dir": str(tmp_path / "logs"),
+        "reference_2008_min": 52.0,
+        "reference_2019_min": 57.0,
+        "reference_tolerance_min": 0.05,
+    }
+    mode_path = tmp_path / "modes.yaml"
+    mode_path.write_text(yaml.safe_dump(mode_config), encoding="utf-8")
+    income_path = tmp_path / "income.yaml"
+    income_path.write_text(
+        yaml.safe_dump(
+            {
+                "entd_cars": str(tmp_path / "cars.csv"),
+                "caution_cell_n": 2,
+                "checkpoint_dir": str(tmp_path / "checkpoints"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "cars.csv").write_text("synthetic", encoding="utf-8")
+    monkeypatch.setattr(
+        zahavi_income,
+        "read_signed_cache",
+        lambda survey, *args, **kwargs: cache_a if survey is entd2008 else cache_b,
+    )
+    monkeypatch.setattr(
+        zahavi_income,
+        "extract_attributes",
+        lambda survey, *args, **kwargs: attr_a if survey is entd2008 else attr_b,
+    )
+    monkeypatch.setattr(
+        zahavi_modes,
+        "make_draws",
+        lambda household, *, n_reps, seed: zahavi_modes.Draws(
+            np.unique(household), np.ones((n_reps, len(np.unique(household)))), seed
+        ),
+    )
+    cli_out = tmp_path / "cli_report"
+    args = [
+        "--out",
+        str(cli_out),
+        "--scope",
+        scope.REFERENCE_SCOPE.id,
+        "--modes-config",
+        str(mode_path),
+        "--income-config",
+        str(income_path),
+        "--entd2008-data-path",
+        str(tmp_path / "entd"),
+        "--emp2019-data-path",
+        str(tmp_path / "emp.zip"),
+    ]
+    assert zahavi_income.main(args) == 0
+    assert cli_out.with_suffix(".md").is_file()
+    assert len(list((tmp_path / "logs").glob("*_zahavi_income_summary.md"))) == 1
+    expected = (cli_out / "levels.csv").read_bytes()
+
+    def fail_if_recomputed(*args, **kwargs):
+        raise AssertionError("completed scope was recomputed")
+
+    monkeypatch.setattr(zahavi_income, "read_cached_income", fail_if_recomputed)
+    assert zahavi_income.main(args) == 0
+    assert (cli_out / "levels.csv").read_bytes() == expected

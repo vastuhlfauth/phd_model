@@ -2,6 +2,35 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income supplement: report and CLI (2026-11-19)
+
+- Completed income levels, paired gaps and 90% ratio intervals, pooled
+  joint-distribution reweighting, M0–M2 and pooled weighted regressions,
+  quintile-by-density tables, conclusion grids, five CSVs and Markdown.
+  The ENTD unknown-income group is separate; the imputed EMP income has
+  no equivalent group. Both years use the step 11 density proxy and
+  household cars grouped 0, 1, 2+.
+- Per-person cell support accounts for excluded open-day weights before
+  collapsing empty cells. Estimates require at least 95% valid bootstrap
+  draws for an interval, including the 90% cross-year ratio interval.
+  The ratio-validity guard is local to Z2 because the existing shared
+  ratio helper filters invalid draws without that guard; consider merging
+  this rule into shared code later.
+- Reuse Z1's signed caches and household draws; completed scopes checkpoint
+  under `data/interim/budget/zahavi_income` and resume when input signatures,
+  report code and configuration match. No report was run on real data;
+  both existing Z1 cache signatures were verified read-only.
+- Open point: exact ENTD/EMP household vehicle coverage still needs
+  questionnaire verification. The M2 gap is a conditional geometric
+  ratio, not the reweighted arithmetic-mean gap.
+- Run: `python -m mobgrid.budget.zahavi_income --out docs/data/step12_income`.
+  Runtime is unmeasured; an eight-fit synthetic WLS benchmark extrapolated
+  to about 3 minutes for 11,200 fits alone, excluding I/O, extraction,
+  reweighting and other work. Allow roughly 15–60 minutes; actual time
+  may differ substantially.
+- Synthetic income tests: 28 passed; changed Python files pass Ruff.
+  No full suite, real-data report or download was run.
+
 ### Zahavi income supplement: controls groundwork (2026-11-19)
 
 - Added cache-roster joins for income, residence proxy, car bands and
