@@ -1,0 +1,129 @@
+states:
+  2021: osm-2022
+  2023: osm-2024
+contour_source_id: contours-2021
+kept_tags:
+  - highway
+  - railway
+  - public_transport
+  - access
+  - motor_vehicle
+  - motorcar
+  - bicycle
+  - foot
+  - sidewalk
+  - oneway
+  - oneway:bicycle
+  - junction
+  - motorroad
+  - cycleway
+  - cycleway:both
+  - cycleway:left
+  - cycleway:right
+  - cycleway:oneway
+  - cycleway:both:oneway
+  - cycleway:left:oneway
+  - cycleway:right:oneway
+  - bicycle_road
+  - maxspeed
+  - lanes
+  - busway
+  - lanes:bus
+  - lanes:psv
+  - surface
+  - smoothness
+access_rules:
+  car:
+    precedence:
+      - motorcar
+      - motor_vehicle
+      - access
+    denied:
+      - "no"
+      - private
+    excluded_highways:
+      - footway
+      - path
+      - steps
+      - pedestrian
+      - cycleway
+      - bridleway
+    default_allowed: true
+  bike:
+    precedence:
+      - bicycle
+      - access
+    denied:
+      - "no"
+      - private
+    excluded_highways:
+      - motorway
+      - motorway_link
+    default_allowed: true
+  foot:
+    precedence:
+      - foot
+      - access
+    denied:
+      - "no"
+      - private
+    excluded_highways:
+      - motorway
+      - motorway_link
+    default_allowed: true
+oneway_yes:
+  - "yes"
+  - "1"
+  - "true"
+oneway_no:
+  - "no"
+  - "0"
+  - "false"
+oneway_reverse:
+  - "-1"
+control_highways:
+  - traffic_signals
+  - stop
+  - give_way
+  - crossing
+  - mini_roundabout
+signal_highways:
+  - traffic_signals
+maxspeed_tokens_kmh:
+  FR:urban: 50
+  FR:rural: 80
+  FR:zone30: 30
+  FR:motorway: 130
+  walk: 5
+  none: null
+mph_to_kmh: 1.609344
+busway_values:
+  - lane
+  - opposite_lane
+  - shared_lane
+  - opposite_share_busway
+bike_classes:
+  separated_track_path:
+    - highway=cycleway
+    - cycleway=track
+    - cycleway:left=track
+    - cycleway:right=track
+    - cycleway:both=track
+    - highway=path+bicycle=designated
+  painted_lane:
+    - cycleway=lane
+    - cycleway:left=lane
+    - cycleway:right=lane
+    - cycleway:both=lane
+  bus_lane:
+    - cycleway=share_busway
+    - cycleway:left=share_busway
+    - cycleway:right=share_busway
+    - busway+cycling_access
+  low_speed:
+    - highway=living_street
+    - maxspeed<=30
+    - bicycle_road=yes
+  mixed_traffic:
+    - other_bike_accessible_roads
+tile_size_m: 50000
