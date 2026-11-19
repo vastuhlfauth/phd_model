@@ -144,43 +144,43 @@ def direction_sql(mode: Mode, config: NetworkConfig) -> str:
             f"ELSE {general_reverse} END"
         )
 
-    side = "right"
-    opposite_side = "left"
-    side_oneway = (
-        f"CASE WHEN {is_forward} THEN way_tags['cycleway:{side}:oneway'] "
-        f"ELSE way_tags['cycleway:{opposite_side}:oneway'] END"
-    )
-    cycleway_oneway = (
-        "coalesce(nullif(way_tags['cycleway:oneway'], ''), "
-        "nullif(way_tags['cycleway:both:oneway'], ''), "
-        f"nullif({side_oneway}, ''))"
+    cycleway_oneway_tags = (
+        "way_tags['cycleway:oneway']",
+        "way_tags['cycleway:both:oneway']",
+        "way_tags['cycleway:left:oneway']",
+        "way_tags['cycleway:right:oneway']",
     )
     bike_oneway = "nullif(way_tags['oneway:bicycle'], '')"
     bike_specific_forward = _direction_result(bike_oneway, True, config)
     bike_specific_reverse = _direction_result(bike_oneway, False, config)
-    cycleway_forward = _direction_result(cycleway_oneway, True, config)
-    cycleway_reverse = _direction_result(cycleway_oneway, False, config)
+    no_values = ", ".join(_sql_text(item) for item in config.oneway_no)
+    reverse_values = ", ".join(
+        _sql_text(item) for item in config.oneway_reverse
+    )
+    cycleway_two_way = " OR ".join(
+        f"lower({tag}) IN ({no_values})" for tag in cycleway_oneway_tags
+    )
+    cycleway_reverse = " OR ".join(
+        f"lower({tag}) IN ({reverse_values})" for tag in cycleway_oneway_tags
+    )
     opposite_tags = [
         "way_tags['cycleway']",
         "way_tags['cycleway:both']",
-        f"CASE WHEN {is_forward} THEN way_tags['cycleway:right'] "
-        "ELSE way_tags['cycleway:left'] END",
+        "way_tags['cycleway:left']",
+        "way_tags['cycleway:right']",
     ]
     opposite = " OR ".join(
         f"starts_with(lower(coalesce({tag}, '')), 'opposite')"
         for tag in opposite_tags
     )
-    no_values = ", ".join(_sql_text(item) for item in config.oneway_no)
     return f"""
         CASE
           WHEN {bike_oneway} IS NOT NULL THEN
             CASE WHEN {is_forward} THEN {bike_specific_forward}
                  ELSE {bike_specific_reverse} END
           WHEN {opposite} THEN TRUE
-          WHEN lower({cycleway_oneway}) IN ({no_values}) THEN TRUE
-          WHEN {cycleway_oneway} IS NOT NULL THEN
-            CASE WHEN {is_forward} THEN {cycleway_forward}
-                 ELSE {cycleway_reverse} END
+          WHEN {cycleway_two_way} THEN TRUE
+          WHEN NOT {is_forward} AND ({cycleway_reverse}) THEN TRUE
           WHEN {is_forward} THEN {general_forward}
           ELSE {general_reverse}
         END
@@ -310,7 +310,10 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                    {accesses["foot"]} AS foot_access,
                    ST_Length(d.geom) AS length_m,
                    {maxspeed} AS maxspeed_kmh,
-                   lower(d.way_tags['motorroad']) IN ('yes', 'true', '1')
+                   coalesce(
+                       lower(d.way_tags['motorroad']) IN ('yes', 'true', '1'),
+                       false
+                   )
                        AS motorroad,
                    d.way_tags['highway'] AS highway,
                    d.way_tags['lanes'] AS lanes,
@@ -320,10 +323,10 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                    d.way_tags['lanes:bus'] AS lanes_bus,
                    d.way_tags['lanes:psv'] AS lanes_psv,
                    CASE WHEN lower(n.tags['highway']) = 'traffic_signals'
-                        THEN 1 ELSE 0 END AS signal_count,
+                        THEN 1::TINYINT ELSE 0::TINYINT END AS signal_count,
                    CASE WHEN lower(n.tags['highway']) IN
                        ('stop', 'give_way', 'crossing', 'mini_roundabout')
-                        THEN 1 ELSE 0 END AS junction_count,
+                        THEN 1::TINYINT ELSE 0::TINYINT END AS junction_count,
                    floor(ST_Y(ST_Centroid(d.geom)) / 1000)::BIGINT
                        * 100000
                      + floor(ST_X(ST_Centroid(d.geom)) / 1000)::BIGINT

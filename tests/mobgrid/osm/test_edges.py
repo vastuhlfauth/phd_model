@@ -37,7 +37,18 @@ def _raw_tables(tmp_path):
             (14, map {'highway':'footway', 'access':'no',
                       'bicycle':'yes'}, [27, 28]),
             (15, map {'highway':'residential', 'access':'no',
-                      'motor_vehicle':'yes'}, [29, 30])
+                      'motor_vehicle':'yes'}, [29, 30]),
+            (16, map {'highway':'residential', 'oneway':'yes',
+                      'cycleway:right:oneway':'-1'}, [31, 32]),
+            (17, map {'highway':'residential', 'oneway':'yes',
+                      'cycleway:oneway':'no'}, [33, 34]),
+            (18, map {'highway':'residential', 'oneway':'yes',
+                      'oneway:bicycle':'yes',
+                      'cycleway':'opposite_lane'}, [35, 36]),
+            (19, map {'highway':'residential',
+                      'cycleway:right':'track'}, [37, 38]),
+            (20, map {'highway':'residential',
+                      'cycleway:left':'lane'}, [39, 40])
     """)
     connection.execute("""
         CREATE TABLE nodes (
@@ -48,7 +59,7 @@ def _raw_tables(tmp_path):
         )
     """)
     node_rows = []
-    for node_id in range(1, 31):
+    for node_id in range(1, 41):
         tags = (
             "map {'highway':'traffic_signals'}"
             if node_id == 3
@@ -128,7 +139,7 @@ def test_oneway_variants_are_applied_per_mode(tmp_path) -> None:
         """
         SELECT DISTINCT way_id, mode, is_forward
         FROM read_parquet(?)
-        WHERE way_id IN (1, 2, 3, 7, 8)
+        WHERE way_id IN (1, 2, 3, 7, 8, 16, 17, 18)
         ORDER BY way_id, mode, is_forward DESC
         """,
         [result.edges_path],
@@ -148,6 +159,25 @@ def test_oneway_variants_are_applied_per_mode(tmp_path) -> None:
     assert directions[(7, "bike")] == [True, False]
     assert directions[(8, "car")] == [True]
     assert directions[(8, "bike")] == [True]
+    assert directions[(16, "bike")] == [True, False]
+    assert directions[(17, "bike")] == [True, False]
+    assert directions[(18, "bike")] == [True]
+
+    infrastructure = connection.execute(
+        """
+        SELECT way_id, mode, is_forward, bike_infra
+        FROM read_parquet(?)
+        WHERE way_id IN (19, 20) AND mode = 'bike'
+        ORDER BY way_id, is_forward DESC
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert infrastructure == [
+        (19, "bike", True, "separated_track_path"),
+        (19, "bike", False, "mixed_traffic"),
+        (20, "bike", True, "mixed_traffic"),
+        (20, "bike", False, "painted_lane"),
+    ]
 
 
 def test_access_exclusions_and_maxspeed_parsing(tmp_path) -> None:

@@ -112,6 +112,7 @@ maxspeed_tokens_kmh:
   FR:rural: 80
   FR:zone30: 30
   FR:motorway: 130
+  # TODO(confirm): map the symbolic walking speed to 5 km/h.
   walk: 5
   none: null
 mph_to_kmh: 1.609344
