@@ -1,5 +1,7 @@
 """Synthetic tests for the income supplement."""
 
+import csv
+
 import duckdb
 import numpy as np
 import pyarrow as pa
@@ -458,6 +460,22 @@ def test_wls_bootstrap_uses_shared_household_multiplicities():
     assert np.isnan(reps[2]).all()
 
 
+def test_support_counts_distinct_people_households_and_empty_draws():
+    rows = zahavi_income.support_counts(
+        person=np.array(["p1", "p1", "p2", "p3"]),
+        household=np.array(["a", "a", "b", "c"]),
+        values=np.array(["rare", "rare", "rare", "other"]),
+        labels=("rare", "missing"),
+        draws=zahavi_modes.Draws(
+            households=np.array(["a", "b", "c"]),
+            multipliers=np.array([[1, 0, 1], [0, 1, 1], [0, 0, 1]]),
+            seed=0,
+        ),
+    )
+    assert rows["rare"] == (2, 2, 1)
+    assert rows["missing"] == (0, 0, 3)
+
+
 def test_pooled_design_uses_q1_baseline_and_survey_interactions():
     design, names = zahavi_income.regression_design(
         income=np.array(["q1", "q5", "q1", "q5"]),
@@ -640,9 +658,25 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
         "reweighted.csv",
         "regression.csv",
         "quintile_density.csv",
+        "support.csv",
     }
     report = out.with_suffix(".md").read_text(encoding="utf-8")
     assert "unknown" in report and "2019" in report and "M2" in report
+    with (out / "support.csv").open(encoding="utf-8", newline="") as stream:
+        audit = list(csv.DictReader(stream))
+    q5 = next(
+        row
+        for row in audit
+        if row["group"] == "regression_M2"
+        and row["term"] == "income:q5"
+        and row["year"] == "2008"
+    )
+    assert (q5["respondents"], q5["households"], q5["empty_draws"]) == ("16", "16", "0")
+    assert any(
+        row["group"] == "reweight_travel_day" and row["term"] == "q1|dense|0"
+        for row in audit
+    )
+    assert "Support audit" in report
 
     mode_config = {
         "trip_grid_max_min": 240,

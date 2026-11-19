@@ -2,6 +2,40 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income correction: support audit (2026-11-19)
+
+- Added per-scope `support.csv` with respondents, households and empty
+  household draws for each regression column and reweighting cell, per
+  year; structural pooled-model zeros are flagged. The report includes a
+  compact group/year summary. Per-person empty cells use the net
+  denominator after open-day removal.
+- Synthetic-only validation; no real-data report or data write. Remaining
+  corrections: sparse-level merging, per-coefficient rank handling, joint
+  cell collapse and partial-support draws, vehicle wording, and warnings.
+
+### Zahavi income supplement: bootstrap warning investigation (2026-11-19)
+
+- The completed run summary records 23 or 40 travel-day reweighting draws
+  and 11 per-person reweighting draws without common support, depending on
+  scope. It also records 79 rank-deficient draws in three regression fits
+  per scope. The summary does not identify their cells, predictors or years.
+- Z2 discards a whole reweighting draw if any joint cell lacks support.
+  A synthetic two-quintile check confirmed that this also discards a Q5
+  result when only Q1 has lost support and Q5 remains estimable.
+- Z2 also discards every coefficient in a rank-deficient WLS draw. A
+  synthetic check confirmed that a missing nuisance-indicator column can
+  make the full design singular even when the Q5 coefficient is identifiable
+  from the remaining columns.
+- The inherited interval rule requires 190 of 200 valid draws, so these
+  wholesale exclusions suppress intervals. The missing real-data cells and
+  regression columns remain unverified; sparse household categories are a
+  hypothesis, not a confirmed cause. Do not infer the affected predictor
+  or accept the report as a complete set of intervals from this summary.
+- Follow-up: add cell/term-specific diagnostics and assess estimability
+  separately, retaining the shared household draws and paired intervals.
+  No code, real-data outputs or checkpoints were changed or rerun during
+  this investigation.
+
 ### Zahavi income supplement: report and CLI (2026-11-19)
 
 - Completed income levels, paired gaps and 90% ratio intervals, pooled

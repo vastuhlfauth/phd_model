@@ -183,6 +183,31 @@ def _household_indices(households: np.ndarray, universe: np.ndarray) -> np.ndarr
     return indices
 
 
+def support_counts(
+    *,
+    person: np.ndarray,
+    household: np.ndarray,
+    values: np.ndarray,
+    labels: tuple[str, ...],
+    draws: Draws,
+) -> dict[str, tuple[int, int, int]]:
+    """Count respondents, households and empty household draws per label."""
+    if not (len(person) == len(household) == len(values)):
+        raise ValueError("Support arrays must have matching lengths")
+    indices = _household_indices(household, draws.households)
+    if draws.multipliers.ndim != 2 or draws.multipliers.shape[1] != len(
+        draws.households
+    ):
+        raise ValueError("Invalid bootstrap multiplier matrix")
+    result = {}
+    for label in labels:
+        selected = values == label
+        households = np.unique(indices[selected])
+        empty = int(np.sum(np.all(draws.multipliers[:, households] == 0, axis=1)))
+        result[label] = (len(np.unique(person[selected])), len(households), empty)
+    return result
+
+
 def _component_metric(
     numerator: np.ndarray, denominator: np.ndarray, multipliers: np.ndarray
 ) -> Metric:
@@ -725,6 +750,8 @@ def reweighted_metrics(
     b: CachedIncome,
     draws_a: Draws,
     draws_b: Draws,
+    *,
+    support: list[dict] | None = None,
 ) -> tuple[
     dict[tuple[str, str], tuple[int, Metric]],
     dict[tuple[str, str], tuple[int, Metric]],
@@ -752,17 +779,17 @@ def reweighted_metrics(
             opened = known_d & days.is_open
             pcells = np.column_stack((people.income, sample.density, sample.cars))
             dcells = pcells[day_index]
-            support = pcells[known_p] if basis == "person" else dcells[travel]
+            cell_rows = pcells[known_p] if basis == "person" else dcells[travel]
             if basis == "person":
                 effective_weight = people.weight.copy()
                 np.add.at(effective_weight, day_index[opened], -days.weight[opened])
-                _, inverse = np.unique(support, axis=0, return_inverse=True)
+                _, inverse = np.unique(cell_rows, axis=0, return_inverse=True)
                 totals = np.bincount(inverse, weights=effective_weight[known_p])
                 if np.any(totals < 0):
                     raise ValueError("A person cell has negative net day weight")
                 supported = totals[inverse] > 0
             else:
-                supported = np.ones(len(support), dtype=bool)
+                supported = np.ones(len(cell_rows), dtype=bool)
             prepared.append(
                 (
                     sample,
@@ -772,7 +799,7 @@ def reweighted_metrics(
                     opened,
                     pcells,
                     dcells,
-                    support,
+                    cell_rows,
                     supported,
                 )
             )
@@ -786,10 +813,10 @@ def reweighted_metrics(
         labels = np.unique(np.concatenate((mapped_a, mapped_b)))
         joint_codes = []
         for prepared_sample, mapped in zip(prepared, (mapped_a, mapped_b), strict=True):
-            sample, draws, known_p, travel, opened, pcells, dcells, support, _ = (
+            sample, draws, known_p, travel, opened, pcells, dcells, cell_rows, _ = (
                 prepared_sample
             )
-            original, inverse = np.unique(support, axis=0, return_inverse=True)
+            original, inverse = np.unique(cell_rows, axis=0, return_inverse=True)
             target_by_original = np.empty(len(original), dtype=object)
             target_by_original[inverse] = mapped
             mapping = {
@@ -816,6 +843,7 @@ def reweighted_metrics(
             {q: np.full(len(draws_a.multipliers) + 1, np.nan) for q in quintiles}
             for _ in range(2)
         ]
+        empty_counts = [np.zeros(len(labels), dtype=int) for _ in range(2)]
         invalid = 0
         for rep in range(-1, len(draws_a.multipliers)):
             components = []
@@ -852,6 +880,9 @@ def reweighted_metrics(
                         dcodes, weights=day_weight, minlength=len(labels)
                     )
                 components.append((numerator, denominator))
+            if rep >= 0:
+                for year, (_, denominator) in enumerate(components):
+                    empty_counts[year] += denominator <= 0
             denominator_a, denominator_b = components[0][1], components[1][1]
             if (
                 np.any(denominator_a < 0)
@@ -890,6 +921,30 @@ def reweighted_metrics(
             LOGGER.warning("%s: %d reweighting draws lack support", basis, invalid)
         for year, item in enumerate(prepared):
             sample, _, known_p, travel, _, _, _, _, _ = item
+            if support is not None:
+                codes = joint_codes[year][0 if basis == "person" else 1]
+                persons = (
+                    sample.people.person[known_p]
+                    if basis == "person"
+                    else sample.days.person[travel]
+                )
+                households = (
+                    sample.people.household[known_p]
+                    if basis == "person"
+                    else sample.days.household[travel]
+                )
+                for code, label in enumerate(labels):
+                    mask = codes == code
+                    support.append(
+                        {
+                            "group": f"reweight_{basis}",
+                            "term": str(label),
+                            "year": 2008 if year == 0 else 2019,
+                            "respondents": len(np.unique(persons[mask])),
+                            "households": len(np.unique(households[mask])),
+                            "empty_draws": int(empty_counts[year][code]),
+                        }
+                    )
             for quintile in quintiles:
                 n = (
                     int(np.sum(known_p & (sample.people.income == quintile)))
@@ -1078,6 +1133,7 @@ def regression_rows(
     draws_b: Draws,
     *,
     minimum_n: int,
+    support: list[dict] | None = None,
 ) -> list[dict]:
     """Fit M0, M1, M2 and pooled interaction WLS with shared household draws."""
     if len(draws_a.multipliers) != len(draws_b.multipliers):
@@ -1132,6 +1188,40 @@ def regression_rows(
             cars=sample["cars"] if level >= 2 else None,
             survey=sample.get("survey"),
         )
+        if support is not None:
+            for support_year in (2008, 2019) if year == "pooled" else (int(year),):
+                survey_mask = (
+                    sample["survey"] == str(support_year)
+                    if year == "pooled"
+                    else np.ones(len(sample["person"]), dtype=bool)
+                )
+                for column, term in enumerate(names):
+                    active = survey_mask & (design[:, column] != 0)
+                    counts_for_term = support_counts(
+                        person=sample["person"][active],
+                        household=sample["household"][active],
+                        values=np.full(int(active.sum()), term),
+                        labels=(term,),
+                        draws=draws,
+                    )[term]
+                    support.append(
+                        {
+                            "group": f"regression_{model}",
+                            "term": term,
+                            "year": support_year,
+                            "respondents": counts_for_term[0],
+                            "households": counts_for_term[1],
+                            "empty_draws": counts_for_term[2],
+                            "structural_zero": year == "pooled"
+                            and (
+                                (
+                                    support_year == 2008
+                                    and term.startswith("survey:2019")
+                                )
+                                or (support_year == 2019 and term == "income:unknown")
+                            ),
+                        }
+                    )
         effects = regression_effects(
             design,
             names,
@@ -1268,6 +1358,7 @@ def run_report(
     all_reweighted: list[dict] = []
     all_regressions: list[dict] = []
     all_density: list[dict] = []
+    all_support: list[dict] = []
     report = [
         "# Daily travel time by household income",
         "",
@@ -1311,6 +1402,7 @@ def run_report(
                 LOGGER.warning("%s (resumed %s)", warning, selected.id)
         else:
             warning_start = len(warning_messages) if warning_messages is not None else 0
+            support: list[dict] = []
             with modes._timed(timings, f"{selected.id} read"):
                 samples = [
                     read_cached_income(
@@ -1341,13 +1433,18 @@ def run_report(
                 )
             with modes._timed(timings, f"{selected.id} reweighting"):
                 ra, rb, collapsed = reweighted_metrics(
-                    samples[0], samples[1], draws_a, draws_b
+                    samples[0], samples[1], draws_a, draws_b, support=support
                 )
                 reweighted = level_rows(ra, rb, minimum_n=minimum_n, margins=margins)
                 reweighted_gaps = gap_rows(ra, rb, minimum_n=minimum_n)
             with modes._timed(timings, f"{selected.id} regression"):
                 regressions = regression_rows(
-                    samples[0], samples[1], draws_a, draws_b, minimum_n=minimum_n
+                    samples[0],
+                    samples[1],
+                    draws_a,
+                    draws_b,
+                    minimum_n=minimum_n,
+                    support=support,
                 )
             day_mask = ~samples[0].days.is_open
             respondent_share, day_share = unknown_income_shares(
@@ -1364,6 +1461,7 @@ def run_report(
                 "reweighted_gaps": reweighted_gaps,
                 "regressions": regressions,
                 "collapsed": collapsed,
+                "support": support,
                 "respondent_share": respondent_share,
                 "day_share": day_share,
                 "unknown_n": int(np.sum(samples[0].people.income == "unknown")),
@@ -1392,6 +1490,7 @@ def run_report(
         reweighted_gaps = result["reweighted_gaps"]
         regressions = result["regressions"]
         collapsed = result["collapsed"]
+        support = result["support"]
         respondent_share = result["respondent_share"]
         day_share = result["day_share"]
         unknown_n = result["unknown_n"]
@@ -1402,6 +1501,7 @@ def run_report(
             reweighted_gaps,
             regressions,
             density,
+            support,
         ):
             for row in collection:
                 row["scope"] = selected.id
@@ -1421,6 +1521,7 @@ def run_report(
         )
         all_regressions.extend(regressions)
         all_density.extend(density)
+        all_support.extend(support)
         report.extend([f"## {selected.label} (`{selected.id}`)", ""])
         if unknown_n == 0 or unknown_n >= minimum_n:
             report.append(
@@ -1434,6 +1535,36 @@ def run_report(
                 "EMP has no equivalent unknown group."
             )
         report.append("")
+        support_summary = []
+        for group, year in sorted({(row["group"], row["year"]) for row in support}):
+            entries = [
+                row for row in support if row["group"] == group and row["year"] == year
+            ]
+            support_summary.append(
+                {
+                    "group": group,
+                    "year": year,
+                    "terms_or_cells": len(entries),
+                    "empty_in_draws": sum(row["empty_draws"] > 0 for row in entries),
+                    "max_empty_draws": max(row["empty_draws"] for row in entries),
+                    "min_respondents": min(row["respondents"] for row in entries),
+                }
+            )
+        report.extend(
+            modes._markdown_table(
+                "Support audit (details in support.csv)",
+                selected,
+                support_summary,
+                (
+                    "group",
+                    "year",
+                    "terms_or_cells",
+                    "empty_in_draws",
+                    "max_empty_draws",
+                    "min_respondents",
+                ),
+            )
+        )
         report.extend(
             modes._markdown_table(
                 "Levels and 2019/2008 ratios",
@@ -1599,6 +1730,7 @@ def run_report(
         ("reweighted.csv", all_reweighted),
         ("regression.csv", all_regressions),
         ("quintile_density.csv", all_density),
+        ("support.csv", all_support),
     ):
         modes._csv_rows(out / name, rows, ("scope",))
     out.with_suffix(".md").write_text("\n".join(report) + "\n", encoding="utf-8")
