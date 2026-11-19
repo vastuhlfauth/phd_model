@@ -15,6 +15,8 @@ kept_tags:
   - foot
   - sidewalk
   - oneway
+  - direction
+  - traffic_signals:direction
   - oneway:bicycle
   - junction
   - motorroad
@@ -37,6 +39,16 @@ kept_tags:
   - lanes:psv
   - surface
   - smoothness
+unusable_highways:
+  - construction
+  - proposed
+  - abandoned
+  - razed
+  - disused
+  - raceway
+  - bus_guideway
+  - escape
+  - elevator
 access_rules:
   car:
     precedence:
@@ -46,7 +58,16 @@ access_rules:
     denied:
       - "no"
       - private
+      - agricultural
+      - forestry
+      - delivery
+      - emergency
+      - use_sidepath
+    hard_excluded_highways:
+      - platform
+      - busway
     excluded_highways:
+      - track
       - footway
       - path
       - steps
@@ -61,12 +82,16 @@ access_rules:
     denied:
       - "no"
       - private
+      - agricultural
+      - forestry
+      - delivery
+      - emergency
+      - use_sidepath
     excluded_highways:
       - motorway
       - motorway_link
       - footway
       - steps
-      - pedestrian
     default_allowed: true
   foot:
     precedence:
@@ -75,6 +100,11 @@ access_rules:
     denied:
       - "no"
       - private
+      - agricultural
+      - forestry
+      - delivery
+      - emergency
+      - use_sidepath
     excluded_highways:
       - motorway
       - motorway_link

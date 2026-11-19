@@ -154,18 +154,37 @@ def access_sql(mode: Mode, config: NetworkConfig) -> str:
     access = "coalesce(" + ", ".join(
         f"nullif(way_tags[{_sql_text(key)}], '')" for key in rule.precedence
     ) + ")"
-    denied = ", ".join(_sql_text(value.casefold()) for value in rule.denied)
+    denied = "[" + ", ".join(
+        _sql_text(value.casefold()) for value in rule.denied
+    ) + "]"
+    denied_list = (
+        "NOT EXISTS ("
+        f"SELECT 1 FROM UNNEST(string_split(lower({access}), ';')) "
+        "AS access_value(value) "
+        f"WHERE trim(access_value.value) <> '' AND NOT list_contains("
+        f"{denied}, trim(access_value.value)))"
+    )
     excluded = ", ".join(_sql_text(value) for value in rule.excluded_highways)
     included = ", ".join(_sql_text(value) for value in rule.included_highways)
-    hard_exclusion = "FALSE"
+    hard_highways = (
+        config.unusable_highways + rule.hard_excluded_highways
+    )
+    hard_exclusion = (
+        "lower(way_tags['highway']) IN ("
+        + ", ".join(_sql_text(value) for value in hard_highways)
+        + ")"
+        if hard_highways
+        else "FALSE"
+    )
     if mode in ("bike", "foot"):
         motorway_values = ", ".join(
             _sql_text(value) for value in ("motorway", "motorway_link")
         )
         hard_exclusion = (
+            f"({hard_exclusion} OR "
             f"(lower(way_tags['highway']) IN ({motorway_values}) "
             "OR (lower(way_tags['highway']) = 'trunk' "
-            "AND lower(way_tags['motorroad']) IN ('yes', 'true', '1')))"
+            "AND lower(way_tags['motorroad']) IN ('yes', 'true', '1'))))"
         )
     platform_default = (
         "WHEN way_tags['highway'] IS NULL "
@@ -190,7 +209,7 @@ def access_sql(mode: Mode, config: NetworkConfig) -> str:
     return (
         "CASE "
         f"WHEN {hard_exclusion} THEN FALSE "
-        f"WHEN lower({access}) IN ({denied}) THEN FALSE "
+        f"WHEN {access} IS NOT NULL AND {denied_list} THEN FALSE "
         f"WHEN {access} IS NOT NULL THEN TRUE "
         f"{included_access}{sidewalk_access}"
         f"{platform_default} "
@@ -218,7 +237,8 @@ def direction_sql(mode: Mode, config: NetworkConfig) -> str:
     general = (
         "coalesce(nullif(way_tags['oneway'], ''), "
         "CASE WHEN way_tags['highway'] = 'motorway' "
-        "OR way_tags['junction'] = 'roundabout' THEN 'yes' END)"
+        "OR lower(way_tags['junction']) IN ('roundabout', 'circular') "
+        "THEN 'yes' END)"
     )
     general_forward = _direction_result(general, True, config)
     general_reverse = _direction_result(general, False, config)

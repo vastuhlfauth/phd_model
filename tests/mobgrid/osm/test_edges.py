@@ -53,7 +53,26 @@ def _raw_tables(tmp_path):
             (19, map {'highway':'residential',
                       'cycleway:right':'track'}, [37, 38]),
             (20, map {'highway':'residential',
-                      'cycleway:left':'lane'}, [39, 40])
+                      'cycleway:left':'lane'}, [39, 40]),
+            (21, map {'highway':'construction', 'access':'yes'}, [41, 42]),
+            (22, map {'highway':'proposed', 'access':'yes'}, [43, 44]),
+            (23, map {'highway':'abandoned', 'access':'yes'}, [45, 46]),
+            (24, map {'highway':'razed', 'access':'yes'}, [47, 48]),
+            (25, map {'highway':'disused', 'access':'yes'}, [49, 50]),
+            (26, map {'highway':'raceway', 'access':'yes'}, [51, 52]),
+            (27, map {'highway':'bus_guideway', 'access':'yes'}, [53, 54]),
+            (28, map {'highway':'escape', 'access':'yes'}, [55, 56]),
+            (29, map {'highway':'elevator', 'access':'yes'}, [57, 58]),
+            (30, map {'highway':'platform', 'access':'yes'}, [59, 60]),
+            (31, map {'highway':'busway', 'access':'yes'}, [61, 62]),
+            (32, map {'highway':'track', 'access':'yes'}, [63, 64]),
+            (33, map {'highway':'residential',
+                      'access':'no;private'}, [65, 66]),
+            (34, map {'highway':'residential',
+                      'access':'no;yes'}, [67, 68]),
+            (35, map {'highway':'pedestrian'}, [69, 70]),
+            (36, map {'highway':'residential',
+                      'junction':'circular'}, [71, 72])
     """)
     connection.execute("""
         CREATE TABLE nodes (
@@ -64,7 +83,7 @@ def _raw_tables(tmp_path):
         )
     """)
     node_rows = []
-    for node_id in range(1, 41):
+    for node_id in range(1, 73):
         tags = (
             "map {'highway':'traffic_signals'}"
             if node_id == 3
@@ -157,7 +176,7 @@ def test_oneway_variants_are_applied_per_mode(tmp_path) -> None:
         """
         SELECT DISTINCT way_id, mode, is_forward
         FROM read_parquet(?)
-        WHERE way_id IN (1, 2, 3, 7, 8, 16, 17, 18)
+        WHERE way_id IN (1, 2, 3, 7, 8, 16, 17, 18, 36)
         ORDER BY way_id, mode, is_forward DESC
         """,
         [result.edges_path],
@@ -180,6 +199,9 @@ def test_oneway_variants_are_applied_per_mode(tmp_path) -> None:
     assert directions[(16, "bike")] == [True, False]
     assert directions[(17, "bike")] == [True, False]
     assert directions[(18, "bike")] == [True]
+    assert directions[(36, "car")] == [True]
+    assert directions[(36, "bike")] == [True]
+    assert directions[(36, "foot")] == [True, False]
 
     infrastructure = connection.execute(
         """
@@ -235,6 +257,55 @@ def test_access_exclusions_and_maxspeed_parsing(tmp_path) -> None:
         (10, None),
         (11, None),
         (12, 30.0),
+    ]
+
+
+def test_unusable_highways_access_lists_and_pedestrian_bike_access(
+    tmp_path,
+) -> None:
+    connection, result = _build(tmp_path)
+    common_exclusions = connection.execute(
+        """
+        SELECT DISTINCT way_id, mode
+        FROM read_parquet(?)
+        WHERE way_id BETWEEN 21 AND 29
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert common_exclusions == []
+    car_exclusions = connection.execute(
+        """
+        SELECT DISTINCT way_id
+        FROM read_parquet(?)
+        WHERE way_id IN (30, 31) AND mode = 'car'
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert car_exclusions == []
+    allowed_track = connection.execute(
+        """
+        SELECT count(*) FROM read_parquet(?)
+        WHERE way_id = 32 AND mode = 'car'
+        """,
+        [result.edges_path],
+    ).fetchone()[0]
+    assert allowed_track == 2
+    access_modes = connection.execute(
+        """
+        SELECT way_id, mode
+        FROM read_parquet(?)
+        WHERE way_id IN (33, 34, 35)
+        GROUP BY way_id, mode
+        ORDER BY way_id, mode
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert access_modes == [
+        (34, "bike"),
+        (34, "car"),
+        (34, "foot"),
+        (35, "bike"),
+        (35, "foot"),
     ]
 
 
