@@ -6,13 +6,16 @@
   and buffered by the configured `halo_km` in EPSG:3035.
 - **National area:** metropolitan communes, excluding Corsica and overseas
   departments, dissolved and buffered with the same configured halo.
-- **Read bounds:** the buffered geometry is transformed to WGS84 and its
-  bounding box is retained with the area cache. PBF ways are then clipped by
-  node-in-polygon, not by the rectangular read bounds.
+- **Read passes:** read all tagged nodes in the buffered geometry's WGS84
+  bounding box, then join unnested way references to nodes covered by the
+  topology-preserving simplified area polygon, then read only the out-of-box
+  nodes of those ways. The simplification tolerance is configured in
+  `config/network.yaml`; the national bounding box covers the national extract.
 - **Intermediate cache:** `data/interim/osm/{state}/{area}/`; it stores
-  candidate ways, their nodes, control nodes, area WKB, and filtered raw
-  `ways.parquet` and `nodes.parquet`. Each completed stage is reused only when
-  its input signature and required schema are current.
+  in-box nodes, kept way candidates, out-of-box nodes of kept ways, area WKB,
+  and filtered raw `ways.parquet` and `nodes.parquet`. Control nodes are taken
+  from the in-box node pass. Each completed stage is reused only when its
+  input signature and required schema are current.
 - **Base outputs:** `data/base/network/{state}/{area}/edges.parquet` and
   `nodes.parquet`. Coordinates and lengths use EPSG:3035 metres; edge geometry
   is WKB. No elevation or travel times are populated in this step.

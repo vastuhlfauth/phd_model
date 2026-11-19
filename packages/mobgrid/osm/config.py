@@ -32,6 +32,7 @@ class NetworkConfig(BaseModel):
     states: dict[int, str]
     contour_source_id: str
     kept_tags: tuple[str, ...]
+    area_simplify_tolerance_m: float = Field(gt=0)
     access_rules: dict[Mode, AccessRule]
     oneway_yes: tuple[str, ...]
     oneway_no: tuple[str, ...]

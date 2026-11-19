@@ -2,6 +2,8 @@ states:
   2021: osm-2022
   2023: osm-2024
 contour_source_id: contours-2021
+# TODO(confirm): choose the study-area polygon simplification tolerance.
+area_simplify_tolerance_m: 10
 kept_tags:
   - highway
   - railway

@@ -253,7 +253,9 @@ def _tag_map_sql(tag_expression: str, kept_tags: tuple[str, ...]) -> str:
 
 
 _EXTRACTION_FILES = (
+    "_stages/nodes_in_bbox.parquet",
     "_stages/ways_candidates.parquet",
+    "_stages/nodes_outside_bbox.parquet",
     "_stages/way_nodes_candidates.parquet",
     "_stages/control_nodes_candidates.parquet",
     "ways.parquet",
@@ -261,7 +263,9 @@ _EXTRACTION_FILES = (
 )
 
 _EXTRACTION_COLUMNS = {
+    "_stages/nodes_in_bbox.parquet": {"node_id", "tags", "lat", "lon"},
     "_stages/ways_candidates.parquet": {"way_id", "tags", "refs"},
+    "_stages/nodes_outside_bbox.parquet": {"node_id", "tags", "lat", "lon"},
     "_stages/way_nodes_candidates.parquet": {"node_id", "tags", "lat", "lon"},
     "_stages/control_nodes_candidates.parquet": {"node_id", "tags", "lat", "lon"},
     "ways.parquet": {"way_id", "tags", "refs"},
@@ -317,6 +321,96 @@ def _stage_checked(
     _stage(connection, path, query)
 
 
+def _prepare_area_polygon(
+    connection: duckdb.DuckDBPyConnection,
+    area: AreaGeometry,
+    tolerance_m: float,
+) -> None:
+    """Cache one topology-preserving simplified area polygon in EPSG:3035."""
+    connection.execute(
+        """
+        CREATE OR REPLACE TEMP TABLE _osm_area AS
+        SELECT ST_SimplifyPreserveTopology(
+            ST_GeomFromWKB(from_hex(?)), ?
+        ) AS geom
+        """,
+        [area.geometry_wkb.hex(), tolerance_m],
+    )
+
+
+def _build_ways_candidates_query(
+    ways_source: str, config: NetworkConfig
+) -> str:
+    return f"""
+        SELECT w.id AS way_id,
+               {_tag_map_sql('w.tags', config.kept_tags)} AS tags,
+               w.refs
+        FROM {ways_source} w
+        CROSS JOIN UNNEST(w.refs) AS ref(node_id)
+        JOIN _osm_area_node_ids area_nodes USING (node_id)
+        WHERE w.kind = 'way'
+          AND (w.tags['highway'] IS NOT NULL
+               OR w.tags['railway'] = 'platform'
+               OR w.tags['public_transport'] = 'platform')
+        QUALIFY row_number() OVER (
+            PARTITION BY w.id ORDER BY ref.node_id
+        ) = 1
+    """
+
+
+def _build_nodes_outside_bbox_query(
+    nodes_source: str, ways_path: str, nodes_bbox_path: str
+) -> str:
+    return f"""
+        WITH needed AS (
+            SELECT DISTINCT unnest(refs) AS node_id
+            FROM read_parquet('{ways_path}')
+        )
+        SELECT osm_node.id AS node_id, osm_node.tags,
+               osm_node.lat, osm_node.lon
+        FROM {nodes_source} osm_node
+        JOIN needed ON needed.node_id = osm_node.id
+        LEFT JOIN read_parquet('{nodes_bbox_path}') bbox_nodes
+          ON bbox_nodes.node_id = osm_node.id
+        WHERE osm_node.kind = 'node'
+          AND bbox_nodes.node_id IS NULL
+    """
+
+
+def _build_kept_nodes_query(
+    ways_path: str,
+    nodes_bbox_path: str,
+    nodes_outside_path: str,
+    control_highways: tuple[str, ...],
+) -> str:
+    return f"""
+        WITH way_node_ids AS (
+            SELECT DISTINCT unnest(refs) AS node_id
+            FROM read_parquet('{ways_path}')
+        ),
+        nodes_to_keep AS (
+            SELECT n.node_id, n.tags, n.lat, n.lon
+            FROM read_parquet('{nodes_bbox_path}') n
+            JOIN way_node_ids USING (node_id)
+            UNION ALL
+            SELECT c.node_id, c.tags, c.lat, c.lon
+            FROM read_parquet('{nodes_bbox_path}') c
+            JOIN _osm_area_node_ids area_nodes USING (node_id)
+            WHERE list_contains(
+                {_sql_string_list(control_highways)}, c.tags['highway']
+            )
+            UNION ALL
+            SELECT n.node_id, n.tags, n.lat, n.lon
+            FROM read_parquet('{nodes_outside_path}') n
+            JOIN way_node_ids USING (node_id)
+        )
+        SELECT node_id, any_value(tags) AS tags,
+               any_value(lat) AS lat, any_value(lon) AS lon
+        FROM nodes_to_keep
+        GROUP BY node_id
+    """
+
+
 def extract_osm_pbf(
     connection: duckdb.DuckDBPyConnection,
     pbf_path: str | Path,
@@ -325,11 +419,12 @@ def extract_osm_pbf(
     *,
     config: NetworkConfig,
 ) -> ExtractionSummary:
-    """Read ways, their nodes, and traffic-control nodes in three PBF passes.
+    """Read bbox nodes, matching ways, then their out-of-bounds nodes.
 
-    A way is retained when any referenced node lies in the buffered area;
-    all references for each retained way remain in the cache. Stages are
-    resumable Parquet files under ``data/interim/osm/{state}/{area}``.
+    A way is retained when it references a node covered by the simplified
+    buffered area; all its nodes and in-area control nodes remain in the
+    cache. Stages are resumable Parquet files under
+    ``data/interim/osm/{state}/{area}``.
     """
     started = time.perf_counter()
     pbf = Path(pbf_path)
@@ -341,7 +436,7 @@ def extract_osm_pbf(
     connection.execute("LOAD spatial")
 
     signature_payload = {
-        "version": 2,
+        "version": 3,
         "pbf": _file_signature(pbf),
         "area_wkb": hashlib.sha256(area.geometry_wkb).hexdigest(),
         "area_bounds": [area.west, area.south, area.east, area.north],
@@ -353,125 +448,81 @@ def extract_osm_pbf(
     _invalidate_stale_stages(connection, cache, signature)
 
     pbf_sql = _sql_path(pbf)
+    _prepare_area_polygon(
+        connection, area, config.area_simplify_tolerance_m
+    )
+    nodes_in_bbox = stages / "nodes_in_bbox.parquet"
     ways_candidates = stages / "ways_candidates.parquet"
-    way_nodes_candidates = stages / "way_nodes_candidates.parquet"
-    control_nodes_candidates = stages / "control_nodes_candidates.parquet"
+    nodes_outside_bbox = stages / "nodes_outside_bbox.parquet"
     kept_ways = cache / "ways.parquet"
     kept_nodes = cache / "nodes.parquet"
     _stage_checked(
         connection,
-        ways_candidates,
-        f"""
-        SELECT id AS way_id, {_tag_map_sql('tags', config.kept_tags)} AS tags,
-               refs
-        FROM ST_ReadOSM('{pbf_sql}')
-        WHERE kind = 'way'
-          AND (tags['highway'] IS NOT NULL
-               OR tags['railway'] = 'platform'
-               OR tags['public_transport'] = 'platform')
-        """,
-        _EXTRACTION_COLUMNS["_stages/ways_candidates.parquet"],
-    )
-    ways_path = _sql_path(ways_candidates)
-    _stage_checked(
-        connection,
-        way_nodes_candidates,
-        f"""
-        WITH needed AS (
-            SELECT DISTINCT unnest(refs) AS node_id
-            FROM read_parquet('{ways_path}')
-        )
-        SELECT id AS node_id, tags, lat, lon
-        FROM ST_ReadOSM('{pbf_sql}')
-        WHERE kind = 'node'
-          AND id IN (SELECT node_id FROM needed)
-        """,
-        _EXTRACTION_COLUMNS["_stages/way_nodes_candidates.parquet"],
-    )
-    _stage_checked(
-        connection,
-        control_nodes_candidates,
+        nodes_in_bbox,
         f"""
         SELECT id AS node_id, tags, lat, lon
         FROM ST_ReadOSM('{pbf_sql}')
         WHERE kind = 'node'
-          AND tags['highway'] IN (
-              {", ".join(_sql_text(v) for v in config.control_highways)}
-          )
           AND lon BETWEEN {area.west!r} AND {area.east!r}
           AND lat BETWEEN {area.south!r} AND {area.north!r}
         """,
-        _EXTRACTION_COLUMNS["_stages/control_nodes_candidates.parquet"],
+        _EXTRACTION_COLUMNS["_stages/nodes_in_bbox.parquet"],
+    )
+    nodes_bbox_path = _sql_path(nodes_in_bbox)
+    connection.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _osm_area_node_ids AS
+        SELECT n.node_id
+        FROM read_parquet('{nodes_bbox_path}') n
+        CROSS JOIN _osm_area a
+        WHERE ST_Covers(
+            a.geom,
+            ST_Transform(
+                ST_Point(n.lon, n.lat),
+                'EPSG:4326', 'EPSG:3035', true
+            )
+        )
+    """)
+    _stage_checked(
+        connection,
+        ways_candidates,
+        _build_ways_candidates_query(
+            f"ST_ReadOSM('{pbf_sql}')", config
+        ),
+        _EXTRACTION_COLUMNS["_stages/ways_candidates.parquet"],
     )
 
-    area_literal = "from_hex('" + area.geometry_wkb.hex() + "')"
-    nodes_path = _sql_path(way_nodes_candidates)
-    control_path = _sql_path(control_nodes_candidates)
-    connection.execute(
-        f"""
-        CREATE OR REPLACE TEMP TABLE _osm_area AS
-        SELECT ST_GeomFromWKB({area_literal}) AS geom
-        """
-    )
+    ways_path = _sql_path(ways_candidates)
     _stage_checked(
         connection,
         kept_ways,
-        f"""
-        SELECT w.way_id, w.tags, w.refs
-        FROM read_parquet('{ways_path}') w
-        WHERE EXISTS (
-            SELECT 1
-            FROM UNNEST(w.refs) AS ref(node_id)
-            JOIN read_parquet('{nodes_path}') n USING (node_id)
-            CROSS JOIN _osm_area a
-            WHERE n.lon BETWEEN {area.west!r} AND {area.east!r}
-              AND n.lat BETWEEN {area.south!r} AND {area.north!r}
-              AND ST_Covers(
-                a.geom,
-                ST_Transform(
-                    ST_Point(n.lon, n.lat),
-                    'EPSG:4326', 'EPSG:3035', true
-                )
-            )
-        )
-        """,
+        f"SELECT way_id, tags, refs FROM read_parquet('{ways_path}')",
         _EXTRACTION_COLUMNS["ways.parquet"],
     )
     kept_ways_path = _sql_path(kept_ways)
+    nodes_outside_path = _sql_path(nodes_outside_bbox)
+    _stage_checked(
+        connection,
+        nodes_outside_bbox,
+        _build_nodes_outside_bbox_query(
+            f"ST_ReadOSM('{pbf_sql}')",
+            kept_ways_path,
+            nodes_bbox_path,
+        ),
+        _EXTRACTION_COLUMNS["_stages/nodes_outside_bbox.parquet"],
+    )
     _stage_checked(
         connection,
         kept_nodes,
-        f"""
-        WITH way_node_ids AS (
-            SELECT DISTINCT unnest(refs) AS node_id
-            FROM read_parquet('{kept_ways_path}')
+        _build_kept_nodes_query(
+            kept_ways_path,
+            nodes_bbox_path,
+            nodes_outside_path,
+            config.control_highways,
         ),
-        nodes_to_keep AS (
-            SELECT n.node_id, n.tags, n.lat, n.lon
-            FROM read_parquet('{nodes_path}') n
-            JOIN way_node_ids USING (node_id)
-            UNION ALL
-            SELECT c.node_id, c.tags, c.lat, c.lon
-            FROM read_parquet('{control_path}') c
-            CROSS JOIN _osm_area a
-            WHERE c.lon BETWEEN {area.west!r} AND {area.east!r}
-              AND c.lat BETWEEN {area.south!r} AND {area.north!r}
-              AND ST_Covers(
-                a.geom,
-                ST_Transform(
-                    ST_Point(c.lon, c.lat),
-                    'EPSG:4326', 'EPSG:3035', true
-                )
-            )
-        )
-        SELECT node_id, any_value(tags) AS tags,
-               any_value(lat) AS lat, any_value(lon) AS lon
-        FROM nodes_to_keep
-        GROUP BY node_id
-        """,
         _EXTRACTION_COLUMNS["nodes.parquet"],
     )
     connection.execute("DROP TABLE _osm_area")
+    connection.execute("DROP TABLE _osm_area_node_ids")
     way_count = int(
         connection.execute(
             f"SELECT count(*) FROM read_parquet('{_sql_path(kept_ways)}')"
