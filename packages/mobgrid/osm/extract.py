@@ -44,8 +44,10 @@ class ExtractionSummary:
     pbf_path: str
     output_directory: str
     elapsed_seconds: float
+    pbf_bytes: int
     way_count: int
     node_count: int
+    warnings: tuple[str, ...] = ()
 
 
 def _sql_path(path: str | Path) -> str:
@@ -339,9 +341,10 @@ def extract_osm_pbf(
     connection.execute("LOAD spatial")
 
     signature_payload = {
-        "version": 1,
+        "version": 2,
         "pbf": _file_signature(pbf),
         "area_wkb": hashlib.sha256(area.geometry_wkb).hexdigest(),
+        "area_bounds": [area.west, area.south, area.east, area.north],
         "config": config.model_dump(mode="json"),
     }
     signature = hashlib.sha256(
@@ -395,6 +398,8 @@ def extract_osm_pbf(
           AND tags['highway'] IN (
               {", ".join(_sql_text(v) for v in config.control_highways)}
           )
+          AND lon BETWEEN {area.west!r} AND {area.east!r}
+          AND lat BETWEEN {area.south!r} AND {area.north!r}
         """,
         _EXTRACTION_COLUMNS["_stages/control_nodes_candidates.parquet"],
     )
@@ -419,7 +424,9 @@ def extract_osm_pbf(
             FROM UNNEST(w.refs) AS ref(node_id)
             JOIN read_parquet('{nodes_path}') n USING (node_id)
             CROSS JOIN _osm_area a
-            WHERE ST_Covers(
+            WHERE n.lon BETWEEN {area.west!r} AND {area.east!r}
+              AND n.lat BETWEEN {area.south!r} AND {area.north!r}
+              AND ST_Covers(
                 a.geom,
                 ST_Transform(
                     ST_Point(n.lon, n.lat),
@@ -447,7 +454,9 @@ def extract_osm_pbf(
             SELECT c.node_id, c.tags, c.lat, c.lon
             FROM read_parquet('{control_path}') c
             CROSS JOIN _osm_area a
-            WHERE ST_Covers(
+            WHERE c.lon BETWEEN {area.west!r} AND {area.east!r}
+              AND c.lat BETWEEN {area.south!r} AND {area.north!r}
+              AND ST_Covers(
                 a.geom,
                 ST_Transform(
                     ST_Point(c.lon, c.lat),
@@ -477,6 +486,7 @@ def extract_osm_pbf(
         str(pbf),
         str(cache),
         time.perf_counter() - started,
+        pbf.stat().st_size,
         way_count,
         node_count,
     )
@@ -484,6 +494,7 @@ def extract_osm_pbf(
         cache / "_SUCCESS.json",
         {
             "pbf_path": str(pbf.resolve()),
+            "pbf_bytes": summary.pbf_bytes,
             "way_count": way_count,
             "node_count": node_count,
             "elapsed_seconds": summary.elapsed_seconds,
@@ -519,10 +530,12 @@ def _write_extraction_summary(summary: ExtractionSummary, path: Path) -> None:
     text = f"""# OSM extraction summary
 
 - Input: `{summary.pbf_path}`
+- Input size: {summary.pbf_bytes:,} bytes
 - Output: `{summary.output_directory}`
 - Elapsed: {summary.elapsed_seconds:.1f} seconds
 - Kept ways: {summary.way_count:,}
 - Nodes, including traffic-control points: {summary.node_count:,}
+- Warnings: {", ".join(summary.warnings) if summary.warnings else "none"}
 """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

@@ -2,6 +2,24 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 6: OSM network pilot pipeline
+
+- Added buffered pilot/national study areas, resumable staged OSM extraction,
+  mode-specific directed edges, directional bike classes, and the CLI report
+  for section 14.5. The WGS84 bounds filter control-node candidates and
+  bracket exact polygon checks; all nodes of retained ways are preserved.
+- Edge fields and access/bike rules are documented in
+  [docs/data/osm_edges.md](docs/data/osm_edges.md). The CLI writes connectivity,
+  length, maxspeed, and bike-infrastructure checks to
+  `docs/data/step06_osm_pilot.md`; that report has not been generated here.
+- Open point: symbolic `maxspeed=walk` is provisionally 5 km/h, marked
+  `TODO(confirm)` in `config/network.yaml`.
+- Focused validation: 34 synthetic tests and the Monaco pilot test passed;
+  Ruff passed. CLI help was checked. Gironde and national runs were not run.
+- Run the pilot with:
+  `python -m mobgrid.osm.extract --state 2021 --area pilot`
+  `python -m mobgrid.osm.edges --state 2021 --area pilot --report docs/data/step06_osm_pilot.md`
+
 ### Report runtime observation (2026-11-18)
 
 - The first EMP report was still running after about 57 minutes; its CPU

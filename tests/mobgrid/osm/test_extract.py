@@ -127,6 +127,8 @@ def test_monaco_pbf_extracts_cached_ways_and_nodes(tmp_path) -> None:
         area,
         config=config,
     )
+    ways_stage = cache / "_stages" / "ways_candidates.parquet"
+    ways_stage_mtime = ways_stage.stat().st_mtime_ns
     resumed = extract_osm_pbf(
         connection,
         pbf,
@@ -141,5 +143,35 @@ def test_monaco_pbf_extracts_cached_ways_and_nodes(tmp_path) -> None:
         summary.way_count,
         summary.node_count,
     )
+    assert ways_stage.stat().st_mtime_ns == ways_stage_mtime
     assert (cache / "_SUCCESS.json").is_file()
     assert (cache / "_stages" / "ways_candidates.parquet").is_file()
+    out_of_bounds_controls = connection.execute(
+        """
+        SELECT count(*)
+        FROM read_parquet(?)
+        WHERE lon < ? OR lon > ? OR lat < ? OR lat > ?
+        """,
+        [
+            str(cache / "_stages" / "control_nodes_candidates.parquet"),
+            area.west,
+            area.east,
+            area.south,
+            area.north,
+        ],
+    ).fetchone()[0]
+    assert out_of_bounds_controls == 0
+    missing_way_nodes = connection.execute(
+        """
+        WITH way_node_ids AS (
+            SELECT DISTINCT unnest(refs) AS node_id
+            FROM read_parquet(?)
+        )
+        SELECT count(*)
+        FROM way_node_ids w
+        LEFT JOIN read_parquet(?) n USING (node_id)
+        WHERE n.node_id IS NULL
+        """,
+        [str(cache / "ways.parquet"), str(cache / "nodes.parquet")],
+    ).fetchone()[0]
+    assert missing_way_nodes == 0

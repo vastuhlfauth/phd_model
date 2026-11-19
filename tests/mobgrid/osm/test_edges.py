@@ -1,6 +1,11 @@
 import duckdb
+from common.grid import cell_id
 from mobgrid.osm.config import load_network_config
-from mobgrid.osm.edges import build_directed_edges
+from mobgrid.osm.edges import (
+    build_directed_edges,
+    connectivity_summaries,
+    write_step06_report,
+)
 
 
 def _raw_tables(tmp_path):
@@ -125,6 +130,19 @@ def test_splits_ways_at_shared_graph_nodes_and_reverses_node_order(tmp_path) -> 
     assert endpoint[0:2] == (1, 0)
     assert endpoint[2] > 0
     assert endpoint[3] is not None
+    grid_ids = connection.execute(
+        """
+        SELECT cell_1km_id, tile_id,
+               ST_X(ST_Centroid(ST_GeomFromWKB(geometry_wkb))) AS easting_m,
+               ST_Y(ST_Centroid(ST_GeomFromWKB(geometry_wkb))) AS northing_m
+        FROM read_parquet(?)
+        WHERE way_id = 1 AND mode = 'foot' AND is_forward
+          AND from_node_id = 2 AND to_node_id = 3
+        """,
+        [result.edges_path],
+    ).fetchone()
+    assert grid_ids[0] == cell_id(grid_ids[3], grid_ids[2], 1000)
+    assert grid_ids[1] == cell_id(grid_ids[3], grid_ids[2], 50_000)
 
     shared = connection.execute(
         "SELECT graph_node FROM read_parquet(?) WHERE node_id = 2",
@@ -218,3 +236,51 @@ def test_access_exclusions_and_maxspeed_parsing(tmp_path) -> None:
         (11, None),
         (12, 30.0),
     ]
+
+
+def test_pilot_report_contains_connectivity_and_edge_checks(tmp_path) -> None:
+    connection, result = _build(tmp_path)
+    report = tmp_path / "step06_osm_pilot.md"
+
+    write_step06_report(
+        connection,
+        result.edges_path,
+        report,
+        state=2021,
+        area="pilot",
+    )
+
+    text = report.read_text(encoding="utf-8")
+    assert "Edges and length by highway class and mode" in text
+    assert "Largest strongly connected component" in text
+    assert "| car |" in text
+    assert "| bike |" in text
+    assert "| foot |" in text
+    assert "Zero-length directed edges" in text
+    assert "Maxspeed coverage by class and mode" in text
+    assert "Bike infrastructure length" in text
+
+
+def test_largest_strong_component_counts_nodes_and_directed_length(tmp_path) -> None:
+    connection = duckdb.connect()
+    edges = tmp_path / "scc_edges.parquet"
+    connection.execute("""
+        COPY (
+            SELECT * FROM (VALUES
+                ('car', 1::BIGINT, 2::BIGINT, 1.0::DOUBLE),
+                ('car', 2::BIGINT, 1::BIGINT, 2.0::DOUBLE),
+                ('car', 2::BIGINT, 3::BIGINT, 1.0::DOUBLE),
+                ('car', 3::BIGINT, 4::BIGINT, 2.0::DOUBLE)
+            ) AS e(mode, from_node_id, to_node_id, length_m)
+        ) TO ? (FORMAT PARQUET)
+    """, [str(edges)])
+
+    summaries = {
+        summary.mode: summary
+        for summary in connectivity_summaries(connection, edges)
+    }
+
+    assert summaries["car"].node_count == 4
+    assert summaries["car"].largest_component_nodes == 2
+    assert summaries["car"].largest_component_length_share == 0.5
+    assert summaries["bike"].node_count == 0

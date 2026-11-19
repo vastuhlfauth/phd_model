@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import logging
+import time
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import duckdb
+import numpy as np
+import pyarrow as pa
+from common.config import load_pilot_config
 from common.duckdb_io import read_parquet, write_parquet
+from common.grid import cell_id
+from numba import njit
 
 from mobgrid.osm.bike_infra import bike_infrastructure_sql, maxspeed_sql
-from mobgrid.osm.config import Mode, NetworkConfig
+from mobgrid.osm.config import Mode, NetworkConfig, load_network_config
+from mobgrid.pt.osm_route_extraction import configure_extraction_connection
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +63,81 @@ class EdgeBuildSummary:
     nodes_path: str
     edge_count: int
     node_count: int
+
+
+@dataclass(frozen=True)
+class ConnectivitySummary:
+    """Largest strongly connected component measures for one mode."""
+
+    mode: str
+    node_count: int
+    edge_count: int
+    largest_component_nodes: int
+    largest_component_length_share: float | None
+
+
+@njit(cache=True)
+def _strongly_connected_components(
+    indptr: np.ndarray,
+    indices: np.ndarray,
+    reverse_indptr: np.ndarray,
+    reverse_indices: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Iterative Kosaraju SCC labels over CSR arrays."""
+    node_count = len(indptr) - 1
+    visited = np.zeros(node_count, dtype=np.bool_)
+    order = np.empty(node_count, dtype=np.int64)
+    stack_nodes = np.empty(node_count, dtype=np.int64)
+    stack_positions = np.empty(node_count, dtype=np.int64)
+    order_count = 0
+
+    for start in range(node_count):
+        if visited[start]:
+            continue
+        top = 0
+        stack_nodes[0] = start
+        stack_positions[0] = indptr[start]
+        visited[start] = True
+        while top >= 0:
+            node = stack_nodes[top]
+            position = stack_positions[top]
+            if position < indptr[node + 1]:
+                neighbour = indices[position]
+                stack_positions[top] = position + 1
+                if not visited[neighbour]:
+                    visited[neighbour] = True
+                    top += 1
+                    stack_nodes[top] = neighbour
+                    stack_positions[top] = indptr[neighbour]
+            else:
+                order[order_count] = node
+                order_count += 1
+                top -= 1
+
+    labels = np.full(node_count, -1, dtype=np.int64)
+    component_sizes = np.zeros(node_count, dtype=np.int64)
+    component_count = 0
+    for order_position in range(node_count - 1, -1, -1):
+        start = order[order_position]
+        if labels[start] >= 0:
+            continue
+        top = 0
+        stack_nodes[0] = start
+        labels[start] = component_count
+        size = 0
+        while top >= 0:
+            node = stack_nodes[top]
+            top -= 1
+            size += 1
+            for position in range(reverse_indptr[node], reverse_indptr[node + 1]):
+                neighbour = reverse_indices[position]
+                if labels[neighbour] < 0:
+                    labels[neighbour] = component_count
+                    top += 1
+                    stack_nodes[top] = neighbour
+        component_sizes[component_count] = size
+        component_count += 1
+    return labels, component_sizes, component_count
 
 
 def _sql_path(path: str | Path) -> str:
@@ -331,13 +415,17 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                        * 100000
                      + floor(ST_X(ST_Centroid(d.geom)) / 1000)::BIGINT
                        AS cell_1km_id,
-                   floor(ST_Y(ST_Centroid(d.geom)) / {tile_size})::BIGINT
-                       * 100000
-                     + floor(ST_X(ST_Centroid(d.geom)) / {tile_size})::BIGINT
-                       AS tile_id
+                   tiles.tile_id
             FROM directions d
             JOIN read_parquet('{nodes_path}') n
               ON n.node_id = d.to_node_id
+            JOIN _osm_segment_tiles tiles
+              ON tiles.northing_m = floor(
+                    ST_Y(ST_Centroid(d.geom)) / {tile_size}
+                 ) * {tile_size}
+             AND tiles.easting_m = floor(
+                    ST_X(ST_Centroid(d.geom)) / {tile_size}
+                 ) * {tile_size}
         ),
         per_mode AS (
             SELECT attributes.*, mode
@@ -354,6 +442,47 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
         FROM per_mode
         WHERE {allowed_by_mode}
     """
+
+
+def _register_segment_tiles(
+    connection: duckdb.DuckDBPyConnection, tile_size_m: int
+) -> None:
+    """Assign configured tile ids with the shared EPSG:3035 grid helper."""
+    connection.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _osm_segment_tile_origins AS
+        SELECT DISTINCT
+               (floor(ST_Y(ST_Centroid(geom)) / {tile_size_m})
+                    * {tile_size_m})::BIGINT AS northing_m,
+               (floor(ST_X(ST_Centroid(geom)) / {tile_size_m})
+                    * {tile_size_m})::BIGINT AS easting_m
+        FROM _osm_way_segments
+    """)
+    origins = connection.execute("""
+        SELECT northing_m, easting_m
+        FROM _osm_segment_tile_origins
+        ORDER BY northing_m, easting_m
+    """).fetchall()
+    tile_map = pa.table(
+        {
+            "northing_m": pa.array([row[0] for row in origins], type=pa.int64()),
+            "easting_m": pa.array([row[1] for row in origins], type=pa.int64()),
+            "tile_id": pa.array(
+                [
+                    cell_id(int(northing), int(easting), tile_size_m)
+                    for northing, easting in origins
+                ],
+                type=pa.int64(),
+            ),
+        }
+    )
+    connection.register("_osm_tile_id_map", tile_map)
+    try:
+        connection.execute("""
+            CREATE OR REPLACE TEMP TABLE _osm_segment_tiles AS
+            SELECT * FROM _osm_tile_id_map
+        """)
+    finally:
+        connection.unregister("_osm_tile_id_map")
 
 
 def _build_graph_nodes(connection: duckdb.DuckDBPyConnection) -> None:
@@ -454,6 +583,7 @@ def build_directed_edges(
     connection.execute(_build_points_sql(ways_source, nodes_source))
     _build_graph_nodes(connection)
     connection.execute(_build_segments_sql())
+    _register_segment_tiles(connection, config.tile_size_m)
     _write_parquet_atomic(
         connection,
         _build_edges_query(config, nodes_source),
@@ -473,3 +603,353 @@ def build_directed_edges(
         output,
     )
     return summary
+
+
+def connectivity_summaries(
+    connection: duckdb.DuckDBPyConnection, edges_path: str | Path
+) -> tuple[ConnectivitySummary, ...]:
+    """Compute largest-SCC node and directed-length shares per mode."""
+    source = _sql_path(edges_path)
+    summaries = []
+    for mode in ("car", "bike", "foot"):
+        connection.execute(f"""
+            CREATE OR REPLACE TEMP TABLE _osm_scc_edges AS
+            SELECT from_node_id, to_node_id, coalesce(length_m, 0)::DOUBLE AS length_m
+            FROM read_parquet('{source}')
+            WHERE mode = '{mode}'
+        """)
+        node_count = int(
+            connection.execute("""
+                SELECT count(*) FROM (
+                    SELECT from_node_id AS node_id FROM _osm_scc_edges
+                    UNION
+                    SELECT to_node_id AS node_id FROM _osm_scc_edges
+                )
+            """).fetchone()[0]
+        )
+        indexed = connection.execute("""
+            WITH node_ids AS (
+                SELECT from_node_id AS node_id FROM _osm_scc_edges
+                UNION
+                SELECT to_node_id AS node_id FROM _osm_scc_edges
+            ),
+            node_index AS (
+                SELECT node_id,
+                       row_number() OVER (ORDER BY node_id) - 1 AS node_index
+                FROM node_ids
+            )
+            SELECT source.node_index AS source_index,
+                   target.node_index AS target_index, e.length_m
+            FROM _osm_scc_edges e
+            JOIN node_index source ON source.node_id = e.from_node_id
+            JOIN node_index target ON target.node_id = e.to_node_id
+            ORDER BY source_index, target_index
+        """).to_arrow_table()
+        source_indices = np.asarray(
+            indexed["source_index"].to_numpy(zero_copy_only=False),
+            dtype=np.int64,
+        )
+        target_indices = np.asarray(
+            indexed["target_index"].to_numpy(zero_copy_only=False),
+            dtype=np.int64,
+        )
+        lengths = np.asarray(
+            indexed["length_m"].to_numpy(zero_copy_only=False),
+            dtype=np.float64,
+        )
+        edge_count = len(source_indices)
+        if node_count == 0:
+            summaries.append(ConnectivitySummary(mode, 0, 0, 0, None))
+            continue
+
+        indptr = np.empty(node_count + 1, dtype=np.int64)
+        indptr[0] = 0
+        np.cumsum(
+            np.bincount(source_indices, minlength=node_count),
+            out=indptr[1:],
+        )
+        reverse_order = np.argsort(target_indices, kind="stable")
+        reverse_sources = target_indices[reverse_order]
+        reverse_indptr = np.empty(node_count + 1, dtype=np.int64)
+        reverse_indptr[0] = 0
+        np.cumsum(
+            np.bincount(reverse_sources, minlength=node_count),
+            out=reverse_indptr[1:],
+        )
+        labels, component_sizes, component_count = _strongly_connected_components(
+            indptr,
+            target_indices,
+            reverse_indptr,
+            source_indices[reverse_order],
+        )
+        largest_component = int(np.argmax(component_sizes[:component_count]))
+        largest_nodes = int(component_sizes[largest_component])
+        inside = (
+            (labels[source_indices] == largest_component)
+            & (labels[target_indices] == largest_component)
+        )
+        total_length = float(lengths.sum())
+        largest_length_share = (
+            float(lengths[inside].sum() / total_length)
+            if total_length > 0
+            else None
+        )
+        summaries.append(
+            ConnectivitySummary(
+                mode,
+                node_count,
+                edge_count,
+                largest_nodes,
+                largest_length_share,
+            )
+        )
+    return tuple(summaries)
+
+
+def _format_length(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:,.1f}"
+
+
+def write_step06_report(
+    connection: duckdb.DuckDBPyConnection,
+    edges_path: str | Path,
+    report_path: str | Path,
+    *,
+    state: int,
+    area: str,
+) -> None:
+    """Write the section 14.5 step-6 network and connectivity report."""
+    source = _sql_path(edges_path)
+    class_rows = connection.execute(f"""
+        SELECT coalesce(highway, '(no highway)') AS highway, mode,
+               count(*) AS edge_count, sum(length_m) AS length_m
+        FROM read_parquet('{source}')
+        GROUP BY highway, mode
+        ORDER BY mode, highway
+    """).fetchall()
+    speed_rows = connection.execute(f"""
+        SELECT coalesce(highway, '(no highway)') AS highway, mode,
+               count(*) AS edge_count, count(maxspeed_kmh) AS speed_count,
+               sum(length_m) AS length_m,
+               sum(CASE WHEN maxspeed_kmh IS NOT NULL THEN length_m ELSE 0 END)
+                   AS length_with_speed
+        FROM read_parquet('{source}')
+        GROUP BY highway, mode
+        ORDER BY mode, highway
+    """).fetchall()
+    bike_rows = connection.execute(f"""
+        SELECT coalesce(bike_infra, '(unclassified)') AS bike_infra,
+               count(*) AS edge_count, sum(length_m) AS length_m
+        FROM read_parquet('{source}')
+        WHERE mode = 'bike'
+        GROUP BY bike_infra
+        ORDER BY bike_infra
+    """).fetchall()
+    length_checks = connection.execute(f"""
+        SELECT count(*) FILTER (WHERE length_m = 0) AS zero_length,
+               count(*) FILTER (WHERE length_m IS NULL) AS null_length
+        FROM read_parquet('{source}')
+    """).fetchone()
+    connectivity = connectivity_summaries(connection, edges_path)
+
+    lines = [
+        f"# Step 6 OSM pilot ({state}, {area})",
+        "",
+        "Generated by `python -m mobgrid.osm.edges`; lengths are directed-edge",
+        "lengths in metres in EPSG:3035. Access rows are duplicated by mode.",
+        "",
+        "## Edges and length by highway class and mode",
+        "",
+        "| Mode | Highway class | Directed edges | Length (m) |",
+        "|---|---|---:|---:|",
+    ]
+    lines.extend(
+        f"| {mode} | {highway} | {edge_count:,} | {_format_length(length)} |"
+        for highway, mode, edge_count, length in class_rows
+    )
+    lines.extend(
+        [
+            "",
+            "## Largest strongly connected component",
+            "",
+            "| Mode | Graph nodes | Nodes in largest SCC | Node share | "
+            "Directed length share |",
+            "|---|---:|---:|---:|---:|",
+        ]
+    )
+    for stats in connectivity:
+        node_share = (
+            stats.largest_component_nodes / stats.node_count
+            if stats.node_count
+            else None
+        )
+        node_share_text = "n/a" if node_share is None else f"{node_share:.1%}"
+        length_share_text = (
+            "n/a"
+            if stats.largest_component_length_share is None
+            else f"{stats.largest_component_length_share:.1%}"
+        )
+        lines.append(
+            f"| {stats.mode} | {stats.node_count:,} | "
+            f"{stats.largest_component_nodes:,} | "
+            f"{node_share_text} | {length_share_text} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Length checks",
+            "",
+            f"- Zero-length directed edges: {length_checks[0]:,}",
+            f"- Null-length directed edges: {length_checks[1]:,}",
+            "",
+            "## Maxspeed coverage by class and mode",
+            "",
+            "| Mode | Highway class | Directed edges | With maxspeed | "
+            "Edge coverage | Length coverage |",
+            "|---|---|---:|---:|---:|---:|",
+        ]
+    )
+    for highway, mode, count, speed_count, length, speed_length in speed_rows:
+        edge_coverage = speed_count / count if count else None
+        length_coverage = (
+            speed_length / length
+            if length is not None and length > 0
+            else None
+        )
+        lines.append(
+            f"| {mode} | {highway} | {count:,} | {speed_count:,} | "
+            f"{'n/a' if edge_coverage is None else f'{edge_coverage:.1%}'} | "
+            f"{'n/a' if length_coverage is None else f'{length_coverage:.1%}'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Bike infrastructure length",
+            "",
+            "| Bike class | Directed bike edges | Length (m) |",
+            "|---|---:|---:|",
+        ]
+    )
+    lines.extend(
+        f"| {bike_class} | {edge_count:,} | {_format_length(length)} |"
+        for bike_class, edge_count, length in bike_rows
+    )
+    destination = Path(report_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _configure_logging(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(path, encoding="utf-8"),
+        ],
+    )
+
+
+def _artifact_path(task: str, suffix: str) -> Path:
+    return Path("logs") / f"{date.today().isoformat()}_{task}{suffix}"
+
+
+def _write_edge_summary(
+    path: Path,
+    *,
+    elapsed_seconds: float,
+    input_ways: Path,
+    input_nodes: Path,
+    result: EdgeBuildSummary,
+    report_path: Path,
+) -> None:
+    text = f"""# OSM directed-edge build summary
+
+- Inputs: `{input_ways}`, `{input_nodes}`
+- Outputs: `{result.edges_path}`, `{result.nodes_path}`
+- Report: `{report_path}`
+- Elapsed: {elapsed_seconds:.1f} seconds
+- Directed mode edges: {result.edge_count:,}
+- Nodes: {result.node_count:,}
+- Warnings: none
+"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="mobgrid.osm.edges")
+    parser.add_argument("--state", type=int, required=True)
+    parser.add_argument("--area", choices=("pilot", "national"), default="pilot")
+    parser.add_argument("--config", type=Path, default=Path("config/network.yaml"))
+    parser.add_argument("--pilot-config", type=Path, default=Path("config/pilot.yaml"))
+    parser.add_argument("--report", type=Path)
+    parser.add_argument("--log", type=Path)
+    parser.add_argument("--summary", type=Path)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Build edges, connectivity checks, and the requested Markdown report."""
+    args = _parser().parse_args(argv)
+    config = load_network_config(args.config)
+    pilot = load_pilot_config(args.pilot_config)
+    if args.state not in config.states:
+        raise ValueError(
+            f"unsupported state {args.state}; configured: {sorted(config.states)}"
+        )
+    task = f"osm_edges_{args.state}_{args.area}"
+    _configure_logging(args.log or _artifact_path(task, ".log"))
+    input_directory = (
+        Path(pilot.paths["interim"]) / "osm" / str(args.state) / args.area
+    )
+    output_directory = (
+        Path(pilot.paths["base"]) / "network" / str(args.state) / args.area
+    )
+    report_path = args.report or (
+        Path("docs/data/step06_osm_pilot.md")
+        if args.state == 2021 and args.area == "pilot"
+        else Path(f"docs/data/step06_osm_{args.area}_{args.state}.md")
+    )
+    ways_path = input_directory / "ways.parquet"
+    nodes_path = input_directory / "nodes.parquet"
+    started = time.perf_counter()
+    connection = duckdb.connect()
+    configure_extraction_connection(connection, pilot.paths["interim"])
+    try:
+        result = build_directed_edges(
+            connection,
+            ways_path,
+            nodes_path,
+            output_directory,
+            config=config,
+        )
+        write_step06_report(
+            connection,
+            result.edges_path,
+            report_path,
+            state=args.state,
+            area=args.area,
+        )
+    finally:
+        connection.close()
+    summary_path = args.summary or _artifact_path(task, "_summary.md")
+    _write_edge_summary(
+        summary_path,
+        elapsed_seconds=time.perf_counter() - started,
+        input_ways=ways_path,
+        input_nodes=nodes_path,
+        result=result,
+        report_path=report_path,
+    )
+    logger.info(
+        "wrote report %s and %s directed edges",
+        report_path,
+        result.edge_count,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
