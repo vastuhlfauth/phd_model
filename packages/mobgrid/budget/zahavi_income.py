@@ -33,6 +33,33 @@ from mobgrid.budget.zahavi_modes import Draws, Metric
 LOGGER = logging.getLogger(__name__)
 
 
+class _IntervalSummary:
+    def __init__(self) -> None:
+        self.failures: dict[tuple[int, int], int] = {}
+
+    def interval(self, values: np.ndarray) -> tuple[float, float]:
+        valid = values[np.isfinite(values)]
+        if len(valid) < np.ceil(0.95 * len(values)):
+            key = (len(valid), len(values))
+            self.failures[key] = self.failures.get(key, 0) + 1
+            return float("nan"), float("nan")
+        low, high = np.percentile(valid, [2.5, 97.5])
+        return float(low), float(high)
+
+    def warn(self, group: str, details: list[str] | None = None) -> None:
+        parts = list(details or [])
+        if self.failures:
+            counts = ", ".join(
+                f"{count} with {valid}/{total} valid draws"
+                for (valid, total), count in sorted(self.failures.items())
+            )
+            parts.append(
+                f"{sum(self.failures.values())} intervals below 95% ({counts})"
+            )
+        if parts:
+            LOGGER.warning("%s: %s", group, "; ".join(parts))
+
+
 class IncomeConfig(BaseModel):
     """Input and disclosure settings for the income supplement."""
 
@@ -317,9 +344,11 @@ def level_rows(
     minimum_n: int,
     margins: tuple[float, float],
     groups: tuple[str, ...] = trip_legs.INCOME_QUINTILE_LABELS,
+    warning_group: str = "levels",
 ) -> list[dict]:
     """Report mean minutes and 2019/2008 ratios, section 9.9."""
     rows = []
+    intervals = _IntervalSummary()
     for basis in ("travel_day", "person"):
         for quintile in groups:
             row: dict = {
@@ -352,7 +381,7 @@ def level_rows(
                 estimates.append(metric if n >= minimum_n else None)
                 if n >= minimum_n:
                     row[f"mean_{year}"] = metric.value
-                    low, high = modes._interval(metric.replicates)
+                    low, high = intervals.interval(metric.replicates)
                     row[f"ci_{year}_low"], row[f"ci_{year}_high"] = low, high
             a, b = estimates
             if a is not None and b is not None and a.value > 0 and b.value > 0:
@@ -367,7 +396,7 @@ def level_rows(
                     out=np.full_like(a.replicates, np.nan, dtype=float),
                     where=valid,
                 )
-                if np.isfinite(modes._interval(ratio_draws)[0]):
+                if np.isfinite(intervals.interval(ratio_draws)[0]):
                     ratio, (low, high) = daily_energy.bootstrap_replicate_ratio_ci(
                         a.value, a.replicates[valid], b.value, b.replicates[valid]
                     )
@@ -379,6 +408,7 @@ def level_rows(
                         verdict_10=vr._equivalence_verdict((low, high), margins[1]),
                     )
             rows.append(row)
+    intervals.warn(warning_group)
     return rows
 
 
@@ -427,7 +457,12 @@ def density_rows(
             )
         )
     rows = level_rows(
-        results[0], results[1], minimum_n=minimum_n, margins=margins, groups=groups
+        results[0],
+        results[1],
+        minimum_n=minimum_n,
+        margins=margins,
+        groups=groups,
+        warning_group="quintile-density levels",
     )
     for row in rows:
         row["quintile"], row["density"] = row["quintile"].split("|", 1)
@@ -591,9 +626,11 @@ def gap_rows(
     metrics_b: dict[tuple[str, str], tuple[int, Metric]],
     *,
     minimum_n: int,
+    warning_group: str = "gaps",
 ) -> list[dict]:
     """Report within-year income gaps and paired changes, section 9.9."""
     rows = []
+    intervals = _IntervalSummary()
     for basis in ("travel_day", "person"):
         for kind in ("difference", "ratio"):
             row: dict = {"basis": basis, "gap": kind}
@@ -621,7 +658,9 @@ def gap_rows(
                 values.append(metric)
                 row[f"value_{year}"] = metric.value if metric else np.nan
                 low, high = (
-                    modes._interval(metric.replicates) if metric else (np.nan, np.nan)
+                    intervals.interval(metric.replicates)
+                    if metric
+                    else (np.nan, np.nan)
                 )
                 row[f"ci_{year}_low"], row[f"ci_{year}_high"] = low, high
             a, b = values
@@ -630,10 +669,11 @@ def gap_rows(
                 if a.replicates.shape != b.replicates.shape:
                     raise ValueError("Gap replicate arrays must have matching shapes")
                 row["change"] = b.value - a.value
-                row["change_ci_low"], row["change_ci_high"] = modes._interval(
+                row["change_ci_low"], row["change_ci_high"] = intervals.interval(
                     b.replicates - a.replicates
                 )
             rows.append(row)
+    intervals.warn(warning_group)
     return rows
 
 
@@ -1230,7 +1270,6 @@ def bootstrap_wls(
     ):
         raise ValueError("Invalid bootstrap multiplier matrix")
     replicates = np.full((len(draws.multipliers), design.shape[1]), np.nan)
-    invalid = 0
     for rep, multiplier in enumerate(draws.multipliers):
         root = np.sqrt(weights * multiplier[indices])
         coef, _, rank, _ = np.linalg.lstsq(
@@ -1240,7 +1279,6 @@ def bootstrap_wls(
         if rank == design.shape[1]:
             replicates[rep] = coef
         elif np.any(active):
-            invalid += 1
             matrix = (design * root[:, None])[:, active]
             coef_active, _, active_rank, _ = np.linalg.lstsq(
                 matrix, outcome * root, rcond=None
@@ -1256,10 +1294,6 @@ def bootstrap_wls(
                 )
                 columns = np.flatnonzero(active)
                 replicates[rep, columns[identifiable]] = coef_active[identifiable]
-        else:
-            invalid += 1
-    if invalid:
-        LOGGER.warning("%d bootstrap regression draws are rank deficient", invalid)
     return point, replicates
 
 
@@ -1334,12 +1368,16 @@ def regression_effects(
     weights: np.ndarray,
     households: np.ndarray,
     draws: Draws,
+    *,
+    warning_group: str = "regression",
 ) -> list[dict]:
     """Return income and interaction coefficients as percentage effects."""
     if len(names) != design.shape[1] or len(set(names)) != len(names):
         raise ValueError("Regression column names must be distinct and match design")
     point, replicates = bootstrap_wls(design, outcome, weights, households, draws)
     rows = []
+    intervals = _IntervalSummary()
+    nonfinite = []
     for column, term in enumerate(names):
         if not (term.startswith("income:") or term.startswith("survey:2019*income:")):
             continue
@@ -1347,9 +1385,16 @@ def regression_effects(
             effect = float(100 * np.expm1(point[column]))
             samples = 100 * np.expm1(replicates[:, column])
         if not np.isfinite(effect):
-            LOGGER.warning("Nonfinite regression effect for %s", term)
-        low, high = modes._interval(samples)
+            nonfinite.append(term)
+        low, high = intervals.interval(samples)
         rows.append({"term": term, "percent": effect, "ci_low": low, "ci_high": high})
+    details = []
+    rank_deficient = int(np.sum(np.any(~np.isfinite(replicates), axis=1)))
+    if rank_deficient:
+        details.append(f"{rank_deficient}/{len(replicates)} rank-deficient draws")
+    if nonfinite:
+        details.append(f"{len(nonfinite)} nonfinite effects: {', '.join(nonfinite)}")
+    intervals.warn(warning_group, details)
     return rows
 
 
@@ -1536,6 +1581,7 @@ def regression_rows(
             sample["weight"],
             sample["household"],
             draws,
+            warning_group=f"regression {year} {model}",
         )
         effects.insert(
             0,
@@ -1778,8 +1824,19 @@ def run_report(
             with modes._timed(timings, f"{selected.id} levels and gaps"):
                 ma = income_metrics(samples[0].people, samples[0].days, draws_a)
                 mb = income_metrics(samples[1].people, samples[1].days, draws_b)
-                levels = level_rows(ma, mb, minimum_n=minimum_n, margins=margins)
-                gaps = gap_rows(ma, mb, minimum_n=minimum_n)
+                levels = level_rows(
+                    ma,
+                    mb,
+                    minimum_n=minimum_n,
+                    margins=margins,
+                    warning_group=f"{selected.id} raw levels",
+                )
+                gaps = gap_rows(
+                    ma,
+                    mb,
+                    minimum_n=minimum_n,
+                    warning_group=f"{selected.id} raw gaps",
+                )
                 density = density_rows(
                     samples[0],
                     samples[1],
@@ -1801,8 +1858,19 @@ def run_report(
                     draw_audit=reweight_draws,
                     unresolved_cells=unresolved_cells,
                 )
-                reweighted = level_rows(ra, rb, minimum_n=minimum_n, margins=margins)
-                reweighted_gaps = gap_rows(ra, rb, minimum_n=minimum_n)
+                reweighted = level_rows(
+                    ra,
+                    rb,
+                    minimum_n=minimum_n,
+                    margins=margins,
+                    warning_group=f"{selected.id} reweighted levels",
+                )
+                reweighted_gaps = gap_rows(
+                    ra,
+                    rb,
+                    minimum_n=minimum_n,
+                    warning_group=f"{selected.id} reweighted gaps",
+                )
             with modes._timed(timings, f"{selected.id} regression"):
                 regressions = regression_rows(
                     samples[0],

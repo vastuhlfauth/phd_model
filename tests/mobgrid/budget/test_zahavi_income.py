@@ -296,6 +296,37 @@ def test_ratio_interval_requires_sufficient_valid_paired_draws():
     assert q1["ratio_ci_low"] == pytest.approx(1.1)
 
 
+def test_insufficient_intervals_are_warned_once_per_level_group(caplog):
+    draws = np.full(20, 10.0)
+    draws[:2] = np.nan
+    metric = zahavi_income.Metric(10, draws)
+    samples = {("person", q): (60, metric) for q in ("q1", "q2")}
+    rows = zahavi_income.level_rows(samples, samples, minimum_n=50, margins=(0.15, 0.1))
+    warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "6" in warnings[0] and "18/20" in warnings[0]
+    assert np.isnan(next(r for r in rows if r["quintile"] == "q1")["ci_2008_low"])
+
+
+def test_regression_warns_once_and_preserves_coefficient_specific_intervals(caplog):
+    design = np.array([[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 0.0, 1.0]])
+    multipliers = np.ones((20, 3))
+    multipliers[:2, 1] = 0
+    draws = zahavi_income.Draws(np.array(["a", "b", "c"]), multipliers, 1)
+    rows = zahavi_income.regression_effects(
+        design,
+        ["intercept", "income:q2", "income:q3"],
+        np.array([1.0, 2.0, 3.0]),
+        np.ones(3),
+        np.array(["a", "b", "c"]),
+        draws,
+    )
+    warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "2" in warnings[0] and "18/20" in warnings[0]
+    assert np.isnan(rows[0]["ci_low"]) and np.isfinite(rows[1]["ci_low"])
+
+
 def test_gap_rows_use_paired_within_year_and_between_year_draws():
     a = {
         ("person", "q1"): (60, zahavi_income.Metric(10, np.array([9.0, 10.0, 11.0]))),

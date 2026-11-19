@@ -2,6 +2,15 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income correction: grouped warnings (2026-11-19)
+
+- Insufficient bootstrap intervals are reported once per estimate group,
+  with counts by valid/total draw count; regression summaries also count
+  rank-deficient draws and nonfinite effects. Individual coefficients
+  retain their own 95%-valid-draw requirement.
+- Synthetic income tests: 38 passed; Ruff passed. The real report was not
+  rerun.
+
 ### Zahavi income correction: vehicle definitions (2026-11-19)
 
 - The ENTD questionnaire and dictionary identify `V1_JNBVEH` as a
