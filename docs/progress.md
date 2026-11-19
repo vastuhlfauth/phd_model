@@ -2,6 +2,21 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi mode-report cache (2026-11-19)
+
+- Added a survey cache API for all eight weekday scopes: signed Parquet
+  trip and day tables, the person-weekday roster and the full described-day
+  base needed to remove open days from the per-person denominator.
+  Signatures cover source data, the energy configuration, scope threshold
+  and reconstruction code; a completed cache is reused without rebuilding
+  trip legs. Each cache stage logs its elapsed time.
+- Synthetic cache tests passed for both surveys (3 passed); Ruff passed.
+  No real-data report or long-running computation was run.
+- Open: the Zahavi mode-report CLI, outputs and the 52.0/57.0 minute
+  reference checks are not yet implemented; the cache API is not yet wired
+  into a report. Existing user files under `docs/article/figures/` were left
+  untouched.
+
 ### Report runtime observation (2026-11-18)
 
 - The first EMP report was still running after about 57 minutes; its CPU
