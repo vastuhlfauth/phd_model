@@ -2,6 +2,63 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Mode-cell report: subgroup statistics (2026-11-20)
+
+- Added scoped mode-user-day loading and all six subgroup analyses, using the
+  Z3 ordered-neighbour merge rules while preserving nominal categories.
+  Household identifiers are text before bootstrap lookup. Mode national
+  comparisons retain hidden and unknown-category days; unknown population
+  categories are excluded from category cells with their weight share shown.
+- Cell outputs include per-year minutes, known-distance km/day and aggregate
+  speed, 95% household-bootstrap intervals, weighted KS against national mode
+  users, and an additive distance/speed/selection split. Missing-distance
+  km are a lower bound, with trip coverage and a separate selection term.
+  Cells below 50 days are hidden, those below 100 flagged, and day-table
+  cross-year results are blank and labelled. The caller supplies thresholds.
+- Synthetic timing: 500 days, two modes and 20 household draws in all eight
+  scopes took 2.141 s for cell calculations (0.22–0.38 s per scope); this
+  excludes data loading and every later stage. It is not a report runtime.
+  Stage timing is logged by `evaluate_mode_scope`.
+- Still to do: integrate the cell stage into the report and verify its
+  end-to-end output; reweighting, B2/crow-fly and rounding, energy/collapse,
+  the resumable CLI and all six CSVs and Markdown. Parent fallback remains
+  to be implemented where a 2008 comparison cell is absent. No real-data
+  report or data write was run.
+
+### Mode-cell report: isolated foundations (2026-11-20)
+
+- The report is **not complete**. Added isolated mode-user-day aggregation
+  and exact joint-target reweighting primitives. Aggregation retains
+  distance-known counts and time for B2's selection term, preserves missing
+  energy, and converts household identifiers to text. Reweighting does not
+  merge nominal levels and explicitly rejects unsupported target cells.
+- Synthetic checks cover aggregation at a constant energy rate, missing
+  energy, inconsistent weights, exact joint-target reweighting and missing
+  support, B2 decomposition, and weighted-KS symmetry. The module does not
+  yet implement the CLI; running it explicitly reports that fact. Eight
+  synthetic tests passed; Ruff and Pylance syntax checks passed.
+- Decision: day-mode-group energy is per day with trips only; its per-person
+  basis is undefined because zero-trip days have no mode group. Per-mode
+  per-person energy is attributable, including non-users as zero, and must
+  sum to total per-person energy. Category, density, income and vehicle
+  groupings use both bases.
+- Remaining: load and join mode-user days and survey attributes for all eight
+  scopes; implement cell estimates and bootstrap intervals, subgroup versus
+  national KS and distance/speed gap split, suppression and caution flags,
+  day-table labels and cross-year suppression, and absent-2008 parent
+  fallback. Integrate Z2's draw/support policy with the new target reweighting
+  without merging nominal categories and report raw and reweighted ratios.
+- Remaining: per-mode published/rounded-crow-fly B2 decomposition and C4
+  rounding bounds; reconstruct trip energy with both rate sets without
+  modifying the signed Z1 cache, implement grouped and attributable energy
+  with the agreed bases and per-person sum check, and implement all pairwise
+  and cross-year collapse tests with bootstrap intervals. Wire the six CSVs,
+  Markdown report, resumable checkpoints, logging, summary and CLI; add
+  synthetic end-to-end coverage. Runtime is unmeasured.
+- No shared helper was changed; the new target reweighting function is local
+  to the new module and should be considered for a later shared-helper merge.
+  No real-data report or data write was run.
+
 ### Grouping report: CLI and output (2026-11-20)
 
 - Completed `python -m mobgrid.budget.zahavi_groupings --out docs\data\step12_groupings`:
