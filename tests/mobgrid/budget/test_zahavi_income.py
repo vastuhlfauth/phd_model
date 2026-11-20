@@ -111,7 +111,7 @@ def test_emp_household_vehicle_count_subtracts_out_of_use_counts():
     with duckdb.connect() as con:
         con.execute(
             """CREATE TABLE q_menage AS SELECT * FROM (VALUES
-              ('h0', 0, 2, NULL, NULL, NULL, 1.0),
+              ('h0', 0, NULL, NULL, NULL, NULL, 1.0),
               ('h1', 1, 2, NULL, NULL, NULL, 1.0),
               ('h2', 4, 1, 1, 1, 0, 2.0),
               ('h3', 3, 1, 0, 1, 0, 1.0),
@@ -472,6 +472,25 @@ def test_joint_cells_report_unresolved_small_group_without_inventing_a_merge():
     assert unresolved == ["q1|dense|0"]
 
 
+def test_sparse_joint_merge_preserves_unrelated_supported_cells():
+    a = np.array(
+        [
+            ["q1", "dense", "1"],
+            ["q1", "dense", "2+"],
+            ["q1", "sparse", "1"],
+            ["q1", "sparse", "2+"],
+            ["q1", "very_sparse", "0"],
+        ]
+    )
+    b = a[[0, 2, 3]]
+    _, _, collapsed, unresolved = zahavi_income.collapse_sparse_joint_cells(
+        a, np.arange(len(a)), b, np.arange(len(b)), minimum_n=1
+    )
+    assert ("q1|dense|2+", "q1|dense|1+") in collapsed
+    assert all(not cell.startswith("q1|sparse|") for cell, _ in collapsed)
+    assert not unresolved
+
+
 def test_draw_reweighting_rescales_common_support_below_strict_loss_limit():
     factors_a, factors_b, lost, accepted = zahavi_income.reweight_draw_target(
         np.array([99.0, 1.0]), np.array([100.0, 0.0]), max_lost_share=0.01
@@ -494,7 +513,7 @@ def test_joint_cells_reject_quintile_without_common_support():
 
 
 def test_reweighted_metrics_use_pooled_mix_for_each_quintile_and_basis():
-    def sample(prefix, weights, minutes):
+    def sample(prefix, weights, minutes, first_vehicle="1"):
         people = zahavi_income.People(
             np.array([f"{prefix}{i}" for i in range(4)]),
             np.array([f"{prefix}h{i}" for i in range(4)]),
@@ -515,23 +534,29 @@ def test_reweighted_metrics_use_pooled_mix_for_each_quintile_and_basis():
             days,
             np.array(["employed"] * 4),
             np.array(["dense", "sparse", "dense", "sparse"]),
-            np.array(["1"] * 4),
+            np.array([first_vehicle, "1", "1", "1"]),
             np.array(["lundi"] * 4),
         )
 
-    a = sample("a", [3, 1, 3, 1], [10, 30, 20, 40])
+    a = sample("a", [3, 1, 3, 1], [10, 30, 20, 40], first_vehicle="unknown")
     b = sample("b", [1, 3, 1, 3], [20, 40, 30, 50])
     da = zahavi_modes.Draws(a.people.household, np.ones((20, 4)), 0)
     db = zahavi_modes.Draws(b.people.household, np.ones((20, 4)), 0)
+    shares = {}
     ma, mb, collapsed = zahavi_income.reweighted_metrics(
-        a, b, da, db, minimum_n=1, max_lost_share=0.01
+        a, b, da, db, minimum_n=1, max_lost_share=0.01, collapse_shares=shares
     )
-    assert collapsed == []
+    raw_a = zahavi_income.income_metrics(a.people, a.days, da)
+    raw_b = zahavi_income.income_metrics(b.people, b.days, db)
     for basis in ("travel_day", "person"):
+        assert (basis, "q1|dense|unknown", "q1|dense|1") in collapsed
+        assert shares[basis] == pytest.approx(0.25)
         assert ma[basis, "q1"][1].value == pytest.approx(20)
         assert mb[basis, "q1"][1].value == pytest.approx(30)
         assert ma[basis, "q5"][1].value == pytest.approx(30)
         assert mb[basis, "q5"][1].value == pytest.approx(40)
+        assert raw_a[basis, "q1"][1].value == pytest.approx(15)
+        assert raw_b[basis, "q1"][1].value == pytest.approx(35)
 
 
 def test_person_reweighting_collapses_cells_emptied_by_open_day():
@@ -564,12 +589,21 @@ def test_person_reweighting_collapses_cells_emptied_by_open_day():
     da = zahavi_modes.Draws(a.people.household, np.ones((20, 2)), 0)
     db = zahavi_modes.Draws(b.people.household, np.ones((20, 2)), 0)
     support = []
+    shares = {}
     ma, mb, collapsed = zahavi_income.reweighted_metrics(
-        a, b, da, db, minimum_n=1, max_lost_share=0.01, support=support
+        a,
+        b,
+        da,
+        db,
+        minimum_n=1,
+        max_lost_share=0.01,
+        support=support,
+        collapse_shares=shares,
     )
     assert ma["person", "q1"][1].value == pytest.approx(10)
     assert mb["person", "q1"][1].value == pytest.approx(15)
-    assert ("person", "q1|sparse|1", "q1|all|all") in collapsed
+    assert ("person", "q1|sparse|1", "q1|dense|1") in collapsed
+    assert shares == {"travel_day": pytest.approx(1), "person": pytest.approx(1)}
     absent = next(
         row
         for row in support
@@ -858,7 +892,7 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
                     ident_ind=people,
                     ident_men=houses,
                     population_category=population,
-                    weight=np.ones(n),
+                    weight=np.where(x[:, 0] == 0, 2.0, 1.0),
                 ),
             ),
             (
@@ -927,8 +961,27 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
     assert "unknown" in report and "2019" in report and "M2" in report
     assert "V1_JNBVEH + V1_JNBCCVUL" in report and "JNBVPHS" in report
     assert "Share (%)" in report and "not directly comparable" not in report
+    assert "ENTD 2008 income is complete in this file" in report
+    assert "sixth group" not in report
+    assert "| 2008 | q1 | 16 | 33.33 |" in report
+    assert "| 2019 | q5 | 16 | 16.67 |" in report
+    assert "De combien de camping-cars, fourgonnettes, ou véhicules" in report
+    assert "De combien de voitures particulières, de véhicules utilitaires" in report
+    assert "0.00% of the full-sample pooled target" in report
+    with (out / "levels.csv").open(encoding="utf-8", newline="") as stream:
+        assert {row["quintile"] for row in csv.DictReader(stream)} == {
+            "q1",
+            "q2",
+            "q3",
+            "q4",
+            "q5",
+        }
     with (out / "support.csv").open(encoding="utf-8", newline="") as stream:
         audit = list(csv.DictReader(stream))
+    assert not any(
+        row["group"].startswith("reweight") and row["term"].endswith("|unknown")
+        for row in audit
+    )
     q5 = next(
         row
         for row in audit

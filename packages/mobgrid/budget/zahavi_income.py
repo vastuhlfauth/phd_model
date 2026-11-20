@@ -433,10 +433,9 @@ def density_rows(
 ) -> list[dict]:
     """Income-by-proxy-density levels and ratios, section 9.9."""
     densities = sorted(set(a.density) | set(b.density))
+    quintiles = _reported_quintiles(a.people)
     groups = tuple(
-        f"{quintile}|{density}"
-        for quintile in trip_legs.INCOME_QUINTILE_LABELS
-        for density in densities
+        f"{quintile}|{density}" for quintile in quintiles for density in densities
     )
     results = []
     for sample, draws in ((a, draws_a), (b, draws_b)):
@@ -573,6 +572,7 @@ def emp_household_vehicles(con: duckdb.DuckDBPyConnection) -> HouseholdVehicles:
             """CREATE TEMP VIEW cars AS SELECT ident_men,
                 CASE
                   WHEN total_count IS NULL THEN NULL
+                  WHEN CAST(total_count AS INTEGER) = 0 THEN '0'
                   WHEN cars_out IS NOT NULL AND campers_out IS NOT NULL
                        AND vul_out IS NOT NULL
                     THEN CAST(TRY_CAST(total_count AS INTEGER)
@@ -789,6 +789,30 @@ def unknown_income_shares(
     )
 
 
+def _reported_quintiles(people: People) -> tuple[str, ...]:
+    return tuple(
+        label
+        for label in trip_legs.INCOME_QUINTILE_LABELS
+        if label != "unknown" or np.any(people.income == label)
+    )
+
+
+def _quintile_share_rows(people: People) -> list[dict]:
+    total = people.weight.sum()
+    if not np.isfinite(total) or total <= 0:
+        raise ValueError("Invalid total respondent weight")
+    return [
+        {
+            "quintile": label,
+            "n": int(mask.sum()),
+            "share_percent": 100 * float(people.weight[mask].sum() / total),
+        }
+        for label in _reported_quintiles(people)
+        if label != "unknown"
+        for mask in [people.income == label]
+    ]
+
+
 def gap_change(q1_a: Metric, q5_a: Metric, q1_b: Metric, q5_b: Metric) -> Metric:
     """Change in Q5 minus Q1, in minutes; draw indices remain paired (section 9.9)."""
     shapes = {metric.replicates.shape for metric in (q1_a, q5_a, q1_b, q5_b)}
@@ -992,36 +1016,103 @@ def collapse_sparse_joint_cells(
     original, inverse = np.unique(combined, axis=0, return_inverse=True)
     mapping = {tuple(row): tuple(row) for row in original}
 
-    def counts() -> dict[tuple[str, ...], list[int]]:
-        result = {target: [0, 0] for target in mapping.values()}
-        for year, (cells, people, supported) in enumerate(
-            ((cells_a, people_a, supported_a), (cells_b, people_b, supported_b))
-        ):
-            assigned = np.array(["|".join(mapping[tuple(row)]) for row in cells])
-            for target in result:
-                mask = (assigned == "|".join(target)) & supported
-                result[target][year] = len(np.unique(people[mask]))
-        return result
+    members = {cell: [set(), set()] for cell in mapping}
+    for year, (codes, people, supported) in enumerate(
+        (
+            (inverse[: len(cells_a)], people_a, supported_a),
+            (inverse[len(cells_a) :], people_b, supported_b),
+        )
+    ):
+        for code, cell in enumerate(mapping):
+            members[cell][year].update(np.unique(people[(codes == code) & supported]))
 
-    rare = {target for target, n in counts().items() if min(n) < minimum_n}
-    merge_cars = {q for q, _, car in rare if car in {"1", "2+"}}
-    for original_cell, (q, density, car) in mapping.items():
-        if q in merge_cars and car in {"1", "2+"}:
-            mapping[original_cell] = (q, density, "1+")
-    rare = {target for target, n in counts().items() if min(n) < minimum_n}
-    merge_density = {
-        q for q, density, _ in rare if density in {"sparse", "very_sparse"}
-    }
-    for original_cell, (q, density, car) in mapping.items():
-        if q in merge_density and density in {"sparse", "very_sparse"}:
-            mapping[original_cell] = (q, "sparse+very_sparse", car)
-    unsupported_quintiles = {target[0] for target, n in counts().items() if min(n) == 0}
-    for original_cell, (q, density, car) in mapping.items():
-        if q in unsupported_quintiles:
-            mapping[original_cell] = (q, "all", "all")
-    unresolved = sorted(
-        "|".join(target) for target, n in counts().items() if min(n) < minimum_n
-    )
+    def counts() -> dict[tuple[str, ...], int]:
+        grouped = {target: [set(), set()] for target in mapping.values()}
+        for cell, target in mapping.items():
+            for dest, source in zip(grouped[target], members[cell], strict=True):
+                dest.update(source)
+        return {target: min(map(len, ids)) for target, ids in grouped.items()}
+
+    def merge(sources: set[tuple[str, ...]], target: tuple[str, ...]) -> None:
+        for cell, old in mapping.items():
+            if old in sources:
+                mapping[cell] = target
+
+    # Change only the affected pair, not every cell at that level in the quintile.
+    for axis, pair, label in (
+        (2, ("1", "2+"), "1+"),
+        (1, ("sparse", "very_sparse"), "sparse+very_sparse"),
+    ):
+        current = counts()
+        for cell, n in sorted(current.items()):
+            if cell[axis] != pair[0]:
+                continue
+            other = (*cell[:axis], pair[1], *cell[axis + 1 :])
+            if other in current and min(n, current[other]) < minimum_n:
+                merge({cell, other}, (*cell[:axis], label, *cell[axis + 1 :]))
+
+    density_order = ("very_sparse", "sparse", "intermediate", "dense")
+    vehicle_order = ("0", "1", "2+")
+
+    def distance(left: str, right: str, order: tuple[str, ...]) -> int:
+        if left == right:
+            return 0
+        combined_levels = {
+            "1+": {"1", "2+"},
+            "sparse+very_sparse": {"sparse", "very_sparse"},
+        }
+        return min(
+            (
+                abs(i - j)
+                for i, a in enumerate(order)
+                for j, b in enumerate(order)
+                if a in combined_levels.get(left, {left})
+                and b in combined_levels.get(right, {right})
+            ),
+            default=len(order),
+        )
+
+    while True:
+        current = counts()
+        choice = None
+        for cell, n in sorted(
+            current.items(),
+            key=lambda item: (item[1], item[0][2] != "unknown", item[0]),
+        ):
+            if n >= minimum_n:
+                break
+            neighbours = [
+                other
+                for other in current
+                if other != cell
+                and other[0] == cell[0]
+                and (other[1] == cell[1] or other[2] == cell[2] or current[other] > 0)
+            ]
+            if neighbours:
+                choice = (
+                    cell,
+                    min(
+                        neighbours,
+                        key=lambda other: (
+                            cell[1] != other[1] and cell[2] != other[2],
+                            distance(cell[1], other[1], density_order),
+                            distance(cell[2], other[2], vehicle_order),
+                            -current[other],
+                            other,
+                        ),
+                    ),
+                )
+                break
+        if choice is None:
+            break
+        merge({choice[0]}, choice[1])
+
+    current = counts()
+    for q in {cell[0] for cell, n in current.items() if n == 0}:
+        remaining = {cell for cell in current if cell[0] == q}
+        if len(remaining) > 1:
+            merge(remaining, (q, "all", "all"))
+    unresolved = sorted("|".join(cell) for cell, n in counts().items() if n < minimum_n)
     targets = np.array(["|".join(mapping[tuple(row)]) for row in original])
     mapped = targets[inverse]
     collapsed = sorted(
@@ -1081,6 +1172,7 @@ def reweighted_metrics(
     support: list[dict] | None = None,
     draw_audit: list[dict] | None = None,
     unresolved_cells: list[tuple[str, str]] | None = None,
+    collapse_shares: dict[str, float] | None = None,
 ) -> tuple[
     dict[tuple[str, str], tuple[int, Metric]],
     dict[tuple[str, str], tuple[int, Metric]],
@@ -1220,6 +1312,7 @@ def reweighted_metrics(
         unresolved_quintiles = {cell.split("|", 1)[0] for cell in unresolved}
         collapsed_rows.extend((basis, src, dest) for src, dest in collapsed)
         labels = np.unique(np.concatenate((mapped_a, mapped_b)))
+        merged_targets = np.isin(labels, [target for _, target in collapsed])
         joint_codes = []
         for prepared_sample, mapped in zip(prepared, (mapped_a, mapped_b), strict=True):
             sample, draws, known_p, travel, opened, pcells, dcells, cell_rows, _ = (
@@ -1298,6 +1391,15 @@ def reweighted_metrics(
                 denominator_b,
                 max_lost_share=1.0 if rep < 0 else max_lost_share,
             )
+            if rep < 0 and accepted and collapse_shares is not None:
+                # The full-sample pooled target, before any common-support rescaling.
+                collapse_shares[basis] = float(
+                    (
+                        denominator_a[merged_targets].sum() / denominator_a.sum()
+                        + denominator_b[merged_targets].sum() / denominator_b.sum()
+                    )
+                    / 2
+                )
             if rep >= 0 and draw_audit is not None:
                 draw_audit.append(
                     {
@@ -1945,7 +2047,6 @@ def run_report(
         "ENTD uses bracket midpoint per consumption unit; EMP uses INSEE's imputed "
         "income decile re-cut under individual weights.",
         "",
-        "ENTD unknown income remains a separate sixth group; 2019 has no equivalent. "
         "Residence density is the urban-unit-status × size proxy in both years. "
         "Household vehicles use the broad in-use definition (cars + VUL + "
         "camper vans), grouped 0, 1 and 2+.",
@@ -1953,19 +2054,19 @@ def run_report(
         "### Household vehicle definitions",
         "",
         "ENTD 2008 `Q_MENAGE.V1_JNBVEH + V1_JNBCCVUL` counts passenger cars, "
-        "vans and camper vans in use. The questionnaire asks: « De combien de "
-        "voitures particulières votre ménage dispose-t-il au total ? "
-        "Qu’elles soient au nom d’un des membres du ménage, d’un proche ou "
-        "au nom d’une société, y-compris de leasing. Donnez le nombre précis. » "
+        "vans and camper vans in use. `JNBVEH`: « De combien de "
+        "voitures particulières votre ménage dispose-t-il au total ? » "
+        "`JNBCCVUL`: « De combien de camping-cars, fourgonnettes, ou véhicules "
+        "utilitaires légers votre ménage dispose-t-il au total ? » "
         "Out-of-use vehicles are excluded by the questionnaire instructions. "
         "[ENTD questionnaire](https://www.statistiques.developpement-durable.gouv.fr/media/2309/download?inline).",
         "",
         "EMP 2019 `Q_MENAGE.JNBVEH` includes cars, VUL and camper vans, including "
         "vehicles out of use (`JNBVHS = 1`). When public out-of-use counts are "
-        "present, subtract `JNBVPHS + JNBCCHS + JNBVULHS`. The questionnaire "
-        "introduces these items: « Voici tout d’abord des questions sur les "
-        "véhicules dont dispose éventuellement votre ménage, dans ce logement "
-        "ou ailleurs (résidence secondaire, etc.). » "
+        "present, subtract `JNBVPHS + JNBCCHS + JNBVULHS`. `JNBVEH`: "
+        "« De combien de voitures particulières, de véhicules utilitaires légers "
+        "ou de camping-cars votre ménage dispose-t-il au total ? » "
+        "A zero total remains zero; `JNBVHS` is not asked in that case. "
         "[EMP questionnaire](https://www.statistiques.developpement-durable.gouv.fr/sites/default/files/2022-07/questionnaire_emp2019.pdf).",
         "",
         "## Household shares by vehicle class",
@@ -2000,9 +2101,13 @@ def run_report(
         "",
         "Reweighting excludes unknown income and targets the average of each "
         "survey's joint income × density × vehicle-class distribution, separately for "
-        "each estimation basis. Sparse car levels 1 and 2+ are pooled, then "
-        "sparse and very sparse density are pooled, within quintiles. Remaining "
-        "empty cells pool all density and car categories within a quintile. "
+        "each estimation basis. Only cells with respondents in at least one year "
+        "enter the joint grid. Within quintile, sparse cells pool 1 with 2+ at "
+        "the same density, then sparse with very sparse at the same vehicle class. "
+        "Remaining small cells merge with the closest cell, preferring the same "
+        "density, then the same vehicle class, then the closest supported cell "
+        "across both dimensions. The displayed destination is the retained label. "
+        "Whole-quintile pooling is a last resort for cells with no common support. "
         "Still-small cells make that quintile unavailable. Bootstrap targets "
         f"are rescaled over common support only when lost share is below "
         f"{100 * max_lost_share:g}%; each draw is recorded in reweighted.csv.",
@@ -2033,6 +2138,7 @@ def run_report(
             regression_merges: list[tuple[str, str, str]] = []
             reweight_draws: list[dict] = []
             unresolved_cells: list[tuple[str, str]] = []
+            collapse_shares: dict[str, float] = {}
             with modes._timed(timings, f"{selected.id} read"):
                 samples = [
                     read_cached_income(
@@ -2055,6 +2161,7 @@ def run_report(
                     mb,
                     minimum_n=minimum_n,
                     margins=margins,
+                    groups=_reported_quintiles(samples[0].people),
                     warning_group=f"{selected.id} raw levels",
                 )
                 gaps = gap_rows(
@@ -2083,12 +2190,16 @@ def run_report(
                     support=support,
                     draw_audit=reweight_draws,
                     unresolved_cells=unresolved_cells,
+                    collapse_shares=collapse_shares,
                 )
                 reweighted = level_rows(
                     ra,
                     rb,
                     minimum_n=minimum_n,
                     margins=margins,
+                    groups=tuple(
+                        q for q in trip_legs.INCOME_QUINTILE_LABELS if q != "unknown"
+                    ),
                     warning_group=f"{selected.id} reweighted levels",
                 )
                 reweighted_gaps = gap_rows(
@@ -2123,6 +2234,12 @@ def run_report(
                 "reweighted_gaps": reweighted_gaps,
                 "regressions": regressions,
                 "collapsed": collapsed,
+                "collapse_shares": collapse_shares,
+                "quintile_shares": [
+                    {"year": year, **row}
+                    for year, sample in zip((2008, 2019), samples, strict=True)
+                    for row in _quintile_share_rows(sample.people)
+                ],
                 "support": support,
                 "regression_merges": regression_merges,
                 "reweight_draws": reweight_draws,
@@ -2155,6 +2272,7 @@ def run_report(
         reweighted_gaps = result["reweighted_gaps"]
         regressions = result["regressions"]
         collapsed = result["collapsed"]
+        collapse_shares = result["collapse_shares"]
         support = result["support"]
         regression_merges = result["regression_merges"]
         reweight_draws = result["reweight_draws"]
@@ -2193,6 +2311,15 @@ def run_report(
         all_reweighted.extend(
             {
                 "scope": selected.id,
+                "row_type": "collapse_summary",
+                "basis": basis,
+                "collapsed_target_share": share,
+            }
+            for basis, share in collapse_shares.items()
+        )
+        all_reweighted.extend(
+            {
+                "scope": selected.id,
                 "row_type": "below_minimum",
                 "basis": basis,
                 "original_cell": cell,
@@ -2203,18 +2330,45 @@ def run_report(
         all_density.extend(density)
         all_support.extend(support)
         report.extend([f"## {selected.label} (`{selected.id}`)", ""])
-        if unknown_n == 0 or unknown_n >= minimum_n:
+        if unknown_n == 0:
+            report.append(
+                "ENTD 2008 income is complete in this file: the released income "
+                "bracket and consumption-unit count are populated. The dictionary "
+                "and released fields do not establish whether income brackets "
+                "were imputed upstream "
+                "(see [ENTD income audit]"
+                "(./entd2008.md#income-imputation-audit-step-12))."
+            )
+        elif unknown_n >= minimum_n:
             report.append(
                 f"ENTD unknown income: {100 * respondent_share:.2f}% of respondents "
                 f"and {100 * day_share:.2f}% of kept described-day weight. "
-                "EMP income is imputed; no equivalent unknown group."
+                "It is retained as a sixth group; EMP has no equivalent."
             )
         else:
             report.append(
-                "ENTD unknown-income shares suppressed for a small cell; "
+                "ENTD retains a sixth group; its shares are suppressed "
+                "for a small cell. "
                 "EMP has no equivalent unknown group."
             )
         report.append("")
+        report.extend(
+            [
+                "### Weighted income quintile shares",
+                "",
+                "Shares use the full weekday respondent roster and individual weights; "
+                "`n` is unweighted. Ties in income can produce unequal shares.",
+                "",
+                "| Year | Quintile | n | Share (%) |",
+                "|---:|:---|---:|---:|",
+                *[
+                    f"| {row['year']} | {row['quintile']} | {row['n']} | "
+                    f"{row['share_percent']:.2f} |"
+                    for row in result["quintile_shares"]
+                ],
+                "",
+            ]
+        )
         support_summary = []
         for group, year in sorted({(row["group"], row["year"]) for row in support}):
             entries = [
@@ -2334,6 +2488,12 @@ def run_report(
             )
         )
         report.extend(["### Collapsed joint cells", ""])
+        report.extend(
+            f"- {basis}: {100 * share:.2f}% of the full-sample pooled target is "
+            "in cells that combine two or more original cells."
+            for basis, share in collapse_shares.items()
+        )
+        report.append("")
         report.extend(
             [
                 f"- {basis}: `{original}` → `{target}`."

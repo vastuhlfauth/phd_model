@@ -2,6 +2,20 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income correction: zero vehicles, joint cells and income shares
+
+- EMP households with `JNBVEH = 0` are classified as zero even when the
+  follow-up `JNBVHS` and all out-of-use counts are blank.
+- Joint reweighting starts from observed cells only and pools sparse cells
+  individually within quintile. The report and reweighting CSV show the
+  full-sample pooled target share in merged cells, by estimation basis.
+- The report shows each quintile's individual-weighted roster share, omits
+  an empty ENTD unknown-income group, and quotes all three vehicle questions.
+  The ENTD release is complete; its dictionary does not establish upstream
+  imputation.
+- Validation: 41 synthetic income tests passed and Ruff passed; the
+  real-data report was not rerun.
+
 ### Zahavi income correction: harmonised household vehicles (2026-11-20)
 
 - ENTD `q_menage.csv` contains `V1_JNBCCVUL`; classes use
