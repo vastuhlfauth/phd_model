@@ -510,6 +510,96 @@ def fixed_cell_distribution(a: CellSample, b: CellSample) -> FixedDistribution:
     return FixedDistribution(a.values, weights, fallback)
 
 
+def counterfactual_statistics(
+    partition: PreparedGrouping,
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    compare: bool,
+) -> dict:
+    """Fixed-cell mean and distribution of daily minutes, section 9.9."""
+    a, b = partition.a, partition.b
+    observation_a = modes.Observations(a.minutes, a.weights, a.household)
+    observation_b = modes.Observations(b.minutes, b.weights, b.household)
+    observed = float(np.average(b.minutes, weights=b.weights))
+    result = {
+        "observed_2019": observed,
+        "predicted_2019": np.nan,
+        "observed_over_predicted": np.nan,
+        "ratio_low": np.nan,
+        "ratio_high": np.nan,
+        "mix_term": np.nan,
+        "fallback_share": np.nan,
+        "ks_d": np.nan,
+        "ks_low": np.nan,
+        "ks_high": np.nan,
+        "predicted_deciles": np.full(9, np.nan),
+        "observed_deciles": np.full(9, np.nan),
+    }
+    if not compare:
+        return result
+    if len(draws_a.multipliers) != len(draws_b.multipliers):
+        raise ValueError("Household draw counts must match")
+    source = CellSample(a.minutes, a.weights, partition.cells_a, partition.parents_a)
+    target = CellSample(b.minutes, b.weights, partition.cells_b, partition.parents_b)
+    prediction = fixed_cell_distribution(source, target)
+    predicted = float(np.average(prediction.values, weights=prediction.weights))
+    if predicted <= 0:
+        raise ValueError("The fixed-cell predicted mean must be positive")
+    predicted_sample = modes.Observations(
+        prediction.values, prediction.weights, a.household
+    )
+    probabilities = np.arange(1, 10) / 10
+    result.update(
+        predicted_2019=predicted,
+        observed_over_predicted=observed / predicted,
+        mix_term=predicted - float(np.average(a.minutes, weights=a.weights)),
+        fallback_share=prediction.fallback_share,
+        ks_d=modes.weighted_ks(predicted_sample, observation_b),
+        predicted_deciles=modes.weighted_deciles(predicted_sample, probabilities),
+        observed_deciles=modes.weighted_deciles(observation_b, probabilities),
+    )
+    support_masks = []
+    for cell in np.unique(target.cells):
+        target_mask = target.cells == cell
+        source_mask = source.cells == cell
+        if not source_mask.any():
+            source_mask = source.parents == target.parents[target_mask][0]
+        support_masks.append((source_mask, target_mask))
+    ratios = np.full(len(draws_a.multipliers), np.nan)
+    distances = np.full(len(draws_a.multipliers), np.nan)
+    for rep in range(len(ratios)):
+        weights_a = draws_a.weights(observation_a, rep)
+        weights_b = draws_b.weights(observation_b, rep)
+        if weights_a.sum() <= 0 or weights_b.sum() <= 0:
+            continue
+        if any(
+            weights_b[t].sum() > 0 and weights_a[s].sum() <= 0 for s, t in support_masks
+        ):
+            continue
+        draw_prediction = fixed_cell_distribution(
+            CellSample(a.minutes, weights_a, partition.cells_a, partition.parents_a),
+            CellSample(b.minutes, weights_b, partition.cells_b, partition.parents_b),
+        )
+        draw_mean = float(
+            np.average(draw_prediction.values, weights=draw_prediction.weights)
+        )
+        if draw_mean <= 0:
+            continue
+        ratios[rep] = np.average(b.minutes, weights=weights_b) / draw_mean
+        distances[rep] = modes.weighted_ks(
+            modes.Observations(
+                draw_prediction.values, draw_prediction.weights, a.household
+            ),
+            modes.Observations(b.minutes, weights_b, b.household),
+        )
+    result["ratio_low"], result["ratio_high"] = _percentile_interval(
+        ratios, confidence=90
+    )
+    result["ks_low"], result["ks_high"] = _percentile_interval(distances, confidence=95)
+    return result
+
+
 def merge_cells(
     cells_a: np.ndarray,
     people_a: np.ndarray,

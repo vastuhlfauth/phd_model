@@ -330,3 +330,87 @@ def test_scope_evaluation_has_all_partitions_and_suppresses_daytable(merge_confi
     assert all(item.summary["scope"] == selected.id for item in result.values())
     assert all(np.isnan(item.summary["mean_abs_log_ratio"]) for item in result.values())
     assert all("not compared" in item.summary["status"] for item in result.values())
+
+
+def test_fixed_counterfactual_reproduces_unchanged_cell_distributions(merge_config):
+    a = groupings.GroupingDays(
+        person=np.array(["p1", "p2", "p3", "p4"]),
+        household=np.array(["h1", "h2", "h3", "h4"]),
+        weights=np.ones(4),
+        minutes=np.array([10.0, 20.0, 50.0, 60.0]),
+        attributes={"population": np.array(["a", "a", "b", "b"])},
+    )
+    b = groupings.GroupingDays(
+        person=a.person,
+        household=a.household,
+        weights=np.array([3.0, 3.0, 1.0, 1.0]),
+        minutes=a.minutes,
+        attributes=a.attributes,
+    )
+    partition = groupings.prepare_grouping(
+        a, b, ("population",), config=merge_config, minimum_n=2
+    )
+    draws = modes.Draws(a.household, np.ones((20, 4)), seed=0)
+    result = groupings.counterfactual_statistics(partition, draws, draws, compare=True)
+    assert result["observed_2019"] == pytest.approx(25.0)
+    assert result["predicted_2019"] == pytest.approx(25.0)
+    assert result["observed_over_predicted"] == pytest.approx(1.0)
+    assert result["ratio_low"] == pytest.approx(1.0)
+    assert result["ratio_high"] == pytest.approx(1.0)
+    assert result["mix_term"] == pytest.approx(-10.0)
+    assert result["ks_d"] == pytest.approx(0.0)
+    assert result["ks_low"] == pytest.approx(0.0)
+    assert result["ks_high"] == pytest.approx(0.0)
+    assert result["predicted_deciles"] == pytest.approx(result["observed_deciles"])
+
+
+def test_fixed_counterfactual_daytable_is_not_compared(merge_config):
+    a = groupings.GroupingDays(
+        person=np.array(["p1", "p2"]),
+        household=np.array(["h1", "h2"]),
+        weights=np.ones(2),
+        minutes=np.array([10.0, 30.0]),
+        attributes={},
+    )
+    partition = groupings.prepare_grouping(a, a, (), config=merge_config, minimum_n=1)
+    draws = modes.Draws(a.household, np.ones((20, 2)), seed=0)
+    result = groupings.counterfactual_statistics(partition, draws, draws, compare=False)
+    assert result["observed_2019"] == pytest.approx(20)
+    assert np.isnan(result["predicted_2019"])
+    assert np.isnan(result["ks_d"])
+    assert np.isnan(result["observed_over_predicted"])
+
+
+def test_fixed_counterfactual_reports_missing_cell_parent_share(merge_config):
+    a = groupings.GroupingDays(
+        person=np.array(["p1", "p2"]),
+        household=np.array(["h1", "h2"]),
+        weights=np.ones(2),
+        minutes=np.array([10.0, 30.0]),
+        attributes={
+            "day_mode_group": np.array(["car_driver", "car_driver"]),
+            "population": np.array(["employed", "employed"]),
+        },
+    )
+    b = groupings.GroupingDays(
+        person=a.person,
+        household=a.household,
+        weights=a.weights,
+        minutes=a.minutes,
+        attributes={
+            "day_mode_group": a.attributes["day_mode_group"],
+            "population": np.array(["retired", "retired"]),
+        },
+    )
+    partition = groupings.prepare_grouping(
+        a,
+        b,
+        ("day_mode_group", "population"),
+        config=merge_config,
+        minimum_n=2,
+    )
+    draws = modes.Draws(a.household, np.ones((20, 2)), seed=0)
+    result = groupings.counterfactual_statistics(partition, draws, draws, compare=True)
+    assert result["fallback_share"] == pytest.approx(1.0)
+    assert result["predicted_2019"] == pytest.approx(20.0)
+    assert result["ks_d"] == pytest.approx(0.0)

@@ -2,6 +2,18 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Grouping report: fixed-cell statistics (2026-11-20)
+
+- Added fixed-cell predictions, observed/predicted mean ratios with paired
+  household-bootstrap 90% intervals, mix terms, weighted KS with 95%
+  intervals and both distributions' deciles. Full-sample absent cells use
+  their parent distribution; their 2019 weight share is recorded. Empty
+  bootstrap support invalidates that replicate instead of changing the
+  fixed partition or silently selecting a new parent.
+- Day-table cross-year results are suppressed. These calculations are not
+  yet connected to a report or CLI; no real-data report ran. Household-type
+  labels, per-mode statistics, cross-scope summaries and output remain open.
+
 ### Grouping report: cell statistics groundwork (2026-11-20)
 
 - Added cached weekday travel-day loading, the requested partition catalogue,
