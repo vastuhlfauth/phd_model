@@ -532,5 +532,202 @@ def evaluate_mode_scope(
         return rows
 
 
+def _target_mean(
+    target_codes: np.ndarray,
+    target_weight: np.ndarray,
+    source_codes: np.ndarray,
+    source_weight: np.ndarray,
+    source_minutes: np.ndarray,
+    *,
+    size: int,
+    max_lost_share: float,
+) -> tuple[float, float]:
+    """Reweight the source to the target, reporting unsupported target mass."""
+    target = np.bincount(target_codes, weights=target_weight, minlength=size)
+    source = np.bincount(source_codes, weights=source_weight, minlength=size)
+    if target.sum() <= 0 or source.sum() <= 0:
+        return np.nan, np.nan
+    target /= target.sum()
+    common = source > 0
+    lost = float(target[~common].sum())
+    if lost >= max_lost_share or not common.any():
+        return np.nan, lost
+    target[~common] = 0
+    target /= target.sum()
+    factor = np.divide(target, source, out=np.zeros(size), where=common)
+    reweighted = source_weight * factor[source_codes]
+    return float(np.dot(reweighted, source_minutes) / reweighted.sum()), lost
+
+
+def mode_reweighting(
+    a: ModeCellData,
+    b: ModeCellData,
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    selected: scope.Scope,
+    merge_config: groupings.MergeConfig,
+    minimum_n: int,
+    caution_n: int,
+    max_lost_share: float,
+    timings: dict[str, float] | None = None,
+) -> list[dict]:
+    """Reweight 2019 mode users to the 2008 joint mix, section 9.9."""
+    if minimum_n <= 0 or caution_n < minimum_n or not 0 < max_lost_share <= 1:
+        raise ValueError("Invalid disclosure or support threshold")
+    if len(draws_a.multipliers) == 0 or len(draws_a.multipliers) != len(
+        draws_b.multipliers
+    ):
+        raise ValueError("Both surveys need equal nonempty household draws")
+    dimensions = ("population", "density", "income")
+    recorded = {} if timings is None else timings
+    with modes._timed(recorded, f"{selected.id} mode reweighting"):
+        rows = []
+        for mode_name in np.union1d(a.days.mode, b.days.mode):
+            prepared = []
+            for data, draws in ((a, draws_a), (b, draws_b)):
+                if any(name not in data.attributes for name in dimensions):
+                    raise ValueError("Missing joint-reweighting attributes")
+                mode_mask = data.days.mode == mode_name
+                population = _text(data.attributes["population"], "population")
+                income = _text(data.attributes["income"], "income")
+                eligible = mode_mask & (population != "unknown") & (income != "unknown")
+                days = ModeDays(
+                    **{field.name: getattr(data.days, field.name)[eligible]
+                       for field in fields(ModeDays)}
+                )
+                matrix = np.column_stack(
+                    [
+                        _text(data.attributes[name][eligible], name)
+                        for name in dimensions
+                    ]
+                )
+                if np.any(np.char.find(matrix, "|") >= 0):
+                    raise ValueError("Joint labels cannot contain '|'")
+                all_weight = data.days.weight[mode_mask].sum()
+                excluded = (
+                    float(data.days.weight[mode_mask & ~eligible].sum() / all_weight)
+                    if all_weight > 0 else np.nan
+                )
+                prepared.append((days, matrix, _draw_weights(days, draws), excluded))
+            (days_a, matrix_a, weights_a, excluded_a), (
+                days_b, matrix_b, weights_b, excluded_b
+            ) = prepared
+            count_a, count_b = len(days_a.day), len(days_b.day)
+            visible_a, visible_b = count_a >= minimum_n, count_b >= minimum_n
+            row = {
+                "scope": selected.id, "mode": str(mode_name),
+                "n_2008": count_a, "n_2019": count_b,
+                "caution_2008": count_a < caution_n,
+                "caution_2019": count_b < caution_n,
+                "excluded_share_2008": excluded_a, "excluded_share_2019": excluded_b,
+                "mean_2008": np.nan, "mean_2019": np.nan,
+                "ratio_before": np.nan, "ratio_before_low": np.nan,
+                "ratio_before_high": np.nan, "ratio_after": np.nan,
+                "ratio_after_low": np.nan, "ratio_after_high": np.nan,
+                "lost_target_share": np.nan, "parent_fallback_share": np.nan,
+                "fixed_2008_mean": np.nan, "status": "",
+            }
+            if count_a:
+                row["mean_2008"] = (
+                    float(np.average(days_a.minutes, weights=days_a.weight))
+                    if visible_a else np.nan
+                )
+            if count_b:
+                row["mean_2019"] = (
+                    float(np.average(days_b.minutes, weights=days_b.weight))
+                    if visible_b else np.nan
+                )
+            if selected.distance == "daytable":
+                row["status"] = groupings.DAYTABLE_STATUS
+                rows.append(row)
+                continue
+            if not (visible_a and visible_b):
+                row["status"] = "insufficient mode-user days"
+                rows.append(row)
+                continue
+            joint_config = groupings.MergeConfig(
+                checkpoint_dir=merge_config.checkpoint_dir,
+                dimensions={
+                    name: rule for name, rule in merge_config.dimensions.items()
+                    if name == "density"
+                },
+            )
+            mapping = groupings.merge_cells(
+                matrix_a, days_a.day, matrix_b, days_b.day,
+                dimensions=dimensions, config=joint_config, minimum_n=minimum_n,
+            )
+            combined = np.concatenate((matrix_a, matrix_b))
+            original, inverse = np.unique(combined, axis=0, return_inverse=True)
+            mapped = np.array(["|".join(mapping[tuple(cell)]) for cell in original])
+            labels = mapped[inverse]
+            labels_a, labels_b = labels[:count_a], labels[count_a:]
+            unique_labels, codes = np.unique(labels, return_inverse=True)
+            codes_a, codes_b = codes[:count_a], codes[count_a:]
+            point, lost = _target_mean(
+                codes_a, days_a.weight, codes_b, days_b.weight, days_b.minutes,
+                size=len(unique_labels), max_lost_share=max_lost_share,
+            )
+            row["lost_target_share"] = lost
+            observed_a = float(row["mean_2008"])
+            observed_b = float(row["mean_2019"])
+            if observed_a > 0 and observed_b > 0:
+                row["ratio_before"] = observed_b / observed_a
+                if np.isfinite(point):
+                    row["ratio_after"] = point / observed_a
+            if not np.isfinite(point):
+                row["status"] = "insufficient common support for 2008 target"
+            elif lost > 0:
+                row["status"] = "2008 target rescaled to common support"
+            parents_a, parents_b = matrix_a[:, 0], matrix_b[:, 0]
+            missing = ~np.isin(labels_b, labels_a)
+            row["parent_fallback_share"] = float(
+                days_b.weight[missing].sum() / days_b.weight.sum()
+            )
+            if np.all(np.isin(parents_b[missing], parents_a)):
+                fixed = groupings.fixed_cell_distribution(
+                    groupings.CellSample(
+                        days_a.minutes, days_a.weight, labels_a, parents_a
+                    ),
+                    groupings.CellSample(
+                        days_b.minutes, days_b.weight, labels_b, parents_b
+                    ),
+                )
+                row["fixed_2008_mean"] = float(
+                    np.average(fixed.values, weights=fixed.weights)
+                )
+            else:
+                row["status"] = (row["status"] + "; " if row["status"] else "") + (
+                    "2008 parent distribution unavailable"
+                )
+            before, after = [], []
+            for wa, wb in zip(weights_a, weights_b, strict=True):
+                mean_a = (
+                    float(np.average(days_a.minutes, weights=wa))
+                    if wa.sum() else np.nan
+                )
+                mean_b = (
+                    float(np.average(days_b.minutes, weights=wb))
+                    if wb.sum() else np.nan
+                )
+                adjusted, _ = _target_mean(
+                    codes_a, wa, codes_b, wb, days_b.minutes,
+                    size=len(unique_labels), max_lost_share=max_lost_share,
+                )
+                before.append(mean_b / mean_a if mean_a > 0 else np.nan)
+                after.append(adjusted / mean_a if mean_a > 0 else np.nan)
+            for name, point_name, replicates in (
+                ("before", "ratio_before", before), ("after", "ratio_after", after)
+            ):
+                if np.isfinite(row[point_name]):
+                    low, high = groupings._percentile_interval(
+                        np.asarray(replicates), confidence=90
+                    )
+                    row[f"ratio_{name}_low"] = low
+                    row[f"ratio_{name}_high"] = high
+            rows.append(row)
+        return rows
+
+
 if __name__ == "__main__":
     raise SystemExit("Mode-cell report is not implemented yet.")

@@ -2,6 +2,27 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Mode-cell report: mode-user reweighting (2026-11-20)
+
+- Added mode-specific 2019-to-2008 joint reweighting, with independently
+  paired household-draw intervals for raw and reweighted ratios. Unknown
+  population category or income is excluded and its weight share recorded.
+  Sparse density neighbours may merge; population categories and income
+  quintiles remain separate. Small retained joint cells still contribute.
+- The configured Z2 maximum lost-target share applies to each draw and is
+  strict: below it, rescale onto common support; at or above it, the
+  reweighted estimate is unavailable. The 2008 fixed-cell diagnostic uses
+  the population parent when a 2019 cell has no 2008 observations and
+  reports the fallback share; a missing parent is explicitly unavailable.
+  Day-table cross-year output is suppressed and labelled.
+- Synthetic timing: 500 days, two modes and 20 household draws over all
+  eight scopes took 0.078 s, excluding extraction and all other stages;
+  timings are logged per scope. This is not a full-report runtime estimate.
+- Remaining: connect both completed stages to the output, implement
+  per-mode B2 and whole-km distance variant, duration-rounding bounds,
+  both-rate energy and collapse tests, and the resumable CLI/report with
+  six CSVs and Markdown. No real-data report or data write was run.
+
 ### Mode-cell report: subgroup statistics (2026-11-20)
 
 - Added scoped mode-user-day loading and all six subgroup analyses, using the
