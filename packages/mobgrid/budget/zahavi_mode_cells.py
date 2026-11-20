@@ -1,19 +1,27 @@
-"""Foundations for mode-user-day analyses, section 9.9.
+"""Daily mode-user time and energy report, section 9.9."""
 
-The report and command-line interface are not yet implemented.
-"""
-
+import argparse
+import logging
+import sys
+import tempfile
+from contextlib import ExitStack
 from dataclasses import dataclass, fields
+from datetime import datetime
 from itertools import combinations
+from pathlib import Path
 
 import duckdb
 import numpy as np
+import yaml
 
-from mobgrid.budget import modes_cache, scope, variation
+from mobgrid.budget import emp2019, entd2008, modes_cache, scope, scope_cube, variation
 from mobgrid.budget import variation_report as vr
 from mobgrid.budget import zahavi_groupings as groupings
 from mobgrid.budget import zahavi_income as income_module
 from mobgrid.budget import zahavi_modes as modes
+from mobgrid.energy.rates import load_energy_config
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -1732,6 +1740,16 @@ def energy_statistics(
                         visible = count >= minimum_n and not unavailable
                         row[f"n_{year}"] = count
                         row[f"caution_{year}"] = count < caution_n
+                        if dimension == "overall":
+                            scoped = data.has_trips & ~data.is_open
+                            unknown = scoped & ~np.isfinite(data.energy_kj)
+                            total_weight = data.day_weight[scoped].sum()
+                            row[f"unknown_energy_days_{year}"] = int(unknown.sum())
+                            row[f"unknown_energy_weight_share_{year}"] = (
+                                float(data.day_weight[unknown].sum() / total_weight)
+                                if total_weight > 0
+                                else np.nan
+                            )
                         row[f"mean_{year}"] = metric.value if visible else np.nan
                         low, high = (
                             groupings._percentile_interval(
@@ -1775,5 +1793,529 @@ def energy_statistics(
         return rows
 
 
+def run_report(
+    out: Path,
+    caches: list[modes_cache.SurveyCache],
+    connections: list[duckdb.DuckDBPyConnection],
+    attributes: list[
+        tuple[
+            dict[str, str],
+            dict[str, str],
+            income_module.HouseholdVehicles,
+            dict[str, str],
+        ]
+    ],
+    draws: list[modes.Draws],
+    *,
+    merge_config: groupings.MergeConfig,
+    measurement: variation.MeasurementConfig,
+    minimum_n: int,
+    caution_n: int,
+    max_lost_share: float,
+    margins: tuple[float, float],
+    seed: int,
+    timings: dict[str, float] | None = None,
+) -> dict[str, float]:
+    """Write all scoped mode-cell results from cached and reconstructed data."""
+    if any(len(items) != 2 for items in (caches, connections, attributes, draws)):
+        raise ValueError("Exactly two surveys are required")
+    times = {} if timings is None else timings
+    results: dict[str, list[dict]] = {
+        "mode_cells": [],
+        "reweighted": [],
+        "decomposition": [],
+        "rounding": [],
+        "energy": [],
+        "collapse": [],
+    }
+    for selected in scope.ALL_SCOPES:
+        with modes._timed(times, f"{selected.id} read mode data"):
+            cells = [
+                read_mode_cell_data(
+                    cache,
+                    selected,
+                    income=attr[0],
+                    density=attr[1],
+                    vehicles=attr[2].classes,
+                    household_type=attr[3],
+                )
+                for cache, attr in zip(caches, attributes, strict=True)
+            ]
+            trips = [
+                read_mode_trips(con, cache, selected)
+                for con, cache in zip(connections, caches, strict=True)
+            ]
+        results["mode_cells"].extend(
+            evaluate_mode_scope(
+                *cells,
+                *draws,
+                selected=selected,
+                merge_config=merge_config,
+                minimum_n=minimum_n,
+                caution_n=caution_n,
+                margins=margins,
+                timings=times,
+            )
+        )
+        results["reweighted"].extend(
+            mode_reweighting(
+                *cells,
+                *draws,
+                selected=selected,
+                merge_config=merge_config,
+                minimum_n=minimum_n,
+                caution_n=caution_n,
+                max_lost_share=max_lost_share,
+                timings=times,
+            )
+        )
+        results["decomposition"].extend(
+            mode_decompositions(
+                *trips,
+                *draws,
+                selected=selected,
+                minimum_n=minimum_n,
+                caution_n=caution_n,
+                timings=times,
+            )
+        )
+        results["rounding"].extend(
+            mode_rounding_bounds(
+                *trips,
+                selected=selected,
+                config=measurement,
+                minimum_n=minimum_n,
+                caution_n=caution_n,
+                seed=seed,
+                timings=times,
+            )
+        )
+        if selected == scope.REFERENCE_SCOPE:
+            with modes._timed(times, "read reference energy"):
+                cached = [
+                    income_module.read_cached_income(
+                        cache,
+                        selected,
+                        income=attr[0],
+                        density=attr[1],
+                        cars=attr[2].classes,
+                    )
+                    for cache, attr in zip(caches, attributes, strict=True)
+                ]
+            for rate in ("kh", "cp"):
+                with modes._timed(times, f"{rate} read mode energy"):
+                    mode_energy = [
+                        read_mode_energy(con, cache, selected, rate=rate)
+                        for con, cache in zip(connections, caches, strict=True)
+                    ]
+                    energy_surveys = [
+                        read_energy_survey(cache, item, days, rate=rate)
+                        for cache, item, days in zip(
+                            caches, cached, mode_energy, strict=True
+                        )
+                    ]
+                results["energy"].extend(
+                    energy_statistics(
+                        *energy_surveys,
+                        *draws,
+                        selected=selected,
+                        rate=rate,
+                        minimum_n=minimum_n,
+                        caution_n=caution_n,
+                        margins=margins,
+                        merge_config=merge_config,
+                        timings=times,
+                    )
+                )
+                results["collapse"].extend(
+                    energy_collapse(
+                        *mode_energy,
+                        *draws,
+                        selected=selected,
+                        rate=rate,
+                        minimum_n=minimum_n,
+                        caution_n=caution_n,
+                        timings=times,
+                    )
+                )
+    with modes._timed(times, "write report"):
+        out.mkdir(parents=True, exist_ok=True)
+        for name, rows in results.items():
+            modes._csv_rows(out / f"{name}.csv", rows, ("scope",))
+        lines = [
+            "# Daily time and energy by mode",
+            "",
+            "ENTD 2008 and EMP 2019, weighted weekday estimates, section 9.9.",
+            f"Cells under {minimum_n} days are hidden; under {caution_n} are flagged. "
+            "Hidden cells remain in national and median computations.",
+            "All eight scopes are included. Day-table cross-year results are "
+            "suppressed because coverage is not comparable.",
+            "Subgroup distances use the speed-corrected cache; decomposition "
+            "uses published distance or 2019 rounded crow-fly distance. "
+            "Selection terms and rounding bounds are reported separately.",
+            "Reweighting targets 2008 category × density × income; support loss "
+            "and parent fallback are reported in the CSV.",
+            "Energy is kJ above rest, from step 11, reference scope only. "
+            "Other-only days and open days are excluded from energy denominators; "
+            "non-users have zero attributable energy. Day-mode per-person energy "
+            "is undefined. Mixed-mode days sum known energies.",
+            "",
+            "## Detailed tables",
+            "",
+        ]
+        for name in results:
+            lines.append(f"- [{name}]({out.name}/{name}.csv)")
+        lines.extend(["", "## Mode, subgroup and composition", ""])
+        for selected in scope.ALL_SCOPES:
+            lines.extend([f"## {selected.label}", ""])
+            lines.extend(
+                modes._markdown_table(
+                    "Subgroup mode-user days",
+                    selected,
+                    [
+                        row
+                        for row in results["mode_cells"]
+                        if row["scope"] == selected.id
+                    ],
+                    (
+                        "mode",
+                        "grouping",
+                        "cell",
+                        "n_2008",
+                        "n_2019",
+                        "caution_2008",
+                        "caution_2019",
+                        "minutes_2008",
+                        "minutes_2019",
+                        "km_2008",
+                        "km_2019",
+                        "speed_2008",
+                        "speed_2019",
+                        "ratio",
+                        "ratio_low",
+                        "ratio_high",
+                        "verdict_15",
+                        "verdict_10",
+                        "ks_2008",
+                        "ks_2019",
+                        "distance_gap_2008",
+                        "speed_gap_2008",
+                        "selection_gap_2008",
+                        "distance_gap_2019",
+                        "speed_gap_2019",
+                        "selection_gap_2019",
+                        "comparison_status",
+                    ),
+                )
+            )
+            lines.extend(
+                modes._markdown_table(
+                    "Mode-user composition",
+                    selected,
+                    [
+                        row
+                        for row in results["reweighted"]
+                        if row["scope"] == selected.id
+                    ],
+                    (
+                        "mode",
+                        "n_2008",
+                        "n_2019",
+                        "ratio_before",
+                        "ratio_after",
+                        "lost_target_share",
+                        "parent_fallback_share",
+                        "status",
+                    ),
+                )
+            )
+            lines.extend(
+                modes._markdown_table(
+                    "Per-mode decomposition",
+                    selected,
+                    [
+                        row
+                        for row in results["decomposition"]
+                        if row["scope"] == selected.id
+                    ],
+                    (
+                        "mode",
+                        "variant",
+                        "delta",
+                        "trips",
+                        "distance",
+                        "speed",
+                        "selection",
+                        "status",
+                    ),
+                )
+            )
+            lines.extend(
+                modes._markdown_table(
+                    "Duration-rounding bounds",
+                    selected,
+                    [row for row in results["rounding"] if row["scope"] == selected.id],
+                    (
+                        "mode",
+                        "lower_min",
+                        "upper_min",
+                        "unmatched_2008_trip_share",
+                        "status",
+                    ),
+                )
+            )
+        lines.extend(["", "## Reference-scope energy", ""])
+        lines.extend(
+            modes._markdown_table(
+                "Unsupported-energy coverage",
+                scope.REFERENCE_SCOPE,
+                [
+                    row
+                    for row in results["energy"]
+                    if row["grouping"] == "overall" and row["basis"] == "travel_day"
+                ],
+                (
+                    "rate",
+                    "unknown_energy_days_2008",
+                    "unknown_energy_days_2019",
+                    "unknown_energy_weight_share_2008",
+                    "unknown_energy_weight_share_2019",
+                ),
+            )
+        )
+        lines.extend(
+            modes._markdown_table(
+                "Energy per travel day and per person",
+                scope.REFERENCE_SCOPE,
+                results["energy"],
+                (
+                    "rate",
+                    "grouping",
+                    "cell",
+                    "basis",
+                    "n_2008",
+                    "n_2019",
+                    "mean_2008",
+                    "mean_2019",
+                    "ratio",
+                    "ratio_low",
+                    "ratio_high",
+                    "verdict_15",
+                    "verdict_10",
+                    "status",
+                ),
+            )
+        )
+        lines.extend(["", "## Collapse test", ""])
+        lines.extend(
+            modes._markdown_table(
+                "Median pairwise KS",
+                scope.REFERENCE_SCOPE,
+                [
+                    row
+                    for row in results["collapse"]
+                    if row["kind"] == "within_year_median"
+                ],
+                (
+                    "year",
+                    "rate",
+                    "n_pairs",
+                    "time_ks",
+                    "time_ks_low",
+                    "time_ks_high",
+                    "energy_ks",
+                    "energy_ks_low",
+                    "energy_ks_high",
+                    "comparison",
+                    "status",
+                ),
+            )
+        )
+        lines.extend(
+            modes._markdown_table(
+                "Pairwise and cross-year KS",
+                scope.REFERENCE_SCOPE,
+                [
+                    row
+                    for row in results["collapse"]
+                    if row["kind"] != "within_year_median"
+                ],
+                (
+                    "kind",
+                    "year",
+                    "rate",
+                    "mode_a",
+                    "mode_b",
+                    "time_ks",
+                    "time_ks_low",
+                    "time_ks_high",
+                    "energy_ks",
+                    "energy_ks_low",
+                    "energy_ks_high",
+                    "status",
+                ),
+            )
+        )
+        out.with_suffix(".md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return times
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the report from signed caches, reconstructing trip legs temporarily."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--merge-config", type=Path, default=vr.ROOT / "config" / "zahavi_merges.yaml"
+    )
+    parser.add_argument(
+        "--income-config", type=Path, default=vr.ROOT / "config" / "zahavi_income.yaml"
+    )
+    parser.add_argument(
+        "--modes-config", type=Path, default=vr.ROOT / "config" / "zahavi_modes.yaml"
+    )
+    parser.add_argument("--config", type=Path, default=vr.DEFAULT_CONFIG_PATH)
+    parser.add_argument(
+        "--variation-config",
+        type=Path,
+        default=scope_cube.DEFAULT_VARIATION_CONFIG_PATH,
+    )
+    parser.add_argument(
+        "--emp2019-data-path", type=Path, default=emp2019.DEFAULT_DATA_PATH
+    )
+    parser.add_argument(
+        "--entd2008-data-path", type=Path, default=entd2008.DEFAULT_DATA_PATH
+    )
+    args = parser.parse_args(argv)
+    with args.merge_config.open(encoding="utf-8") as stream:
+        merge_config = groupings.MergeConfig.model_validate(yaml.safe_load(stream))
+    with args.income_config.open(encoding="utf-8") as stream:
+        income_config = income_module.IncomeConfig.model_validate(
+            yaml.safe_load(stream)
+        )
+    with args.modes_config.open(encoding="utf-8") as stream:
+        config = modes.ReportConfig.model_validate(yaml.safe_load(stream))
+    variation_config = variation.load_variation_config(args.variation_config)
+    logs_dir = vr.ROOT / config.logs_dir
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    log_path = logs_dir / f"{stamp}_zahavi_mode_cells.log"
+    summary_path = logs_dir / f"{stamp}_zahavi_mode_cells_summary.md"
+    counter = modes._WarningCounter()
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    stream_handler = logging.StreamHandler(sys.stderr)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    file_handler.setFormatter(formatter)
+    stream_handler.setFormatter(formatter)
+    root_logger = logging.getLogger()
+    old_level = root_logger.level
+    root_logger.setLevel(logging.INFO)
+    for handler in (file_handler, stream_handler, counter):
+        root_logger.addHandler(handler)
+    timings: dict[str, float] = {}
+    counts: list[str] = []
+    success = False
+    surveys = ((entd2008, args.entd2008_data_path), (emp2019, args.emp2019_data_path))
+    try:
+        with modes._timed(timings, "load existing caches"):
+            caches = [
+                income_module.read_signed_cache(
+                    survey,
+                    source,
+                    vr.ROOT / config.cache_dir,
+                    activity_stay_min=variation_config.scope.activity_stay_min,
+                    config_path=args.config,
+                )
+                for survey, source in surveys
+            ]
+        with ExitStack() as stack:
+            root = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+            with modes._timed(timings, "extract respondent attributes"):
+                attributes = [
+                    groupings.extract_attributes(
+                        survey,
+                        source,
+                        root / f"attributes-{index}",
+                        entd_cars=(vr.ROOT / income_config.entd_cars)
+                        if survey is entd2008
+                        else None,
+                    )
+                    for index, (survey, source) in enumerate(surveys)
+                ]
+            connections = []
+            energy_config = load_energy_config(args.config)
+            for index, (survey, source) in enumerate(surveys):
+                with modes._timed(
+                    timings, f"{survey.SURVEY_NAME} reconstruct trip legs"
+                ):
+                    con = stack.enter_context(duckdb.connect())
+                    paths = survey.extract_tables(source, root / f"tables-{index}")
+                    survey.register_views(con, paths)
+                    survey.build_trip_legs(
+                        con, energy_config, density_source=survey.DEFAULT_DENSITY_SOURCE
+                    )
+                    connections.append(con)
+            with modes._timed(timings, "shared household draws"):
+                seeds = np.random.SeedSequence(config.seed).spawn(2)
+                draws = [
+                    modes.make_draws(
+                        modes._roster_households(cache),
+                        n_reps=config.bootstrap_reps,
+                        seed=seed,
+                    )
+                    for cache, seed in zip(caches, seeds, strict=True)
+                ]
+            for (survey, _), cache in zip(surveys, caches, strict=True):
+                roster, days, trips = modes._sample_counts(cache, scope.REFERENCE_SCOPE)
+                counts.append(
+                    f"{survey.SURVEY_NAME}: {roster} roster persons, "
+                    f"{days} weekday days, {trips} scoped trips."
+                )
+            run_report(
+                args.out,
+                caches,
+                connections,
+                attributes,
+                draws,
+                merge_config=merge_config,
+                measurement=variation_config.measurement,
+                minimum_n=config.minimum_cell_n,
+                caution_n=income_config.caution_cell_n,
+                max_lost_share=income_config.max_lost_target_share,
+                margins=(
+                    variation_config.equivalence_margin,
+                    variation_config.secondary_equivalence_margin,
+                ),
+                seed=config.seed,
+                timings=timings,
+            )
+        success = True
+    finally:
+        if not success:
+            LOGGER.error("Mode-cell report failed; see traceback and log.")
+        lines = [
+            "# Mode-cell report summary",
+            "",
+            f"Status: {'completed' if success else 'failed'}.",
+            f"Inputs: {args.entd2008_data_path}; {args.emp2019_data_path}; "
+            f"{vr.ROOT / income_config.entd_cars}.",
+            f"Scopes: {', '.join(item.id for item in scope.ALL_SCOPES)}.",
+            f"Household draws per survey: {config.bootstrap_reps}.",
+            *counts,
+            f"Output: {args.out}; report: {args.out.with_suffix('.md')}.",
+            "",
+            "## Stage timings (seconds)",
+            *[f"- {stage}: {seconds:.2f}" for stage, seconds in timings.items()],
+            "",
+            "## Warnings",
+            *([f"- {message}" for message in counter.messages] or ["- None."]),
+        ]
+        summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        for handler in (file_handler, stream_handler, counter):
+            root_logger.removeHandler(handler)
+            handler.close()
+        root_logger.setLevel(old_level)
+    return 0
+
+
 if __name__ == "__main__":
-    raise SystemExit("Mode-cell report is not implemented yet.")
+    raise SystemExit(main())

@@ -2,6 +2,30 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Mode-cell report: CLI and synthetic integration (2026-11-20)
+
+- Added the all-scope CLI and Markdown report, with the six requested CSVs.
+  Signed Z1 caches are read without modification; source trip legs and
+  respondent attributes are rebuilt in temporary directories. The existing
+  cache makes reruns possible, but report-stage checkpoints were not added.
+- The report includes all-scope subgroup and reweighting tables, B2 variants
+  and rounding bounds, reference-scope energy and collapse results, disclosure
+  notes, fallback/support information and unsupported-energy coverage. Each
+  stage logs elapsed time; the dated log and summary use the configured logs
+  directory. Per-scope and rate-set intervals are in the CSVs.
+- Synthetic end-to-end CLI uses temporary fixtures for both surveys and all
+  eight scopes. Report writing took 0.12 s for four days, two modes and five
+  draws; this is not a comparable 500-day benchmark. Scaling the earlier
+  2.607 s calculation stages linearly by days, modes and draws gives about
+  79 minutes for 26,000 days, seven modes and 200 draws. This is highly
+  uncertain: pairwise KS, I/O, source extraction, reconstruction and report
+  writing do not follow that scaling and were not measured at full size.
+- CLI config-file defaults follow the existing Z3 CLI pattern, since the
+  requested no-extra-flags command needs them and the shared config modules
+  cannot be changed while Z3 runs. They can all be overridden via CLI flags.
+- No real-data report or data write was run. Open point: compare synthetic
+  estimate with the user's eventual full-run summary.
+
 ### Mode-cell report: reference energy calculations (2026-11-20)
 
 - Added reference-scope KH and Compendium energy by overall population,

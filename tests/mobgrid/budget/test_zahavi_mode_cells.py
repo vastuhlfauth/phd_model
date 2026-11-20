@@ -1,11 +1,13 @@
 """Synthetic tests for the mode-user-day analysis, section 9.9."""
 
+import csv
 from dataclasses import replace
 from pathlib import Path
 
 import duckdb
 import numpy as np
 import pytest
+import yaml
 from mobgrid.budget import modes_cache, scope, variation
 from mobgrid.budget import zahavi_groupings as groupings
 from mobgrid.budget import zahavi_income as income
@@ -842,6 +844,8 @@ def test_energy_cache_join_and_unknown_only_days(tmp_path: Path) -> None:
         r for r in rows if r["grouping"] == "overall" and r["basis"] == "person"
     )
     assert total["mean_2008"] == pytest.approx(60 / (30 - 3 - 4))
+    assert total["unknown_energy_days_2008"] == 1
+    assert total["unknown_energy_weight_share_2008"] == pytest.approx(4 / 6)
 
 
 def test_energy_person_mode_accounting_in_every_draw() -> None:
@@ -888,3 +892,230 @@ def test_zero_2019_energy_has_zero_ratio(tmp_path: Path) -> None:
     )
     assert total["ratio"] == 0
     assert total["ratio_low"] == 0
+
+
+def test_synthetic_report_writes_all_tables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    caches = []
+    connections = []
+    attrs = []
+    for year in (2008, 2019):
+        root = tmp_path / str(year)
+        root.mkdir()
+        cache = modes_cache.SurveyCache(root)
+        con = duckdb.connect()
+        con.execute(
+            """CREATE TABLE trip_legs AS
+            SELECT 'd' || i AS day_id, 1 AS num_dep,
+                2.0 AS distance_km_declared, 30.0 AS energy_kh_kj,
+                20.0 AS energy_cp_kj FROM range(4) t(i)"""
+        )
+        con.execute(
+            """COPY (SELECT 'p' || i ident_ind, 'h' || i ident_men,
+                'employed' population_category, 1.0 weight
+                FROM range(4) t(i)) TO ? (FORMAT PARQUET)""",
+            [str(cache.roster)],
+        )
+        con.execute(
+            """COPY (SELECT 'd' || i day_id, 'p' || i ident_ind,
+                'h' || i ident_men, 1.0 pond_jour, TRUE is_round
+                FROM range(4) t(i)) TO ? (FORMAT PARQUET)""",
+            [str(cache.day_base)],
+        )
+        for selected in scope.ALL_SCOPES:
+            con.execute(
+                """COPY (SELECT 'd' || i day_id, 'p' || i ident_ind,
+                    'h' || i ident_men, 1 num_dep,
+                    CASE WHEN i % 2 = 0 THEN 'walk' ELSE 'car_driver' END mode7,
+                    1.0 pond_jour, 10.0 duration_min, 2.0 distance_km,
+                    1.8 crow_fly_km, 'employed' population_category,
+                    'q1' income_quintile, 1.4 motive, 'monday' described_weekday_name
+                    FROM range(4) t(i)) TO ? (FORMAT PARQUET)""",
+                [str(cache.trips(selected))],
+            )
+            con.execute(
+                """COPY (SELECT 'd' || i day_id, 10.0 total_time_min,
+                    'q1' income_quintile, 30.0 total_energy_kh_kj,
+                    20.0 total_energy_cp_kj,
+                    CASE WHEN i % 2 = 0 THEN 'walking_only'
+                         ELSE 'car_driver' END day_mode_group
+                    FROM range(4) t(i)) TO ? (FORMAT PARQUET)""",
+                [str(cache.days(selected))],
+            )
+        caches.append(cache)
+        connections.append(con)
+        attrs.append(
+            (
+                {f"p{i}": "q1" for i in range(4)},
+                {f"p{i}": "dense" for i in range(4)},
+                income.HouseholdVehicles({f"h{i}": "1" for i in range(4)}, {}),
+                {f"h{i}": "single_person" for i in range(4)},
+            )
+        )
+    draws = modes.Draws(np.array([f"h{i}" for i in range(4)]), np.ones((5, 4)), 0)
+    measurement = variation.MeasurementConfig(
+        rounding_draws=3,
+        rounding_levels=(1, 5, 15, 30),
+        duration_upper_min=(5, 10, 15, 30, 60),
+        minimum_duration_min=5,
+        short_duration_min=5,
+        short_distance_km=1,
+    )
+    out = tmp_path / "report"
+    try:
+        cells.run_report(
+            out,
+            caches,
+            connections,
+            attrs,
+            [draws, draws],
+            merge_config=groupings.MergeConfig(checkpoint_dir=tmp_path, dimensions={}),
+            measurement=measurement,
+            minimum_n=1,
+            caution_n=2,
+            max_lost_share=0.01,
+            margins=(0.15, 0.10),
+            seed=0,
+        )
+    finally:
+        for con in connections:
+            con.close()
+    for name in (
+        "mode_cells",
+        "reweighted",
+        "decomposition",
+        "rounding",
+        "energy",
+        "collapse",
+    ):
+        with (out / f"{name}.csv").open(encoding="utf-8", newline="") as stream:
+            assert list(csv.DictReader(stream)), name
+    with (out / "mode_cells.csv").open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    assert {row["scope"] for row in rows} == {item.id for item in scope.ALL_SCOPES}
+    assert all(not row["ratio"] for row in rows if "daytable" in row["scope"])
+    reference = next(
+        row
+        for row in rows
+        if row["scope"] == scope.REFERENCE_SCOPE.id
+        and row["mode"] == "walk"
+        and row["grouping"] == "population"
+    )
+    assert float(reference["minutes_2008"]) == pytest.approx(10)
+    assert float(reference["ratio"]) == pytest.approx(1)
+    with (out / "energy.csv").open(encoding="utf-8", newline="") as stream:
+        energy_rows = list(csv.DictReader(stream))
+    for rate, expected in (("kh", 30.0), ("cp", 20.0)):
+        energy_row = next(
+            row
+            for row in energy_rows
+            if row["rate"] == rate
+            and row["grouping"] == "overall"
+            and row["basis"] == "person"
+        )
+        assert float(energy_row["mean_2008"]) == pytest.approx(expected)
+        assert float(energy_row["ratio"]) == pytest.approx(1)
+    with (out / "collapse.csv").open(encoding="utf-8", newline="") as stream:
+        collapse_rows = list(csv.DictReader(stream))
+    assert all(
+        float(row["time_ks"]) == pytest.approx(0)
+        and float(row["energy_ks"]) == pytest.approx(0)
+        for row in collapse_rows
+        if row["kind"] == "within_year_median"
+    )
+    assert (tmp_path / "report.md").is_file()
+    configs = {
+        "merge": {"checkpoint_dir": "checkpoint", "dimensions": {}},
+        "income": {
+            "entd_cars": "cars.csv",
+            "caution_cell_n": 2,
+            "checkpoint_dir": "checkpoint",
+            "regression_level_order": {},
+            "max_lost_target_share": 0.01,
+        },
+        "modes": {
+            "trip_grid_max_min": 240,
+            "day_grid_max_min": 360,
+            "minimum_cell_n": 1,
+            "thresholds_min": [15],
+            "bootstrap_reps": 5,
+            "seed": 0,
+            "cache_dir": "cache",
+            "b3_report": "b3.md",
+            "logs_dir": "logs",
+            "reference_2008_min": 52,
+            "reference_2019_min": 57,
+            "reference_tolerance_min": 0.05,
+        },
+        "variation": {
+            "equivalence_margin": 0.15,
+            "secondary_equivalence_margin": 0.10,
+            "measurement": measurement.model_dump(),
+            "scope": {"activity_stay_min": 15},
+        },
+    }
+    for name, config in configs.items():
+        (tmp_path / f"{name}.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+    monkeypatch.setattr(cells.vr, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        cells.income_module,
+        "read_signed_cache",
+        lambda survey, *_args, **_kwargs: caches[0 if survey is cells.entd2008 else 1],
+    )
+    monkeypatch.setattr(
+        cells.groupings,
+        "extract_attributes",
+        lambda survey, *_args, **_kwargs: attrs[0 if survey is cells.entd2008 else 1],
+    )
+    monkeypatch.setattr(cells, "load_energy_config", lambda *_args: None)
+    monkeypatch.setattr(cells.modes, "make_draws", lambda *_args, **_kwargs: draws)
+    for survey in (cells.entd2008, cells.emp2019):
+        monkeypatch.setattr(survey, "extract_tables", lambda *_args: {})
+        monkeypatch.setattr(survey, "register_views", lambda *_args: None)
+        monkeypatch.setattr(
+            survey,
+            "build_trip_legs",
+            lambda con, *_args, **_kwargs: con.execute(
+                """CREATE TABLE trip_legs AS
+                SELECT 'd' || i AS day_id, 1 AS num_dep,
+                    2.0 AS distance_km_declared, 30.0 AS energy_kh_kj,
+                    20.0 AS energy_cp_kj FROM range(4) t(i)"""
+            ),
+        )
+    cli_out = tmp_path / "cli-report"
+    assert (
+        cells.main(
+            [
+                "--out",
+                str(cli_out),
+                "--merge-config",
+                str(tmp_path / "merge.yaml"),
+                "--income-config",
+                str(tmp_path / "income.yaml"),
+                "--modes-config",
+                str(tmp_path / "modes.yaml"),
+                "--variation-config",
+                str(tmp_path / "variation.yaml"),
+                "--config",
+                str(tmp_path / "unused.yaml"),
+                "--entd2008-data-path",
+                str(tmp_path / "entd"),
+                "--emp2019-data-path",
+                str(tmp_path / "emp"),
+            ]
+        )
+        == 0
+    )
+    for name in (
+        "mode_cells",
+        "reweighted",
+        "decomposition",
+        "rounding",
+        "energy",
+        "collapse",
+    ):
+        with (cli_out / f"{name}.csv").open(encoding="utf-8", newline="") as stream:
+            assert list(csv.DictReader(stream)), name
+    assert (tmp_path / "cli-report.md").is_file()
+    assert list((tmp_path / "logs").glob("*_zahavi_mode_cells_summary.md"))
