@@ -17,6 +17,10 @@ from mobgrid.budget import zahavi_modes as modes
 
 LOGGER = logging.getLogger(__name__)
 
+DAYTABLE_STATUS = (
+    "ENTD 2008 day-table coverage beyond 80 km not established; not compared"
+)
+
 
 class OrderedDimension(BaseModel):
     """Ordered levels and preferred neighbouring pairs."""
@@ -692,11 +696,7 @@ def evaluate_groupings(
                 margins=margins,
                 compare=selected.distance != "daytable",
             )
-        status = (
-            "ENTD 2008 day-table coverage beyond 80 km not established; not compared"
-            if selected.distance == "daytable"
-            else ""
-        )
+        status = DAYTABLE_STATUS if selected.distance == "daytable" else ""
         summary.update(
             scope=selected.id,
             grouping=name,
@@ -708,6 +708,52 @@ def evaluate_groupings(
             row.update(scope=selected.id, grouping=name, status=status)
         results[name] = GroupingResult(partition, cells, summary)
     return results
+
+
+def summary_rows(
+    summaries: list[dict], counterfactuals: dict[tuple[str, str], dict]
+) -> list[dict]:
+    """Sort scope-by-grouping summaries by ratio distance from one, section 9.9."""
+    scope_order = {item.id: index for index, item in enumerate(scope_module.ALL_SCOPES)}
+    rows = []
+    seen = set()
+    for summary in summaries:
+        scope_id = summary["scope"]
+        grouping = summary["grouping"]
+        key = (scope_id, grouping)
+        if scope_id not in scope_order or key in seen or key not in counterfactuals:
+            raise ValueError(f"Invalid, duplicate or unmatched grouping summary {key}")
+        seen.add(key)
+        counter = counterfactuals[key]
+        compare = scope_module.Scope.parse(scope_id).distance != "daytable"
+        row = {
+            "scope": scope_id,
+            "grouping": grouping,
+            "eta2_2008": summary["eta2_2008"],
+            "eta2_2019": summary["eta2_2019"],
+            "mean_abs_log_ratio": summary["mean_abs_log_ratio"] if compare else np.nan,
+            "equivalent_10_share": summary["equivalent_10_share"]
+            if compare
+            else np.nan,
+            "observed_over_predicted": counter["observed_over_predicted"]
+            if compare
+            else np.nan,
+            "ratio_low": counter["ratio_low"] if compare else np.nan,
+            "ratio_high": counter["ratio_high"] if compare else np.nan,
+            "ks_d": counter["ks_d"] if compare else np.nan,
+            "n_cells": summary["n_cells"],
+            "status": "" if compare else DAYTABLE_STATUS,
+        }
+        rows.append(row)
+    if seen != set(counterfactuals):
+        raise ValueError("Counterfactuals include unmatched grouping summaries")
+
+    def sort_key(row: dict) -> tuple[int, float, str]:
+        ratio = row["observed_over_predicted"]
+        distance = abs(ratio - 1) if np.isfinite(ratio) else float("inf")
+        return scope_order[row["scope"]], distance, row["grouping"]
+
+    return sorted(rows, key=sort_key)
 
 
 def fixed_cell_distribution(a: CellSample, b: CellSample) -> FixedDistribution:

@@ -524,3 +524,63 @@ def test_person_mode_cache_loader_preserves_zero_days_and_open_days(tmp_path):
     walk = data.modes.index("walk")
     assert data.minutes[:, walk].tolist() == [10, 0]
     assert data.used[:, walk].tolist() == [True, False]
+
+
+def test_summary_sorts_by_ratio_distance_and_suppresses_daytable():
+    summaries = [
+        {
+            "scope": "round-dest-local",
+            "grouping": "a",
+            "eta2_2008": 0.1,
+            "eta2_2019": 0.2,
+            "mean_abs_log_ratio": 0.3,
+            "equivalent_10_share": 0.5,
+            "n_cells": 2,
+        },
+        {
+            "scope": "round-dest-local",
+            "grouping": "b",
+            "eta2_2008": 0.2,
+            "eta2_2019": 0.3,
+            "mean_abs_log_ratio": 0.1,
+            "equivalent_10_share": 0.7,
+            "n_cells": 3,
+        },
+        {
+            "scope": "round-dest-daytable",
+            "grouping": "a",
+            "eta2_2008": 0.4,
+            "eta2_2019": 0.5,
+            "mean_abs_log_ratio": 0.2,
+            "equivalent_10_share": 0.6,
+            "n_cells": 2,
+        },
+    ]
+    counterfactuals = {
+        ("round-dest-local", "a"): {
+            "observed_over_predicted": 1.2,
+            "ratio_low": 1.1,
+            "ratio_high": 1.3,
+            "ks_d": 0.2,
+        },
+        ("round-dest-local", "b"): {
+            "observed_over_predicted": 1.01,
+            "ratio_low": 0.9,
+            "ratio_high": 1.1,
+            "ks_d": 0.1,
+        },
+        ("round-dest-daytable", "a"): {
+            "observed_over_predicted": 1.3,
+            "ratio_low": 1.2,
+            "ratio_high": 1.4,
+            "ks_d": 0.5,
+        },
+    }
+    rows = groupings.summary_rows(summaries, counterfactuals)
+    assert [row["grouping"] for row in rows] == ["b", "a", "a"]
+    assert rows[0]["ratio_low"] == pytest.approx(0.9)
+    assert rows[2]["eta2_2008"] == pytest.approx(0.4)
+    assert np.isnan(rows[2]["observed_over_predicted"])
+    assert np.isnan(rows[2]["mean_abs_log_ratio"])
+    assert np.isnan(rows[2]["ks_d"])
+    assert "not compared" in rows[2]["status"]

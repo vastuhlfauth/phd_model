@@ -2,6 +2,16 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Grouping report: cross-scope summary rows (2026-11-20)
+
+- Added one summary row per scope and grouping, sorted within scope by the
+  counterfactual ratio's distance from one. The four day-table scopes retain
+  within-year eta-squared but suppress all cross-year summary fields and
+  display the coverage warning.
+- Household-type label verification, report rendering, the resumable CLI,
+  checkpointing and synthetic runtime timings remain open. No real-data
+  report ran.
+
 ### Grouping report: per-mode person estimates (2026-11-20)
 
 - Added cached mode-by-day loading and section 9.9's roster denominator,
