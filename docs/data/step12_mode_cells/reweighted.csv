@@ -1,0 +1,57 @@
+scope,mode,n_2008,n_2019,caution_2008,caution_2019,excluded_share_2008,excluded_share_2019,mean_2008,mean_2019,ratio_before,ratio_before_low,ratio_before_high,ratio_after,ratio_after_low,ratio_after_high,lost_target_share,parent_fallback_share,fixed_2008_mean,status
+round-dest-local,bike,401,253,False,False,0,0,37.96086061,39.30260307,1.035345417,0.8943086973,1.179530348,,,,0.01879717942,0,40.91204123,insufficient common support for 2008 target
+round-dest-local,car_driver,8336,5569,False,False,0,0.0003757445896,60.29578204,64.27646182,1.066019208,1.038619733,1.100728897,1.073073243,1.043801242,1.106762889,0,0,60.27463437,
+round-dest-local,car_passenger,2024,1626,False,False,0.0004098228624,0.0003772564154,40.1570633,45.29568518,1.127963089,1.058640938,1.202397117,1.108640993,1.04711643,1.181254665,0,0,40.49591997,
+round-dest-local,other,615,320,False,False,0,0,58.97229578,59.40729893,1.007376398,0.8925011459,1.149906544,,,,0.01238589705,0,59.64376747,insufficient common support for 2008 target
+round-dest-local,train,559,240,False,False,0,0.00270494194,117.4358274,127.1400995,1.082634681,0.9838739569,1.179236418,1.074186244,,,0.009624152146,0.005896207704,118.0749932,2008 target rescaled to common support
+round-dest-local,urban_pt,1397,913,False,False,0,0.001456573903,72.14161273,74.98288574,1.039384662,0.9714849392,1.101428375,1.045023873,0.9821804338,1.10551398,0,0,71.23380744,
+round-dest-local,walk,3636,2405,False,False,0,0.0003634023002,30.30103617,31.90222894,1.052842839,1.001493112,1.10411976,1.043863899,0.9953043734,1.094030588,0,0,30.35435295,
+round-dest-daytable,bike,404,253,False,False,0,0,38.05100383,39.30260307,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,car_driver,8432,5616,False,False,0,0.0003725128907,63.05824115,67.24750727,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,car_passenger,2066,1653,False,False,0.0004021526458,0.0003720009886,42.2997081,47.1573842,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,other,625,329,False,False,0,0,59.94811503,64.41991323,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,train,588,256,False,False,0,0.002592802361,132.7845031,134.1060767,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,urban_pt,1410,918,False,False,0,0.001452746417,73.97445411,75.38740261,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,walk,3646,2413,False,False,0,0.0003623878158,30.28836226,31.8830416,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-local,bike,493,291,False,False,0,0,42.54697671,50.72998939,1.192328887,1.018962532,1.39985966,1.240443347,,,0.006119314316,0.001302285422,47.126502,2008 target rescaled to common support
+round-allpurp-local,car_driver,8409,5585,False,False,0,0.0003746162396,61.72665984,67.26549577,1.089731665,1.06135682,1.123553528,1.097981487,1.067886331,1.132205326,0,0,61.72421356,
+round-allpurp-local,car_passenger,2053,1633,False,False,0.0004058296684,0.0003761338296,40.70206145,45.64661246,1.121481587,1.052962825,1.189668385,1.101751926,1.043910588,1.174108813,0,0,41.03291942,
+round-allpurp-local,other,622,327,False,False,0,0,59.25856657,64.15470328,1.082623273,0.9690150609,1.222040581,,,,0.01291030432,0,60.28567103,insufficient common support for 2008 target
+round-allpurp-local,train,563,240,False,False,0,0.00270494194,117.5406087,127.5306708,1.084992431,0.9833830014,1.17929808,1.077860513,,,0.009584885121,0.005896207704,118.272405,2008 target rescaled to common support
+round-allpurp-local,urban_pt,1402,916,False,False,0,0.001454370288,72.67289253,75.64595061,1.040910138,0.9742045705,1.10498927,1.047489496,0.9861174804,1.110664378,0,0,71.77562948,
+round-allpurp-local,walk,4224,2854,False,False,0,0.0003127566708,37.50219811,39.8223502,1.061867096,1.012404217,1.111621877,1.057744485,1.007058045,1.11043265,0,0,37.77258319,
+round-allpurp-daytable,bike,497,292,False,False,0,0,42.87780542,51.01087317,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,car_driver,8507,5633,False,False,0,0.0003713666298,64.57705755,70.91999528,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,car_passenger,2099,1659,False,False,0.0003982174357,0.0003711818325,42.89427492,47.67394724,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,other,632,336,False,False,0,0,60.87753997,69.35396857,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,train,594,257,False,False,0,0.002579465959,133.000519,134.7409396,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,urban_pt,1415,921,False,False,0,0.001450554359,74.58570146,76.04811396,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,walk,4237,2863,False,False,0,0.0003118994318,37.55053721,39.91268613,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-local,bike,422,266,False,False,0,0,38.58514126,39.0747042,1.012687862,0.8868203905,1.1435455,,,,0.01872491677,0,40.62159498,insufficient common support for 2008 target
+alldays-dest-local,car_driver,8834,5781,False,False,0,0.000360993254,60.66967179,64.4538243,1.062373051,1.033182395,1.093176826,1.068713615,1.036825687,1.09757024,0,0,60.58981743,
+alldays-dest-local,car_passenger,2167,1716,False,False,0.0003845764568,0.0003524475336,40.49795162,45.35265424,1.119875263,1.057132879,1.184697314,1.112925797,1.05028193,1.179680374,0,0,40.5612293,
+alldays-dest-local,other,650,355,False,False,0,0,58.23917688,59.04407239,1.013820516,0.9130950099,1.150555064,0.9961345343,,,0.007775641288,0,58.47378797,2008 target rescaled to common support
+alldays-dest-local,train,603,252,False,False,0,0.002551959894,116.4142091,125.7757242,1.080415571,0.9852661609,1.181691113,1.071747041,,,0.001329454964,0,117.2601616,2008 target rescaled to common support
+alldays-dest-local,urban_pt,1475,957,False,False,0,0.00137205452,72.10666514,74.94183537,1.039319115,0.9747709824,1.102792192,1.041848589,0.9775126362,1.105386466,0,0.001261769986,71.47673515,
+alldays-dest-local,walk,3809,2501,False,False,0,0.0003474006436,30.42828402,31.44438812,1.033393408,0.985856274,1.0802016,1.024528737,0.9759231039,1.072717279,0,0,30.39602629,
+alldays-dest-daytable,bike,428,268,False,False,0,0,39.27606747,39.14324445,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,car_driver,9046,5895,False,False,0,0.0003535018421,65.35177225,69.72674847,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,car_passenger,2286,1806,False,False,0.0003683577101,0.0003352573763,44.93526864,51.20893849,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,other,687,377,False,False,0,0.003103911675,64.5333076,72.10136703,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,train,681,287,False,False,0,0.002335735154,144.0555016,139.3927749,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,urban_pt,1507,981,False,False,0,0.001338481553,74.08161187,78.13404152,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,walk,3850,2541,False,False,0,0.0003416823572,30.45351715,31.49923429,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-local,bike,520,306,False,False,0,0,43.08927244,50.079322,1.162222501,1.00916187,1.359445726,1.193101966,,,0.006536925339,0.001247473301,46.78808835,2008 target rescaled to common support
+alldays-allpurp-local,car_driver,8926,5801,False,False,0,0.0003597457593,62.0983992,67.50744045,1.087104359,1.060964343,1.116126192,1.095848011,1.066112375,1.127543101,0,0,62.013547,
+alldays-allpurp-local,car_passenger,2207,1726,False,False,0.0003789373162,0.0003510372405,41.43480696,45.78145641,1.104903335,1.039005067,1.168985536,1.097353441,1.032826297,1.162353479,0,0,41.29564975,
+alldays-allpurp-local,other,657,362,False,False,0,0,58.64703252,63.39559233,1.080968458,0.9783514839,1.2040598,1.044738411,,,0.00829856322,0,59.21666902,2008 target rescaled to common support
+alldays-allpurp-local,train,610,252,False,False,0,0.002551959894,116.6918624,126.1441496,1.081002111,0.9832158138,1.180620317,1.072677238,,,0.001318423097,0,117.5337313,2008 target rescaled to common support
+alldays-allpurp-local,urban_pt,1484,962,False,False,0,0.001366720024,72.72753202,75.73003565,1.041284278,0.9770739535,1.100242295,1.045174605,0.984082234,1.108792563,0,0.001256857558,72.17601082,
+alldays-allpurp-local,walk,4441,2973,False,False,0,0.0002986679999,37.50948823,39.41539468,1.050811316,0.9976363493,1.1026723,1.047188706,0.9945627724,1.097875239,0,0,37.72665048,
+alldays-allpurp-daytable,bike,531,310,False,False,0,0,43.94026387,50.40641982,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,car_driver,9172,5926,False,False,0,0.0003518040505,67.47084718,73.97099147,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,car_passenger,2345,1824,False,False,0.000361531401,0.0003326803563,47.23302427,53.07989963,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,other,712,390,False,False,0,0.002994512077,68.71687024,82.5124108,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,train,703,294,False,False,0,0.002288758721,146.1386803,143.3539214,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,urban_pt,1518,988,False,False,0,0.001331632231,74.85538744,80.0315757,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,walk,4503,3029,False,False,0,0.000292688909,37.84777918,39.91347864,,,,,,,,,,ENTD 2008 day-table coverage beyond 80 km not established; not compared

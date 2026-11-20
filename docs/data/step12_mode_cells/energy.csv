@@ -1,0 +1,131 @@
+scope,rate,grouping,cell,basis,status,ratio,ratio_low,ratio_high,verdict_15,verdict_10,n_2008,caution_2008,unknown_energy_days_2008,unknown_energy_weight_share_2008,mean_2008,mean_2008_low,mean_2008_high,n_2019,caution_2019,unknown_energy_days_2019,unknown_energy_weight_share_2019,mean_2019,mean_2019_low,mean_2019_high
+round-dest-local,kh,overall,all,travel_day,,1.073902976,1.044642015,1.103514115,equivalent,inconclusive,13640,False,366,0.03599406396,386.9424408,378.1567398,396.5412676,9243,False,175,0.02095879091,415.5386386,406.6800043,426.4598264
+round-dest-local,kh,overall,all,person,,1.093840571,1.059792915,1.12526473,equivalent,inconclusive,13640,False,366,0.03599406396,312.657642,305.3423971,321.3934532,9243,False,175,0.02095879091,341.9976136,332.7258024,350.4461712
+round-dest-local,kh,population,children_6_17,travel_day,,0.985210878,0.898456969,1.084443243,equivalent,inconclusive,1091,False,,,319.1814327,297.9200582,346.044488,820,False,,,314.4610195,288.56791,342.8237259
+round-dest-local,kh,population,children_6_17,person,,0.9803362546,0.891360395,1.102092415,equivalent,inconclusive,1091,False,,,277.7333824,253.2140525,302.3663908,820,False,,,272.2721039,249.5496141,297.5699779
+round-dest-local,kh,population,employed,travel_day,,1.11102808,1.072240047,1.150428865,inconclusive,inconclusive,7052,False,,,407.3177985,394.0923862,419.5690761,3977,False,,,452.5415115,440.2426037,466.1074001
+round-dest-local,kh,population,employed,person,,1.139332183,1.08859019,1.186595151,inconclusive,inconclusive,7052,False,,,363.4547703,349.8761354,377.1750448,3977,False,,,414.0957167,399.8096402,430.9386601
+round-dest-local,kh,population,other_inactive,travel_day,,1.019333886,0.9255915643,1.122235156,equivalent,inconclusive,1305,False,,,450.6451824,418.2071748,483.7621072,760,False,,,459.3579049,425.9216187,498.1858066
+round-dest-local,kh,population,other_inactive,person,,1.049242466,0.9545202321,1.176741678,inconclusive,inconclusive,1305,False,,,336.1009513,308.5780642,358.4648616,760,False,,,352.6513911,319.136417,390.4366878
+round-dest-local,kh,population,retired,travel_day,,1.083128283,1.032037983,1.135491791,equivalent,inconclusive,3600,False,,,344.0226158,329.9281334,359.9614252,3178,False,,,372.6206254,357.1641394,389.4315864
+round-dest-local,kh,population,retired,person,,1.134605006,1.068307191,1.204451634,inconclusive,inconclusive,3600,False,,,224.8617273,213.4458199,238.4815781,3178,False,,,255.1292414,241.1123981,269.2028468
+round-dest-local,kh,population,unemployed,travel_day,,1.098612435,0.9541371451,1.282652124,inconclusive,inconclusive,591,False,,,467.0893019,425.9316154,506.6042369,498,False,,,513.1501155,443.4985821,580.8931303
+round-dest-local,kh,population,unemployed,person,,1.12592338,0.960772594,1.305115697,inconclusive,inconclusive,591,False,,,356.7479637,312.2030158,394.066566,498,False,,,401.670873,335.696532,460.1068604
+round-dest-local,kh,density,dense,travel_day,,1.058525242,1.001892607,1.123123444,equivalent,inconclusive,1958,False,,,523.5867251,497.996995,550.412832,1271,False,,,554.2297647,524.0867215,583.2122498
+round-dest-local,kh,density,dense,person,,1.072906639,1.003392063,1.154448584,inconclusive,inconclusive,1958,False,,,452.1567591,425.0780901,479.4202179,1271,False,,,485.1219888,451.9844935,514.4856468
+round-dest-local,kh,density,intermediate,travel_day,,1.074502544,1.030502683,1.114550096,equivalent,inconclusive,5622,False,,,412.6666106,399.0463853,429.0495653,4265,False,,,443.4113229,430.1568484,457.0148518
+round-dest-local,kh,density,intermediate,person,,1.07225788,1.017773767,1.115730003,equivalent,inconclusive,5622,False,,,343.0535251,331.2971706,358.8717219,4265,False,,,367.8418455,352.3237841,382.3869076
+round-dest-local,kh,density,sparse,travel_day,,0.9764401747,0.9009112593,1.044116865,equivalent,equivalent,1741,False,,,336.9759394,317.1016391,362.7405693,1497,False,,,329.0368451,307.1446243,347.862352
+round-dest-local,kh,density,sparse,person,,0.9730910166,0.8804386325,1.056928395,equivalent,inconclusive,1741,False,,,267.2659071,248.1389844,287.3437796,1497,False,,,260.0740532,239.9238085,277.6080784
+round-dest-local,kh,density,very_sparse,travel_day,,1.136201626,1.077504513,1.209952126,inconclusive,inconclusive,4319,False,,,289.6207244,280.0391115,299.912674,2210,False,,,329.067538,312.3555013,347.9468679
+round-dest-local,kh,density,very_sparse,person,,1.220514193,1.150330042,1.303446406,different,different,4319,False,,,216.6381781,208.7044878,224.9096281,2210,False,,,264.409971,247.0559962,282.3604579
+round-dest-local,kh,income,q1,travel_day,,1.0291321,0.9624486506,1.111373747,equivalent,inconclusive,2186,False,,,423.082852,400.3246019,445.703079,1591,False,,,435.4081441,409.7113052,466.5651287
+round-dest-local,kh,income,q1,person,,1.066452021,0.990005214,1.167736301,inconclusive,inconclusive,2186,False,,,311.0895731,288.609988,330.8370793,1591,False,,,331.7621039,306.4197073,356.446585
+round-dest-local,kh,income,q2,travel_day,,1.110536844,1.042045331,1.181822089,inconclusive,inconclusive,2277,False,,,356.9520874,336.965985,375.0187542,1799,False,,,396.4084445,376.0419736,417.4001333
+round-dest-local,kh,income,q2,person,,1.121201097,1.043018599,1.207473553,inconclusive,inconclusive,2277,False,,,282.1149401,263.5298395,298.4656385,1799,False,,,316.3075803,295.7916902,334.529477
+round-dest-local,kh,income,q3,travel_day,,1.071840487,1.01214,1.133751382,equivalent,inconclusive,2683,False,,,359.8337827,343.1452126,379.9374091,1813,False,,,385.6844169,367.0673184,403.4330625
+round-dest-local,kh,income,q3,person,,1.06858425,0.9979166787,1.141819834,equivalent,inconclusive,2683,False,,,291.2139041,276.3428439,308.8973415,1813,False,,,311.1865913,293.3620333,329.0971747
+round-dest-local,kh,income,q4,travel_day,,1.088757575,1.021236297,1.143001821,equivalent,inconclusive,2799,False,,,376.968635,363.159963,394.3030755,1968,False,,,410.4274569,389.3847532,428.0599924
+round-dest-local,kh,income,q4,person,,1.104995323,1.025086271,1.175096357,inconclusive,inconclusive,2799,False,,,321.6915925,306.7736417,337.9369721,1968,False,,,355.4677053,332.2995719,376.6071909
+round-dest-local,kh,income,q5,travel_day,,1.067508966,1.014955903,1.119124664,equivalent,inconclusive,3695,False,,,419.3471843,402.3294979,436.7511351,2072,False,,,447.6568789,429.1831471,466.1983992
+round-dest-local,kh,income,q5,person,,1.105335222,1.043916792,1.178471256,inconclusive,inconclusive,3695,False,,,357.8246192,342.7727677,372.6361559,2072,False,,,395.5161549,373.3708359,418.0723877
+round-dest-local,kh,vehicles,0,travel_day,,1.026363379,0.9708704939,1.095977969,equivalent,equivalent,1976,False,,,569.8026171,542.6358404,592.4348735,1351,False,,,584.8245394,548.3078534,614.5213483
+round-dest-local,kh,vehicles,0,person,,1.020161619,0.9425091309,1.106360619,equivalent,inconclusive,1976,False,,,405.4881465,380.4548941,426.5761562,1351,False,,,413.6634441,382.3025883,449.0002871
+round-dest-local,kh,vehicles,1,travel_day,,1.026018987,0.979285136,1.075002288,equivalent,equivalent,5258,False,,,398.9165076,381.4802608,414.5466185,3864,False,,,409.2959112,394.4504493,425.2008794
+round-dest-local,kh,vehicles,1,person,,1.049757583,0.9910862981,1.102969229,equivalent,inconclusive,5258,False,,,315.8686065,301.2836921,330.5564318,3864,False,,,331.5854648,317.6216288,348.8650395
+round-dest-local,kh,vehicles,2+,travel_day,,1.116509773,1.066000548,1.157405266,inconclusive,inconclusive,6406,False,,,335.1677006,326.0633623,347.5845836,4005,False,,,374.2180134,361.0532609,385.3375622
+round-dest-local,kh,vehicles,2+,person,,1.147661776,1.091745724,1.197059966,inconclusive,inconclusive,6406,False,,,284.3118085,274.7748093,295.1531902,4005,False,,,326.2937952,313.4381325,338.6875331
+round-dest-local,kh,vehicles,unknown,travel_day,small cell hidden,,,,,,0,True,,,,,,23,True,,,,,
+round-dest-local,kh,vehicles,unknown,person,small cell hidden,,,,,,0,True,,,,,,23,True,,,,,
+round-dest-local,kh,day_mode_group,car_driver,travel_day,,1.112506892,1.075811251,1.150075455,inconclusive,inconclusive,7632,False,,,332.7606267,323.4880037,341.5694122,5132,False,,,370.1984906,360.7876237,380.7299592
+round-dest-local,kh,day_mode_group,car_driver,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,car_passenger_carpool,travel_day,,0.8984982946,0.6988709553,1.107764266,inconclusive,inconclusive,361,False,,,272.2709785,221.8608078,342.010853,364,False,,,244.6350099,208.8949468,288.0397645
+round-dest-local,kh,day_mode_group,car_passenger_carpool,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,car_passenger_household,travel_day,,1.12351652,0.9498478174,1.290744014,inconclusive,inconclusive,887,False,,,188.4692753,168.027101,211.9877531,781,False,,,211.7483443,186.0929626,237.1929602
+round-dest-local,kh,day_mode_group,car_passenger_household,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,cycle,travel_day,,1.135373566,0.9519943921,1.355577593,inconclusive,inconclusive,265,False,,,622.8197311,542.2028467,716.3434638,154,False,,,707.133059,599.5887649,812.0587512
+round-dest-local,kh,day_mode_group,cycle,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,multimodal,travel_day,,1.106641801,1.031021975,1.192056598,inconclusive,inconclusive,1188,False,,,440.2353457,413.3868021,471.7800456,741,False,,,487.1828359,455.3545775,518.5541192
+round-dest-local,kh,day_mode_group,multimodal,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,other,travel_day,small cell hidden,,,,,,50,True,,,279.2783056,227.717393,340.0066996,23,True,,,,,
+round-dest-local,kh,day_mode_group,other,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,train,travel_day,,1.062864356,0.9454575448,1.215958315,inconclusive,inconclusive,382,False,,,777.2699844,733.4313505,823.2197634,150,False,,,826.1325617,734.8420332,938.8260059
+round-dest-local,kh,day_mode_group,train,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,unknown,travel_day,small cell hidden,,,,,,0,True,,,,,,0,True,,,,,
+round-dest-local,kh,day_mode_group,unknown,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,urban_pt,travel_day,,1.018466245,0.9540448421,1.09145924,equivalent,equivalent,1044,False,,,613.212324,577.1532339,648.1480336,700,False,,,624.5360532,586.8065917,658.3713248
+round-dest-local,kh,day_mode_group,urban_pt,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,day_mode_group,walking_only,travel_day,,0.9633241402,0.9037996131,1.024367281,equivalent,equivalent,1831,False,,,491.2577434,464.4270894,520.8053241,1198,False,,,473.2404433,449.7922012,502.6383729
+round-dest-local,kh,day_mode_group,walking_only,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,kh,mode,bike,person,,1.017149421,0.8158908185,1.262514514,inconclusive,inconclusive,401,False,,,13.88459268,11.28626094,17.03562575,253,False,,,14.1227054,11.48895035,17.27950268
+round-dest-local,kh,mode,car_driver,person,,1.081240898,1.036102968,1.120338681,equivalent,inconclusive,8336,False,,,140.5139828,136.3108559,144.8923976,5573,False,,,151.929465,146.6505473,157.3500125
+round-dest-local,kh,mode,car_passenger,person,,1.187613208,1.047492797,1.336817289,inconclusive,inconclusive,2025,False,,,15.62375374,14.21529301,17.57783515,1628,False,,,18.5549763,16.55868853,20.89168132
+round-dest-local,kh,mode,other,person,mode energy unavailable,,,,,,0,True,,,,,,0,True,,,,,
+round-dest-local,kh,mode,train,person,,1.248989675,1.013011709,1.487151832,inconclusive,inconclusive,559,False,,,15.55210465,13.67124405,17.63108492,241,False,,,19.42441812,16.12923372,23.68678125
+round-dest-local,kh,mode,urban_pt,person,,1.349302605,1.189708664,1.522181681,different,different,1397,False,,,32.74623049,29.33703938,35.97577623,915,False,,,44.1845741,40.60416884,48.10052372
+round-dest-local,kh,mode,walk,person,mode energy unavailable,,,,,,3635,False,,,,,,2407,False,,,93.78147469,88.07556231,100.6720712
+round-dest-local,cp,overall,all,travel_day,,1.066110103,1.040940239,1.092184937,equivalent,equivalent,13640,False,366,0.03599406396,381.1536927,374.0098132,388.6947874,9243,False,175,0.02095879091,406.3518026,398.7740807,415.4530674
+round-dest-local,cp,overall,all,person,,1.085903019,1.056289075,1.115719211,equivalent,inconclusive,13640,False,366,0.03599406396,307.9802116,301.6992971,315.1931889,9243,False,175,0.02095879091,334.4366416,326.0897583,342.4631304
+round-dest-local,cp,population,children_6_17,travel_day,,0.9840102155,0.905157648,1.077831723,equivalent,equivalent,1091,False,,,267.4893606,249.3980029,286.4503184,820,False,,,263.2122634,242.9906848,284.7027631
+round-dest-local,cp,population,children_6_17,person,,0.9791415328,0.8944105564,1.093890208,equivalent,inconclusive,1091,False,,,232.7539051,212.5056625,252.1964788,820,False,,,227.8990154,210.0495747,247.4573961
+round-dest-local,cp,population,employed,travel_day,,1.101011754,1.065042022,1.135134514,equivalent,inconclusive,7052,False,,,425.9640147,414.0435645,437.8941226,3977,False,,,468.991387,457.4336338,480.3758218
+round-dest-local,cp,population,employed,person,,1.129060685,1.08135659,1.170557444,inconclusive,inconclusive,7052,False,,,380.0930224,367.7593169,393.4206998,3977,False,,,429.1480883,413.628564,443.4814601
+round-dest-local,cp,population,other_inactive,travel_day,,1.014693346,0.9334370072,1.10187691,equivalent,inconclusive,1305,False,,,409.7206012,383.5668856,436.179062,760,False,,,415.7407679,387.806694,447.1155091
+round-dest-local,cp,population,other_inactive,person,,1.044465767,0.9505369246,1.169382621,inconclusive,inconclusive,1305,False,,,305.578511,280.5234678,325.8504536,760,False,,,319.166294,289.1656454,348.5387382
+round-dest-local,cp,population,retired,travel_day,,1.067818471,1.024468995,1.115770227,equivalent,inconclusive,3600,False,,,336.1218217,322.9203172,349.6631934,3178,False,,,358.9170896,345.1768205,373.5013364
+round-dest-local,cp,population,retired,person,,1.118567579,1.054274518,1.185352427,inconclusive,inconclusive,3600,False,,,219.697572,210.3541662,231.8296025,3178,False,,,245.7465813,233.089021,258.640656
+round-dest-local,cp,population,unemployed,travel_day,,1.114424117,0.9849905666,1.278939713,inconclusive,inconclusive,591,False,,,428.925357,396.2790808,464.295501,498,False,,,478.0047623,416.6366246,532.6035541
+round-dest-local,cp,population,unemployed,person,,1.142128132,0.983262833,1.318607432,inconclusive,inconclusive,591,False,,,327.5995555,291.7575453,357.0818882,498,False,,,374.1606683,309.4012601,418.5100741
+round-dest-local,cp,density,dense,travel_day,,1.051106139,0.9953775486,1.109536708,equivalent,inconclusive,1958,False,,,463.3230302,442.069957,483.9281816,1271,False,,,487.0016812,459.3182595,510.2118436
+round-dest-local,cp,density,dense,person,,1.065386738,1.00091956,1.140469753,equivalent,inconclusive,1958,False,,,400.1144981,377.1963051,421.0388276,1271,False,,,426.2766801,400.8554783,451.4684626
+round-dest-local,cp,density,intermediate,travel_day,,1.074000204,1.032895594,1.11131633,equivalent,inconclusive,5622,False,,,396.7870635,385.0027726,409.9481716,4265,False,,,426.1493871,414.802186,438.7695237
+round-dest-local,cp,density,intermediate,person,,1.071756589,1.020060517,1.113634965,equivalent,inconclusive,5622,False,,,329.8527125,319.5101774,342.9962099,4265,False,,,353.521818,340.1776104,367.727578
+round-dest-local,cp,density,sparse,travel_day,,0.9852223432,0.909865256,1.050865073,equivalent,equivalent,1741,False,,,346.653944,327.761614,371.5216465,1497,False,,,341.531211,322.0406395,359.3249775
+round-dest-local,cp,density,sparse,person,,0.9818430625,0.8901047461,1.058928887,equivalent,inconclusive,1741,False,,,274.9418281,256.1408922,298.472076,1497,False,,,269.9497265,251.0857327,284.9877661
+round-dest-local,cp,density,very_sparse,travel_day,,1.10922679,1.059212015,1.172183279,inconclusive,inconclusive,4319,False,,,325.6101074,314.4267403,336.2530473,2210,False,,,361.1754541,343.3933368,378.6682716
+round-dest-local,cp,density,very_sparse,person,,1.191537671,1.123399914,1.262855147,inconclusive,different,4319,False,,,243.5584698,233.5284773,252.7425427,2210,False,,,290.2090918,272.201566,307.4676423
+round-dest-local,cp,income,q1,travel_day,,1.024812221,0.9728651722,1.101601066,equivalent,inconclusive,2186,False,,,383.5534554,363.7568536,403.1908402,1591,False,,,393.0702685,370.6159157,415.7053962
+round-dest-local,cp,income,q1,person,,1.061975488,0.9913569123,1.15053566,inconclusive,inconclusive,2186,False,,,282.0239112,262.1884536,299.966539,1591,False,,,299.5024807,279.5392032,319.5704091
+round-dest-local,cp,income,q2,travel_day,,1.092667308,1.025741436,1.153893498,inconclusive,inconclusive,2277,False,,,349.6174495,332.0980365,365.2025828,1799,False,,,382.0155573,364.3065333,400.1032697
+round-dest-local,cp,income,q2,person,,1.103159963,1.030814265,1.185437038,inconclusive,inconclusive,2277,False,,,276.3180531,259.8798277,290.8928047,1799,False,,,304.8230133,287.8010755,321.8798385
+round-dest-local,cp,income,q3,travel_day,,1.070808985,1.013898207,1.125838424,equivalent,inconclusive,2683,False,,,363.1562219,347.5959487,381.9383634,1813,False,,,388.8709455,372.5538692,404.2812291
+round-dest-local,cp,income,q3,person,,1.067555882,0.9963032822,1.136152206,equivalent,inconclusive,2683,False,,,293.902758,279.6558457,311.9574962,1813,False,,,313.7576181,296.4291903,332.2634424
+round-dest-local,cp,income,q4,travel_day,,1.087541161,1.031884046,1.139441962,equivalent,inconclusive,2799,False,,,381.8540197,368.0690412,397.9280519,1968,False,,,415.281964,397.7449344,431.6351454
+round-dest-local,cp,income,q4,person,,1.103760768,1.0286955,1.16730486,inconclusive,inconclusive,2799,False,,,325.8606056,311.5926014,340.4798557,1968,False,,,359.6721523,337.7073383,379.6358391
+round-dest-local,cp,income,q5,travel_day,,1.051989147,1.006750914,1.099162911,equivalent,equivalent,3695,False,,,425.1713877,408.7660371,440.4458717,2072,False,,,447.2756857,431.5724375,463.0845347
+round-dest-local,cp,income,q5,person,,1.089265472,1.031566333,1.160824188,inconclusive,inconclusive,3695,False,,,362.7943519,348.0346571,376.2583911,2072,False,,,395.1793611,374.7845707,415.8304766
+round-dest-local,cp,vehicles,0,travel_day,,1.031887856,0.9752023442,1.10537238,equivalent,inconclusive,1976,False,,,467.2033268,444.3846828,485.2005281,1351,False,,,482.1014394,454.5993902,509.3612664
+round-dest-local,cp,vehicles,0,person,,1.025652715,0.9476360355,1.114902467,equivalent,inconclusive,1976,False,,,332.4755018,312.2669776,349.4295735,1351,False,,,341.0044012,313.8634701,369.9676725
+round-dest-local,cp,vehicles,1,travel_day,,1.020364304,0.9792414647,1.062251184,equivalent,equivalent,5258,False,,,386.0775871,370.6438148,400.5005634,3864,False,,,393.9397884,380.3723316,407.5095413
+round-dest-local,cp,vehicles,1,person,,1.043972069,0.992196528,1.093836018,equivalent,equivalent,5258,False,,,305.7025395,292.2887095,319.7918698,3864,False,,,319.1449127,306.7333893,333.8601102
+round-dest-local,cp,vehicles,2+,travel_day,,1.105307981,1.062678138,1.141855235,equivalent,inconclusive,6406,False,,,357.3471716,348.3435077,367.8621467,4005,False,,,394.9786808,382.9406702,406.7031203
+round-dest-local,cp,vehicles,2+,person,,1.13614744,1.084562807,1.181616998,inconclusive,inconclusive,6406,False,,,303.1259291,293.8283157,313.1486784,4005,False,,,344.3957484,332.1760409,356.9304758
+round-dest-local,cp,vehicles,unknown,travel_day,small cell hidden,,,,,,0,True,,,,,,23,True,,,,,
+round-dest-local,cp,vehicles,unknown,person,small cell hidden,,,,,,0,True,,,,,,23,True,,,,,
+round-dest-local,cp,day_mode_group,car_driver,travel_day,,1.096460773,1.065974247,1.134451999,equivalent,inconclusive,7632,False,,,383.218946,373.4258986,392.2461525,5132,False,,,420.1845419,411.0522595,430.5401115
+round-dest-local,cp,day_mode_group,car_driver,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,car_passenger_carpool,travel_day,,0.9218339941,0.7318918894,1.118902926,inconclusive,inconclusive,361,False,,,229.2034342,190.3443244,287.0800974,364,False,,,211.2875172,183.1637078,245.0507354
+round-dest-local,cp,day_mode_group,car_passenger_carpool,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,car_passenger_household,travel_day,,1.12197651,0.9629587721,1.274215969,inconclusive,inconclusive,887,False,,,162.7611361,147.0551534,181.9323742,781,False,,,182.6141714,162.6245472,201.9420836
+round-dest-local,cp,day_mode_group,car_passenger_household,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,cycle,travel_day,,1.1377169,0.9531667623,1.357909199,inconclusive,inconclusive,265,False,,,605.1252659,523.9936286,698.6033805,154,False,,,688.4612415,590.1047962,786.8326321
+round-dest-local,cp,day_mode_group,cycle,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,multimodal,travel_day,,1.084536823,1.015316468,1.163066184,inconclusive,inconclusive,1188,False,,,423.0524942,397.1420625,453.878817,741,False,,,458.8160081,430.590099,489.8657146
+round-dest-local,cp,day_mode_group,multimodal,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,other,travel_day,small cell hidden,,,,,,50,True,,,213.1824399,173.8242766,259.5384473,23,True,,,,,
+round-dest-local,cp,day_mode_group,other,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,train,travel_day,,1.070008302,0.9569662895,1.219110779,inconclusive,inconclusive,382,False,,,655.4113696,620.8591217,689.0877841,150,False,,,701.2956066,628.1661142,793.588116
+round-dest-local,cp,day_mode_group,train,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,unknown,travel_day,small cell hidden,,,,,,0,True,,,,,,0,True,,,,,
+round-dest-local,cp,day_mode_group,unknown,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,urban_pt,travel_day,,1.017342623,0.9549599978,1.087726785,equivalent,equivalent,1044,False,,,505.185792,477.3034547,532.4895233,700,False,,,513.9470387,484.4144575,540.4418963
+round-dest-local,cp,day_mode_group,urban_pt,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,day_mode_group,walking_only,travel_day,,0.9633241402,0.9037996131,1.024367281,equivalent,equivalent,1831,False,,,374.9934108,354.5126783,397.5480641,1198,False,,,361.2402051,343.3413802,383.6806247
+round-dest-local,cp,day_mode_group,walking_only,person,not defined: days without trips have no mode group,,,,,,,,,,,,,,,,,,,
+round-dest-local,cp,mode,bike,person,,1.016958377,0.8155995499,1.262412022,inconclusive,inconclusive,401,False,,,13.89040541,11.29143939,17.04106785,253,False,,,14.12596414,11.49201349,17.28377051
+round-dest-local,cp,mode,car_driver,person,,1.067495619,1.027386074,1.1061264,equivalent,inconclusive,8336,False,,,166.5938127,162.0397703,171.6841515,5573,False,,,177.8381652,171.5838502,184.5825048
+round-dest-local,cp,mode,car_passenger,person,,1.183496345,1.057964684,1.310312115,inconclusive,inconclusive,2025,False,,,14.62329082,13.39275843,16.1708501,1628,False,,,17.30661124,15.64909193,19.25822016
+round-dest-local,cp,mode,other,person,mode energy unavailable,,,,,,0,True,,,,,,0,True,,,,,
+round-dest-local,cp,mode,train,person,,1.24840136,1.01985657,1.48663416,inconclusive,inconclusive,559,False,,,13.30231879,11.62010703,15.04664619,241,False,,,16.60663288,13.80715732,20.09354541
+round-dest-local,cp,mode,urban_pt,person,,1.341544925,1.185552363,1.511130656,different,different,1397,False,,,27.55982435,24.70272862,30.23762983,915,False,,,36.97274248,33.94510119,40.1013995
+round-dest-local,cp,mode,walk,person,mode energy unavailable,,,,,,3635,False,,,,,,2407,False,,,71.58652568,67.23101256,76.84634768
