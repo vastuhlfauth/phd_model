@@ -56,19 +56,34 @@ def test_unknown_income_shares_use_distinct_bases():
     assert day_weight == pytest.approx(0.5)
 
 
-def test_entd_household_car_count_reads_cp1252_and_keeps_unknown(tmp_path):
+def test_entd_household_vehicle_count_sums_cars_and_vul_camper(tmp_path):
     source = tmp_path / "source.csv"
     source.write_text(
-        "idENT_MEN;V1_JNBVEH;label\n00001;0;véhicule\n00002;1;x\n00003;3;x\n00004;;x\n",
+        "idENT_MEN;V1_JNBVEH;V1_JNBCCVUL;PONDV1;label\n"
+        "00001;0;0;1;véhicule\n00002;1;0;1;x\n"
+        "00003;0;2;2;x\n00004;1;1;1;x\n00005;1;;1;x\n",
         encoding="cp1252",
     )
-    actual = zahavi_income.load_entd_household_cars(source, tmp_path / "scratch")
-    assert actual == {"00001": "0", "00002": "1", "00003": "2+", "00004": "unknown"}
+    actual = zahavi_income.load_entd_household_vehicles(source, tmp_path / "scratch")
+    assert actual.classes == {
+        "00001": "0",
+        "00002": "1",
+        "00003": "2+",
+        "00004": "2+",
+        "00005": "unknown",
+    }
+    shares = zahavi_income.household_vehicle_share_rows(2008, actual)
+    assert [row["share_percent"] for row in shares] == pytest.approx(
+        [100 / 6, 100 / 6, 50, 100 / 6]
+    )
 
 
 def test_entd_household_car_count_rejects_duplicate_households(tmp_path):
     source = tmp_path / "source.csv"
-    source.write_text("idENT_MEN;V1_JNBVEH\n1;0\n1;1\n", encoding="cp1252")
+    source.write_text(
+        "idENT_MEN;V1_JNBVEH;V1_JNBCCVUL;PONDV1\n1;0;0;1\n1;1;0;1\n",
+        encoding="cp1252",
+    )
     with pytest.raises(ValueError, match="Duplicate"):
         zahavi_income.load_entd_household_cars(source, tmp_path / "scratch")
 
@@ -77,8 +92,9 @@ def test_emp_household_car_count_preserves_unknown_and_rejects_duplicates():
     with duckdb.connect() as con:
         con.execute(
             """CREATE TABLE q_menage AS SELECT * FROM (VALUES
-              ('h1', 0), ('h2', 1), ('h3', 4), ('h4', NULL)
-            ) t(IDENT_MEN, JNBVEH)"""
+              ('h1', 0, 2, 1.0), ('h2', 1, 2, 1.0),
+              ('h3', 4, 2, 1.0), ('h4', NULL, 2, 1.0)
+            ) t(IDENT_MEN, JNBVEH, JNBVHS, pond_menC)"""
         )
         assert zahavi_income.emp_household_cars(con) == {
             "h1": "0",
@@ -86,9 +102,44 @@ def test_emp_household_car_count_preserves_unknown_and_rejects_duplicates():
             "h3": "2+",
             "h4": "unknown",
         }
-        con.execute("INSERT INTO q_menage VALUES ('h1', 2)")
+        con.execute("INSERT INTO q_menage VALUES ('h1', 2, 2, 1.0)")
         with pytest.raises(ValueError, match="Duplicate"):
             zahavi_income.emp_household_cars(con)
+
+
+def test_emp_household_vehicle_count_subtracts_out_of_use_counts():
+    with duckdb.connect() as con:
+        con.execute(
+            """CREATE TABLE q_menage AS SELECT * FROM (VALUES
+              ('h0', 0, 2, NULL, NULL, NULL, 1.0),
+              ('h1', 1, 2, NULL, NULL, NULL, 1.0),
+              ('h2', 4, 1, 1, 1, 0, 2.0),
+              ('h3', 3, 1, 0, 1, 0, 1.0),
+              ('h4', 2, 1, NULL, 0, 0, 1.0)
+            ) t(IDENT_MEN, JNBVEH, JNBVHS, JNBVPHS, JNBCCHS,
+                JNBVULHS, pond_menC)"""
+        )
+        vehicles = zahavi_income.emp_household_vehicles(con)
+    assert vehicles.classes == {
+        "h0": "0",
+        "h1": "1",
+        "h2": "2+",
+        "h3": "2+",
+        "h4": "unknown",
+    }
+    assert vehicles.out_of_use_share is None
+
+
+def test_emp_fallback_reports_weighted_out_of_use_household_share():
+    with duckdb.connect() as con:
+        con.execute(
+            """CREATE TABLE q_menage AS SELECT * FROM (VALUES
+              ('h1', 2, 1, 1.0), ('h2', 1, 2, 3.0)
+            ) t(IDENT_MEN, JNBVEH, JNBVHS, pond_menC)"""
+        )
+        vehicles = zahavi_income.emp_household_vehicles(con)
+    assert vehicles.classes == {"h1": "2+", "h2": "1"}
+    assert vehicles.out_of_use_share == pytest.approx(0.25)
 
 
 def test_emp_attributes_reuse_income_and_density_proxy():
@@ -121,12 +172,12 @@ def test_emp_attributes_reuse_income_and_density_proxy():
 def test_emp_attribute_extraction_uses_only_temporary_output(
     synthetic_emp_zip, tmp_path
 ):
-    income, density, cars = zahavi_income.extract_attributes(
+    income, density, vehicles = zahavi_income.extract_attributes(
         emp2019, synthetic_emp_zip, tmp_path / "scratch"
     )
-    assert len(income) == len(density) == len(cars) == 13
+    assert len(income) == len(density) == len(vehicles.classes) == 13
     assert density["1"] == "dense"
-    assert cars["M1"] == "0"
+    assert vehicles.classes["M1"] == "0"
     assert set(income.values()) <= {"q1", "q2", "q3", "q4", "q5"}
 
 
@@ -837,7 +888,10 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
         attributes = (
             dict(zip(people, income, strict=True)),
             dict(zip(people, density, strict=True)),
-            dict(zip(houses, cars, strict=True)),
+            zahavi_income.HouseholdVehicles(
+                dict(zip(houses, cars, strict=True)),
+                dict.fromkeys(houses, 1.0),
+            ),
         )
         draws = zahavi_modes.Draws(houses, np.ones((20, n)), 0)
         return cache, attributes, draws
@@ -871,8 +925,8 @@ def test_report_writes_requested_tables_from_synthetic_caches(tmp_path, monkeypa
     }
     report = out.with_suffix(".md").read_text(encoding="utf-8")
     assert "unknown" in report and "2019" in report and "M2" in report
-    assert "V1_JNBVEH" in report and "JNBVEH" in report
-    assert "light commercial vehicles" in report and "not directly comparable" in report
+    assert "V1_JNBVEH + V1_JNBCCVUL" in report and "JNBVPHS" in report
+    assert "Share (%)" in report and "not directly comparable" not in report
     with (out / "support.csv").open(encoding="utf-8", newline="") as stream:
         audit = list(csv.DictReader(stream))
     q5 = next(

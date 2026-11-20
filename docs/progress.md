@@ -2,6 +2,21 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Zahavi income correction: harmonised household vehicles (2026-11-20)
+
+- ENTD `q_menage.csv` contains `V1_JNBCCVUL`; classes use
+  `V1_JNBVEH + V1_JNBCCVUL`. EMP `Q_MENAGE_public` contains all three
+  out-of-use counts, so the in-use total subtracts them from `JNBVEH`.
+  Missing out-of-use counts become zero only for `JNBVHS = 2`; otherwise
+  the class is unknown. A fallback uses `JNBVEH` and reports the weighted
+  `JNBVHS = 1` household share if the counts are absent.
+- Dataset notes now quote the questionnaire prompts and document the
+  harmonised definition. The income report generator adds household-weighted
+  shares for 0, 1, 2+ and unknown classes with unweighted household n.
+- Synthetic checks: 40 income tests passed; changed-file Ruff passed.
+  No real-data report was run; regenerate with
+  `python -m mobgrid.budget.zahavi_income --out docs\data\step12_income`.
+
 ### Zahavi income correction: grouped warnings (2026-11-19)
 
 - Insufficient bootstrap intervals are reported once per estimate group,
@@ -14,18 +29,11 @@ Read this file at the start of every task and update it at the end.
 - Synthetic income tests: 38 passed; Ruff passed. The real report was not
   rerun.
 
-### Zahavi income correction: vehicle definitions (2026-11-19)
+### Zahavi income correction: earlier vehicle definitions (2026-11-19)
 
-- The ENTD questionnaire and dictionary identify `V1_JNBVEH` as a
-  household passenger-car count. The EMP dictionary defines `JNBVEH` as
-  cars, light commercial vehicles and camper vans. The report now states
-  the differing coverage and quotes the verified ENTD question and EMP
-  questionnaire introduction.
-- The EMP public vehicle table lacks a vehicle-type field; detailed
-  vehicle descriptions are limited to five. A complete passenger-car-only
-  household count cannot be reconstructed reliably from the available
-  files, so the original counts are retained with the limitation stated.
-  The exact EMP count-question wording remains unverified.
+- This preliminary cars-only interpretation was superseded by the
+  2026-11-20 harmonisation above, after verifying `V1_JNBCCVUL` and the
+  EMP public out-of-use count fields.
 
 ### Zahavi income correction: reweighting (2026-11-19)
 

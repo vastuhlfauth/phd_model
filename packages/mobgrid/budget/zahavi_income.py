@@ -73,6 +73,15 @@ class IncomeConfig(BaseModel):
 
 
 @dataclass(frozen=True)
+class HouseholdVehicles:
+    """Broad in-use household vehicle classes and household weights."""
+
+    classes: dict[str, str]
+    weights: dict[str, float]
+    out_of_use_share: float | None = None
+
+
+@dataclass(frozen=True)
 class People:
     """Full weekday roster, with weekday-universe weights (section 9.9)."""
 
@@ -200,7 +209,7 @@ def read_cached_income(
         days,
         vr._text_values(p["population_category"]),
         _mapped_values(person, density, "Residence density"),
-        _mapped_values(household, cars, "Household car count"),
+        _mapped_values(household, cars, "Household vehicle count"),
         weekday,
     )
 
@@ -473,8 +482,8 @@ def density_rows(
     return rows
 
 
-def load_entd_household_cars(source: Path, scratch: Path) -> dict[str, str]:
-    """Load ENTD household car-count bands from CP1252, section 9.9."""
+def load_entd_household_vehicles(source: Path, scratch: Path) -> HouseholdVehicles:
+    """Load ENTD in-use car, VUL and camper-van counts, section 9.9."""
     scratch.mkdir(parents=True, exist_ok=True)
     encoded = scratch / source.name
     with (
@@ -484,23 +493,193 @@ def load_entd_household_cars(source: Path, scratch: Path) -> dict[str, str]:
         copyfileobj(inp, out)
     with duckdb.connect() as con:
         con.execute(
-            """CREATE TEMP TABLE cars AS SELECT
-                trim(idENT_MEN) AS ident_men, V1_JNBVEH AS count_text
+            """CREATE TEMP TABLE vehicle_raw AS SELECT
+                trim(idENT_MEN) AS ident_men,
+                NULLIF(trim(V1_JNBVEH), 'NA') AS cars,
+                NULLIF(trim(V1_JNBCCVUL), 'NA') AS vul_camper,
+                NULLIF(trim(PONDV1), 'NA') AS weight
             FROM read_csv(?, delim=';', nullstr='',
-                types={'idENT_MEN': 'VARCHAR', 'V1_JNBVEH': 'VARCHAR'})""",
+                types={'idENT_MEN': 'VARCHAR', 'V1_JNBVEH': 'VARCHAR',
+                       'V1_JNBCCVUL': 'VARCHAR', 'PONDV1': 'VARCHAR'})""",
             [str(encoded)],
         )
-        return _cars_from_view(con)
+        _validate_nonnegative_counts(con, ("cars", "vul_camper"))
+        con.execute(
+            """CREATE OR REPLACE TEMP VIEW cars AS SELECT ident_men,
+                CASE WHEN cars IS NULL OR vul_camper IS NULL THEN NULL
+                     ELSE CAST(TRY_CAST(cars AS INTEGER)
+                               + TRY_CAST(vul_camper AS INTEGER) AS VARCHAR)
+                END AS count_text
+            FROM vehicle_raw"""
+        )
+        return _household_vehicles_from_views(con, "weight")
+
+
+def load_entd_household_cars(source: Path, scratch: Path) -> dict[str, str]:
+    """Load ENTD broad in-use vehicle-count bands, section 9.9."""
+    return load_entd_household_vehicles(source, scratch).classes
+
+
+def emp_household_vehicles(con: duckdb.DuckDBPyConnection) -> HouseholdVehicles:
+    """Read EMP in-use vehicle counts, excluding out-of-use vehicles."""
+    columns = {
+        row[1].upper()
+        for row in con.execute("PRAGMA table_info('q_menage')").fetchall()
+    }
+    if "JNBVHS" not in columns:
+        raise ValueError("EMP Q_MENAGE must include JNBVHS")
+    out_counts = ("JNBVPHS", "JNBCCHS", "JNBVULHS")
+    use_out_counts = set(out_counts) <= columns
+    con.execute(
+        """CREATE OR REPLACE TEMP VIEW vehicle_raw AS SELECT
+            trim(CAST(IDENT_MEN AS VARCHAR)) AS ident_men,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(JNBVEH AS VARCHAR))), ''), 'NA')
+                AS total_count,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(JNBVHS AS VARCHAR))), ''), 'NA')
+                AS out_of_use,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(JNBVPHS AS VARCHAR))), ''), 'NA')
+                AS cars_out,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(JNBCCHS AS VARCHAR))), ''), 'NA')
+                AS campers_out,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(JNBVULHS AS VARCHAR))), ''), 'NA')
+                AS vul_out,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(pond_menC AS VARCHAR))), ''), 'NA')
+                AS weight
+        FROM q_menage"""
+        if use_out_counts
+        else """CREATE OR REPLACE TEMP VIEW vehicle_raw AS SELECT
+            trim(CAST(IDENT_MEN AS VARCHAR)) AS ident_men,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(JNBVEH AS VARCHAR))), ''), 'NA')
+                AS total_count,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(JNBVHS AS VARCHAR))), ''), 'NA')
+                AS out_of_use,
+            NULL AS cars_out, NULL AS campers_out, NULL AS vul_out,
+            NULLIF(NULLIF(UPPER(TRIM(CAST(pond_menC AS VARCHAR))), ''), 'NA')
+                AS weight
+        FROM q_menage"""
+    )
+    if use_out_counts:
+        _validate_nonnegative_counts(
+            con, ("total_count", "cars_out", "campers_out", "vul_out")
+        )
+        invalid_flag = con.execute(
+            """SELECT out_of_use FROM vehicle_raw
+               WHERE out_of_use IS NOT NULL AND out_of_use NOT IN ('1', '2')
+               LIMIT 1"""
+        ).fetchone()
+        if invalid_flag:
+            raise ValueError(f"Invalid EMP out-of-use flag: {invalid_flag[0]!r}")
+        con.execute(
+            """CREATE TEMP VIEW cars AS SELECT ident_men,
+                CASE
+                  WHEN total_count IS NULL THEN NULL
+                  WHEN cars_out IS NOT NULL AND campers_out IS NOT NULL
+                       AND vul_out IS NOT NULL
+                    THEN CAST(TRY_CAST(total_count AS INTEGER)
+                              - TRY_CAST(cars_out AS INTEGER)
+                              - TRY_CAST(campers_out AS INTEGER)
+                              - TRY_CAST(vul_out AS INTEGER) AS VARCHAR)
+                  WHEN out_of_use = '2'
+                    THEN CAST(TRY_CAST(total_count AS INTEGER)
+                              - COALESCE(TRY_CAST(cars_out AS INTEGER), 0)
+                              - COALESCE(TRY_CAST(campers_out AS INTEGER), 0)
+                              - COALESCE(TRY_CAST(vul_out AS INTEGER), 0) AS VARCHAR)
+                  ELSE NULL
+                END AS count_text
+            FROM vehicle_raw"""
+        )
+        out_of_use_share = None
+    else:
+        _validate_nonnegative_counts(con, ("total_count",))
+        con.execute(
+            """CREATE OR REPLACE TEMP VIEW cars AS
+               SELECT ident_men, total_count AS count_text FROM vehicle_raw"""
+        )
+        out_of_use_share = _weighted_flag_share(con, "out_of_use", "weight", "1")
+    return _household_vehicles_from_views(con, "weight", out_of_use_share)
 
 
 def emp_household_cars(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
-    """Read EMP 2019 household car-count bands, section 9.9."""
-    con.execute(
-        """CREATE OR REPLACE TEMP VIEW cars AS SELECT
-            trim(CAST(IDENT_MEN AS VARCHAR)) AS ident_men,
-            CAST(JNBVEH AS VARCHAR) AS count_text FROM q_menage"""
-    )
-    return _cars_from_view(con)
+    """Read EMP 2019 broad in-use vehicle-count bands, section 9.9."""
+    return emp_household_vehicles(con).classes
+
+
+def _validate_nonnegative_counts(
+    con: duckdb.DuckDBPyConnection, columns: tuple[str, ...]
+) -> None:
+    for column in columns:
+        invalid = con.execute(
+            f"""SELECT {column} FROM vehicle_raw
+                WHERE {column} IS NOT NULL AND
+                  (NOT regexp_full_match({column}, '[0-9]+')
+                   OR TRY_CAST({column} AS INTEGER) IS NULL
+                   OR TRY_CAST({column} AS INTEGER) < 0)
+                LIMIT 1"""
+        ).fetchone()
+        if invalid:
+            raise ValueError(f"Invalid household vehicle count: {invalid[0]!r}")
+
+
+def _household_vehicles_from_views(
+    con: duckdb.DuckDBPyConnection,
+    weight_column: str,
+    out_of_use_share: float | None = None,
+) -> HouseholdVehicles:
+    classes = _cars_from_view(con)
+    rows = con.execute(f"SELECT ident_men, {weight_column} FROM vehicle_raw").fetchall()
+    weights: dict[str, float] = {}
+    for ident, value in rows:
+        key = str(ident).strip()
+        try:
+            weight = float(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Invalid household weight for {key!r}") from error
+        if not key or key in weights or not np.isfinite(weight) or weight < 0:
+            raise ValueError(f"Invalid household weight for {key!r}")
+        weights[key] = weight
+    if weights.keys() != classes.keys() or sum(weights.values()) <= 0:
+        raise ValueError("Household vehicle classes and weights do not match")
+    return HouseholdVehicles(classes, weights, out_of_use_share)
+
+
+def _weighted_flag_share(
+    con: duckdb.DuckDBPyConnection, flag_column: str, weight_column: str, flag: str
+) -> float:
+    row = con.execute(
+        f"""SELECT COALESCE(
+                    sum(TRY_CAST({weight_column} AS DOUBLE))
+                    FILTER (WHERE {flag_column} = ?), 0) /
+                   sum(TRY_CAST({weight_column} AS DOUBLE))
+             FROM vehicle_raw""",
+        [flag],
+    ).fetchone()
+    if row is None or row[0] is None or not np.isfinite(row[0]):
+        raise ValueError("Cannot calculate weighted out-of-use household share")
+    return float(row[0])
+
+
+def household_vehicle_share_rows(
+    year: int, vehicles: HouseholdVehicles
+) -> list[dict[str, int | float | str]]:
+    """Weighted household shares by broad in-use vehicle class."""
+    total_weight = sum(vehicles.weights.values())
+    if total_weight <= 0 or vehicles.classes.keys() != vehicles.weights.keys():
+        raise ValueError("Household vehicle classes and weights do not match")
+    return [
+        {
+            "year": year,
+            "vehicle_class": label,
+            "households": sum(value == label for value in vehicles.classes.values()),
+            "share_percent": 100
+            * sum(
+                weight
+                for household, weight in vehicles.weights.items()
+                if vehicles.classes[household] == label
+            )
+            / total_weight,
+        }
+        for label in ("0", "1", "2+", "unknown")
+    ]
 
 
 def _cars_from_view(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
@@ -570,7 +749,7 @@ def extract_attributes(
     scratch: Path,
     *,
     entd_cars: Path | None = None,
-) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str], HouseholdVehicles]:
     """Extract survey attributes in temporary storage without modifying caches."""
     if survey not in (emp2019, entd2008):
         raise ValueError(f"Unsupported survey: {survey.__name__}")
@@ -584,12 +763,12 @@ def extract_attributes(
             survey.register_views(con, paths)
             income, density = respondent_attributes(con, survey)
             if survey is emp2019:
-                cars = emp_household_cars(con)
+                vehicles = emp_household_vehicles(con)
             else:
                 if entd_cars is None:
                     raise ValueError("ENTD household car source is required")
-                cars = load_entd_household_cars(entd_cars, temp_path / "cars")
-    return income, density, cars
+                vehicles = load_entd_household_vehicles(entd_cars, temp_path / "cars")
+    return income, density, vehicles
 
 
 def unknown_income_shares(
@@ -1730,8 +1909,8 @@ def run_report(
     out: Path,
     cache_a: modes_cache.SurveyCache,
     cache_b: modes_cache.SurveyCache,
-    attributes_a: tuple[dict[str, str], dict[str, str], dict[str, str]],
-    attributes_b: tuple[dict[str, str], dict[str, str], dict[str, str]],
+    attributes_a: tuple[dict[str, str], dict[str, str], HouseholdVehicles],
+    attributes_b: tuple[dict[str, str], dict[str, str], HouseholdVehicles],
     draws_a: Draws,
     draws_b: Draws,
     *,
@@ -1755,6 +1934,10 @@ def run_report(
     all_regressions: list[dict] = []
     all_density: list[dict] = []
     all_support: list[dict] = []
+    vehicle_rows = [
+        *household_vehicle_share_rows(2008, attributes_a[2]),
+        *household_vehicle_share_rows(2019, attributes_b[2]),
+    ]
     report = [
         "# Daily travel time by household income",
         "",
@@ -1764,28 +1947,51 @@ def run_report(
         "",
         "ENTD unknown income remains a separate sixth group; 2019 has no equivalent. "
         "Residence density is the urban-unit-status × size proxy in both years. "
-        "Vehicles are grouped 0, 1, 2+; the underlying counts are "
-        "not directly comparable.",
+        "Household vehicles use the broad in-use definition (cars + VUL + "
+        "camper vans), grouped 0, 1 and 2+.",
         "",
         "### Household vehicle definitions",
         "",
-        "ENTD 2008 `Q_MENAGE.V1_JNBVEH` counts passenger cars at the "
-        "household's disposal. The questionnaire asks: « De combien de voitures "
-        "particulières votre ménage dispose-t-il au total ? » The dictionary "
-        "does not list vans or camper vans in this count. "
+        "ENTD 2008 `Q_MENAGE.V1_JNBVEH + V1_JNBCCVUL` counts passenger cars, "
+        "vans and camper vans in use. The questionnaire asks: « De combien de "
+        "voitures particulières votre ménage dispose-t-il au total ? "
+        "Qu’elles soient au nom d’un des membres du ménage, d’un proche ou "
+        "au nom d’une société, y-compris de leasing. Donnez le nombre précis. » "
+        "Out-of-use vehicles are excluded by the questionnaire instructions. "
         "[ENTD questionnaire](https://www.statistiques.developpement-durable.gouv.fr/media/2309/download?inline).",
         "",
-        "EMP 2019 `Q_MENAGE.JNBVEH` counts passenger cars, light commercial "
-        "vehicles and camper vans at the household's disposal. The questionnaire "
-        "introduces the subject as « questions sur les véhicules dont dispose "
-        "éventuellement votre ménage »; the exact JNBVEH count question could "
-        "not be verified. "
+        "EMP 2019 `Q_MENAGE.JNBVEH` includes cars, VUL and camper vans, including "
+        "vehicles out of use (`JNBVHS = 1`). When public out-of-use counts are "
+        "present, subtract `JNBVPHS + JNBCCHS + JNBVULHS`. The questionnaire "
+        "introduces these items: « Voici tout d’abord des questions sur les "
+        "véhicules dont dispose éventuellement votre ménage, dans ce logement "
+        "ou ailleurs (résidence secondaire, etc.). » "
         "[EMP questionnaire](https://www.statistiques.developpement-durable.gouv.fr/sites/default/files/2022-07/questionnaire_emp2019.pdf).",
         "",
-        "The public EMP vehicle table does not identify vehicle type and the "
-        "questionnaire limits detailed vehicle descriptions to five, so its "
-        "count cannot reliably be narrowed to passenger cars for every "
-        "household. The original counts are retained with this limitation.",
+        "## Household shares by vehicle class",
+        "",
+        "Weighted by the household weights (`PONDV1` in ENTD; `pond_menC` "
+        "in EMP). `n` is the unweighted number of households. Sources: ENTD "
+        "`Q_MENAGE` and EMP `Q_MENAGE_public`; counts use the definitions above.",
+        "",
+        "| Year | Class | n households | Share (%) |",
+        "|---:|:---|---:|---:|",
+        *[
+            f"| {row['year']} | {row['vehicle_class']} | {row['households']} | "
+            f"{row['share_percent']:.2f} |"
+            for row in vehicle_rows
+        ],
+        "",
+        *(
+            [
+                f"EMP 2019: out-of-use counts are unavailable; `JNBVHS = 1` "
+                f"for {100 * attributes_b[2].out_of_use_share:.2f}% of "
+                "weighted households, so `JNBVEH` is used."
+            ]
+            if attributes_b[2].out_of_use_share is not None
+            else []
+        ),
+        "",
         "",
         "Levels and gaps use 95% household-bootstrap intervals; cross-year ratios "
         "use 90% intervals. Individual survey household draws are independent, "
@@ -1793,7 +1999,7 @@ def run_report(
         "zero-trip people and subtract open-day weights.",
         "",
         "Reweighting excludes unknown income and targets the average of each "
-        "survey's joint income × density × cars distribution, separately for "
+        "survey's joint income × density × vehicle-class distribution, separately for "
         "each estimation basis. Sparse car levels 1 and 2+ are pooled, then "
         "sparse and very sparse density are pooled, within quintiles. Remaining "
         "empty cells pool all density and car categories within a quintile. "
@@ -1802,7 +2008,8 @@ def run_report(
         f"{100 * max_lost_share:g}%; each draw is recorded in reweighted.csv.",
         "",
         "M0 includes income, population category and weekday; M1 adds density; "
-        "M2 adds cars. The pooled M2 model adds survey × quintile interactions. "
+        "M2 adds vehicle class. The pooled M2 model adds survey × "
+        "quintile interactions. "
         "WLS models log travel-day minutes, so M2 Q5/Q1 is a conditional "
         "geometric ratio, not the arithmetic-mean gap. Nonpositive times are "
         "excluded. Regression confidence intervals are household-bootstrap 95%.",
@@ -1833,7 +2040,7 @@ def run_report(
                         selected,
                         income=attrs[0],
                         density=attrs[1],
-                        cars=attrs[2],
+                        cars=attrs[2].classes,
                     )
                     for cache, attrs in (
                         (cache_a, attributes_a),
