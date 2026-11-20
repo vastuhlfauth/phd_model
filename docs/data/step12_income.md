@@ -2,13 +2,13 @@
 
 Weekdays, residents aged 6+; quintiles are relative within each year. ENTD uses bracket midpoint per consumption unit; EMP uses INSEE's imputed income decile re-cut under individual weights.
 
-ENTD unknown income remains a separate sixth group; 2019 has no equivalent. Residence density is the urban-unit-status × size proxy in both years. Household vehicles use the broad in-use definition (cars + VUL + camper vans), grouped 0, 1 and 2+.
+Residence density is the urban-unit-status × size proxy in both years. Household vehicles use the broad in-use definition (cars + VUL + camper vans), grouped 0, 1 and 2+.
 
 ### Household vehicle definitions
 
-ENTD 2008 `Q_MENAGE.V1_JNBVEH + V1_JNBCCVUL` counts passenger cars, vans and camper vans in use. The questionnaire asks: « De combien de voitures particulières votre ménage dispose-t-il au total ? Qu’elles soient au nom d’un des membres du ménage, d’un proche ou au nom d’une société, y-compris de leasing. Donnez le nombre précis. » Out-of-use vehicles are excluded by the questionnaire instructions. [ENTD questionnaire](https://www.statistiques.developpement-durable.gouv.fr/media/2309/download?inline).
+ENTD 2008 `Q_MENAGE.V1_JNBVEH + V1_JNBCCVUL` counts passenger cars, vans and camper vans in use. `JNBVEH`: « De combien de voitures particulières votre ménage dispose-t-il au total ? » `JNBCCVUL`: « De combien de camping-cars, fourgonnettes, ou véhicules utilitaires légers votre ménage dispose-t-il au total ? » Out-of-use vehicles are excluded by the questionnaire instructions. [ENTD questionnaire](https://www.statistiques.developpement-durable.gouv.fr/media/2309/download?inline).
 
-EMP 2019 `Q_MENAGE.JNBVEH` includes cars, VUL and camper vans, including vehicles out of use (`JNBVHS = 1`). When public out-of-use counts are present, subtract `JNBVPHS + JNBCCHS + JNBVULHS`. The questionnaire introduces these items: « Voici tout d’abord des questions sur les véhicules dont dispose éventuellement votre ménage, dans ce logement ou ailleurs (résidence secondaire, etc.). » [EMP questionnaire](https://www.statistiques.developpement-durable.gouv.fr/sites/default/files/2022-07/questionnaire_emp2019.pdf).
+EMP 2019 `Q_MENAGE.JNBVEH` includes cars, VUL and camper vans, including vehicles out of use (`JNBVHS = 1`). When public out-of-use counts are present, subtract `JNBVPHS + JNBCCHS + JNBVULHS`. `JNBVEH`: « De combien de voitures particulières, de véhicules utilitaires légers ou de camping-cars votre ménage dispose-t-il au total ? » A zero total remains zero; `JNBVHS` is not asked in that case. [EMP questionnaire](https://www.statistiques.developpement-durable.gouv.fr/sites/default/files/2022-07/questionnaire_emp2019.pdf).
 
 ## Household shares by vehicle class
 
@@ -20,16 +20,16 @@ Weighted by the household weights (`PONDV1` in ENTD; `pond_menC` in EMP). `n` is
 | 2008 | 1 | 7872 | 44.66 |
 | 2008 | 2+ | 9009 | 36.24 |
 | 2008 | unknown | 0 | 0.00 |
-| 2019 | 0 | 1 | 0.00 |
+| 2019 | 0 | 2255 | 19.95 |
 | 2019 | 1 | 5722 | 44.91 |
 | 2019 | 2+ | 5810 | 34.87 |
-| 2019 | unknown | 2292 | 20.22 |
+| 2019 | unknown | 38 | 0.28 |
 
 
 
 Levels and gaps use 95% household-bootstrap intervals; cross-year ratios use 90% intervals. Individual survey household draws are independent, and shared across scopes and statistics. Per-person estimates include zero-trip people and subtract open-day weights.
 
-Reweighting excludes unknown income and targets the average of each survey's joint income × density × vehicle-class distribution, separately for each estimation basis. Sparse car levels 1 and 2+ are pooled, then sparse and very sparse density are pooled, within quintiles. Remaining empty cells pool all density and car categories within a quintile. Still-small cells make that quintile unavailable. Bootstrap targets are rescaled over common support only when lost share is below 1%; each draw is recorded in reweighted.csv.
+Reweighting excludes unknown income and targets the average of each survey's joint income × density × vehicle-class distribution, separately for each estimation basis. Only cells with respondents in at least one year enter the joint grid. Within quintile, sparse cells pool 1 with 2+ at the same density, then sparse with very sparse at the same vehicle class. Remaining small cells merge with the closest cell, preferring the same density, then the same vehicle class, then the closest supported cell across both dimensions. The displayed destination is the retained label. Whole-quintile pooling is a last resort for cells with no common support. Still-small cells make that quintile unavailable. Bootstrap targets are rescaled over common support only when lost share is below 1%; each draw is recorded in reweighted.csv.
 
 M0 includes income, population category and weekday; M1 adds density; M2 adds vehicle class. The pooled M2 model adds survey × quintile interactions. WLS models log travel-day minutes, so M2 Q5/Q1 is a conditional geometric ratio, not the arithmetic-mean gap. Nonpositive times are excluded. Regression confidence intervals are household-bootstrap 95%.
 
@@ -37,7 +37,24 @@ Cells under 50 respondents are hidden; density cells under 100 are flagged. Inte
 
 ## Round-trip days · destination purposes · local (≤ 80 km) (`round-dest-local`)
 
-ENTD unknown income: 0.00% of respondents and 0.00% of kept described-day weight. EMP income is imputed; no equivalent unknown group.
+ENTD 2008 income is complete in this file: the released income bracket and consumption-unit count are populated. The dictionary and released fields do not establish whether income brackets were imputed upstream (see [ENTD income audit](./entd2008.md#income-imputation-audit-step-12)).
+
+### Weighted income quintile shares
+
+Shares use the full weekday respondent roster and individual weights; `n` is unweighted. Ties in income can produce unequal shares.
+
+| Year | Quintile | n | Share (%) |
+|---:|:---|---:|---:|
+| 2008 | q1 | 3359 | 20.00 |
+| 2008 | q2 | 3159 | 20.00 |
+| 2008 | q3 | 3615 | 20.00 |
+| 2008 | q4 | 3657 | 19.99 |
+| 2008 | q5 | 4752 | 20.02 |
+| 2019 | q1 | 2504 | 20.00 |
+| 2019 | q2 | 2662 | 20.00 |
+| 2019 | q3 | 2742 | 19.99 |
+| 2019 | q4 | 2885 | 20.01 |
+| 2019 | q5 | 3032 | 20.00 |
 
 ### Support audit (details in support.csv)
 
@@ -52,7 +69,7 @@ Scope: Round-trip days · destination purposes · local (≤ 80 km) (`round-dest
 | regression_M2 | 2008 | 18 | 0 | 0 | 596 |
 | regression_M2 | 2019 | 18 | 0 | 0 | 502 |
 | regression_input_cars | 2008 | 4 | 1 | 200 | 0 |
-| regression_input_cars | 2019 | 4 | 1 | 71 | 1 |
+| regression_input_cars | 2019 | 4 | 0 | 0 | 23 |
 | regression_input_density | 2008 | 4 | 0 | 0 | 1779 |
 | regression_input_density | 2019 | 4 | 0 | 0 | 1290 |
 | regression_input_income | 2008 | 5 | 0 | 0 | 2256 |
@@ -63,14 +80,14 @@ Scope: Round-trip days · destination purposes · local (≤ 80 km) (`round-dest
 | regression_input_weekday | 2019 | 5 | 0 | 0 | 1635 |
 | regression_pooled | 2008 | 23 | 5 | 200 | 0 |
 | regression_pooled | 2019 | 23 | 0 | 0 | 502 |
-| reweight_input_person | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_person | 2019 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2008 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2019 | 80 | 23 | 200 | 0 |
-| reweight_person | 2008 | 5 | 0 | 0 | 3159 |
-| reweight_person | 2019 | 5 | 0 | 0 | 2504 |
-| reweight_travel_day | 2008 | 5 | 0 | 0 | 2256 |
-| reweight_travel_day | 2019 | 5 | 0 | 0 | 1628 |
+| reweight_input_person | 2008 | 77 | 17 | 200 | 0 |
+| reweight_input_person | 2019 | 77 | 18 | 92 | 1 |
+| reweight_input_travel_day | 2008 | 73 | 14 | 200 | 0 |
+| reweight_input_travel_day | 2019 | 73 | 16 | 92 | 1 |
+| reweight_person | 2008 | 52 | 0 | 0 | 68 |
+| reweight_person | 2019 | 52 | 0 | 0 | 56 |
+| reweight_travel_day | 2008 | 47 | 0 | 0 | 70 |
+| reweight_travel_day | 2019 | 47 | 0 | 0 | 50 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -86,13 +103,11 @@ Scope: Round-trip days · destination purposes · local (≤ 80 km) (`round-dest
 | travel_day | q3 | 2743 | 62.480 | 59.943 | 65.347 | 1850 | 68.756 | 66.109 | 71.320 | 1.100 | 1.055 | 1.154 | inconclusive | inconclusive |
 | travel_day | q4 | 2871 | 64.746 | 62.247 | 67.477 | 1990 | 69.645 | 67.019 | 72.431 | 1.076 | 1.021 | 1.125 | equivalent | inconclusive |
 | travel_day | q5 | 3767 | 71.457 | 68.878 | 73.740 | 2107 | 76.301 | 73.483 | 78.676 | 1.068 | 1.020 | 1.111 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 | person | q1 | 3359 | 44.527 | 42.284 | 46.704 | 2504 | 49.860 | 47.337 | 53.052 | 1.120 | 1.048 | 1.196 | inconclusive | inconclusive |
 | person | q2 | 3159 | 48.101 | 45.678 | 50.230 | 2662 | 51.784 | 48.999 | 54.960 | 1.077 | 1.004 | 1.149 | equivalent | inconclusive |
 | person | q3 | 3615 | 50.861 | 48.664 | 53.503 | 2742 | 55.771 | 53.008 | 59.135 | 1.097 | 1.032 | 1.164 | inconclusive | inconclusive |
 | person | q4 | 3657 | 55.533 | 53.281 | 58.246 | 2885 | 60.422 | 57.380 | 63.387 | 1.088 | 1.018 | 1.151 | inconclusive | inconclusive |
 | person | q5 | 4752 | 61.192 | 58.754 | 63.370 | 3032 | 67.546 | 64.195 | 70.958 | 1.104 | 1.052 | 1.166 | inconclusive | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -117,18 +132,16 @@ Scope: Round-trip days · destination purposes · local (≤ 80 km) (`round-dest
 
 | basis | quintile | n_2008 | mean_2008 | ci_2008_low | ci_2008_high | n_2019 | mean_2019 | ci_2019_low | ci_2019_high | ratio | ratio_ci_low | ratio_ci_high | verdict_15 | verdict_10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 2256 | 59.795 | 57.273 | 62.225 | 1628 | 65.036 | 62.214 | 67.625 | 1.088 | 1.025 | 1.146 | equivalent | inconclusive |
-| travel_day | q2 | 2369 | 60.292 | 57.766 | 63.048 | 1843 | 64.596 | 61.787 | 67.795 | 1.071 | 1.013 | 1.129 | equivalent | inconclusive |
-| travel_day | q3 | 2743 | 62.480 | 59.943 | 65.347 | 1850 | 68.756 | 66.109 | 71.320 | 1.100 | 1.055 | 1.154 | inconclusive | inconclusive |
-| travel_day | q4 | 2871 | 64.746 | 62.247 | 67.477 | 1990 | 69.645 | 67.019 | 72.431 | 1.076 | 1.021 | 1.125 | equivalent | inconclusive |
-| travel_day | q5 | 3767 | 71.457 | 68.878 | 73.740 | 2107 | 76.301 | 73.483 | 78.676 | 1.068 | 1.020 | 1.111 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
-| person | q1 | 3359 | 44.527 | 42.284 | 46.704 | 2504 | 49.860 | 47.337 | 53.052 | 1.120 | 1.048 | 1.196 | inconclusive | inconclusive |
-| person | q2 | 3159 | 48.101 | 45.678 | 50.230 | 2662 | 51.784 | 48.999 | 54.960 | 1.077 | 1.004 | 1.149 | equivalent | inconclusive |
-| person | q3 | 3615 | 50.861 | 48.664 | 53.503 | 2742 | 55.771 | 53.008 | 59.135 | 1.097 | 1.032 | 1.164 | inconclusive | inconclusive |
-| person | q4 | 3657 | 55.533 | 53.281 | 58.246 | 2885 | 60.422 | 57.380 | 63.387 | 1.088 | 1.018 | 1.151 | inconclusive | inconclusive |
-| person | q5 | 4752 | 61.192 | 58.754 | 63.370 | 3032 | 67.546 | 64.195 | 70.958 | 1.104 | 1.052 | 1.166 | inconclusive | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
+| travel_day | q1 | 2256 | 60.072 | 57.634 | 62.815 | 1628 | 64.514 | 61.796 | 67.150 | 1.074 | 1.008 | 1.131 | equivalent | inconclusive |
+| travel_day | q2 | 2369 | 59.953 | 57.318 | 62.685 | 1843 | 64.853 | 62.023 | 68.126 | 1.082 | 1.030 | 1.138 | equivalent | inconclusive |
+| travel_day | q3 | 2743 | 62.466 | 59.959 | 65.267 | 1850 | 68.818 | 66.210 | 71.484 | 1.102 | 1.056 | 1.158 | inconclusive | inconclusive |
+| travel_day | q4 | 2871 | 64.756 | 62.149 | 67.488 | 1990 | 69.751 | 67.118 | 72.410 | 1.077 | 1.023 | 1.128 | equivalent | inconclusive |
+| travel_day | q5 | 3767 | 71.555 | 69.084 | 73.836 | 2107 | 76.469 | 73.827 | 78.893 | 1.069 | 1.023 | 1.115 | equivalent | inconclusive |
+| person | q1 | 3359 | 45.329 | 42.954 | 47.742 | 2504 | 49.094 | 46.674 | 52.325 | 1.083 | 1.007 | 1.158 | inconclusive | inconclusive |
+| person | q2 | 3159 | 47.706 | 45.415 | 50.080 | 2662 | 52.006 | 48.842 | 54.964 | 1.090 | 1.013 | 1.172 | inconclusive | inconclusive |
+| person | q3 | 3615 | 50.820 | 48.617 | 53.387 | 2742 | 55.830 | 53.243 | 59.242 | 1.099 | 1.030 | 1.167 | inconclusive | inconclusive |
+| person | q4 | 3657 | 55.526 | 53.181 | 58.285 | 2885 | 60.745 | 57.646 | 63.844 | 1.094 | 1.026 | 1.155 | inconclusive | inconclusive |
+| person | q5 | 4752 | 61.435 | 58.975 | 63.635 | 3032 | 67.431 | 64.139 | 70.884 | 1.098 | 1.048 | 1.161 | inconclusive | inconclusive |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -139,176 +152,80 @@ Scope: Round-trip days · destination purposes · local (≤ 80 km) (`round-dest
 
 | basis | gap | value_2008 | ci_2008_low | ci_2008_high | value_2019 | ci_2019_low | ci_2019_high | change | change_ci_low | change_ci_high |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | difference | 11.663 | 7.524 | 15.378 | 11.265 | 7.018 | 14.901 | -0.398 | -6.766 | 4.923 |
-| travel_day | ratio | 1.195 | 1.123 | 1.259 | 1.173 | 1.103 | 1.236 | -0.022 | -0.134 | 0.074 |
-| person | difference | 16.665 | 13.098 | 19.841 | 17.685 | 13.331 | 22.260 | 1.020 | -4.680 | 6.699 |
-| person | ratio | 1.374 | 1.285 | 1.466 | 1.355 | 1.257 | 1.462 | -0.020 | -0.159 | 0.125 |
+| travel_day | difference | 11.483 | 7.308 | 14.889 | 11.955 | 7.812 | 15.528 | 0.472 | -5.573 | 5.944 |
+| travel_day | ratio | 1.191 | 1.117 | 1.255 | 1.185 | 1.118 | 1.255 | -0.006 | -0.109 | 0.104 |
+| person | difference | 16.106 | 12.241 | 19.201 | 18.337 | 13.807 | 22.870 | 2.231 | -3.445 | 7.947 |
+| person | ratio | 1.355 | 1.257 | 1.447 | 1.374 | 1.267 | 1.498 | 0.018 | -0.121 | 0.172 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
 
 ### Collapsed joint cells
 
-- travel_day: `q1|dense|0` → `q1|all|all`.
-- travel_day: `q1|dense|1` → `q1|all|all`.
-- travel_day: `q1|dense|2+` → `q1|all|all`.
-- travel_day: `q1|dense|unknown` → `q1|all|all`.
-- travel_day: `q1|intermediate|0` → `q1|all|all`.
-- travel_day: `q1|intermediate|1` → `q1|all|all`.
-- travel_day: `q1|intermediate|2+` → `q1|all|all`.
-- travel_day: `q1|intermediate|unknown` → `q1|all|all`.
-- travel_day: `q1|sparse|0` → `q1|all|all`.
-- travel_day: `q1|sparse|1` → `q1|all|all`.
-- travel_day: `q1|sparse|2+` → `q1|all|all`.
-- travel_day: `q1|sparse|unknown` → `q1|all|all`.
-- travel_day: `q1|very_sparse|0` → `q1|all|all`.
-- travel_day: `q1|very_sparse|1` → `q1|all|all`.
-- travel_day: `q1|very_sparse|2+` → `q1|all|all`.
-- travel_day: `q1|very_sparse|unknown` → `q1|all|all`.
-- travel_day: `q2|dense|0` → `q2|all|all`.
-- travel_day: `q2|dense|1` → `q2|all|all`.
-- travel_day: `q2|dense|2+` → `q2|all|all`.
-- travel_day: `q2|dense|unknown` → `q2|all|all`.
-- travel_day: `q2|intermediate|0` → `q2|all|all`.
-- travel_day: `q2|intermediate|1` → `q2|all|all`.
-- travel_day: `q2|intermediate|2+` → `q2|all|all`.
-- travel_day: `q2|intermediate|unknown` → `q2|all|all`.
-- travel_day: `q2|sparse|0` → `q2|all|all`.
-- travel_day: `q2|sparse|1` → `q2|all|all`.
-- travel_day: `q2|sparse|2+` → `q2|all|all`.
-- travel_day: `q2|sparse|unknown` → `q2|all|all`.
-- travel_day: `q2|very_sparse|0` → `q2|all|all`.
-- travel_day: `q2|very_sparse|1` → `q2|all|all`.
-- travel_day: `q2|very_sparse|2+` → `q2|all|all`.
-- travel_day: `q2|very_sparse|unknown` → `q2|all|all`.
-- travel_day: `q3|dense|0` → `q3|all|all`.
-- travel_day: `q3|dense|1` → `q3|all|all`.
-- travel_day: `q3|dense|2+` → `q3|all|all`.
-- travel_day: `q3|dense|unknown` → `q3|all|all`.
-- travel_day: `q3|intermediate|0` → `q3|all|all`.
-- travel_day: `q3|intermediate|1` → `q3|all|all`.
-- travel_day: `q3|intermediate|2+` → `q3|all|all`.
-- travel_day: `q3|intermediate|unknown` → `q3|all|all`.
-- travel_day: `q3|sparse|0` → `q3|all|all`.
-- travel_day: `q3|sparse|1` → `q3|all|all`.
-- travel_day: `q3|sparse|2+` → `q3|all|all`.
-- travel_day: `q3|sparse|unknown` → `q3|all|all`.
-- travel_day: `q3|very_sparse|0` → `q3|all|all`.
-- travel_day: `q3|very_sparse|1` → `q3|all|all`.
-- travel_day: `q3|very_sparse|2+` → `q3|all|all`.
-- travel_day: `q3|very_sparse|unknown` → `q3|all|all`.
-- travel_day: `q4|dense|0` → `q4|all|all`.
-- travel_day: `q4|dense|1` → `q4|all|all`.
-- travel_day: `q4|dense|2+` → `q4|all|all`.
-- travel_day: `q4|dense|unknown` → `q4|all|all`.
-- travel_day: `q4|intermediate|0` → `q4|all|all`.
-- travel_day: `q4|intermediate|1` → `q4|all|all`.
-- travel_day: `q4|intermediate|2+` → `q4|all|all`.
-- travel_day: `q4|intermediate|unknown` → `q4|all|all`.
-- travel_day: `q4|sparse|0` → `q4|all|all`.
-- travel_day: `q4|sparse|1` → `q4|all|all`.
-- travel_day: `q4|sparse|2+` → `q4|all|all`.
-- travel_day: `q4|sparse|unknown` → `q4|all|all`.
-- travel_day: `q4|very_sparse|0` → `q4|all|all`.
-- travel_day: `q4|very_sparse|1` → `q4|all|all`.
-- travel_day: `q4|very_sparse|2+` → `q4|all|all`.
-- travel_day: `q4|very_sparse|unknown` → `q4|all|all`.
-- travel_day: `q5|dense|0` → `q5|all|all`.
-- travel_day: `q5|dense|1` → `q5|all|all`.
-- travel_day: `q5|dense|2+` → `q5|all|all`.
-- travel_day: `q5|dense|unknown` → `q5|all|all`.
-- travel_day: `q5|intermediate|0` → `q5|all|all`.
-- travel_day: `q5|intermediate|1` → `q5|all|all`.
-- travel_day: `q5|intermediate|2+` → `q5|all|all`.
-- travel_day: `q5|intermediate|unknown` → `q5|all|all`.
-- travel_day: `q5|sparse|0` → `q5|all|all`.
-- travel_day: `q5|sparse|1` → `q5|all|all`.
-- travel_day: `q5|sparse|2+` → `q5|all|all`.
-- travel_day: `q5|sparse|unknown` → `q5|all|all`.
-- travel_day: `q5|very_sparse|0` → `q5|all|all`.
-- travel_day: `q5|very_sparse|1` → `q5|all|all`.
-- travel_day: `q5|very_sparse|2+` → `q5|all|all`.
-- travel_day: `q5|very_sparse|unknown` → `q5|all|all`.
-- person: `q1|dense|0` → `q1|all|all`.
-- person: `q1|dense|1` → `q1|all|all`.
-- person: `q1|dense|2+` → `q1|all|all`.
-- person: `q1|dense|unknown` → `q1|all|all`.
-- person: `q1|intermediate|0` → `q1|all|all`.
-- person: `q1|intermediate|1` → `q1|all|all`.
-- person: `q1|intermediate|2+` → `q1|all|all`.
-- person: `q1|intermediate|unknown` → `q1|all|all`.
-- person: `q1|sparse|0` → `q1|all|all`.
-- person: `q1|sparse|1` → `q1|all|all`.
-- person: `q1|sparse|2+` → `q1|all|all`.
-- person: `q1|sparse|unknown` → `q1|all|all`.
-- person: `q1|very_sparse|0` → `q1|all|all`.
-- person: `q1|very_sparse|1` → `q1|all|all`.
-- person: `q1|very_sparse|2+` → `q1|all|all`.
-- person: `q1|very_sparse|unknown` → `q1|all|all`.
-- person: `q2|dense|0` → `q2|all|all`.
-- person: `q2|dense|1` → `q2|all|all`.
-- person: `q2|dense|2+` → `q2|all|all`.
-- person: `q2|dense|unknown` → `q2|all|all`.
-- person: `q2|intermediate|0` → `q2|all|all`.
-- person: `q2|intermediate|1` → `q2|all|all`.
-- person: `q2|intermediate|2+` → `q2|all|all`.
-- person: `q2|intermediate|unknown` → `q2|all|all`.
-- person: `q2|sparse|0` → `q2|all|all`.
-- person: `q2|sparse|1` → `q2|all|all`.
-- person: `q2|sparse|2+` → `q2|all|all`.
-- person: `q2|sparse|unknown` → `q2|all|all`.
-- person: `q2|very_sparse|0` → `q2|all|all`.
-- person: `q2|very_sparse|1` → `q2|all|all`.
-- person: `q2|very_sparse|2+` → `q2|all|all`.
-- person: `q2|very_sparse|unknown` → `q2|all|all`.
-- person: `q3|dense|0` → `q3|all|all`.
-- person: `q3|dense|1` → `q3|all|all`.
-- person: `q3|dense|2+` → `q3|all|all`.
-- person: `q3|dense|unknown` → `q3|all|all`.
-- person: `q3|intermediate|0` → `q3|all|all`.
-- person: `q3|intermediate|1` → `q3|all|all`.
-- person: `q3|intermediate|2+` → `q3|all|all`.
-- person: `q3|intermediate|unknown` → `q3|all|all`.
-- person: `q3|sparse|0` → `q3|all|all`.
-- person: `q3|sparse|1` → `q3|all|all`.
-- person: `q3|sparse|2+` → `q3|all|all`.
-- person: `q3|sparse|unknown` → `q3|all|all`.
-- person: `q3|very_sparse|0` → `q3|all|all`.
-- person: `q3|very_sparse|1` → `q3|all|all`.
-- person: `q3|very_sparse|2+` → `q3|all|all`.
-- person: `q3|very_sparse|unknown` → `q3|all|all`.
-- person: `q4|dense|0` → `q4|all|all`.
-- person: `q4|dense|1` → `q4|all|all`.
-- person: `q4|dense|2+` → `q4|all|all`.
-- person: `q4|dense|unknown` → `q4|all|all`.
-- person: `q4|intermediate|0` → `q4|all|all`.
-- person: `q4|intermediate|1` → `q4|all|all`.
-- person: `q4|intermediate|2+` → `q4|all|all`.
-- person: `q4|intermediate|unknown` → `q4|all|all`.
-- person: `q4|sparse|0` → `q4|all|all`.
-- person: `q4|sparse|1` → `q4|all|all`.
-- person: `q4|sparse|2+` → `q4|all|all`.
-- person: `q4|sparse|unknown` → `q4|all|all`.
-- person: `q4|very_sparse|0` → `q4|all|all`.
-- person: `q4|very_sparse|1` → `q4|all|all`.
-- person: `q4|very_sparse|2+` → `q4|all|all`.
-- person: `q4|very_sparse|unknown` → `q4|all|all`.
-- person: `q5|dense|0` → `q5|all|all`.
-- person: `q5|dense|1` → `q5|all|all`.
-- person: `q5|dense|2+` → `q5|all|all`.
-- person: `q5|dense|unknown` → `q5|all|all`.
-- person: `q5|intermediate|0` → `q5|all|all`.
-- person: `q5|intermediate|1` → `q5|all|all`.
-- person: `q5|intermediate|2+` → `q5|all|all`.
-- person: `q5|intermediate|unknown` → `q5|all|all`.
-- person: `q5|sparse|0` → `q5|all|all`.
-- person: `q5|sparse|1` → `q5|all|all`.
-- person: `q5|sparse|2+` → `q5|all|all`.
-- person: `q5|sparse|unknown` → `q5|all|all`.
-- person: `q5|very_sparse|0` → `q5|all|all`.
-- person: `q5|very_sparse|1` → `q5|all|all`.
-- person: `q5|very_sparse|2+` → `q5|all|all`.
-- person: `q5|very_sparse|unknown` → `q5|all|all`.
+- travel_day: 38.84% of the full-sample pooled target is in cells that combine two or more original cells.
+- person: 37.52% of the full-sample pooled target is in cells that combine two or more original cells.
+
+- travel_day: `q1|dense|1` → `q1|dense|1+`.
+- travel_day: `q1|dense|2+` → `q1|dense|1+`.
+- travel_day: `q1|dense|unknown` → `q1|dense|0`.
+- travel_day: `q1|intermediate|unknown` → `q1|intermediate|1`.
+- travel_day: `q1|sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|sparse|1` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|2+` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q2|dense|1` → `q2|dense|1+`.
+- travel_day: `q2|dense|2+` → `q2|dense|1+`.
+- travel_day: `q2|dense|unknown` → `q2|dense|1+`.
+- travel_day: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- travel_day: `q2|sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q3|dense|1` → `q3|dense|1+`.
+- travel_day: `q3|dense|2+` → `q3|dense|1+`.
+- travel_day: `q3|dense|unknown` → `q3|dense|1+`.
+- travel_day: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- travel_day: `q3|sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|unknown` → `q3|very_sparse|2+`.
+- travel_day: `q4|dense|0` → `q4|dense|1`.
+- travel_day: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- travel_day: `q4|sparse|0` → `q4|intermediate|0`.
+- travel_day: `q4|sparse|unknown` → `q4|sparse|2+`.
+- travel_day: `q4|very_sparse|0` → `q4|intermediate|0`.
+- travel_day: `q5|sparse|0` → `q5|intermediate|0`.
+- travel_day: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q1|dense|1` → `q1|dense|1+`.
+- person: `q1|dense|2+` → `q1|dense|1+`.
+- person: `q1|dense|unknown` → `q1|dense|0`.
+- person: `q1|intermediate|unknown` → `q1|intermediate|0`.
+- person: `q1|sparse|unknown` → `q1|very_sparse|1`.
+- person: `q1|very_sparse|unknown` → `q1|very_sparse|1`.
+- person: `q2|dense|1` → `q2|dense|1+`.
+- person: `q2|dense|2+` → `q2|dense|1+`.
+- person: `q2|dense|unknown` → `q2|dense|1+`.
+- person: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- person: `q2|sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q2|very_sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q3|dense|1` → `q3|dense|1+`.
+- person: `q3|dense|2+` → `q3|dense|1+`.
+- person: `q3|dense|unknown` → `q3|dense|1+`.
+- person: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- person: `q3|sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- person: `q4|sparse|0` → `q4|intermediate|0`.
+- person: `q4|sparse|unknown` → `q4|intermediate|0`.
+- person: `q4|very_sparse|0` → `q4|intermediate|0`.
+- person: `q4|very_sparse|unknown` → `q4|intermediate|0`.
+- person: `q5|intermediate|unknown` → `q5|intermediate|2+`.
+- person: `q5|sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|unknown` → `q5|very_sparse|2+`.
 
 ### Cells still below minimum support
 
@@ -399,10 +316,6 @@ Scope: Round-trip days · destination purposes · local (≤ 80 km) (`round-dest
 | travel_day | q5 | intermediate | False | 1801 | 74.020 | 70.511 | 77.788 | 1036 | 79.749 | 76.310 | 83.511 | 1.077 | 1.020 | 1.143 |
 | travel_day | q5 | sparse | False | 410 | 62.765 | 57.113 | 67.825 | 311 | 69.505 | 61.124 | 76.680 | 1.107 | 0.971 | 1.260 |
 | travel_day | q5 | very_sparse | False | 878 | 69.725 | 64.753 | 75.193 | 421 | 74.720 | 68.303 | 81.149 | 1.072 | 0.973 | 1.185 |
-| travel_day | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 | person | q1 | dense | False | 473 | 55.803 | 49.455 | 63.011 | 476 | 60.930 | 54.683 | 67.215 | 1.092 | 0.954 | 1.236 |
 | person | q1 | intermediate | False | 1159 | 47.626 | 43.708 | 51.923 | 1197 | 52.095 | 47.324 | 57.587 | 1.094 | 0.984 | 1.219 |
 | person | q1 | sparse | False | 435 | 39.838 | 33.691 | 47.221 | 385 | 40.534 | 33.993 | 47.766 | 1.017 | 0.832 | 1.221 |
@@ -423,10 +336,6 @@ Scope: Round-trip days · destination purposes · local (≤ 80 km) (`round-dest
 | person | q5 | intermediate | False | 2201 | 66.173 | 62.554 | 69.396 | 1478 | 70.349 | 65.822 | 75.291 | 1.063 | 0.987 | 1.138 |
 | person | q5 | sparse | False | 542 | 50.025 | 44.919 | 55.195 | 452 | 61.526 | 52.635 | 70.215 | 1.230 | 1.043 | 1.414 |
 | person | q5 | very_sparse | False | 1149 | 55.965 | 51.789 | 60.998 | 605 | 62.864 | 56.099 | 69.176 | 1.123 | 1.002 | 1.260 |
-| person | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -437,16 +346,16 @@ Scope: Round-trip days · destination purposes · local (≤ 80 km) (`round-dest
 
 | basis | quintile | ratio | verdict_15 | raw_q5_q1_2008 | raw_q5_q1_2019 | reweighted_q5_q1_2008 | reweighted_q5_q1_2019 | m2_q5_q1_2008 | m2_q5_q1_2019 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 1.088 | equivalent | 1.195 | 1.173 | 1.195 | 1.173 | 1.161 | 1.165 |
-| travel_day | q2 | 1.071 | equivalent | 1.195 | 1.173 | 1.195 | 1.173 | 1.161 | 1.165 |
-| travel_day | q3 | 1.100 | inconclusive | 1.195 | 1.173 | 1.195 | 1.173 | 1.161 | 1.165 |
-| travel_day | q4 | 1.076 | equivalent | 1.195 | 1.173 | 1.195 | 1.173 | 1.161 | 1.165 |
-| travel_day | q5 | 1.068 | equivalent | 1.195 | 1.173 | 1.195 | 1.173 | 1.161 | 1.165 |
-| person | q1 | 1.120 | inconclusive | 1.374 | 1.355 | 1.374 | 1.355 | 1.161 | 1.165 |
-| person | q2 | 1.077 | equivalent | 1.374 | 1.355 | 1.374 | 1.355 | 1.161 | 1.165 |
-| person | q3 | 1.097 | inconclusive | 1.374 | 1.355 | 1.374 | 1.355 | 1.161 | 1.165 |
-| person | q4 | 1.088 | inconclusive | 1.374 | 1.355 | 1.374 | 1.355 | 1.161 | 1.165 |
-| person | q5 | 1.104 | inconclusive | 1.374 | 1.355 | 1.374 | 1.355 | 1.161 | 1.165 |
+| travel_day | q1 | 1.088 | equivalent | 1.195 | 1.173 | 1.191 | 1.185 | 1.161 | 1.165 |
+| travel_day | q2 | 1.071 | equivalent | 1.195 | 1.173 | 1.191 | 1.185 | 1.161 | 1.165 |
+| travel_day | q3 | 1.100 | inconclusive | 1.195 | 1.173 | 1.191 | 1.185 | 1.161 | 1.165 |
+| travel_day | q4 | 1.076 | equivalent | 1.195 | 1.173 | 1.191 | 1.185 | 1.161 | 1.165 |
+| travel_day | q5 | 1.068 | equivalent | 1.195 | 1.173 | 1.191 | 1.185 | 1.161 | 1.165 |
+| person | q1 | 1.120 | inconclusive | 1.374 | 1.355 | 1.355 | 1.374 | 1.161 | 1.165 |
+| person | q2 | 1.077 | equivalent | 1.374 | 1.355 | 1.355 | 1.374 | 1.161 | 1.165 |
+| person | q3 | 1.097 | inconclusive | 1.374 | 1.355 | 1.355 | 1.374 | 1.161 | 1.165 |
+| person | q4 | 1.088 | inconclusive | 1.374 | 1.355 | 1.355 | 1.374 | 1.161 | 1.165 |
+| person | q5 | 1.104 | inconclusive | 1.374 | 1.355 | 1.355 | 1.374 | 1.161 | 1.165 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -455,7 +364,24 @@ The positive income gradient survives density and car controls in both years.
 
 ## Round-trip days · destination purposes · all trips in the day's trip table (incl. > 80 km) (`round-dest-daytable`)
 
-ENTD unknown income: 0.00% of respondents and 0.00% of kept described-day weight. EMP income is imputed; no equivalent unknown group.
+ENTD 2008 income is complete in this file: the released income bracket and consumption-unit count are populated. The dictionary and released fields do not establish whether income brackets were imputed upstream (see [ENTD income audit](./entd2008.md#income-imputation-audit-step-12)).
+
+### Weighted income quintile shares
+
+Shares use the full weekday respondent roster and individual weights; `n` is unweighted. Ties in income can produce unequal shares.
+
+| Year | Quintile | n | Share (%) |
+|---:|:---|---:|---:|
+| 2008 | q1 | 3359 | 20.00 |
+| 2008 | q2 | 3159 | 20.00 |
+| 2008 | q3 | 3615 | 20.00 |
+| 2008 | q4 | 3657 | 19.99 |
+| 2008 | q5 | 4752 | 20.02 |
+| 2019 | q1 | 2504 | 20.00 |
+| 2019 | q2 | 2662 | 20.00 |
+| 2019 | q3 | 2742 | 19.99 |
+| 2019 | q4 | 2885 | 20.01 |
+| 2019 | q5 | 3032 | 20.00 |
 
 ### Support audit (details in support.csv)
 
@@ -470,7 +396,7 @@ Scope: Round-trip days · destination purposes · all trips in the day's trip ta
 | regression_M2 | 2008 | 18 | 0 | 0 | 597 |
 | regression_M2 | 2019 | 18 | 0 | 0 | 505 |
 | regression_input_cars | 2008 | 4 | 1 | 200 | 0 |
-| regression_input_cars | 2019 | 4 | 1 | 71 | 1 |
+| regression_input_cars | 2019 | 4 | 0 | 0 | 23 |
 | regression_input_density | 2008 | 4 | 0 | 0 | 1805 |
 | regression_input_density | 2019 | 4 | 0 | 0 | 1301 |
 | regression_input_income | 2008 | 5 | 0 | 0 | 2264 |
@@ -481,14 +407,14 @@ Scope: Round-trip days · destination purposes · all trips in the day's trip ta
 | regression_input_weekday | 2019 | 5 | 0 | 0 | 1650 |
 | regression_pooled | 2008 | 23 | 5 | 200 | 0 |
 | regression_pooled | 2019 | 23 | 0 | 0 | 505 |
-| reweight_input_person | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_person | 2019 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2008 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2019 | 80 | 23 | 200 | 0 |
-| reweight_person | 2008 | 5 | 0 | 0 | 3159 |
-| reweight_person | 2019 | 5 | 0 | 0 | 2504 |
-| reweight_travel_day | 2008 | 5 | 0 | 0 | 2264 |
-| reweight_travel_day | 2019 | 5 | 0 | 0 | 1641 |
+| reweight_input_person | 2008 | 77 | 17 | 200 | 0 |
+| reweight_input_person | 2019 | 77 | 18 | 92 | 1 |
+| reweight_input_travel_day | 2008 | 73 | 14 | 200 | 0 |
+| reweight_input_travel_day | 2019 | 73 | 16 | 92 | 1 |
+| reweight_person | 2008 | 52 | 0 | 0 | 68 |
+| reweight_person | 2019 | 52 | 0 | 0 | 56 |
+| reweight_travel_day | 2008 | 47 | 0 | 0 | 71 |
+| reweight_travel_day | 2019 | 47 | 0 | 0 | 50 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -504,13 +430,11 @@ Scope: Round-trip days · destination purposes · all trips in the day's trip ta
 | travel_day | q3 | 2766 | 65.414 | 62.694 | 69.031 | 1873 | 74.535 | 70.112 | 79.164 | 1.139 | 1.069 | 1.198 | inconclusive | inconclusive |
 | travel_day | q4 | 2910 | 67.881 | 64.415 | 70.707 | 2003 | 70.938 | 68.265 | 73.943 | 1.045 | 0.989 | 1.092 | equivalent | equivalent |
 | travel_day | q5 | 3827 | 76.698 | 73.553 | 79.622 | 2136 | 79.266 | 76.303 | 81.682 | 1.033 | 0.986 | 1.080 | equivalent | equivalent |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 | person | q1 | 3359 | 45.627 | 43.174 | 48.082 | 2504 | 51.159 | 48.552 | 54.328 | 1.121 | 1.040 | 1.198 | inconclusive | inconclusive |
 | person | q2 | 3159 | 50.613 | 48.059 | 53.812 | 2662 | 53.251 | 50.169 | 56.744 | 1.052 | 0.980 | 1.131 | equivalent | inconclusive |
 | person | q3 | 3615 | 53.825 | 51.374 | 57.406 | 2742 | 61.190 | 57.025 | 65.675 | 1.137 | 1.056 | 1.238 | inconclusive | inconclusive |
 | person | q4 | 3657 | 58.891 | 56.158 | 61.739 | 2885 | 62.058 | 58.845 | 65.076 | 1.054 | 0.993 | 1.120 | equivalent | inconclusive |
 | person | q5 | 4752 | 66.842 | 64.141 | 69.945 | 3032 | 70.899 | 67.532 | 74.436 | 1.061 | 1.002 | 1.116 | equivalent | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -535,18 +459,16 @@ Scope: Round-trip days · destination purposes · all trips in the day's trip ta
 
 | basis | quintile | n_2008 | mean_2008 | ci_2008_low | ci_2008_high | n_2019 | mean_2019 | ci_2019_low | ci_2019_high | ratio | ratio_ci_low | ratio_ci_high | verdict_15 | verdict_10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 2264 | 61.133 | 58.301 | 64.076 | 1641 | 66.400 | 63.412 | 69.288 | 1.086 | 1.021 | 1.147 | equivalent | inconclusive |
-| travel_day | q2 | 2382 | 62.718 | 59.638 | 66.474 | 1851 | 66.154 | 63.138 | 70.123 | 1.055 | 0.999 | 1.118 | equivalent | inconclusive |
-| travel_day | q3 | 2766 | 65.414 | 62.694 | 69.031 | 1873 | 74.535 | 70.112 | 79.164 | 1.139 | 1.069 | 1.198 | inconclusive | inconclusive |
-| travel_day | q4 | 2910 | 67.881 | 64.415 | 70.707 | 2003 | 70.938 | 68.265 | 73.943 | 1.045 | 0.989 | 1.092 | equivalent | equivalent |
-| travel_day | q5 | 3827 | 76.698 | 73.553 | 79.622 | 2136 | 79.266 | 76.303 | 81.682 | 1.033 | 0.986 | 1.080 | equivalent | equivalent |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
-| person | q1 | 3359 | 45.627 | 43.174 | 48.082 | 2504 | 51.159 | 48.552 | 54.328 | 1.121 | 1.040 | 1.198 | inconclusive | inconclusive |
-| person | q2 | 3159 | 50.613 | 48.059 | 53.812 | 2662 | 53.251 | 50.169 | 56.744 | 1.052 | 0.980 | 1.131 | equivalent | inconclusive |
-| person | q3 | 3615 | 53.825 | 51.374 | 57.406 | 2742 | 61.190 | 57.025 | 65.675 | 1.137 | 1.056 | 1.238 | inconclusive | inconclusive |
-| person | q4 | 3657 | 58.891 | 56.158 | 61.739 | 2885 | 62.058 | 58.845 | 65.076 | 1.054 | 0.993 | 1.120 | equivalent | inconclusive |
-| person | q5 | 4752 | 66.842 | 64.141 | 69.945 | 3032 | 70.899 | 67.532 | 74.436 | 1.061 | 1.002 | 1.116 | equivalent | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
+| travel_day | q1 | 2264 | 61.310 | 58.556 | 64.168 | 1641 | 65.949 | 62.992 | 68.866 | 1.076 | 1.009 | 1.133 | equivalent | inconclusive |
+| travel_day | q2 | 2382 | 62.417 | 59.451 | 66.141 | 1851 | 66.387 | 63.212 | 69.906 | 1.064 | 1.004 | 1.124 | equivalent | inconclusive |
+| travel_day | q3 | 2766 | 65.430 | 62.758 | 69.015 | 1873 | 74.822 | 70.131 | 79.145 | 1.144 | 1.072 | 1.208 | inconclusive | inconclusive |
+| travel_day | q4 | 2910 | 67.841 | 64.506 | 70.854 | 2003 | 71.051 | 68.431 | 74.189 | 1.047 | 0.991 | 1.094 | equivalent | equivalent |
+| travel_day | q5 | 3827 | 76.758 | 73.840 | 79.709 | 2136 | 79.523 | 76.594 | 82.010 | 1.036 | 0.992 | 1.085 | equivalent | equivalent |
+| person | q1 | 3359 | 46.389 | 43.765 | 49.060 | 2504 | 50.440 | 47.796 | 53.417 | 1.087 | 1.011 | 1.163 | inconclusive | inconclusive |
+| person | q2 | 3159 | 50.211 | 47.439 | 53.343 | 2662 | 53.475 | 50.154 | 56.707 | 1.065 | 0.990 | 1.140 | equivalent | inconclusive |
+| person | q3 | 3615 | 53.786 | 51.290 | 57.268 | 2742 | 61.467 | 57.243 | 66.007 | 1.143 | 1.059 | 1.241 | inconclusive | inconclusive |
+| person | q4 | 3657 | 58.839 | 55.983 | 61.751 | 2885 | 62.366 | 59.237 | 65.474 | 1.060 | 0.995 | 1.125 | equivalent | inconclusive |
+| person | q5 | 4752 | 67.042 | 64.345 | 70.153 | 3032 | 70.913 | 67.366 | 74.441 | 1.058 | 1.004 | 1.113 | equivalent | inconclusive |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -557,176 +479,80 @@ Scope: Round-trip days · destination purposes · all trips in the day's trip ta
 
 | basis | gap | value_2008 | ci_2008_low | ci_2008_high | value_2019 | ci_2019_low | ci_2019_high | change | change_ci_low | change_ci_high |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | difference | 15.564 | 10.825 | 18.991 | 12.866 | 8.637 | 16.853 | -2.698 | -8.481 | 3.529 |
-| travel_day | ratio | 1.255 | 1.170 | 1.322 | 1.194 | 1.124 | 1.266 | -0.061 | -0.155 | 0.052 |
-| person | difference | 21.215 | 17.305 | 24.586 | 19.740 | 15.120 | 24.406 | -1.475 | -7.815 | 4.812 |
-| person | ratio | 1.465 | 1.363 | 1.556 | 1.386 | 1.285 | 1.500 | -0.079 | -0.235 | 0.082 |
+| travel_day | difference | 15.448 | 10.928 | 18.785 | 13.574 | 9.668 | 17.518 | -1.874 | -7.214 | 4.369 |
+| travel_day | ratio | 1.252 | 1.169 | 1.314 | 1.206 | 1.140 | 1.275 | -0.046 | -0.143 | 0.062 |
+| person | difference | 20.653 | 16.849 | 23.993 | 20.472 | 15.712 | 25.129 | -0.180 | -6.374 | 6.310 |
+| person | ratio | 1.445 | 1.346 | 1.540 | 1.406 | 1.299 | 1.522 | -0.039 | -0.191 | 0.110 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
 
 ### Collapsed joint cells
 
-- travel_day: `q1|dense|0` → `q1|all|all`.
-- travel_day: `q1|dense|1` → `q1|all|all`.
-- travel_day: `q1|dense|2+` → `q1|all|all`.
-- travel_day: `q1|dense|unknown` → `q1|all|all`.
-- travel_day: `q1|intermediate|0` → `q1|all|all`.
-- travel_day: `q1|intermediate|1` → `q1|all|all`.
-- travel_day: `q1|intermediate|2+` → `q1|all|all`.
-- travel_day: `q1|intermediate|unknown` → `q1|all|all`.
-- travel_day: `q1|sparse|0` → `q1|all|all`.
-- travel_day: `q1|sparse|1` → `q1|all|all`.
-- travel_day: `q1|sparse|2+` → `q1|all|all`.
-- travel_day: `q1|sparse|unknown` → `q1|all|all`.
-- travel_day: `q1|very_sparse|0` → `q1|all|all`.
-- travel_day: `q1|very_sparse|1` → `q1|all|all`.
-- travel_day: `q1|very_sparse|2+` → `q1|all|all`.
-- travel_day: `q1|very_sparse|unknown` → `q1|all|all`.
-- travel_day: `q2|dense|0` → `q2|all|all`.
-- travel_day: `q2|dense|1` → `q2|all|all`.
-- travel_day: `q2|dense|2+` → `q2|all|all`.
-- travel_day: `q2|dense|unknown` → `q2|all|all`.
-- travel_day: `q2|intermediate|0` → `q2|all|all`.
-- travel_day: `q2|intermediate|1` → `q2|all|all`.
-- travel_day: `q2|intermediate|2+` → `q2|all|all`.
-- travel_day: `q2|intermediate|unknown` → `q2|all|all`.
-- travel_day: `q2|sparse|0` → `q2|all|all`.
-- travel_day: `q2|sparse|1` → `q2|all|all`.
-- travel_day: `q2|sparse|2+` → `q2|all|all`.
-- travel_day: `q2|sparse|unknown` → `q2|all|all`.
-- travel_day: `q2|very_sparse|0` → `q2|all|all`.
-- travel_day: `q2|very_sparse|1` → `q2|all|all`.
-- travel_day: `q2|very_sparse|2+` → `q2|all|all`.
-- travel_day: `q2|very_sparse|unknown` → `q2|all|all`.
-- travel_day: `q3|dense|0` → `q3|all|all`.
-- travel_day: `q3|dense|1` → `q3|all|all`.
-- travel_day: `q3|dense|2+` → `q3|all|all`.
-- travel_day: `q3|dense|unknown` → `q3|all|all`.
-- travel_day: `q3|intermediate|0` → `q3|all|all`.
-- travel_day: `q3|intermediate|1` → `q3|all|all`.
-- travel_day: `q3|intermediate|2+` → `q3|all|all`.
-- travel_day: `q3|intermediate|unknown` → `q3|all|all`.
-- travel_day: `q3|sparse|0` → `q3|all|all`.
-- travel_day: `q3|sparse|1` → `q3|all|all`.
-- travel_day: `q3|sparse|2+` → `q3|all|all`.
-- travel_day: `q3|sparse|unknown` → `q3|all|all`.
-- travel_day: `q3|very_sparse|0` → `q3|all|all`.
-- travel_day: `q3|very_sparse|1` → `q3|all|all`.
-- travel_day: `q3|very_sparse|2+` → `q3|all|all`.
-- travel_day: `q3|very_sparse|unknown` → `q3|all|all`.
-- travel_day: `q4|dense|0` → `q4|all|all`.
-- travel_day: `q4|dense|1` → `q4|all|all`.
-- travel_day: `q4|dense|2+` → `q4|all|all`.
-- travel_day: `q4|dense|unknown` → `q4|all|all`.
-- travel_day: `q4|intermediate|0` → `q4|all|all`.
-- travel_day: `q4|intermediate|1` → `q4|all|all`.
-- travel_day: `q4|intermediate|2+` → `q4|all|all`.
-- travel_day: `q4|intermediate|unknown` → `q4|all|all`.
-- travel_day: `q4|sparse|0` → `q4|all|all`.
-- travel_day: `q4|sparse|1` → `q4|all|all`.
-- travel_day: `q4|sparse|2+` → `q4|all|all`.
-- travel_day: `q4|sparse|unknown` → `q4|all|all`.
-- travel_day: `q4|very_sparse|0` → `q4|all|all`.
-- travel_day: `q4|very_sparse|1` → `q4|all|all`.
-- travel_day: `q4|very_sparse|2+` → `q4|all|all`.
-- travel_day: `q4|very_sparse|unknown` → `q4|all|all`.
-- travel_day: `q5|dense|0` → `q5|all|all`.
-- travel_day: `q5|dense|1` → `q5|all|all`.
-- travel_day: `q5|dense|2+` → `q5|all|all`.
-- travel_day: `q5|dense|unknown` → `q5|all|all`.
-- travel_day: `q5|intermediate|0` → `q5|all|all`.
-- travel_day: `q5|intermediate|1` → `q5|all|all`.
-- travel_day: `q5|intermediate|2+` → `q5|all|all`.
-- travel_day: `q5|intermediate|unknown` → `q5|all|all`.
-- travel_day: `q5|sparse|0` → `q5|all|all`.
-- travel_day: `q5|sparse|1` → `q5|all|all`.
-- travel_day: `q5|sparse|2+` → `q5|all|all`.
-- travel_day: `q5|sparse|unknown` → `q5|all|all`.
-- travel_day: `q5|very_sparse|0` → `q5|all|all`.
-- travel_day: `q5|very_sparse|1` → `q5|all|all`.
-- travel_day: `q5|very_sparse|2+` → `q5|all|all`.
-- travel_day: `q5|very_sparse|unknown` → `q5|all|all`.
-- person: `q1|dense|0` → `q1|all|all`.
-- person: `q1|dense|1` → `q1|all|all`.
-- person: `q1|dense|2+` → `q1|all|all`.
-- person: `q1|dense|unknown` → `q1|all|all`.
-- person: `q1|intermediate|0` → `q1|all|all`.
-- person: `q1|intermediate|1` → `q1|all|all`.
-- person: `q1|intermediate|2+` → `q1|all|all`.
-- person: `q1|intermediate|unknown` → `q1|all|all`.
-- person: `q1|sparse|0` → `q1|all|all`.
-- person: `q1|sparse|1` → `q1|all|all`.
-- person: `q1|sparse|2+` → `q1|all|all`.
-- person: `q1|sparse|unknown` → `q1|all|all`.
-- person: `q1|very_sparse|0` → `q1|all|all`.
-- person: `q1|very_sparse|1` → `q1|all|all`.
-- person: `q1|very_sparse|2+` → `q1|all|all`.
-- person: `q1|very_sparse|unknown` → `q1|all|all`.
-- person: `q2|dense|0` → `q2|all|all`.
-- person: `q2|dense|1` → `q2|all|all`.
-- person: `q2|dense|2+` → `q2|all|all`.
-- person: `q2|dense|unknown` → `q2|all|all`.
-- person: `q2|intermediate|0` → `q2|all|all`.
-- person: `q2|intermediate|1` → `q2|all|all`.
-- person: `q2|intermediate|2+` → `q2|all|all`.
-- person: `q2|intermediate|unknown` → `q2|all|all`.
-- person: `q2|sparse|0` → `q2|all|all`.
-- person: `q2|sparse|1` → `q2|all|all`.
-- person: `q2|sparse|2+` → `q2|all|all`.
-- person: `q2|sparse|unknown` → `q2|all|all`.
-- person: `q2|very_sparse|0` → `q2|all|all`.
-- person: `q2|very_sparse|1` → `q2|all|all`.
-- person: `q2|very_sparse|2+` → `q2|all|all`.
-- person: `q2|very_sparse|unknown` → `q2|all|all`.
-- person: `q3|dense|0` → `q3|all|all`.
-- person: `q3|dense|1` → `q3|all|all`.
-- person: `q3|dense|2+` → `q3|all|all`.
-- person: `q3|dense|unknown` → `q3|all|all`.
-- person: `q3|intermediate|0` → `q3|all|all`.
-- person: `q3|intermediate|1` → `q3|all|all`.
-- person: `q3|intermediate|2+` → `q3|all|all`.
-- person: `q3|intermediate|unknown` → `q3|all|all`.
-- person: `q3|sparse|0` → `q3|all|all`.
-- person: `q3|sparse|1` → `q3|all|all`.
-- person: `q3|sparse|2+` → `q3|all|all`.
-- person: `q3|sparse|unknown` → `q3|all|all`.
-- person: `q3|very_sparse|0` → `q3|all|all`.
-- person: `q3|very_sparse|1` → `q3|all|all`.
-- person: `q3|very_sparse|2+` → `q3|all|all`.
-- person: `q3|very_sparse|unknown` → `q3|all|all`.
-- person: `q4|dense|0` → `q4|all|all`.
-- person: `q4|dense|1` → `q4|all|all`.
-- person: `q4|dense|2+` → `q4|all|all`.
-- person: `q4|dense|unknown` → `q4|all|all`.
-- person: `q4|intermediate|0` → `q4|all|all`.
-- person: `q4|intermediate|1` → `q4|all|all`.
-- person: `q4|intermediate|2+` → `q4|all|all`.
-- person: `q4|intermediate|unknown` → `q4|all|all`.
-- person: `q4|sparse|0` → `q4|all|all`.
-- person: `q4|sparse|1` → `q4|all|all`.
-- person: `q4|sparse|2+` → `q4|all|all`.
-- person: `q4|sparse|unknown` → `q4|all|all`.
-- person: `q4|very_sparse|0` → `q4|all|all`.
-- person: `q4|very_sparse|1` → `q4|all|all`.
-- person: `q4|very_sparse|2+` → `q4|all|all`.
-- person: `q4|very_sparse|unknown` → `q4|all|all`.
-- person: `q5|dense|0` → `q5|all|all`.
-- person: `q5|dense|1` → `q5|all|all`.
-- person: `q5|dense|2+` → `q5|all|all`.
-- person: `q5|dense|unknown` → `q5|all|all`.
-- person: `q5|intermediate|0` → `q5|all|all`.
-- person: `q5|intermediate|1` → `q5|all|all`.
-- person: `q5|intermediate|2+` → `q5|all|all`.
-- person: `q5|intermediate|unknown` → `q5|all|all`.
-- person: `q5|sparse|0` → `q5|all|all`.
-- person: `q5|sparse|1` → `q5|all|all`.
-- person: `q5|sparse|2+` → `q5|all|all`.
-- person: `q5|sparse|unknown` → `q5|all|all`.
-- person: `q5|very_sparse|0` → `q5|all|all`.
-- person: `q5|very_sparse|1` → `q5|all|all`.
-- person: `q5|very_sparse|2+` → `q5|all|all`.
-- person: `q5|very_sparse|unknown` → `q5|all|all`.
+- travel_day: 38.82% of the full-sample pooled target is in cells that combine two or more original cells.
+- person: 37.52% of the full-sample pooled target is in cells that combine two or more original cells.
+
+- travel_day: `q1|dense|1` → `q1|dense|1+`.
+- travel_day: `q1|dense|2+` → `q1|dense|1+`.
+- travel_day: `q1|dense|unknown` → `q1|dense|0`.
+- travel_day: `q1|intermediate|unknown` → `q1|intermediate|1`.
+- travel_day: `q1|sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|sparse|1` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|2+` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q2|dense|1` → `q2|dense|1+`.
+- travel_day: `q2|dense|2+` → `q2|dense|1+`.
+- travel_day: `q2|dense|unknown` → `q2|dense|1+`.
+- travel_day: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- travel_day: `q2|sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q3|dense|1` → `q3|dense|1+`.
+- travel_day: `q3|dense|2+` → `q3|dense|1+`.
+- travel_day: `q3|dense|unknown` → `q3|dense|1+`.
+- travel_day: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- travel_day: `q3|sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|unknown` → `q3|very_sparse|2+`.
+- travel_day: `q4|dense|0` → `q4|dense|1`.
+- travel_day: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- travel_day: `q4|sparse|0` → `q4|intermediate|0`.
+- travel_day: `q4|sparse|unknown` → `q4|sparse|2+`.
+- travel_day: `q4|very_sparse|0` → `q4|intermediate|0`.
+- travel_day: `q5|sparse|0` → `q5|intermediate|0`.
+- travel_day: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q1|dense|1` → `q1|dense|1+`.
+- person: `q1|dense|2+` → `q1|dense|1+`.
+- person: `q1|dense|unknown` → `q1|dense|0`.
+- person: `q1|intermediate|unknown` → `q1|intermediate|0`.
+- person: `q1|sparse|unknown` → `q1|very_sparse|1`.
+- person: `q1|very_sparse|unknown` → `q1|very_sparse|1`.
+- person: `q2|dense|1` → `q2|dense|1+`.
+- person: `q2|dense|2+` → `q2|dense|1+`.
+- person: `q2|dense|unknown` → `q2|dense|1+`.
+- person: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- person: `q2|sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q2|very_sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q3|dense|1` → `q3|dense|1+`.
+- person: `q3|dense|2+` → `q3|dense|1+`.
+- person: `q3|dense|unknown` → `q3|dense|1+`.
+- person: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- person: `q3|sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- person: `q4|sparse|0` → `q4|intermediate|0`.
+- person: `q4|sparse|unknown` → `q4|intermediate|0`.
+- person: `q4|very_sparse|0` → `q4|intermediate|0`.
+- person: `q4|very_sparse|unknown` → `q4|intermediate|0`.
+- person: `q5|intermediate|unknown` → `q5|intermediate|2+`.
+- person: `q5|sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|unknown` → `q5|very_sparse|2+`.
 
 ### Cells still below minimum support
 
@@ -817,10 +643,6 @@ Scope: Round-trip days · destination purposes · all trips in the day's trip ta
 | travel_day | q5 | intermediate | False | 1816 | 78.712 | 74.081 | 83.217 | 1046 | 81.513 | 77.723 | 85.468 | 1.036 | 0.977 | 1.101 |
 | travel_day | q5 | sparse | False | 425 | 70.544 | 64.651 | 76.446 | 313 | 72.403 | 64.593 | 81.528 | 1.026 | 0.910 | 1.166 |
 | travel_day | q5 | very_sparse | False | 897 | 73.572 | 67.956 | 78.965 | 433 | 82.195 | 75.117 | 90.836 | 1.117 | 1.011 | 1.233 |
-| travel_day | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 | person | q1 | dense | False | 473 | 55.807 | 49.455 | 63.023 | 476 | 62.288 | 55.905 | 68.390 | 1.116 | 0.976 | 1.273 |
 | person | q1 | intermediate | False | 1159 | 48.339 | 44.251 | 52.520 | 1197 | 53.360 | 48.706 | 58.637 | 1.104 | 0.989 | 1.225 |
 | person | q1 | sparse | False | 435 | 41.876 | 34.784 | 51.188 | 385 | 40.943 | 34.280 | 48.216 | 0.978 | 0.794 | 1.220 |
@@ -841,10 +663,6 @@ Scope: Round-trip days · destination purposes · all trips in the day's trip ta
 | person | q5 | intermediate | False | 2201 | 71.109 | 66.582 | 75.181 | 1478 | 72.402 | 68.184 | 77.271 | 1.018 | 0.941 | 1.096 |
 | person | q5 | sparse | False | 542 | 58.594 | 52.602 | 65.136 | 452 | 64.355 | 55.559 | 73.583 | 1.098 | 0.941 | 1.262 |
 | person | q5 | very_sparse | False | 1149 | 60.571 | 54.805 | 65.938 | 605 | 71.077 | 63.213 | 79.899 | 1.173 | 1.034 | 1.316 |
-| person | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -855,16 +673,16 @@ Scope: Round-trip days · destination purposes · all trips in the day's trip ta
 
 | basis | quintile | ratio | verdict_15 | raw_q5_q1_2008 | raw_q5_q1_2019 | reweighted_q5_q1_2008 | reweighted_q5_q1_2019 | m2_q5_q1_2008 | m2_q5_q1_2019 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 1.086 | equivalent | 1.255 | 1.194 | 1.255 | 1.194 | 1.200 | 1.172 |
-| travel_day | q2 | 1.055 | equivalent | 1.255 | 1.194 | 1.255 | 1.194 | 1.200 | 1.172 |
-| travel_day | q3 | 1.139 | inconclusive | 1.255 | 1.194 | 1.255 | 1.194 | 1.200 | 1.172 |
-| travel_day | q4 | 1.045 | equivalent | 1.255 | 1.194 | 1.255 | 1.194 | 1.200 | 1.172 |
-| travel_day | q5 | 1.033 | equivalent | 1.255 | 1.194 | 1.255 | 1.194 | 1.200 | 1.172 |
-| person | q1 | 1.121 | inconclusive | 1.465 | 1.386 | 1.465 | 1.386 | 1.200 | 1.172 |
-| person | q2 | 1.052 | equivalent | 1.465 | 1.386 | 1.465 | 1.386 | 1.200 | 1.172 |
-| person | q3 | 1.137 | inconclusive | 1.465 | 1.386 | 1.465 | 1.386 | 1.200 | 1.172 |
-| person | q4 | 1.054 | equivalent | 1.465 | 1.386 | 1.465 | 1.386 | 1.200 | 1.172 |
-| person | q5 | 1.061 | equivalent | 1.465 | 1.386 | 1.465 | 1.386 | 1.200 | 1.172 |
+| travel_day | q1 | 1.086 | equivalent | 1.255 | 1.194 | 1.252 | 1.206 | 1.200 | 1.172 |
+| travel_day | q2 | 1.055 | equivalent | 1.255 | 1.194 | 1.252 | 1.206 | 1.200 | 1.172 |
+| travel_day | q3 | 1.139 | inconclusive | 1.255 | 1.194 | 1.252 | 1.206 | 1.200 | 1.172 |
+| travel_day | q4 | 1.045 | equivalent | 1.255 | 1.194 | 1.252 | 1.206 | 1.200 | 1.172 |
+| travel_day | q5 | 1.033 | equivalent | 1.255 | 1.194 | 1.252 | 1.206 | 1.200 | 1.172 |
+| person | q1 | 1.121 | inconclusive | 1.465 | 1.386 | 1.445 | 1.406 | 1.200 | 1.172 |
+| person | q2 | 1.052 | equivalent | 1.465 | 1.386 | 1.445 | 1.406 | 1.200 | 1.172 |
+| person | q3 | 1.137 | inconclusive | 1.465 | 1.386 | 1.445 | 1.406 | 1.200 | 1.172 |
+| person | q4 | 1.054 | equivalent | 1.465 | 1.386 | 1.445 | 1.406 | 1.200 | 1.172 |
+| person | q5 | 1.061 | equivalent | 1.465 | 1.386 | 1.445 | 1.406 | 1.200 | 1.172 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -873,7 +691,24 @@ The positive income gradient survives density and car controls in both years.
 
 ## Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-local`)
 
-ENTD unknown income: 0.00% of respondents and 0.00% of kept described-day weight. EMP income is imputed; no equivalent unknown group.
+ENTD 2008 income is complete in this file: the released income bracket and consumption-unit count are populated. The dictionary and released fields do not establish whether income brackets were imputed upstream (see [ENTD income audit](./entd2008.md#income-imputation-audit-step-12)).
+
+### Weighted income quintile shares
+
+Shares use the full weekday respondent roster and individual weights; `n` is unweighted. Ties in income can produce unequal shares.
+
+| Year | Quintile | n | Share (%) |
+|---:|:---|---:|---:|
+| 2008 | q1 | 3359 | 20.00 |
+| 2008 | q2 | 3159 | 20.00 |
+| 2008 | q3 | 3615 | 20.00 |
+| 2008 | q4 | 3657 | 19.99 |
+| 2008 | q5 | 4752 | 20.02 |
+| 2019 | q1 | 2504 | 20.00 |
+| 2019 | q2 | 2662 | 20.00 |
+| 2019 | q3 | 2742 | 19.99 |
+| 2019 | q4 | 2885 | 20.01 |
+| 2019 | q5 | 3032 | 20.00 |
 
 ### Support audit (details in support.csv)
 
@@ -888,7 +723,7 @@ Scope: Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-loca
 | regression_M2 | 2008 | 18 | 0 | 0 | 614 |
 | regression_M2 | 2019 | 18 | 0 | 0 | 516 |
 | regression_input_cars | 2008 | 4 | 1 | 200 | 0 |
-| regression_input_cars | 2019 | 4 | 1 | 71 | 1 |
+| regression_input_cars | 2019 | 4 | 0 | 0 | 24 |
 | regression_input_density | 2008 | 4 | 0 | 0 | 1836 |
 | regression_input_density | 2019 | 4 | 0 | 0 | 1323 |
 | regression_input_income | 2008 | 5 | 0 | 0 | 2352 |
@@ -899,14 +734,14 @@ Scope: Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-loca
 | regression_input_weekday | 2019 | 5 | 0 | 0 | 1685 |
 | regression_pooled | 2008 | 23 | 5 | 200 | 0 |
 | regression_pooled | 2019 | 23 | 0 | 0 | 516 |
-| reweight_input_person | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_person | 2019 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2008 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2019 | 80 | 23 | 200 | 0 |
-| reweight_person | 2008 | 5 | 0 | 0 | 3159 |
-| reweight_person | 2019 | 5 | 0 | 0 | 2504 |
-| reweight_travel_day | 2008 | 5 | 0 | 0 | 2352 |
-| reweight_travel_day | 2019 | 5 | 0 | 0 | 1692 |
+| reweight_input_person | 2008 | 77 | 17 | 200 | 0 |
+| reweight_input_person | 2019 | 77 | 18 | 92 | 1 |
+| reweight_input_travel_day | 2008 | 73 | 14 | 200 | 0 |
+| reweight_input_travel_day | 2019 | 73 | 16 | 92 | 1 |
+| reweight_person | 2008 | 52 | 0 | 0 | 68 |
+| reweight_person | 2019 | 52 | 0 | 0 | 56 |
+| reweight_travel_day | 2008 | 47 | 0 | 0 | 73 |
+| reweight_travel_day | 2019 | 47 | 0 | 0 | 52 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -922,13 +757,11 @@ Scope: Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-loca
 | travel_day | q3 | 2812 | 66.627 | 63.311 | 70.109 | 1896 | 75.178 | 72.198 | 78.256 | 1.128 | 1.069 | 1.187 | inconclusive | inconclusive |
 | travel_day | q4 | 2922 | 68.327 | 65.869 | 70.896 | 2015 | 73.808 | 70.709 | 76.528 | 1.080 | 1.025 | 1.131 | equivalent | inconclusive |
 | travel_day | q5 | 3818 | 75.883 | 72.935 | 78.538 | 2133 | 82.022 | 79.750 | 84.800 | 1.081 | 1.038 | 1.128 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 | person | q1 | 3359 | 49.321 | 46.855 | 51.847 | 2504 | 55.020 | 52.194 | 57.754 | 1.116 | 1.044 | 1.180 | inconclusive | inconclusive |
 | person | q2 | 3159 | 51.583 | 49.189 | 53.864 | 2662 | 57.931 | 54.489 | 61.159 | 1.123 | 1.056 | 1.202 | inconclusive | inconclusive |
 | person | q3 | 3615 | 55.360 | 52.669 | 58.670 | 2742 | 62.434 | 59.064 | 65.870 | 1.128 | 1.057 | 1.194 | inconclusive | inconclusive |
 | person | q4 | 3657 | 59.406 | 57.080 | 61.886 | 2885 | 64.757 | 61.135 | 68.004 | 1.090 | 1.019 | 1.158 | inconclusive | inconclusive |
 | person | q5 | 4752 | 65.887 | 63.353 | 68.315 | 3032 | 73.266 | 70.341 | 76.499 | 1.112 | 1.065 | 1.175 | inconclusive | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -953,18 +786,16 @@ Scope: Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-loca
 
 | basis | quintile | n_2008 | mean_2008 | ci_2008_low | ci_2008_high | n_2019 | mean_2019 | ci_2019_low | ci_2019_high | ratio | ratio_ci_low | ratio_ci_high | verdict_15 | verdict_10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 2352 | 63.384 | 60.463 | 66.657 | 1692 | 69.332 | 66.316 | 72.154 | 1.094 | 1.030 | 1.148 | equivalent | inconclusive |
-| travel_day | q2 | 2438 | 63.213 | 60.434 | 66.267 | 1902 | 69.956 | 66.930 | 73.728 | 1.107 | 1.050 | 1.168 | inconclusive | inconclusive |
-| travel_day | q3 | 2812 | 66.627 | 63.311 | 70.109 | 1896 | 75.178 | 72.198 | 78.256 | 1.128 | 1.069 | 1.187 | inconclusive | inconclusive |
-| travel_day | q4 | 2922 | 68.327 | 65.869 | 70.896 | 2015 | 73.808 | 70.709 | 76.528 | 1.080 | 1.025 | 1.131 | equivalent | inconclusive |
-| travel_day | q5 | 3818 | 75.883 | 72.935 | 78.538 | 2133 | 82.022 | 79.750 | 84.800 | 1.081 | 1.038 | 1.128 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
-| person | q1 | 3359 | 49.321 | 46.855 | 51.847 | 2504 | 55.020 | 52.194 | 57.754 | 1.116 | 1.044 | 1.180 | inconclusive | inconclusive |
-| person | q2 | 3159 | 51.583 | 49.189 | 53.864 | 2662 | 57.931 | 54.489 | 61.159 | 1.123 | 1.056 | 1.202 | inconclusive | inconclusive |
-| person | q3 | 3615 | 55.360 | 52.669 | 58.670 | 2742 | 62.434 | 59.064 | 65.870 | 1.128 | 1.057 | 1.194 | inconclusive | inconclusive |
-| person | q4 | 3657 | 59.406 | 57.080 | 61.886 | 2885 | 64.757 | 61.135 | 68.004 | 1.090 | 1.019 | 1.158 | inconclusive | inconclusive |
-| person | q5 | 4752 | 65.887 | 63.353 | 68.315 | 3032 | 73.266 | 70.341 | 76.499 | 1.112 | 1.065 | 1.175 | inconclusive | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
+| travel_day | q1 | 2352 | 63.748 | 60.890 | 67.194 | 1692 | 68.856 | 65.821 | 71.557 | 1.080 | 1.019 | 1.135 | equivalent | inconclusive |
+| travel_day | q2 | 2438 | 62.914 | 60.130 | 65.854 | 1902 | 70.128 | 66.905 | 73.596 | 1.115 | 1.062 | 1.175 | inconclusive | inconclusive |
+| travel_day | q3 | 2812 | 66.661 | 63.445 | 70.084 | 1896 | 75.170 | 72.245 | 78.042 | 1.128 | 1.070 | 1.184 | inconclusive | inconclusive |
+| travel_day | q4 | 2922 | 68.312 | 65.854 | 70.839 | 2015 | 73.953 | 70.887 | 76.741 | 1.083 | 1.029 | 1.135 | equivalent | inconclusive |
+| travel_day | q5 | 3818 | 76.036 | 73.172 | 78.795 | 2133 | 82.192 | 79.734 | 84.961 | 1.081 | 1.038 | 1.128 | equivalent | inconclusive |
+| person | q1 | 3359 | 50.169 | 47.621 | 52.933 | 2504 | 54.401 | 51.691 | 57.299 | 1.084 | 1.018 | 1.149 | equivalent | inconclusive |
+| person | q2 | 3159 | 51.196 | 48.855 | 53.525 | 2662 | 58.046 | 54.540 | 61.291 | 1.134 | 1.065 | 1.212 | inconclusive | inconclusive |
+| person | q3 | 3615 | 55.325 | 52.705 | 58.719 | 2742 | 62.483 | 59.115 | 65.948 | 1.129 | 1.056 | 1.193 | inconclusive | inconclusive |
+| person | q4 | 3657 | 59.425 | 56.910 | 62.119 | 2885 | 65.096 | 61.553 | 68.503 | 1.095 | 1.025 | 1.161 | inconclusive | inconclusive |
+| person | q5 | 4752 | 66.169 | 63.732 | 68.530 | 3032 | 73.138 | 70.279 | 76.422 | 1.105 | 1.059 | 1.170 | inconclusive | inconclusive |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -975,176 +806,80 @@ Scope: Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-loca
 
 | basis | gap | value_2008 | ci_2008_low | ci_2008_high | value_2019 | ci_2019_low | ci_2019_high | change | change_ci_low | change_ci_high |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | difference | 12.499 | 7.636 | 16.178 | 12.690 | 9.025 | 16.616 | 0.191 | -5.259 | 6.126 |
-| travel_day | ratio | 1.197 | 1.115 | 1.264 | 1.183 | 1.127 | 1.247 | -0.014 | -0.105 | 0.089 |
-| person | difference | 16.566 | 12.630 | 19.860 | 18.246 | 14.195 | 23.074 | 1.680 | -3.857 | 8.813 |
-| person | ratio | 1.336 | 1.251 | 1.417 | 1.332 | 1.252 | 1.437 | -0.004 | -0.113 | 0.154 |
+| travel_day | difference | 12.289 | 7.724 | 15.876 | 13.336 | 9.698 | 17.133 | 1.047 | -4.343 | 7.691 |
+| travel_day | ratio | 1.193 | 1.115 | 1.261 | 1.194 | 1.137 | 1.259 | 0.001 | -0.087 | 0.115 |
+| person | difference | 16.000 | 11.936 | 19.464 | 18.738 | 15.242 | 23.649 | 2.737 | -2.403 | 9.381 |
+| person | ratio | 1.319 | 1.229 | 1.403 | 1.344 | 1.261 | 1.453 | 0.026 | -0.078 | 0.176 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
 
 ### Collapsed joint cells
 
-- travel_day: `q1|dense|0` → `q1|all|all`.
-- travel_day: `q1|dense|1` → `q1|all|all`.
-- travel_day: `q1|dense|2+` → `q1|all|all`.
-- travel_day: `q1|dense|unknown` → `q1|all|all`.
-- travel_day: `q1|intermediate|0` → `q1|all|all`.
-- travel_day: `q1|intermediate|1` → `q1|all|all`.
-- travel_day: `q1|intermediate|2+` → `q1|all|all`.
-- travel_day: `q1|intermediate|unknown` → `q1|all|all`.
-- travel_day: `q1|sparse|0` → `q1|all|all`.
-- travel_day: `q1|sparse|1` → `q1|all|all`.
-- travel_day: `q1|sparse|2+` → `q1|all|all`.
-- travel_day: `q1|sparse|unknown` → `q1|all|all`.
-- travel_day: `q1|very_sparse|0` → `q1|all|all`.
-- travel_day: `q1|very_sparse|1` → `q1|all|all`.
-- travel_day: `q1|very_sparse|2+` → `q1|all|all`.
-- travel_day: `q1|very_sparse|unknown` → `q1|all|all`.
-- travel_day: `q2|dense|0` → `q2|all|all`.
-- travel_day: `q2|dense|1` → `q2|all|all`.
-- travel_day: `q2|dense|2+` → `q2|all|all`.
-- travel_day: `q2|dense|unknown` → `q2|all|all`.
-- travel_day: `q2|intermediate|0` → `q2|all|all`.
-- travel_day: `q2|intermediate|1` → `q2|all|all`.
-- travel_day: `q2|intermediate|2+` → `q2|all|all`.
-- travel_day: `q2|intermediate|unknown` → `q2|all|all`.
-- travel_day: `q2|sparse|0` → `q2|all|all`.
-- travel_day: `q2|sparse|1` → `q2|all|all`.
-- travel_day: `q2|sparse|2+` → `q2|all|all`.
-- travel_day: `q2|sparse|unknown` → `q2|all|all`.
-- travel_day: `q2|very_sparse|0` → `q2|all|all`.
-- travel_day: `q2|very_sparse|1` → `q2|all|all`.
-- travel_day: `q2|very_sparse|2+` → `q2|all|all`.
-- travel_day: `q2|very_sparse|unknown` → `q2|all|all`.
-- travel_day: `q3|dense|0` → `q3|all|all`.
-- travel_day: `q3|dense|1` → `q3|all|all`.
-- travel_day: `q3|dense|2+` → `q3|all|all`.
-- travel_day: `q3|dense|unknown` → `q3|all|all`.
-- travel_day: `q3|intermediate|0` → `q3|all|all`.
-- travel_day: `q3|intermediate|1` → `q3|all|all`.
-- travel_day: `q3|intermediate|2+` → `q3|all|all`.
-- travel_day: `q3|intermediate|unknown` → `q3|all|all`.
-- travel_day: `q3|sparse|0` → `q3|all|all`.
-- travel_day: `q3|sparse|1` → `q3|all|all`.
-- travel_day: `q3|sparse|2+` → `q3|all|all`.
-- travel_day: `q3|sparse|unknown` → `q3|all|all`.
-- travel_day: `q3|very_sparse|0` → `q3|all|all`.
-- travel_day: `q3|very_sparse|1` → `q3|all|all`.
-- travel_day: `q3|very_sparse|2+` → `q3|all|all`.
-- travel_day: `q3|very_sparse|unknown` → `q3|all|all`.
-- travel_day: `q4|dense|0` → `q4|all|all`.
-- travel_day: `q4|dense|1` → `q4|all|all`.
-- travel_day: `q4|dense|2+` → `q4|all|all`.
-- travel_day: `q4|dense|unknown` → `q4|all|all`.
-- travel_day: `q4|intermediate|0` → `q4|all|all`.
-- travel_day: `q4|intermediate|1` → `q4|all|all`.
-- travel_day: `q4|intermediate|2+` → `q4|all|all`.
-- travel_day: `q4|intermediate|unknown` → `q4|all|all`.
-- travel_day: `q4|sparse|0` → `q4|all|all`.
-- travel_day: `q4|sparse|1` → `q4|all|all`.
-- travel_day: `q4|sparse|2+` → `q4|all|all`.
-- travel_day: `q4|sparse|unknown` → `q4|all|all`.
-- travel_day: `q4|very_sparse|0` → `q4|all|all`.
-- travel_day: `q4|very_sparse|1` → `q4|all|all`.
-- travel_day: `q4|very_sparse|2+` → `q4|all|all`.
-- travel_day: `q4|very_sparse|unknown` → `q4|all|all`.
-- travel_day: `q5|dense|0` → `q5|all|all`.
-- travel_day: `q5|dense|1` → `q5|all|all`.
-- travel_day: `q5|dense|2+` → `q5|all|all`.
-- travel_day: `q5|dense|unknown` → `q5|all|all`.
-- travel_day: `q5|intermediate|0` → `q5|all|all`.
-- travel_day: `q5|intermediate|1` → `q5|all|all`.
-- travel_day: `q5|intermediate|2+` → `q5|all|all`.
-- travel_day: `q5|intermediate|unknown` → `q5|all|all`.
-- travel_day: `q5|sparse|0` → `q5|all|all`.
-- travel_day: `q5|sparse|1` → `q5|all|all`.
-- travel_day: `q5|sparse|2+` → `q5|all|all`.
-- travel_day: `q5|sparse|unknown` → `q5|all|all`.
-- travel_day: `q5|very_sparse|0` → `q5|all|all`.
-- travel_day: `q5|very_sparse|1` → `q5|all|all`.
-- travel_day: `q5|very_sparse|2+` → `q5|all|all`.
-- travel_day: `q5|very_sparse|unknown` → `q5|all|all`.
-- person: `q1|dense|0` → `q1|all|all`.
-- person: `q1|dense|1` → `q1|all|all`.
-- person: `q1|dense|2+` → `q1|all|all`.
-- person: `q1|dense|unknown` → `q1|all|all`.
-- person: `q1|intermediate|0` → `q1|all|all`.
-- person: `q1|intermediate|1` → `q1|all|all`.
-- person: `q1|intermediate|2+` → `q1|all|all`.
-- person: `q1|intermediate|unknown` → `q1|all|all`.
-- person: `q1|sparse|0` → `q1|all|all`.
-- person: `q1|sparse|1` → `q1|all|all`.
-- person: `q1|sparse|2+` → `q1|all|all`.
-- person: `q1|sparse|unknown` → `q1|all|all`.
-- person: `q1|very_sparse|0` → `q1|all|all`.
-- person: `q1|very_sparse|1` → `q1|all|all`.
-- person: `q1|very_sparse|2+` → `q1|all|all`.
-- person: `q1|very_sparse|unknown` → `q1|all|all`.
-- person: `q2|dense|0` → `q2|all|all`.
-- person: `q2|dense|1` → `q2|all|all`.
-- person: `q2|dense|2+` → `q2|all|all`.
-- person: `q2|dense|unknown` → `q2|all|all`.
-- person: `q2|intermediate|0` → `q2|all|all`.
-- person: `q2|intermediate|1` → `q2|all|all`.
-- person: `q2|intermediate|2+` → `q2|all|all`.
-- person: `q2|intermediate|unknown` → `q2|all|all`.
-- person: `q2|sparse|0` → `q2|all|all`.
-- person: `q2|sparse|1` → `q2|all|all`.
-- person: `q2|sparse|2+` → `q2|all|all`.
-- person: `q2|sparse|unknown` → `q2|all|all`.
-- person: `q2|very_sparse|0` → `q2|all|all`.
-- person: `q2|very_sparse|1` → `q2|all|all`.
-- person: `q2|very_sparse|2+` → `q2|all|all`.
-- person: `q2|very_sparse|unknown` → `q2|all|all`.
-- person: `q3|dense|0` → `q3|all|all`.
-- person: `q3|dense|1` → `q3|all|all`.
-- person: `q3|dense|2+` → `q3|all|all`.
-- person: `q3|dense|unknown` → `q3|all|all`.
-- person: `q3|intermediate|0` → `q3|all|all`.
-- person: `q3|intermediate|1` → `q3|all|all`.
-- person: `q3|intermediate|2+` → `q3|all|all`.
-- person: `q3|intermediate|unknown` → `q3|all|all`.
-- person: `q3|sparse|0` → `q3|all|all`.
-- person: `q3|sparse|1` → `q3|all|all`.
-- person: `q3|sparse|2+` → `q3|all|all`.
-- person: `q3|sparse|unknown` → `q3|all|all`.
-- person: `q3|very_sparse|0` → `q3|all|all`.
-- person: `q3|very_sparse|1` → `q3|all|all`.
-- person: `q3|very_sparse|2+` → `q3|all|all`.
-- person: `q3|very_sparse|unknown` → `q3|all|all`.
-- person: `q4|dense|0` → `q4|all|all`.
-- person: `q4|dense|1` → `q4|all|all`.
-- person: `q4|dense|2+` → `q4|all|all`.
-- person: `q4|dense|unknown` → `q4|all|all`.
-- person: `q4|intermediate|0` → `q4|all|all`.
-- person: `q4|intermediate|1` → `q4|all|all`.
-- person: `q4|intermediate|2+` → `q4|all|all`.
-- person: `q4|intermediate|unknown` → `q4|all|all`.
-- person: `q4|sparse|0` → `q4|all|all`.
-- person: `q4|sparse|1` → `q4|all|all`.
-- person: `q4|sparse|2+` → `q4|all|all`.
-- person: `q4|sparse|unknown` → `q4|all|all`.
-- person: `q4|very_sparse|0` → `q4|all|all`.
-- person: `q4|very_sparse|1` → `q4|all|all`.
-- person: `q4|very_sparse|2+` → `q4|all|all`.
-- person: `q4|very_sparse|unknown` → `q4|all|all`.
-- person: `q5|dense|0` → `q5|all|all`.
-- person: `q5|dense|1` → `q5|all|all`.
-- person: `q5|dense|2+` → `q5|all|all`.
-- person: `q5|dense|unknown` → `q5|all|all`.
-- person: `q5|intermediate|0` → `q5|all|all`.
-- person: `q5|intermediate|1` → `q5|all|all`.
-- person: `q5|intermediate|2+` → `q5|all|all`.
-- person: `q5|intermediate|unknown` → `q5|all|all`.
-- person: `q5|sparse|0` → `q5|all|all`.
-- person: `q5|sparse|1` → `q5|all|all`.
-- person: `q5|sparse|2+` → `q5|all|all`.
-- person: `q5|sparse|unknown` → `q5|all|all`.
-- person: `q5|very_sparse|0` → `q5|all|all`.
-- person: `q5|very_sparse|1` → `q5|all|all`.
-- person: `q5|very_sparse|2+` → `q5|all|all`.
-- person: `q5|very_sparse|unknown` → `q5|all|all`.
+- travel_day: 39.03% of the full-sample pooled target is in cells that combine two or more original cells.
+- person: 37.52% of the full-sample pooled target is in cells that combine two or more original cells.
+
+- travel_day: `q1|dense|1` → `q1|dense|1+`.
+- travel_day: `q1|dense|2+` → `q1|dense|1+`.
+- travel_day: `q1|dense|unknown` → `q1|dense|0`.
+- travel_day: `q1|intermediate|unknown` → `q1|intermediate|1`.
+- travel_day: `q1|sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|sparse|1` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|2+` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q2|dense|1` → `q2|dense|1+`.
+- travel_day: `q2|dense|2+` → `q2|dense|1+`.
+- travel_day: `q2|dense|unknown` → `q2|dense|1+`.
+- travel_day: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- travel_day: `q2|sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q3|dense|1` → `q3|dense|1+`.
+- travel_day: `q3|dense|2+` → `q3|dense|1+`.
+- travel_day: `q3|dense|unknown` → `q3|dense|1+`.
+- travel_day: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- travel_day: `q3|sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|unknown` → `q3|very_sparse|2+`.
+- travel_day: `q4|dense|0` → `q4|dense|1`.
+- travel_day: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- travel_day: `q4|sparse|0` → `q4|intermediate|0`.
+- travel_day: `q4|sparse|unknown` → `q4|sparse|2+`.
+- travel_day: `q4|very_sparse|0` → `q4|intermediate|0`.
+- travel_day: `q5|sparse|0` → `q5|intermediate|0`.
+- travel_day: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q1|dense|1` → `q1|dense|1+`.
+- person: `q1|dense|2+` → `q1|dense|1+`.
+- person: `q1|dense|unknown` → `q1|dense|0`.
+- person: `q1|intermediate|unknown` → `q1|intermediate|0`.
+- person: `q1|sparse|unknown` → `q1|very_sparse|1`.
+- person: `q1|very_sparse|unknown` → `q1|very_sparse|1`.
+- person: `q2|dense|1` → `q2|dense|1+`.
+- person: `q2|dense|2+` → `q2|dense|1+`.
+- person: `q2|dense|unknown` → `q2|dense|1+`.
+- person: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- person: `q2|sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q2|very_sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q3|dense|1` → `q3|dense|1+`.
+- person: `q3|dense|2+` → `q3|dense|1+`.
+- person: `q3|dense|unknown` → `q3|dense|1+`.
+- person: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- person: `q3|sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- person: `q4|sparse|0` → `q4|intermediate|0`.
+- person: `q4|sparse|unknown` → `q4|intermediate|0`.
+- person: `q4|very_sparse|0` → `q4|intermediate|0`.
+- person: `q4|very_sparse|unknown` → `q4|intermediate|0`.
+- person: `q5|intermediate|unknown` → `q5|intermediate|2+`.
+- person: `q5|sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|unknown` → `q5|very_sparse|2+`.
 
 ### Cells still below minimum support
 
@@ -1235,10 +970,6 @@ Scope: Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-loca
 | travel_day | q5 | intermediate | False | 1821 | 79.283 | 75.078 | 83.586 | 1046 | 85.495 | 81.684 | 89.292 | 1.078 | 1.019 | 1.144 |
 | travel_day | q5 | sparse | False | 420 | 65.688 | 59.332 | 71.836 | 316 | 76.829 | 68.931 | 83.612 | 1.170 | 1.039 | 1.301 |
 | travel_day | q5 | very_sparse | False | 891 | 73.867 | 69.292 | 79.458 | 427 | 83.531 | 75.735 | 92.308 | 1.131 | 1.028 | 1.246 |
-| travel_day | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 | person | q1 | dense | False | 473 | 61.053 | 53.971 | 68.458 | 476 | 66.894 | 60.556 | 73.785 | 1.096 | 0.950 | 1.264 |
 | person | q1 | intermediate | False | 1159 | 52.447 | 48.412 | 56.612 | 1197 | 55.804 | 51.284 | 61.505 | 1.064 | 0.960 | 1.187 |
 | person | q1 | sparse | False | 435 | 45.797 | 39.695 | 53.195 | 385 | 47.088 | 39.689 | 54.573 | 1.028 | 0.834 | 1.212 |
@@ -1259,10 +990,6 @@ Scope: Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-loca
 | person | q5 | intermediate | False | 2201 | 71.336 | 67.040 | 75.373 | 1478 | 75.937 | 71.306 | 81.180 | 1.064 | 0.988 | 1.146 |
 | person | q5 | sparse | False | 542 | 54.917 | 49.491 | 60.750 | 452 | 68.835 | 60.109 | 76.411 | 1.253 | 1.070 | 1.409 |
 | person | q5 | very_sparse | False | 1149 | 59.968 | 54.849 | 65.196 | 605 | 71.282 | 62.939 | 81.241 | 1.189 | 1.067 | 1.347 |
-| person | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -1273,16 +1000,16 @@ Scope: Round-trip days · all purposes · local (≤ 80 km) (`round-allpurp-loca
 
 | basis | quintile | ratio | verdict_15 | raw_q5_q1_2008 | raw_q5_q1_2019 | reweighted_q5_q1_2008 | reweighted_q5_q1_2019 | m2_q5_q1_2008 | m2_q5_q1_2019 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 1.094 | equivalent | 1.197 | 1.183 | 1.197 | 1.183 | 1.166 | 1.169 |
-| travel_day | q2 | 1.107 | inconclusive | 1.197 | 1.183 | 1.197 | 1.183 | 1.166 | 1.169 |
-| travel_day | q3 | 1.128 | inconclusive | 1.197 | 1.183 | 1.197 | 1.183 | 1.166 | 1.169 |
-| travel_day | q4 | 1.080 | equivalent | 1.197 | 1.183 | 1.197 | 1.183 | 1.166 | 1.169 |
-| travel_day | q5 | 1.081 | equivalent | 1.197 | 1.183 | 1.197 | 1.183 | 1.166 | 1.169 |
-| person | q1 | 1.116 | inconclusive | 1.336 | 1.332 | 1.336 | 1.332 | 1.166 | 1.169 |
-| person | q2 | 1.123 | inconclusive | 1.336 | 1.332 | 1.336 | 1.332 | 1.166 | 1.169 |
-| person | q3 | 1.128 | inconclusive | 1.336 | 1.332 | 1.336 | 1.332 | 1.166 | 1.169 |
-| person | q4 | 1.090 | inconclusive | 1.336 | 1.332 | 1.336 | 1.332 | 1.166 | 1.169 |
-| person | q5 | 1.112 | inconclusive | 1.336 | 1.332 | 1.336 | 1.332 | 1.166 | 1.169 |
+| travel_day | q1 | 1.094 | equivalent | 1.197 | 1.183 | 1.193 | 1.194 | 1.166 | 1.169 |
+| travel_day | q2 | 1.107 | inconclusive | 1.197 | 1.183 | 1.193 | 1.194 | 1.166 | 1.169 |
+| travel_day | q3 | 1.128 | inconclusive | 1.197 | 1.183 | 1.193 | 1.194 | 1.166 | 1.169 |
+| travel_day | q4 | 1.080 | equivalent | 1.197 | 1.183 | 1.193 | 1.194 | 1.166 | 1.169 |
+| travel_day | q5 | 1.081 | equivalent | 1.197 | 1.183 | 1.193 | 1.194 | 1.166 | 1.169 |
+| person | q1 | 1.116 | inconclusive | 1.336 | 1.332 | 1.319 | 1.344 | 1.166 | 1.169 |
+| person | q2 | 1.123 | inconclusive | 1.336 | 1.332 | 1.319 | 1.344 | 1.166 | 1.169 |
+| person | q3 | 1.128 | inconclusive | 1.336 | 1.332 | 1.319 | 1.344 | 1.166 | 1.169 |
+| person | q4 | 1.090 | inconclusive | 1.336 | 1.332 | 1.319 | 1.344 | 1.166 | 1.169 |
+| person | q5 | 1.112 | inconclusive | 1.336 | 1.332 | 1.319 | 1.344 | 1.166 | 1.169 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -1291,7 +1018,24 @@ The positive income gradient survives density and car controls in both years.
 
 ## Round-trip days · all purposes · all trips in the day's trip table (incl. > 80 km) (`round-allpurp-daytable`)
 
-ENTD unknown income: 0.00% of respondents and 0.00% of kept described-day weight. EMP income is imputed; no equivalent unknown group.
+ENTD 2008 income is complete in this file: the released income bracket and consumption-unit count are populated. The dictionary and released fields do not establish whether income brackets were imputed upstream (see [ENTD income audit](./entd2008.md#income-imputation-audit-step-12)).
+
+### Weighted income quintile shares
+
+Shares use the full weekday respondent roster and individual weights; `n` is unweighted. Ties in income can produce unequal shares.
+
+| Year | Quintile | n | Share (%) |
+|---:|:---|---:|---:|
+| 2008 | q1 | 3359 | 20.00 |
+| 2008 | q2 | 3159 | 20.00 |
+| 2008 | q3 | 3615 | 20.00 |
+| 2008 | q4 | 3657 | 19.99 |
+| 2008 | q5 | 4752 | 20.02 |
+| 2019 | q1 | 2504 | 20.00 |
+| 2019 | q2 | 2662 | 20.00 |
+| 2019 | q3 | 2742 | 19.99 |
+| 2019 | q4 | 2885 | 20.01 |
+| 2019 | q5 | 3032 | 20.00 |
 
 ### Support audit (details in support.csv)
 
@@ -1306,7 +1050,7 @@ Scope: Round-trip days · all purposes · all trips in the day's trip table (inc
 | regression_M2 | 2008 | 18 | 0 | 0 | 617 |
 | regression_M2 | 2019 | 18 | 0 | 0 | 519 |
 | regression_input_cars | 2008 | 4 | 1 | 200 | 0 |
-| regression_input_cars | 2019 | 4 | 1 | 71 | 1 |
+| regression_input_cars | 2019 | 4 | 0 | 0 | 24 |
 | regression_input_density | 2008 | 4 | 0 | 0 | 1862 |
 | regression_input_density | 2019 | 4 | 0 | 0 | 1334 |
 | regression_input_income | 2008 | 5 | 0 | 0 | 2358 |
@@ -1317,14 +1061,14 @@ Scope: Round-trip days · all purposes · all trips in the day's trip table (inc
 | regression_input_weekday | 2019 | 5 | 0 | 0 | 1700 |
 | regression_pooled | 2008 | 23 | 5 | 200 | 0 |
 | regression_pooled | 2019 | 23 | 0 | 0 | 519 |
-| reweight_input_person | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_person | 2019 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2008 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2019 | 80 | 23 | 200 | 0 |
-| reweight_person | 2008 | 5 | 0 | 0 | 3159 |
-| reweight_person | 2019 | 5 | 0 | 0 | 2504 |
-| reweight_travel_day | 2008 | 5 | 0 | 0 | 2358 |
-| reweight_travel_day | 2019 | 5 | 0 | 0 | 1704 |
+| reweight_input_person | 2008 | 77 | 17 | 200 | 0 |
+| reweight_input_person | 2019 | 77 | 18 | 92 | 1 |
+| reweight_input_travel_day | 2008 | 73 | 14 | 200 | 0 |
+| reweight_input_travel_day | 2019 | 73 | 16 | 92 | 1 |
+| reweight_person | 2008 | 52 | 0 | 0 | 68 |
+| reweight_person | 2019 | 52 | 0 | 0 | 56 |
+| reweight_travel_day | 2008 | 47 | 0 | 0 | 74 |
+| reweight_travel_day | 2019 | 47 | 0 | 0 | 52 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -1340,13 +1084,11 @@ Scope: Round-trip days · all purposes · all trips in the day's trip table (inc
 | travel_day | q3 | 2836 | 69.559 | 66.015 | 73.666 | 1919 | 81.574 | 77.201 | 86.767 | 1.173 | 1.104 | 1.246 | inconclusive | different |
 | travel_day | q4 | 2960 | 71.589 | 68.431 | 74.515 | 2027 | 75.514 | 72.619 | 78.605 | 1.055 | 1.005 | 1.107 | equivalent | inconclusive |
 | travel_day | q5 | 3881 | 81.487 | 78.393 | 84.844 | 2162 | 85.853 | 83.073 | 89.041 | 1.054 | 1.001 | 1.102 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 | person | q1 | 3359 | 50.424 | 47.545 | 53.180 | 2504 | 56.626 | 53.735 | 59.654 | 1.123 | 1.046 | 1.193 | inconclusive | inconclusive |
 | person | q2 | 3159 | 54.144 | 51.445 | 57.430 | 2662 | 59.400 | 55.856 | 63.452 | 1.097 | 1.023 | 1.172 | inconclusive | inconclusive |
 | person | q3 | 3615 | 58.413 | 55.703 | 62.495 | 2742 | 68.546 | 64.026 | 73.731 | 1.173 | 1.079 | 1.268 | inconclusive | inconclusive |
 | person | q4 | 3657 | 62.927 | 59.855 | 65.633 | 2885 | 66.756 | 63.305 | 70.290 | 1.061 | 0.996 | 1.129 | equivalent | inconclusive |
 | person | q5 | 4752 | 72.037 | 69.022 | 75.211 | 3032 | 77.482 | 74.025 | 81.398 | 1.076 | 1.021 | 1.137 | equivalent | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -1371,18 +1113,16 @@ Scope: Round-trip days · all purposes · all trips in the day's trip table (inc
 
 | basis | quintile | n_2008 | mean_2008 | ci_2008_low | ci_2008_high | n_2019 | mean_2019 | ci_2019_low | ci_2019_high | ratio | ratio_ci_low | ratio_ci_high | verdict_15 | verdict_10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 2358 | 64.703 | 61.510 | 68.170 | 1704 | 71.035 | 67.905 | 73.619 | 1.098 | 1.031 | 1.154 | inconclusive | inconclusive |
-| travel_day | q2 | 2450 | 65.802 | 62.491 | 69.601 | 1910 | 71.446 | 68.089 | 75.653 | 1.086 | 1.029 | 1.152 | inconclusive | inconclusive |
-| travel_day | q3 | 2836 | 69.559 | 66.015 | 73.666 | 1919 | 81.574 | 77.201 | 86.767 | 1.173 | 1.104 | 1.246 | inconclusive | different |
-| travel_day | q4 | 2960 | 71.589 | 68.431 | 74.515 | 2027 | 75.514 | 72.619 | 78.605 | 1.055 | 1.005 | 1.107 | equivalent | inconclusive |
-| travel_day | q5 | 3881 | 81.487 | 78.393 | 84.844 | 2162 | 85.853 | 83.073 | 89.041 | 1.054 | 1.001 | 1.102 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
-| person | q1 | 3359 | 50.424 | 47.545 | 53.180 | 2504 | 56.626 | 53.735 | 59.654 | 1.123 | 1.046 | 1.193 | inconclusive | inconclusive |
-| person | q2 | 3159 | 54.144 | 51.445 | 57.430 | 2662 | 59.400 | 55.856 | 63.452 | 1.097 | 1.023 | 1.172 | inconclusive | inconclusive |
-| person | q3 | 3615 | 58.413 | 55.703 | 62.495 | 2742 | 68.546 | 64.026 | 73.731 | 1.173 | 1.079 | 1.268 | inconclusive | inconclusive |
-| person | q4 | 3657 | 62.927 | 59.855 | 65.633 | 2885 | 66.756 | 63.305 | 70.290 | 1.061 | 0.996 | 1.129 | equivalent | inconclusive |
-| person | q5 | 4752 | 72.037 | 69.022 | 75.211 | 3032 | 77.482 | 74.025 | 81.398 | 1.076 | 1.021 | 1.137 | equivalent | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
+| travel_day | q1 | 2358 | 64.970 | 61.933 | 68.519 | 1704 | 70.576 | 67.438 | 73.360 | 1.086 | 1.015 | 1.142 | equivalent | inconclusive |
+| travel_day | q2 | 2450 | 65.532 | 62.353 | 69.376 | 1910 | 71.602 | 68.136 | 75.476 | 1.093 | 1.036 | 1.157 | inconclusive | inconclusive |
+| travel_day | q3 | 2836 | 69.606 | 65.959 | 73.609 | 1919 | 81.744 | 77.386 | 86.727 | 1.174 | 1.105 | 1.242 | inconclusive | different |
+| travel_day | q4 | 2960 | 71.521 | 68.273 | 74.443 | 2027 | 75.655 | 72.814 | 78.753 | 1.058 | 1.010 | 1.108 | equivalent | inconclusive |
+| travel_day | q5 | 3881 | 81.600 | 78.713 | 84.965 | 2162 | 86.087 | 83.240 | 89.329 | 1.055 | 1.006 | 1.101 | equivalent | inconclusive |
+| person | q1 | 3359 | 51.232 | 48.413 | 54.061 | 2504 | 56.017 | 53.417 | 59.103 | 1.093 | 1.019 | 1.156 | inconclusive | inconclusive |
+| person | q2 | 3159 | 53.749 | 51.181 | 56.916 | 2662 | 59.517 | 55.718 | 63.464 | 1.107 | 1.033 | 1.180 | inconclusive | inconclusive |
+| person | q3 | 3615 | 58.379 | 55.576 | 62.365 | 2742 | 68.804 | 64.150 | 73.565 | 1.179 | 1.088 | 1.275 | inconclusive | inconclusive |
+| person | q4 | 3657 | 62.901 | 59.786 | 65.672 | 2885 | 67.072 | 63.605 | 70.482 | 1.066 | 1.002 | 1.130 | equivalent | inconclusive |
+| person | q5 | 4752 | 72.283 | 69.239 | 75.410 | 3032 | 77.479 | 74.051 | 81.496 | 1.072 | 1.018 | 1.132 | equivalent | inconclusive |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -1393,176 +1133,80 @@ Scope: Round-trip days · all purposes · all trips in the day's trip table (inc
 
 | basis | gap | value_2008 | ci_2008_low | ci_2008_high | value_2019 | ci_2019_low | ci_2019_high | change | change_ci_low | change_ci_high |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | difference | 16.784 | 11.620 | 20.578 | 14.818 | 11.457 | 19.413 | -1.965 | -7.624 | 4.697 |
-| travel_day | ratio | 1.259 | 1.172 | 1.330 | 1.209 | 1.156 | 1.276 | -0.051 | -0.149 | 0.067 |
-| person | difference | 21.613 | 17.658 | 25.097 | 20.856 | 16.659 | 25.931 | -0.757 | -6.651 | 6.538 |
-| person | ratio | 1.429 | 1.331 | 1.513 | 1.368 | 1.283 | 1.474 | -0.060 | -0.199 | 0.097 |
+| travel_day | difference | 16.630 | 11.692 | 20.287 | 15.510 | 12.167 | 19.692 | -1.120 | -6.994 | 5.514 |
+| travel_day | ratio | 1.256 | 1.171 | 1.322 | 1.220 | 1.167 | 1.287 | -0.036 | -0.127 | 0.072 |
+| person | difference | 21.051 | 16.822 | 24.562 | 21.462 | 17.321 | 26.707 | 0.411 | -5.124 | 7.964 |
+| person | ratio | 1.411 | 1.317 | 1.497 | 1.383 | 1.294 | 1.493 | -0.028 | -0.155 | 0.132 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
 
 ### Collapsed joint cells
 
-- travel_day: `q1|dense|0` → `q1|all|all`.
-- travel_day: `q1|dense|1` → `q1|all|all`.
-- travel_day: `q1|dense|2+` → `q1|all|all`.
-- travel_day: `q1|dense|unknown` → `q1|all|all`.
-- travel_day: `q1|intermediate|0` → `q1|all|all`.
-- travel_day: `q1|intermediate|1` → `q1|all|all`.
-- travel_day: `q1|intermediate|2+` → `q1|all|all`.
-- travel_day: `q1|intermediate|unknown` → `q1|all|all`.
-- travel_day: `q1|sparse|0` → `q1|all|all`.
-- travel_day: `q1|sparse|1` → `q1|all|all`.
-- travel_day: `q1|sparse|2+` → `q1|all|all`.
-- travel_day: `q1|sparse|unknown` → `q1|all|all`.
-- travel_day: `q1|very_sparse|0` → `q1|all|all`.
-- travel_day: `q1|very_sparse|1` → `q1|all|all`.
-- travel_day: `q1|very_sparse|2+` → `q1|all|all`.
-- travel_day: `q1|very_sparse|unknown` → `q1|all|all`.
-- travel_day: `q2|dense|0` → `q2|all|all`.
-- travel_day: `q2|dense|1` → `q2|all|all`.
-- travel_day: `q2|dense|2+` → `q2|all|all`.
-- travel_day: `q2|dense|unknown` → `q2|all|all`.
-- travel_day: `q2|intermediate|0` → `q2|all|all`.
-- travel_day: `q2|intermediate|1` → `q2|all|all`.
-- travel_day: `q2|intermediate|2+` → `q2|all|all`.
-- travel_day: `q2|intermediate|unknown` → `q2|all|all`.
-- travel_day: `q2|sparse|0` → `q2|all|all`.
-- travel_day: `q2|sparse|1` → `q2|all|all`.
-- travel_day: `q2|sparse|2+` → `q2|all|all`.
-- travel_day: `q2|sparse|unknown` → `q2|all|all`.
-- travel_day: `q2|very_sparse|0` → `q2|all|all`.
-- travel_day: `q2|very_sparse|1` → `q2|all|all`.
-- travel_day: `q2|very_sparse|2+` → `q2|all|all`.
-- travel_day: `q2|very_sparse|unknown` → `q2|all|all`.
-- travel_day: `q3|dense|0` → `q3|all|all`.
-- travel_day: `q3|dense|1` → `q3|all|all`.
-- travel_day: `q3|dense|2+` → `q3|all|all`.
-- travel_day: `q3|dense|unknown` → `q3|all|all`.
-- travel_day: `q3|intermediate|0` → `q3|all|all`.
-- travel_day: `q3|intermediate|1` → `q3|all|all`.
-- travel_day: `q3|intermediate|2+` → `q3|all|all`.
-- travel_day: `q3|intermediate|unknown` → `q3|all|all`.
-- travel_day: `q3|sparse|0` → `q3|all|all`.
-- travel_day: `q3|sparse|1` → `q3|all|all`.
-- travel_day: `q3|sparse|2+` → `q3|all|all`.
-- travel_day: `q3|sparse|unknown` → `q3|all|all`.
-- travel_day: `q3|very_sparse|0` → `q3|all|all`.
-- travel_day: `q3|very_sparse|1` → `q3|all|all`.
-- travel_day: `q3|very_sparse|2+` → `q3|all|all`.
-- travel_day: `q3|very_sparse|unknown` → `q3|all|all`.
-- travel_day: `q4|dense|0` → `q4|all|all`.
-- travel_day: `q4|dense|1` → `q4|all|all`.
-- travel_day: `q4|dense|2+` → `q4|all|all`.
-- travel_day: `q4|dense|unknown` → `q4|all|all`.
-- travel_day: `q4|intermediate|0` → `q4|all|all`.
-- travel_day: `q4|intermediate|1` → `q4|all|all`.
-- travel_day: `q4|intermediate|2+` → `q4|all|all`.
-- travel_day: `q4|intermediate|unknown` → `q4|all|all`.
-- travel_day: `q4|sparse|0` → `q4|all|all`.
-- travel_day: `q4|sparse|1` → `q4|all|all`.
-- travel_day: `q4|sparse|2+` → `q4|all|all`.
-- travel_day: `q4|sparse|unknown` → `q4|all|all`.
-- travel_day: `q4|very_sparse|0` → `q4|all|all`.
-- travel_day: `q4|very_sparse|1` → `q4|all|all`.
-- travel_day: `q4|very_sparse|2+` → `q4|all|all`.
-- travel_day: `q4|very_sparse|unknown` → `q4|all|all`.
-- travel_day: `q5|dense|0` → `q5|all|all`.
-- travel_day: `q5|dense|1` → `q5|all|all`.
-- travel_day: `q5|dense|2+` → `q5|all|all`.
-- travel_day: `q5|dense|unknown` → `q5|all|all`.
-- travel_day: `q5|intermediate|0` → `q5|all|all`.
-- travel_day: `q5|intermediate|1` → `q5|all|all`.
-- travel_day: `q5|intermediate|2+` → `q5|all|all`.
-- travel_day: `q5|intermediate|unknown` → `q5|all|all`.
-- travel_day: `q5|sparse|0` → `q5|all|all`.
-- travel_day: `q5|sparse|1` → `q5|all|all`.
-- travel_day: `q5|sparse|2+` → `q5|all|all`.
-- travel_day: `q5|sparse|unknown` → `q5|all|all`.
-- travel_day: `q5|very_sparse|0` → `q5|all|all`.
-- travel_day: `q5|very_sparse|1` → `q5|all|all`.
-- travel_day: `q5|very_sparse|2+` → `q5|all|all`.
-- travel_day: `q5|very_sparse|unknown` → `q5|all|all`.
-- person: `q1|dense|0` → `q1|all|all`.
-- person: `q1|dense|1` → `q1|all|all`.
-- person: `q1|dense|2+` → `q1|all|all`.
-- person: `q1|dense|unknown` → `q1|all|all`.
-- person: `q1|intermediate|0` → `q1|all|all`.
-- person: `q1|intermediate|1` → `q1|all|all`.
-- person: `q1|intermediate|2+` → `q1|all|all`.
-- person: `q1|intermediate|unknown` → `q1|all|all`.
-- person: `q1|sparse|0` → `q1|all|all`.
-- person: `q1|sparse|1` → `q1|all|all`.
-- person: `q1|sparse|2+` → `q1|all|all`.
-- person: `q1|sparse|unknown` → `q1|all|all`.
-- person: `q1|very_sparse|0` → `q1|all|all`.
-- person: `q1|very_sparse|1` → `q1|all|all`.
-- person: `q1|very_sparse|2+` → `q1|all|all`.
-- person: `q1|very_sparse|unknown` → `q1|all|all`.
-- person: `q2|dense|0` → `q2|all|all`.
-- person: `q2|dense|1` → `q2|all|all`.
-- person: `q2|dense|2+` → `q2|all|all`.
-- person: `q2|dense|unknown` → `q2|all|all`.
-- person: `q2|intermediate|0` → `q2|all|all`.
-- person: `q2|intermediate|1` → `q2|all|all`.
-- person: `q2|intermediate|2+` → `q2|all|all`.
-- person: `q2|intermediate|unknown` → `q2|all|all`.
-- person: `q2|sparse|0` → `q2|all|all`.
-- person: `q2|sparse|1` → `q2|all|all`.
-- person: `q2|sparse|2+` → `q2|all|all`.
-- person: `q2|sparse|unknown` → `q2|all|all`.
-- person: `q2|very_sparse|0` → `q2|all|all`.
-- person: `q2|very_sparse|1` → `q2|all|all`.
-- person: `q2|very_sparse|2+` → `q2|all|all`.
-- person: `q2|very_sparse|unknown` → `q2|all|all`.
-- person: `q3|dense|0` → `q3|all|all`.
-- person: `q3|dense|1` → `q3|all|all`.
-- person: `q3|dense|2+` → `q3|all|all`.
-- person: `q3|dense|unknown` → `q3|all|all`.
-- person: `q3|intermediate|0` → `q3|all|all`.
-- person: `q3|intermediate|1` → `q3|all|all`.
-- person: `q3|intermediate|2+` → `q3|all|all`.
-- person: `q3|intermediate|unknown` → `q3|all|all`.
-- person: `q3|sparse|0` → `q3|all|all`.
-- person: `q3|sparse|1` → `q3|all|all`.
-- person: `q3|sparse|2+` → `q3|all|all`.
-- person: `q3|sparse|unknown` → `q3|all|all`.
-- person: `q3|very_sparse|0` → `q3|all|all`.
-- person: `q3|very_sparse|1` → `q3|all|all`.
-- person: `q3|very_sparse|2+` → `q3|all|all`.
-- person: `q3|very_sparse|unknown` → `q3|all|all`.
-- person: `q4|dense|0` → `q4|all|all`.
-- person: `q4|dense|1` → `q4|all|all`.
-- person: `q4|dense|2+` → `q4|all|all`.
-- person: `q4|dense|unknown` → `q4|all|all`.
-- person: `q4|intermediate|0` → `q4|all|all`.
-- person: `q4|intermediate|1` → `q4|all|all`.
-- person: `q4|intermediate|2+` → `q4|all|all`.
-- person: `q4|intermediate|unknown` → `q4|all|all`.
-- person: `q4|sparse|0` → `q4|all|all`.
-- person: `q4|sparse|1` → `q4|all|all`.
-- person: `q4|sparse|2+` → `q4|all|all`.
-- person: `q4|sparse|unknown` → `q4|all|all`.
-- person: `q4|very_sparse|0` → `q4|all|all`.
-- person: `q4|very_sparse|1` → `q4|all|all`.
-- person: `q4|very_sparse|2+` → `q4|all|all`.
-- person: `q4|very_sparse|unknown` → `q4|all|all`.
-- person: `q5|dense|0` → `q5|all|all`.
-- person: `q5|dense|1` → `q5|all|all`.
-- person: `q5|dense|2+` → `q5|all|all`.
-- person: `q5|dense|unknown` → `q5|all|all`.
-- person: `q5|intermediate|0` → `q5|all|all`.
-- person: `q5|intermediate|1` → `q5|all|all`.
-- person: `q5|intermediate|2+` → `q5|all|all`.
-- person: `q5|intermediate|unknown` → `q5|all|all`.
-- person: `q5|sparse|0` → `q5|all|all`.
-- person: `q5|sparse|1` → `q5|all|all`.
-- person: `q5|sparse|2+` → `q5|all|all`.
-- person: `q5|sparse|unknown` → `q5|all|all`.
-- person: `q5|very_sparse|0` → `q5|all|all`.
-- person: `q5|very_sparse|1` → `q5|all|all`.
-- person: `q5|very_sparse|2+` → `q5|all|all`.
-- person: `q5|very_sparse|unknown` → `q5|all|all`.
+- travel_day: 39.01% of the full-sample pooled target is in cells that combine two or more original cells.
+- person: 37.52% of the full-sample pooled target is in cells that combine two or more original cells.
+
+- travel_day: `q1|dense|1` → `q1|dense|1+`.
+- travel_day: `q1|dense|2+` → `q1|dense|1+`.
+- travel_day: `q1|dense|unknown` → `q1|dense|0`.
+- travel_day: `q1|intermediate|unknown` → `q1|intermediate|1`.
+- travel_day: `q1|sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|sparse|1` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|2+` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q2|dense|1` → `q2|dense|1+`.
+- travel_day: `q2|dense|2+` → `q2|dense|1+`.
+- travel_day: `q2|dense|unknown` → `q2|dense|1+`.
+- travel_day: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- travel_day: `q2|sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q3|dense|1` → `q3|dense|1+`.
+- travel_day: `q3|dense|2+` → `q3|dense|1+`.
+- travel_day: `q3|dense|unknown` → `q3|dense|1+`.
+- travel_day: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- travel_day: `q3|sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|unknown` → `q3|very_sparse|2+`.
+- travel_day: `q4|dense|0` → `q4|dense|1`.
+- travel_day: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- travel_day: `q4|sparse|0` → `q4|intermediate|0`.
+- travel_day: `q4|sparse|unknown` → `q4|sparse|2+`.
+- travel_day: `q4|very_sparse|0` → `q4|intermediate|0`.
+- travel_day: `q5|sparse|0` → `q5|intermediate|0`.
+- travel_day: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q1|dense|1` → `q1|dense|1+`.
+- person: `q1|dense|2+` → `q1|dense|1+`.
+- person: `q1|dense|unknown` → `q1|dense|0`.
+- person: `q1|intermediate|unknown` → `q1|intermediate|0`.
+- person: `q1|sparse|unknown` → `q1|very_sparse|1`.
+- person: `q1|very_sparse|unknown` → `q1|very_sparse|1`.
+- person: `q2|dense|1` → `q2|dense|1+`.
+- person: `q2|dense|2+` → `q2|dense|1+`.
+- person: `q2|dense|unknown` → `q2|dense|1+`.
+- person: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- person: `q2|sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q2|very_sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q3|dense|1` → `q3|dense|1+`.
+- person: `q3|dense|2+` → `q3|dense|1+`.
+- person: `q3|dense|unknown` → `q3|dense|1+`.
+- person: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- person: `q3|sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- person: `q4|sparse|0` → `q4|intermediate|0`.
+- person: `q4|sparse|unknown` → `q4|intermediate|0`.
+- person: `q4|very_sparse|0` → `q4|intermediate|0`.
+- person: `q4|very_sparse|unknown` → `q4|intermediate|0`.
+- person: `q5|intermediate|unknown` → `q5|intermediate|2+`.
+- person: `q5|sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|unknown` → `q5|very_sparse|2+`.
 
 ### Cells still below minimum support
 
@@ -1653,10 +1297,6 @@ Scope: Round-trip days · all purposes · all trips in the day's trip table (inc
 | travel_day | q5 | intermediate | False | 1839 | 84.739 | 79.671 | 90.019 | 1056 | 87.363 | 83.570 | 90.939 | 1.031 | 0.971 | 1.095 |
 | travel_day | q5 | sparse | False | 435 | 73.006 | 66.072 | 80.588 | 318 | 81.829 | 73.055 | 91.693 | 1.121 | 0.987 | 1.266 |
 | travel_day | q5 | very_sparse | False | 910 | 77.870 | 72.185 | 83.301 | 439 | 93.732 | 84.699 | 103.395 | 1.204 | 1.088 | 1.340 |
-| travel_day | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 | person | q1 | dense | False | 473 | 61.081 | 53.993 | 68.459 | 476 | 68.771 | 61.683 | 76.409 | 1.126 | 0.977 | 1.302 |
 | person | q1 | intermediate | False | 1159 | 53.159 | 48.876 | 57.613 | 1197 | 57.515 | 52.458 | 62.903 | 1.082 | 0.978 | 1.200 |
 | person | q1 | sparse | False | 435 | 47.834 | 40.227 | 55.776 | 385 | 47.497 | 40.524 | 55.214 | 0.993 | 0.805 | 1.194 |
@@ -1677,10 +1317,6 @@ Scope: Round-trip days · all purposes · all trips in the day's trip table (inc
 | person | q5 | intermediate | False | 2201 | 77.149 | 71.913 | 81.930 | 1478 | 78.128 | 73.562 | 83.026 | 1.013 | 0.937 | 1.083 |
 | person | q5 | sparse | False | 542 | 63.485 | 57.790 | 70.377 | 452 | 73.611 | 64.277 | 85.655 | 1.159 | 0.983 | 1.346 |
 | person | q5 | very_sparse | False | 1149 | 64.832 | 59.184 | 69.753 | 605 | 82.181 | 73.637 | 93.105 | 1.268 | 1.131 | 1.437 |
-| person | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -1691,16 +1327,16 @@ Scope: Round-trip days · all purposes · all trips in the day's trip table (inc
 
 | basis | quintile | ratio | verdict_15 | raw_q5_q1_2008 | raw_q5_q1_2019 | reweighted_q5_q1_2008 | reweighted_q5_q1_2019 | m2_q5_q1_2008 | m2_q5_q1_2019 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 1.098 | inconclusive | 1.259 | 1.209 | 1.259 | 1.209 | 1.207 | 1.175 |
-| travel_day | q2 | 1.086 | inconclusive | 1.259 | 1.209 | 1.259 | 1.209 | 1.207 | 1.175 |
-| travel_day | q3 | 1.173 | inconclusive | 1.259 | 1.209 | 1.259 | 1.209 | 1.207 | 1.175 |
-| travel_day | q4 | 1.055 | equivalent | 1.259 | 1.209 | 1.259 | 1.209 | 1.207 | 1.175 |
-| travel_day | q5 | 1.054 | equivalent | 1.259 | 1.209 | 1.259 | 1.209 | 1.207 | 1.175 |
-| person | q1 | 1.123 | inconclusive | 1.429 | 1.368 | 1.429 | 1.368 | 1.207 | 1.175 |
-| person | q2 | 1.097 | inconclusive | 1.429 | 1.368 | 1.429 | 1.368 | 1.207 | 1.175 |
-| person | q3 | 1.173 | inconclusive | 1.429 | 1.368 | 1.429 | 1.368 | 1.207 | 1.175 |
-| person | q4 | 1.061 | equivalent | 1.429 | 1.368 | 1.429 | 1.368 | 1.207 | 1.175 |
-| person | q5 | 1.076 | equivalent | 1.429 | 1.368 | 1.429 | 1.368 | 1.207 | 1.175 |
+| travel_day | q1 | 1.098 | inconclusive | 1.259 | 1.209 | 1.256 | 1.220 | 1.207 | 1.175 |
+| travel_day | q2 | 1.086 | inconclusive | 1.259 | 1.209 | 1.256 | 1.220 | 1.207 | 1.175 |
+| travel_day | q3 | 1.173 | inconclusive | 1.259 | 1.209 | 1.256 | 1.220 | 1.207 | 1.175 |
+| travel_day | q4 | 1.055 | equivalent | 1.259 | 1.209 | 1.256 | 1.220 | 1.207 | 1.175 |
+| travel_day | q5 | 1.054 | equivalent | 1.259 | 1.209 | 1.256 | 1.220 | 1.207 | 1.175 |
+| person | q1 | 1.123 | inconclusive | 1.429 | 1.368 | 1.411 | 1.383 | 1.207 | 1.175 |
+| person | q2 | 1.097 | inconclusive | 1.429 | 1.368 | 1.411 | 1.383 | 1.207 | 1.175 |
+| person | q3 | 1.173 | inconclusive | 1.429 | 1.368 | 1.411 | 1.383 | 1.207 | 1.175 |
+| person | q4 | 1.061 | equivalent | 1.429 | 1.368 | 1.411 | 1.383 | 1.207 | 1.175 |
+| person | q5 | 1.076 | equivalent | 1.429 | 1.368 | 1.411 | 1.383 | 1.207 | 1.175 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -1709,7 +1345,24 @@ The positive income gradient survives density and car controls in both years.
 
 ## All days · destination purposes · local (≤ 80 km) (`alldays-dest-local`)
 
-ENTD unknown income: 0.00% of respondents and 0.00% of kept described-day weight. EMP income is imputed; no equivalent unknown group.
+ENTD 2008 income is complete in this file: the released income bracket and consumption-unit count are populated. The dictionary and released fields do not establish whether income brackets were imputed upstream (see [ENTD income audit](./entd2008.md#income-imputation-audit-step-12)).
+
+### Weighted income quintile shares
+
+Shares use the full weekday respondent roster and individual weights; `n` is unweighted. Ties in income can produce unequal shares.
+
+| Year | Quintile | n | Share (%) |
+|---:|:---|---:|---:|
+| 2008 | q1 | 3359 | 20.00 |
+| 2008 | q2 | 3159 | 20.00 |
+| 2008 | q3 | 3615 | 20.00 |
+| 2008 | q4 | 3657 | 19.99 |
+| 2008 | q5 | 4752 | 20.02 |
+| 2019 | q1 | 2504 | 20.00 |
+| 2019 | q2 | 2662 | 20.00 |
+| 2019 | q3 | 2742 | 19.99 |
+| 2019 | q4 | 2885 | 20.01 |
+| 2019 | q5 | 3032 | 20.00 |
 
 ### Support audit (details in support.csv)
 
@@ -1724,7 +1377,7 @@ Scope: All days · destination purposes · local (≤ 80 km) (`alldays-dest-loca
 | regression_M2 | 2008 | 18 | 0 | 0 | 624 |
 | regression_M2 | 2019 | 18 | 0 | 0 | 531 |
 | regression_input_cars | 2008 | 4 | 1 | 200 | 0 |
-| regression_input_cars | 2019 | 4 | 1 | 71 | 1 |
+| regression_input_cars | 2019 | 4 | 0 | 0 | 23 |
 | regression_input_density | 2008 | 4 | 0 | 0 | 1897 |
 | regression_input_density | 2019 | 4 | 0 | 0 | 1360 |
 | regression_input_income | 2008 | 5 | 0 | 0 | 2380 |
@@ -1735,14 +1388,14 @@ Scope: All days · destination purposes · local (≤ 80 km) (`alldays-dest-loca
 | regression_input_weekday | 2019 | 5 | 0 | 0 | 1704 |
 | regression_pooled | 2008 | 23 | 5 | 200 | 0 |
 | regression_pooled | 2019 | 23 | 0 | 0 | 531 |
-| reweight_input_person | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_person | 2019 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_travel_day | 2019 | 80 | 23 | 200 | 0 |
-| reweight_person | 2008 | 5 | 0 | 0 | 3159 |
-| reweight_person | 2019 | 5 | 0 | 0 | 2504 |
-| reweight_travel_day | 2008 | 5 | 0 | 0 | 2380 |
-| reweight_travel_day | 2019 | 5 | 0 | 0 | 1714 |
+| reweight_input_person | 2008 | 77 | 17 | 200 | 0 |
+| reweight_input_person | 2019 | 77 | 18 | 92 | 1 |
+| reweight_input_travel_day | 2008 | 73 | 13 | 200 | 0 |
+| reweight_input_travel_day | 2019 | 73 | 16 | 92 | 1 |
+| reweight_person | 2008 | 52 | 0 | 0 | 68 |
+| reweight_person | 2019 | 52 | 0 | 0 | 56 |
+| reweight_travel_day | 2008 | 47 | 0 | 0 | 75 |
+| reweight_travel_day | 2019 | 47 | 0 | 0 | 50 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -1758,13 +1411,11 @@ Scope: All days · destination purposes · local (≤ 80 km) (`alldays-dest-loca
 | travel_day | q3 | 2891 | 62.795 | 60.228 | 65.643 | 1930 | 69.445 | 66.964 | 71.896 | 1.106 | 1.055 | 1.157 | inconclusive | inconclusive |
 | travel_day | q4 | 3057 | 65.250 | 62.774 | 68.135 | 2091 | 69.649 | 67.003 | 72.295 | 1.067 | 1.016 | 1.118 | equivalent | inconclusive |
 | travel_day | q5 | 3986 | 71.251 | 68.687 | 73.509 | 2190 | 75.379 | 72.759 | 77.867 | 1.058 | 1.013 | 1.104 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 | person | q1 | 3359 | 45.117 | 42.870 | 47.435 | 2504 | 49.941 | 47.364 | 53.079 | 1.107 | 1.039 | 1.182 | inconclusive | inconclusive |
 | person | q2 | 3159 | 48.564 | 45.956 | 51.000 | 2662 | 51.384 | 48.655 | 54.320 | 1.058 | 0.985 | 1.125 | equivalent | inconclusive |
 | person | q3 | 3615 | 50.978 | 48.710 | 53.425 | 2742 | 55.980 | 53.495 | 58.714 | 1.098 | 1.034 | 1.160 | inconclusive | inconclusive |
 | person | q4 | 3657 | 55.666 | 53.545 | 57.936 | 2885 | 59.170 | 56.125 | 62.113 | 1.063 | 1.002 | 1.125 | equivalent | inconclusive |
 | person | q5 | 4752 | 59.754 | 57.415 | 62.163 | 3032 | 65.246 | 61.968 | 68.480 | 1.092 | 1.040 | 1.149 | equivalent | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -1789,18 +1440,16 @@ Scope: All days · destination purposes · local (≤ 80 km) (`alldays-dest-loca
 
 | basis | quintile | n_2008 | mean_2008 | ci_2008_low | ci_2008_high | n_2019 | mean_2019 | ci_2019_low | ci_2019_high | ratio | ratio_ci_low | ratio_ci_high | verdict_15 | verdict_10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 2380 | 60.287 | 57.948 | 62.814 | 1714 | 64.999 | 62.016 | 67.477 | 1.078 | 1.019 | 1.134 | equivalent | inconclusive |
-| travel_day | q2 | 2481 | 60.878 | 58.214 | 63.785 | 1910 | 64.822 | 62.064 | 68.278 | 1.065 | 1.007 | 1.122 | equivalent | inconclusive |
-| travel_day | q3 | 2891 | 62.795 | 60.228 | 65.643 | 1930 | 69.445 | 66.964 | 71.896 | 1.106 | 1.055 | 1.157 | inconclusive | inconclusive |
-| travel_day | q4 | 3057 | 65.250 | 62.774 | 68.135 | 2091 | 69.649 | 67.003 | 72.295 | 1.067 | 1.016 | 1.118 | equivalent | inconclusive |
-| travel_day | q5 | 3986 | 71.251 | 68.687 | 73.509 | 2190 | 75.379 | 72.759 | 77.867 | 1.058 | 1.013 | 1.104 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
-| person | q1 | 3359 | 45.117 | 42.870 | 47.435 | 2504 | 49.941 | 47.364 | 53.079 | 1.107 | 1.039 | 1.182 | inconclusive | inconclusive |
-| person | q2 | 3159 | 48.564 | 45.956 | 51.000 | 2662 | 51.384 | 48.655 | 54.320 | 1.058 | 0.985 | 1.125 | equivalent | inconclusive |
-| person | q3 | 3615 | 50.978 | 48.710 | 53.425 | 2742 | 55.980 | 53.495 | 58.714 | 1.098 | 1.034 | 1.160 | inconclusive | inconclusive |
-| person | q4 | 3657 | 55.666 | 53.545 | 57.936 | 2885 | 59.170 | 56.125 | 62.113 | 1.063 | 1.002 | 1.125 | equivalent | inconclusive |
-| person | q5 | 4752 | 59.754 | 57.415 | 62.163 | 3032 | 65.246 | 61.968 | 68.480 | 1.092 | 1.040 | 1.149 | equivalent | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
+| travel_day | q1 | 2380 | 60.583 | 58.352 | 63.350 | 1714 | 64.535 | 61.728 | 67.178 | 1.065 | 1.005 | 1.118 | equivalent | inconclusive |
+| travel_day | q2 | 2481 | 60.608 | 58.108 | 63.367 | 1910 | 65.029 | 62.386 | 68.217 | 1.073 | 1.017 | 1.126 | equivalent | inconclusive |
+| travel_day | q3 | 2891 | 62.788 | 60.252 | 65.682 | 1930 | 69.481 | 67.007 | 71.916 | 1.107 | 1.054 | 1.161 | inconclusive | inconclusive |
+| travel_day | q4 | 3057 | 65.276 | 62.831 | 68.156 | 2091 | 69.683 | 67.093 | 72.565 | 1.068 | 1.019 | 1.119 | equivalent | inconclusive |
+| travel_day | q5 | 3986 | 71.339 | 68.868 | 73.600 | 2190 | 75.538 | 73.026 | 78.084 | 1.059 | 1.013 | 1.100 | equivalent | inconclusive |
+| person | q1 | 3359 | 45.923 | 43.628 | 48.236 | 2504 | 49.233 | 46.733 | 52.359 | 1.072 | 1.002 | 1.146 | equivalent | inconclusive |
+| person | q2 | 3159 | 48.262 | 45.864 | 50.851 | 2662 | 51.549 | 48.704 | 54.324 | 1.068 | 0.998 | 1.136 | equivalent | inconclusive |
+| person | q3 | 3615 | 50.952 | 48.816 | 53.365 | 2742 | 56.000 | 53.697 | 58.733 | 1.099 | 1.034 | 1.160 | inconclusive | inconclusive |
+| person | q4 | 3657 | 55.651 | 53.465 | 57.946 | 2885 | 59.312 | 56.251 | 62.417 | 1.066 | 1.004 | 1.129 | equivalent | inconclusive |
+| person | q5 | 4752 | 59.952 | 57.746 | 62.201 | 3032 | 65.170 | 62.045 | 68.272 | 1.087 | 1.035 | 1.145 | equivalent | inconclusive |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -1811,176 +1460,80 @@ Scope: All days · destination purposes · local (≤ 80 km) (`alldays-dest-loca
 
 | basis | gap | value_2008 | ci_2008_low | ci_2008_high | value_2019 | ci_2019_low | ci_2019_high | change | change_ci_low | change_ci_high |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | difference | 10.965 | 6.939 | 14.427 | 10.380 | 6.379 | 14.042 | -0.585 | -6.416 | 4.891 |
-| travel_day | ratio | 1.182 | 1.111 | 1.244 | 1.160 | 1.095 | 1.225 | -0.022 | -0.123 | 0.071 |
-| person | difference | 14.637 | 11.106 | 17.753 | 15.304 | 11.261 | 19.827 | 0.667 | -4.486 | 6.168 |
-| person | ratio | 1.324 | 1.238 | 1.406 | 1.306 | 1.221 | 1.409 | -0.018 | -0.141 | 0.114 |
+| travel_day | difference | 10.757 | 6.641 | 13.920 | 11.002 | 6.904 | 14.593 | 0.246 | -5.619 | 5.763 |
+| travel_day | ratio | 1.178 | 1.105 | 1.236 | 1.170 | 1.105 | 1.237 | -0.007 | -0.108 | 0.094 |
+| person | difference | 14.029 | 10.352 | 17.113 | 15.938 | 11.736 | 20.499 | 1.909 | -3.192 | 7.422 |
+| person | ratio | 1.305 | 1.216 | 1.389 | 1.324 | 1.231 | 1.435 | 0.018 | -0.100 | 0.152 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
 
 ### Collapsed joint cells
 
-- travel_day: `q1|dense|0` → `q1|all|all`.
-- travel_day: `q1|dense|1` → `q1|all|all`.
-- travel_day: `q1|dense|2+` → `q1|all|all`.
-- travel_day: `q1|dense|unknown` → `q1|all|all`.
-- travel_day: `q1|intermediate|0` → `q1|all|all`.
-- travel_day: `q1|intermediate|1` → `q1|all|all`.
-- travel_day: `q1|intermediate|2+` → `q1|all|all`.
-- travel_day: `q1|intermediate|unknown` → `q1|all|all`.
-- travel_day: `q1|sparse|0` → `q1|all|all`.
-- travel_day: `q1|sparse|1` → `q1|all|all`.
-- travel_day: `q1|sparse|2+` → `q1|all|all`.
-- travel_day: `q1|sparse|unknown` → `q1|all|all`.
-- travel_day: `q1|very_sparse|0` → `q1|all|all`.
-- travel_day: `q1|very_sparse|1` → `q1|all|all`.
-- travel_day: `q1|very_sparse|2+` → `q1|all|all`.
-- travel_day: `q1|very_sparse|unknown` → `q1|all|all`.
-- travel_day: `q2|dense|0` → `q2|all|all`.
-- travel_day: `q2|dense|1` → `q2|all|all`.
-- travel_day: `q2|dense|2+` → `q2|all|all`.
-- travel_day: `q2|dense|unknown` → `q2|all|all`.
-- travel_day: `q2|intermediate|0` → `q2|all|all`.
-- travel_day: `q2|intermediate|1` → `q2|all|all`.
-- travel_day: `q2|intermediate|2+` → `q2|all|all`.
-- travel_day: `q2|intermediate|unknown` → `q2|all|all`.
-- travel_day: `q2|sparse|0` → `q2|all|all`.
-- travel_day: `q2|sparse|1` → `q2|all|all`.
-- travel_day: `q2|sparse|2+` → `q2|all|all`.
-- travel_day: `q2|sparse|unknown` → `q2|all|all`.
-- travel_day: `q2|very_sparse|0` → `q2|all|all`.
-- travel_day: `q2|very_sparse|1` → `q2|all|all`.
-- travel_day: `q2|very_sparse|2+` → `q2|all|all`.
-- travel_day: `q2|very_sparse|unknown` → `q2|all|all`.
-- travel_day: `q3|dense|0` → `q3|all|all`.
-- travel_day: `q3|dense|1` → `q3|all|all`.
-- travel_day: `q3|dense|2+` → `q3|all|all`.
-- travel_day: `q3|dense|unknown` → `q3|all|all`.
-- travel_day: `q3|intermediate|0` → `q3|all|all`.
-- travel_day: `q3|intermediate|1` → `q3|all|all`.
-- travel_day: `q3|intermediate|2+` → `q3|all|all`.
-- travel_day: `q3|intermediate|unknown` → `q3|all|all`.
-- travel_day: `q3|sparse|0` → `q3|all|all`.
-- travel_day: `q3|sparse|1` → `q3|all|all`.
-- travel_day: `q3|sparse|2+` → `q3|all|all`.
-- travel_day: `q3|sparse|unknown` → `q3|all|all`.
-- travel_day: `q3|very_sparse|0` → `q3|all|all`.
-- travel_day: `q3|very_sparse|1` → `q3|all|all`.
-- travel_day: `q3|very_sparse|2+` → `q3|all|all`.
-- travel_day: `q3|very_sparse|unknown` → `q3|all|all`.
-- travel_day: `q4|dense|0` → `q4|all|all`.
-- travel_day: `q4|dense|1` → `q4|all|all`.
-- travel_day: `q4|dense|2+` → `q4|all|all`.
-- travel_day: `q4|dense|unknown` → `q4|all|all`.
-- travel_day: `q4|intermediate|0` → `q4|all|all`.
-- travel_day: `q4|intermediate|1` → `q4|all|all`.
-- travel_day: `q4|intermediate|2+` → `q4|all|all`.
-- travel_day: `q4|intermediate|unknown` → `q4|all|all`.
-- travel_day: `q4|sparse|0` → `q4|all|all`.
-- travel_day: `q4|sparse|1` → `q4|all|all`.
-- travel_day: `q4|sparse|2+` → `q4|all|all`.
-- travel_day: `q4|sparse|unknown` → `q4|all|all`.
-- travel_day: `q4|very_sparse|0` → `q4|all|all`.
-- travel_day: `q4|very_sparse|1` → `q4|all|all`.
-- travel_day: `q4|very_sparse|2+` → `q4|all|all`.
-- travel_day: `q4|very_sparse|unknown` → `q4|all|all`.
-- travel_day: `q5|dense|0` → `q5|all|all`.
-- travel_day: `q5|dense|1` → `q5|all|all`.
-- travel_day: `q5|dense|2+` → `q5|all|all`.
-- travel_day: `q5|dense|unknown` → `q5|all|all`.
-- travel_day: `q5|intermediate|0` → `q5|all|all`.
-- travel_day: `q5|intermediate|1` → `q5|all|all`.
-- travel_day: `q5|intermediate|2+` → `q5|all|all`.
-- travel_day: `q5|intermediate|unknown` → `q5|all|all`.
-- travel_day: `q5|sparse|0` → `q5|all|all`.
-- travel_day: `q5|sparse|1` → `q5|all|all`.
-- travel_day: `q5|sparse|2+` → `q5|all|all`.
-- travel_day: `q5|sparse|unknown` → `q5|all|all`.
-- travel_day: `q5|very_sparse|0` → `q5|all|all`.
-- travel_day: `q5|very_sparse|1` → `q5|all|all`.
-- travel_day: `q5|very_sparse|2+` → `q5|all|all`.
-- travel_day: `q5|very_sparse|unknown` → `q5|all|all`.
-- person: `q1|dense|0` → `q1|all|all`.
-- person: `q1|dense|1` → `q1|all|all`.
-- person: `q1|dense|2+` → `q1|all|all`.
-- person: `q1|dense|unknown` → `q1|all|all`.
-- person: `q1|intermediate|0` → `q1|all|all`.
-- person: `q1|intermediate|1` → `q1|all|all`.
-- person: `q1|intermediate|2+` → `q1|all|all`.
-- person: `q1|intermediate|unknown` → `q1|all|all`.
-- person: `q1|sparse|0` → `q1|all|all`.
-- person: `q1|sparse|1` → `q1|all|all`.
-- person: `q1|sparse|2+` → `q1|all|all`.
-- person: `q1|sparse|unknown` → `q1|all|all`.
-- person: `q1|very_sparse|0` → `q1|all|all`.
-- person: `q1|very_sparse|1` → `q1|all|all`.
-- person: `q1|very_sparse|2+` → `q1|all|all`.
-- person: `q1|very_sparse|unknown` → `q1|all|all`.
-- person: `q2|dense|0` → `q2|all|all`.
-- person: `q2|dense|1` → `q2|all|all`.
-- person: `q2|dense|2+` → `q2|all|all`.
-- person: `q2|dense|unknown` → `q2|all|all`.
-- person: `q2|intermediate|0` → `q2|all|all`.
-- person: `q2|intermediate|1` → `q2|all|all`.
-- person: `q2|intermediate|2+` → `q2|all|all`.
-- person: `q2|intermediate|unknown` → `q2|all|all`.
-- person: `q2|sparse|0` → `q2|all|all`.
-- person: `q2|sparse|1` → `q2|all|all`.
-- person: `q2|sparse|2+` → `q2|all|all`.
-- person: `q2|sparse|unknown` → `q2|all|all`.
-- person: `q2|very_sparse|0` → `q2|all|all`.
-- person: `q2|very_sparse|1` → `q2|all|all`.
-- person: `q2|very_sparse|2+` → `q2|all|all`.
-- person: `q2|very_sparse|unknown` → `q2|all|all`.
-- person: `q3|dense|0` → `q3|all|all`.
-- person: `q3|dense|1` → `q3|all|all`.
-- person: `q3|dense|2+` → `q3|all|all`.
-- person: `q3|dense|unknown` → `q3|all|all`.
-- person: `q3|intermediate|0` → `q3|all|all`.
-- person: `q3|intermediate|1` → `q3|all|all`.
-- person: `q3|intermediate|2+` → `q3|all|all`.
-- person: `q3|intermediate|unknown` → `q3|all|all`.
-- person: `q3|sparse|0` → `q3|all|all`.
-- person: `q3|sparse|1` → `q3|all|all`.
-- person: `q3|sparse|2+` → `q3|all|all`.
-- person: `q3|sparse|unknown` → `q3|all|all`.
-- person: `q3|very_sparse|0` → `q3|all|all`.
-- person: `q3|very_sparse|1` → `q3|all|all`.
-- person: `q3|very_sparse|2+` → `q3|all|all`.
-- person: `q3|very_sparse|unknown` → `q3|all|all`.
-- person: `q4|dense|0` → `q4|all|all`.
-- person: `q4|dense|1` → `q4|all|all`.
-- person: `q4|dense|2+` → `q4|all|all`.
-- person: `q4|dense|unknown` → `q4|all|all`.
-- person: `q4|intermediate|0` → `q4|all|all`.
-- person: `q4|intermediate|1` → `q4|all|all`.
-- person: `q4|intermediate|2+` → `q4|all|all`.
-- person: `q4|intermediate|unknown` → `q4|all|all`.
-- person: `q4|sparse|0` → `q4|all|all`.
-- person: `q4|sparse|1` → `q4|all|all`.
-- person: `q4|sparse|2+` → `q4|all|all`.
-- person: `q4|sparse|unknown` → `q4|all|all`.
-- person: `q4|very_sparse|0` → `q4|all|all`.
-- person: `q4|very_sparse|1` → `q4|all|all`.
-- person: `q4|very_sparse|2+` → `q4|all|all`.
-- person: `q4|very_sparse|unknown` → `q4|all|all`.
-- person: `q5|dense|0` → `q5|all|all`.
-- person: `q5|dense|1` → `q5|all|all`.
-- person: `q5|dense|2+` → `q5|all|all`.
-- person: `q5|dense|unknown` → `q5|all|all`.
-- person: `q5|intermediate|0` → `q5|all|all`.
-- person: `q5|intermediate|1` → `q5|all|all`.
-- person: `q5|intermediate|2+` → `q5|all|all`.
-- person: `q5|intermediate|unknown` → `q5|all|all`.
-- person: `q5|sparse|0` → `q5|all|all`.
-- person: `q5|sparse|1` → `q5|all|all`.
-- person: `q5|sparse|2+` → `q5|all|all`.
-- person: `q5|sparse|unknown` → `q5|all|all`.
-- person: `q5|very_sparse|0` → `q5|all|all`.
-- person: `q5|very_sparse|1` → `q5|all|all`.
-- person: `q5|very_sparse|2+` → `q5|all|all`.
-- person: `q5|very_sparse|unknown` → `q5|all|all`.
+- travel_day: 38.91% of the full-sample pooled target is in cells that combine two or more original cells.
+- person: 37.55% of the full-sample pooled target is in cells that combine two or more original cells.
+
+- travel_day: `q1|dense|1` → `q1|dense|1+`.
+- travel_day: `q1|dense|2+` → `q1|dense|1+`.
+- travel_day: `q1|dense|unknown` → `q1|dense|0`.
+- travel_day: `q1|intermediate|unknown` → `q1|intermediate|1`.
+- travel_day: `q1|sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|sparse|1` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|2+` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q2|dense|1` → `q2|dense|1+`.
+- travel_day: `q2|dense|2+` → `q2|dense|1+`.
+- travel_day: `q2|dense|unknown` → `q2|dense|1+`.
+- travel_day: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- travel_day: `q2|sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q3|dense|1` → `q3|dense|1+`.
+- travel_day: `q3|dense|2+` → `q3|dense|1+`.
+- travel_day: `q3|dense|unknown` → `q3|dense|1+`.
+- travel_day: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- travel_day: `q3|sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|unknown` → `q3|very_sparse|2+`.
+- travel_day: `q4|dense|0` → `q4|dense|1`.
+- travel_day: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- travel_day: `q4|sparse|0` → `q4|intermediate|0`.
+- travel_day: `q4|sparse|unknown` → `q4|sparse|2+`.
+- travel_day: `q4|very_sparse|0` → `q4|intermediate|0`.
+- travel_day: `q5|sparse|0` → `q5|intermediate|0`.
+- travel_day: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q1|dense|1` → `q1|dense|1+`.
+- person: `q1|dense|2+` → `q1|dense|1+`.
+- person: `q1|dense|unknown` → `q1|dense|0`.
+- person: `q1|intermediate|unknown` → `q1|intermediate|0`.
+- person: `q1|sparse|unknown` → `q1|very_sparse|1`.
+- person: `q1|very_sparse|unknown` → `q1|very_sparse|1`.
+- person: `q2|dense|1` → `q2|dense|1+`.
+- person: `q2|dense|2+` → `q2|dense|1+`.
+- person: `q2|dense|unknown` → `q2|dense|1+`.
+- person: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- person: `q2|sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q2|very_sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q3|dense|1` → `q3|dense|1+`.
+- person: `q3|dense|2+` → `q3|dense|1+`.
+- person: `q3|dense|unknown` → `q3|dense|1+`.
+- person: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- person: `q3|sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- person: `q4|sparse|0` → `q4|intermediate|0`.
+- person: `q4|sparse|unknown` → `q4|intermediate|0`.
+- person: `q4|very_sparse|0` → `q4|intermediate|0`.
+- person: `q4|very_sparse|unknown` → `q4|intermediate|0`.
+- person: `q5|intermediate|unknown` → `q5|intermediate|2+`.
+- person: `q5|sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|unknown` → `q5|very_sparse|2+`.
 
 ### Cells still below minimum support
 
@@ -2071,10 +1624,6 @@ Scope: All days · destination purposes · local (≤ 80 km) (`alldays-dest-loca
 | travel_day | q5 | intermediate | False | 1902 | 73.285 | 69.821 | 76.641 | 1076 | 78.534 | 75.046 | 82.303 | 1.072 | 1.016 | 1.138 |
 | travel_day | q5 | sparse | False | 432 | 63.951 | 58.300 | 68.982 | 318 | 68.314 | 60.490 | 75.773 | 1.068 | 0.937 | 1.202 |
 | travel_day | q5 | very_sparse | False | 925 | 69.562 | 64.269 | 75.328 | 438 | 73.832 | 67.832 | 80.096 | 1.061 | 0.956 | 1.164 |
-| travel_day | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 | person | q1 | dense | False | 473 | 55.547 | 49.322 | 62.295 | 476 | 60.613 | 53.953 | 67.324 | 1.091 | 0.958 | 1.242 |
 | person | q1 | intermediate | False | 1159 | 48.447 | 44.535 | 52.847 | 1197 | 51.846 | 47.345 | 56.922 | 1.070 | 0.956 | 1.189 |
 | person | q1 | sparse | False | 435 | 40.280 | 34.262 | 47.654 | 385 | 41.002 | 34.489 | 47.893 | 1.018 | 0.840 | 1.219 |
@@ -2095,10 +1644,6 @@ Scope: All days · destination purposes · local (≤ 80 km) (`alldays-dest-loca
 | person | q5 | intermediate | False | 2201 | 63.763 | 60.035 | 67.302 | 1478 | 67.732 | 63.593 | 72.183 | 1.062 | 0.986 | 1.143 |
 | person | q5 | sparse | False | 542 | 50.884 | 45.907 | 55.969 | 452 | 58.568 | 49.914 | 66.520 | 1.151 | 0.972 | 1.322 |
 | person | q5 | very_sparse | False | 1149 | 55.206 | 50.097 | 59.792 | 605 | 61.021 | 54.720 | 66.853 | 1.105 | 0.980 | 1.232 |
-| person | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -2109,16 +1654,16 @@ Scope: All days · destination purposes · local (≤ 80 km) (`alldays-dest-loca
 
 | basis | quintile | ratio | verdict_15 | raw_q5_q1_2008 | raw_q5_q1_2019 | reweighted_q5_q1_2008 | reweighted_q5_q1_2019 | m2_q5_q1_2008 | m2_q5_q1_2019 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 1.078 | equivalent | 1.182 | 1.160 | 1.182 | 1.160 | 1.148 | 1.158 |
-| travel_day | q2 | 1.065 | equivalent | 1.182 | 1.160 | 1.182 | 1.160 | 1.148 | 1.158 |
-| travel_day | q3 | 1.106 | inconclusive | 1.182 | 1.160 | 1.182 | 1.160 | 1.148 | 1.158 |
-| travel_day | q4 | 1.067 | equivalent | 1.182 | 1.160 | 1.182 | 1.160 | 1.148 | 1.158 |
-| travel_day | q5 | 1.058 | equivalent | 1.182 | 1.160 | 1.182 | 1.160 | 1.148 | 1.158 |
-| person | q1 | 1.107 | inconclusive | 1.324 | 1.306 | 1.324 | 1.306 | 1.148 | 1.158 |
-| person | q2 | 1.058 | equivalent | 1.324 | 1.306 | 1.324 | 1.306 | 1.148 | 1.158 |
-| person | q3 | 1.098 | inconclusive | 1.324 | 1.306 | 1.324 | 1.306 | 1.148 | 1.158 |
-| person | q4 | 1.063 | equivalent | 1.324 | 1.306 | 1.324 | 1.306 | 1.148 | 1.158 |
-| person | q5 | 1.092 | equivalent | 1.324 | 1.306 | 1.324 | 1.306 | 1.148 | 1.158 |
+| travel_day | q1 | 1.078 | equivalent | 1.182 | 1.160 | 1.178 | 1.170 | 1.148 | 1.158 |
+| travel_day | q2 | 1.065 | equivalent | 1.182 | 1.160 | 1.178 | 1.170 | 1.148 | 1.158 |
+| travel_day | q3 | 1.106 | inconclusive | 1.182 | 1.160 | 1.178 | 1.170 | 1.148 | 1.158 |
+| travel_day | q4 | 1.067 | equivalent | 1.182 | 1.160 | 1.178 | 1.170 | 1.148 | 1.158 |
+| travel_day | q5 | 1.058 | equivalent | 1.182 | 1.160 | 1.178 | 1.170 | 1.148 | 1.158 |
+| person | q1 | 1.107 | inconclusive | 1.324 | 1.306 | 1.305 | 1.324 | 1.148 | 1.158 |
+| person | q2 | 1.058 | equivalent | 1.324 | 1.306 | 1.305 | 1.324 | 1.148 | 1.158 |
+| person | q3 | 1.098 | inconclusive | 1.324 | 1.306 | 1.305 | 1.324 | 1.148 | 1.158 |
+| person | q4 | 1.063 | equivalent | 1.324 | 1.306 | 1.305 | 1.324 | 1.148 | 1.158 |
+| person | q5 | 1.092 | equivalent | 1.324 | 1.306 | 1.305 | 1.324 | 1.148 | 1.158 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -2127,7 +1672,24 @@ The positive income gradient survives density and car controls in both years.
 
 ## All days · destination purposes · all trips in the day's trip table (incl. > 80 km) (`alldays-dest-daytable`)
 
-ENTD unknown income: 0.00% of respondents and 0.00% of kept described-day weight. EMP income is imputed; no equivalent unknown group.
+ENTD 2008 income is complete in this file: the released income bracket and consumption-unit count are populated. The dictionary and released fields do not establish whether income brackets were imputed upstream (see [ENTD income audit](./entd2008.md#income-imputation-audit-step-12)).
+
+### Weighted income quintile shares
+
+Shares use the full weekday respondent roster and individual weights; `n` is unweighted. Ties in income can produce unequal shares.
+
+| Year | Quintile | n | Share (%) |
+|---:|:---|---:|---:|
+| 2008 | q1 | 3359 | 20.00 |
+| 2008 | q2 | 3159 | 20.00 |
+| 2008 | q3 | 3615 | 20.00 |
+| 2008 | q4 | 3657 | 19.99 |
+| 2008 | q5 | 4752 | 20.02 |
+| 2019 | q1 | 2504 | 20.00 |
+| 2019 | q2 | 2662 | 20.00 |
+| 2019 | q3 | 2742 | 19.99 |
+| 2019 | q4 | 2885 | 20.01 |
+| 2019 | q5 | 3032 | 20.00 |
 
 ### Support audit (details in support.csv)
 
@@ -2142,7 +1704,7 @@ Scope: All days · destination purposes · all trips in the day's trip table (in
 | regression_M2 | 2008 | 18 | 0 | 0 | 639 |
 | regression_M2 | 2019 | 18 | 0 | 0 | 546 |
 | regression_input_cars | 2008 | 4 | 1 | 200 | 0 |
-| regression_input_cars | 2019 | 4 | 1 | 71 | 1 |
+| regression_input_cars | 2019 | 4 | 0 | 0 | 24 |
 | regression_input_density | 2008 | 4 | 0 | 0 | 1944 |
 | regression_input_density | 2019 | 4 | 0 | 0 | 1400 |
 | regression_input_income | 2008 | 5 | 0 | 0 | 2406 |
@@ -2153,14 +1715,14 @@ Scope: All days · destination purposes · all trips in the day's trip table (in
 | regression_input_weekday | 2019 | 5 | 0 | 0 | 1735 |
 | regression_pooled | 2008 | 23 | 5 | 200 | 0 |
 | regression_pooled | 2019 | 23 | 0 | 0 | 546 |
-| reweight_input_person | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_person | 2019 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_travel_day | 2019 | 80 | 23 | 200 | 0 |
-| reweight_person | 2008 | 5 | 0 | 0 | 3159 |
-| reweight_person | 2019 | 5 | 0 | 0 | 2504 |
-| reweight_travel_day | 2008 | 5 | 0 | 0 | 2406 |
-| reweight_travel_day | 2019 | 5 | 0 | 0 | 1743 |
+| reweight_input_person | 2008 | 77 | 17 | 200 | 0 |
+| reweight_input_person | 2019 | 77 | 18 | 92 | 1 |
+| reweight_input_travel_day | 2008 | 73 | 13 | 200 | 0 |
+| reweight_input_travel_day | 2019 | 73 | 16 | 92 | 1 |
+| reweight_person | 2008 | 52 | 0 | 0 | 68 |
+| reweight_person | 2019 | 52 | 0 | 0 | 56 |
+| reweight_travel_day | 2008 | 48 | 0 | 0 | 76 |
+| reweight_travel_day | 2019 | 48 | 0 | 0 | 50 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -2176,13 +1738,11 @@ Scope: All days · destination purposes · all trips in the day's trip table (in
 | travel_day | q3 | 2954 | 67.893 | 64.825 | 71.667 | 1981 | 78.509 | 74.021 | 83.263 | 1.156 | 1.084 | 1.222 | inconclusive | inconclusive |
 | travel_day | q4 | 3143 | 70.934 | 67.408 | 74.125 | 2142 | 73.963 | 71.124 | 77.108 | 1.043 | 0.992 | 1.100 | equivalent | equivalent |
 | travel_day | q5 | 4150 | 81.714 | 78.075 | 85.245 | 2283 | 82.857 | 79.727 | 85.470 | 1.014 | 0.970 | 1.059 | equivalent | equivalent |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 | person | q1 | 3359 | 47.305 | 44.790 | 49.618 | 2504 | 52.775 | 49.878 | 56.280 | 1.116 | 1.034 | 1.204 | inconclusive | inconclusive |
 | person | q2 | 3159 | 52.647 | 49.846 | 56.040 | 2662 | 56.137 | 52.257 | 60.073 | 1.066 | 0.982 | 1.142 | equivalent | inconclusive |
 | person | q3 | 3615 | 56.256 | 53.270 | 60.103 | 2742 | 64.943 | 60.468 | 69.508 | 1.154 | 1.074 | 1.246 | inconclusive | inconclusive |
 | person | q4 | 3657 | 61.929 | 58.759 | 64.940 | 2885 | 64.829 | 61.475 | 68.114 | 1.047 | 0.989 | 1.106 | equivalent | inconclusive |
 | person | q5 | 4752 | 71.450 | 68.213 | 75.078 | 3032 | 74.438 | 70.812 | 77.778 | 1.042 | 0.982 | 1.090 | equivalent | equivalent |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -2207,18 +1767,16 @@ Scope: All days · destination purposes · all trips in the day's trip table (in
 
 | basis | quintile | n_2008 | mean_2008 | ci_2008_low | ci_2008_high | n_2019 | mean_2019 | ci_2019_low | ci_2019_high | ratio | ratio_ci_low | ratio_ci_high | verdict_15 | verdict_10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 2406 | 62.665 | 60.112 | 65.839 | 1743 | 67.662 | 64.128 | 70.957 | 1.080 | 1.005 | 1.143 | equivalent | inconclusive |
-| travel_day | q2 | 2515 | 64.726 | 61.846 | 68.599 | 1940 | 69.318 | 65.576 | 73.746 | 1.071 | 1.004 | 1.140 | equivalent | inconclusive |
-| travel_day | q3 | 2954 | 67.893 | 64.825 | 71.667 | 1981 | 78.509 | 74.021 | 83.263 | 1.156 | 1.084 | 1.222 | inconclusive | inconclusive |
-| travel_day | q4 | 3143 | 70.934 | 67.408 | 74.125 | 2142 | 73.963 | 71.124 | 77.108 | 1.043 | 0.992 | 1.100 | equivalent | equivalent |
-| travel_day | q5 | 4150 | 81.714 | 78.075 | 85.245 | 2283 | 82.857 | 79.727 | 85.470 | 1.014 | 0.970 | 1.059 | equivalent | equivalent |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
-| person | q1 | 3359 | 47.305 | 44.790 | 49.618 | 2504 | 52.775 | 49.878 | 56.280 | 1.116 | 1.034 | 1.204 | inconclusive | inconclusive |
-| person | q2 | 3159 | 52.647 | 49.846 | 56.040 | 2662 | 56.137 | 52.257 | 60.073 | 1.066 | 0.982 | 1.142 | equivalent | inconclusive |
-| person | q3 | 3615 | 56.256 | 53.270 | 60.103 | 2742 | 64.943 | 60.468 | 69.508 | 1.154 | 1.074 | 1.246 | inconclusive | inconclusive |
-| person | q4 | 3657 | 61.929 | 58.759 | 64.940 | 2885 | 64.829 | 61.475 | 68.114 | 1.047 | 0.989 | 1.106 | equivalent | inconclusive |
-| person | q5 | 4752 | 71.450 | 68.213 | 75.078 | 3032 | 74.438 | 70.812 | 77.778 | 1.042 | 0.982 | 1.090 | equivalent | equivalent |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
+| travel_day | q1 | 2406 | 62.827 | 60.168 | 65.812 | 1743 | 67.194 | 63.751 | 70.290 | 1.069 | 0.998 | 1.130 | equivalent | inconclusive |
+| travel_day | q2 | 2515 | 64.554 | 61.776 | 68.391 | 1940 | 69.484 | 65.828 | 73.980 | 1.076 | 1.009 | 1.139 | equivalent | inconclusive |
+| travel_day | q3 | 2954 | 67.930 | 64.905 | 71.695 | 1981 | 78.862 | 74.150 | 83.702 | 1.161 | 1.082 | 1.234 | inconclusive | inconclusive |
+| travel_day | q4 | 3143 | 70.809 | 67.233 | 73.921 | 2142 | 74.022 | 71.339 | 77.115 | 1.045 | 0.993 | 1.102 | equivalent | inconclusive |
+| travel_day | q5 | 4150 | 81.661 | 78.264 | 85.090 | 2283 | 83.150 | 79.778 | 85.814 | 1.018 | 0.975 | 1.063 | equivalent | equivalent |
+| person | q1 | 3359 | 48.079 | 45.439 | 50.610 | 2504 | 52.011 | 49.008 | 55.227 | 1.082 | 1.001 | 1.161 | inconclusive | inconclusive |
+| person | q2 | 3159 | 52.399 | 49.524 | 55.645 | 2662 | 56.331 | 52.389 | 60.101 | 1.075 | 0.985 | 1.149 | equivalent | inconclusive |
+| person | q3 | 3615 | 56.200 | 53.300 | 59.872 | 2742 | 65.312 | 60.700 | 69.997 | 1.162 | 1.077 | 1.259 | inconclusive | inconclusive |
+| person | q4 | 3657 | 61.824 | 58.635 | 64.861 | 2885 | 65.012 | 61.614 | 68.296 | 1.052 | 0.994 | 1.111 | equivalent | inconclusive |
+| person | q5 | 4752 | 71.511 | 68.338 | 75.111 | 3032 | 74.475 | 70.805 | 77.968 | 1.041 | 0.982 | 1.091 | equivalent | equivalent |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -2229,176 +1787,79 @@ Scope: All days · destination purposes · all trips in the day's trip table (in
 
 | basis | gap | value_2008 | ci_2008_low | ci_2008_high | value_2019 | ci_2019_low | ci_2019_high | change | change_ci_low | change_ci_high |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | difference | 19.048 | 14.738 | 22.965 | 15.196 | 10.252 | 19.223 | -3.853 | -10.739 | 2.774 |
-| travel_day | ratio | 1.304 | 1.226 | 1.378 | 1.225 | 1.148 | 1.295 | -0.079 | -0.195 | 0.036 |
-| person | difference | 24.145 | 19.660 | 28.353 | 21.663 | 16.924 | 25.948 | -2.482 | -9.802 | 4.057 |
-| person | ratio | 1.510 | 1.405 | 1.621 | 1.410 | 1.305 | 1.510 | -0.100 | -0.277 | 0.059 |
+| travel_day | difference | 18.834 | 14.471 | 22.769 | 15.956 | 11.049 | 20.098 | -2.878 | -9.673 | 3.959 |
+| travel_day | ratio | 1.300 | 1.221 | 1.374 | 1.237 | 1.160 | 1.309 | -0.062 | -0.180 | 0.055 |
+| person | difference | 23.432 | 19.220 | 27.526 | 22.465 | 17.527 | 27.114 | -0.967 | -8.409 | 5.600 |
+| person | ratio | 1.487 | 1.380 | 1.592 | 1.432 | 1.323 | 1.540 | -0.055 | -0.237 | 0.104 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
 
 ### Collapsed joint cells
 
-- travel_day: `q1|dense|0` → `q1|all|all`.
-- travel_day: `q1|dense|1` → `q1|all|all`.
-- travel_day: `q1|dense|2+` → `q1|all|all`.
-- travel_day: `q1|dense|unknown` → `q1|all|all`.
-- travel_day: `q1|intermediate|0` → `q1|all|all`.
-- travel_day: `q1|intermediate|1` → `q1|all|all`.
-- travel_day: `q1|intermediate|2+` → `q1|all|all`.
-- travel_day: `q1|intermediate|unknown` → `q1|all|all`.
-- travel_day: `q1|sparse|0` → `q1|all|all`.
-- travel_day: `q1|sparse|1` → `q1|all|all`.
-- travel_day: `q1|sparse|2+` → `q1|all|all`.
-- travel_day: `q1|sparse|unknown` → `q1|all|all`.
-- travel_day: `q1|very_sparse|0` → `q1|all|all`.
-- travel_day: `q1|very_sparse|1` → `q1|all|all`.
-- travel_day: `q1|very_sparse|2+` → `q1|all|all`.
-- travel_day: `q1|very_sparse|unknown` → `q1|all|all`.
-- travel_day: `q2|dense|0` → `q2|all|all`.
-- travel_day: `q2|dense|1` → `q2|all|all`.
-- travel_day: `q2|dense|2+` → `q2|all|all`.
-- travel_day: `q2|dense|unknown` → `q2|all|all`.
-- travel_day: `q2|intermediate|0` → `q2|all|all`.
-- travel_day: `q2|intermediate|1` → `q2|all|all`.
-- travel_day: `q2|intermediate|2+` → `q2|all|all`.
-- travel_day: `q2|intermediate|unknown` → `q2|all|all`.
-- travel_day: `q2|sparse|0` → `q2|all|all`.
-- travel_day: `q2|sparse|1` → `q2|all|all`.
-- travel_day: `q2|sparse|2+` → `q2|all|all`.
-- travel_day: `q2|sparse|unknown` → `q2|all|all`.
-- travel_day: `q2|very_sparse|0` → `q2|all|all`.
-- travel_day: `q2|very_sparse|1` → `q2|all|all`.
-- travel_day: `q2|very_sparse|2+` → `q2|all|all`.
-- travel_day: `q2|very_sparse|unknown` → `q2|all|all`.
-- travel_day: `q3|dense|0` → `q3|all|all`.
-- travel_day: `q3|dense|1` → `q3|all|all`.
-- travel_day: `q3|dense|2+` → `q3|all|all`.
-- travel_day: `q3|dense|unknown` → `q3|all|all`.
-- travel_day: `q3|intermediate|0` → `q3|all|all`.
-- travel_day: `q3|intermediate|1` → `q3|all|all`.
-- travel_day: `q3|intermediate|2+` → `q3|all|all`.
-- travel_day: `q3|intermediate|unknown` → `q3|all|all`.
-- travel_day: `q3|sparse|0` → `q3|all|all`.
-- travel_day: `q3|sparse|1` → `q3|all|all`.
-- travel_day: `q3|sparse|2+` → `q3|all|all`.
-- travel_day: `q3|sparse|unknown` → `q3|all|all`.
-- travel_day: `q3|very_sparse|0` → `q3|all|all`.
-- travel_day: `q3|very_sparse|1` → `q3|all|all`.
-- travel_day: `q3|very_sparse|2+` → `q3|all|all`.
-- travel_day: `q3|very_sparse|unknown` → `q3|all|all`.
-- travel_day: `q4|dense|0` → `q4|all|all`.
-- travel_day: `q4|dense|1` → `q4|all|all`.
-- travel_day: `q4|dense|2+` → `q4|all|all`.
-- travel_day: `q4|dense|unknown` → `q4|all|all`.
-- travel_day: `q4|intermediate|0` → `q4|all|all`.
-- travel_day: `q4|intermediate|1` → `q4|all|all`.
-- travel_day: `q4|intermediate|2+` → `q4|all|all`.
-- travel_day: `q4|intermediate|unknown` → `q4|all|all`.
-- travel_day: `q4|sparse|0` → `q4|all|all`.
-- travel_day: `q4|sparse|1` → `q4|all|all`.
-- travel_day: `q4|sparse|2+` → `q4|all|all`.
-- travel_day: `q4|sparse|unknown` → `q4|all|all`.
-- travel_day: `q4|very_sparse|0` → `q4|all|all`.
-- travel_day: `q4|very_sparse|1` → `q4|all|all`.
-- travel_day: `q4|very_sparse|2+` → `q4|all|all`.
-- travel_day: `q4|very_sparse|unknown` → `q4|all|all`.
-- travel_day: `q5|dense|0` → `q5|all|all`.
-- travel_day: `q5|dense|1` → `q5|all|all`.
-- travel_day: `q5|dense|2+` → `q5|all|all`.
-- travel_day: `q5|dense|unknown` → `q5|all|all`.
-- travel_day: `q5|intermediate|0` → `q5|all|all`.
-- travel_day: `q5|intermediate|1` → `q5|all|all`.
-- travel_day: `q5|intermediate|2+` → `q5|all|all`.
-- travel_day: `q5|intermediate|unknown` → `q5|all|all`.
-- travel_day: `q5|sparse|0` → `q5|all|all`.
-- travel_day: `q5|sparse|1` → `q5|all|all`.
-- travel_day: `q5|sparse|2+` → `q5|all|all`.
-- travel_day: `q5|sparse|unknown` → `q5|all|all`.
-- travel_day: `q5|very_sparse|0` → `q5|all|all`.
-- travel_day: `q5|very_sparse|1` → `q5|all|all`.
-- travel_day: `q5|very_sparse|2+` → `q5|all|all`.
-- travel_day: `q5|very_sparse|unknown` → `q5|all|all`.
-- person: `q1|dense|0` → `q1|all|all`.
-- person: `q1|dense|1` → `q1|all|all`.
-- person: `q1|dense|2+` → `q1|all|all`.
-- person: `q1|dense|unknown` → `q1|all|all`.
-- person: `q1|intermediate|0` → `q1|all|all`.
-- person: `q1|intermediate|1` → `q1|all|all`.
-- person: `q1|intermediate|2+` → `q1|all|all`.
-- person: `q1|intermediate|unknown` → `q1|all|all`.
-- person: `q1|sparse|0` → `q1|all|all`.
-- person: `q1|sparse|1` → `q1|all|all`.
-- person: `q1|sparse|2+` → `q1|all|all`.
-- person: `q1|sparse|unknown` → `q1|all|all`.
-- person: `q1|very_sparse|0` → `q1|all|all`.
-- person: `q1|very_sparse|1` → `q1|all|all`.
-- person: `q1|very_sparse|2+` → `q1|all|all`.
-- person: `q1|very_sparse|unknown` → `q1|all|all`.
-- person: `q2|dense|0` → `q2|all|all`.
-- person: `q2|dense|1` → `q2|all|all`.
-- person: `q2|dense|2+` → `q2|all|all`.
-- person: `q2|dense|unknown` → `q2|all|all`.
-- person: `q2|intermediate|0` → `q2|all|all`.
-- person: `q2|intermediate|1` → `q2|all|all`.
-- person: `q2|intermediate|2+` → `q2|all|all`.
-- person: `q2|intermediate|unknown` → `q2|all|all`.
-- person: `q2|sparse|0` → `q2|all|all`.
-- person: `q2|sparse|1` → `q2|all|all`.
-- person: `q2|sparse|2+` → `q2|all|all`.
-- person: `q2|sparse|unknown` → `q2|all|all`.
-- person: `q2|very_sparse|0` → `q2|all|all`.
-- person: `q2|very_sparse|1` → `q2|all|all`.
-- person: `q2|very_sparse|2+` → `q2|all|all`.
-- person: `q2|very_sparse|unknown` → `q2|all|all`.
-- person: `q3|dense|0` → `q3|all|all`.
-- person: `q3|dense|1` → `q3|all|all`.
-- person: `q3|dense|2+` → `q3|all|all`.
-- person: `q3|dense|unknown` → `q3|all|all`.
-- person: `q3|intermediate|0` → `q3|all|all`.
-- person: `q3|intermediate|1` → `q3|all|all`.
-- person: `q3|intermediate|2+` → `q3|all|all`.
-- person: `q3|intermediate|unknown` → `q3|all|all`.
-- person: `q3|sparse|0` → `q3|all|all`.
-- person: `q3|sparse|1` → `q3|all|all`.
-- person: `q3|sparse|2+` → `q3|all|all`.
-- person: `q3|sparse|unknown` → `q3|all|all`.
-- person: `q3|very_sparse|0` → `q3|all|all`.
-- person: `q3|very_sparse|1` → `q3|all|all`.
-- person: `q3|very_sparse|2+` → `q3|all|all`.
-- person: `q3|very_sparse|unknown` → `q3|all|all`.
-- person: `q4|dense|0` → `q4|all|all`.
-- person: `q4|dense|1` → `q4|all|all`.
-- person: `q4|dense|2+` → `q4|all|all`.
-- person: `q4|dense|unknown` → `q4|all|all`.
-- person: `q4|intermediate|0` → `q4|all|all`.
-- person: `q4|intermediate|1` → `q4|all|all`.
-- person: `q4|intermediate|2+` → `q4|all|all`.
-- person: `q4|intermediate|unknown` → `q4|all|all`.
-- person: `q4|sparse|0` → `q4|all|all`.
-- person: `q4|sparse|1` → `q4|all|all`.
-- person: `q4|sparse|2+` → `q4|all|all`.
-- person: `q4|sparse|unknown` → `q4|all|all`.
-- person: `q4|very_sparse|0` → `q4|all|all`.
-- person: `q4|very_sparse|1` → `q4|all|all`.
-- person: `q4|very_sparse|2+` → `q4|all|all`.
-- person: `q4|very_sparse|unknown` → `q4|all|all`.
-- person: `q5|dense|0` → `q5|all|all`.
-- person: `q5|dense|1` → `q5|all|all`.
-- person: `q5|dense|2+` → `q5|all|all`.
-- person: `q5|dense|unknown` → `q5|all|all`.
-- person: `q5|intermediate|0` → `q5|all|all`.
-- person: `q5|intermediate|1` → `q5|all|all`.
-- person: `q5|intermediate|2+` → `q5|all|all`.
-- person: `q5|intermediate|unknown` → `q5|all|all`.
-- person: `q5|sparse|0` → `q5|all|all`.
-- person: `q5|sparse|1` → `q5|all|all`.
-- person: `q5|sparse|2+` → `q5|all|all`.
-- person: `q5|sparse|unknown` → `q5|all|all`.
-- person: `q5|very_sparse|0` → `q5|all|all`.
-- person: `q5|very_sparse|1` → `q5|all|all`.
-- person: `q5|very_sparse|2+` → `q5|all|all`.
-- person: `q5|very_sparse|unknown` → `q5|all|all`.
+- travel_day: 36.82% of the full-sample pooled target is in cells that combine two or more original cells.
+- person: 37.55% of the full-sample pooled target is in cells that combine two or more original cells.
+
+- travel_day: `q1|dense|1` → `q1|dense|1+`.
+- travel_day: `q1|dense|2+` → `q1|dense|1+`.
+- travel_day: `q1|dense|unknown` → `q1|dense|0`.
+- travel_day: `q1|intermediate|unknown` → `q1|intermediate|1`.
+- travel_day: `q1|sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|sparse|1` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|2+` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q2|dense|1` → `q2|dense|1+`.
+- travel_day: `q2|dense|2+` → `q2|dense|1+`.
+- travel_day: `q2|dense|unknown` → `q2|dense|1+`.
+- travel_day: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- travel_day: `q2|sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q3|dense|1` → `q3|dense|1+`.
+- travel_day: `q3|dense|2+` → `q3|dense|1+`.
+- travel_day: `q3|dense|unknown` → `q3|dense|1+`.
+- travel_day: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- travel_day: `q3|sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|unknown` → `q3|very_sparse|2+`.
+- travel_day: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- travel_day: `q4|sparse|0` → `q4|intermediate|0`.
+- travel_day: `q4|sparse|unknown` → `q4|sparse|2+`.
+- travel_day: `q4|very_sparse|0` → `q4|intermediate|0`.
+- travel_day: `q5|sparse|0` → `q5|intermediate|0`.
+- travel_day: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q1|dense|1` → `q1|dense|1+`.
+- person: `q1|dense|2+` → `q1|dense|1+`.
+- person: `q1|dense|unknown` → `q1|dense|0`.
+- person: `q1|intermediate|unknown` → `q1|intermediate|0`.
+- person: `q1|sparse|unknown` → `q1|very_sparse|1`.
+- person: `q1|very_sparse|unknown` → `q1|very_sparse|1`.
+- person: `q2|dense|1` → `q2|dense|1+`.
+- person: `q2|dense|2+` → `q2|dense|1+`.
+- person: `q2|dense|unknown` → `q2|dense|1+`.
+- person: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- person: `q2|sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q2|very_sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q3|dense|1` → `q3|dense|1+`.
+- person: `q3|dense|2+` → `q3|dense|1+`.
+- person: `q3|dense|unknown` → `q3|dense|1+`.
+- person: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- person: `q3|sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- person: `q4|sparse|0` → `q4|intermediate|0`.
+- person: `q4|sparse|unknown` → `q4|intermediate|0`.
+- person: `q4|very_sparse|0` → `q4|intermediate|0`.
+- person: `q4|very_sparse|unknown` → `q4|intermediate|0`.
+- person: `q5|intermediate|unknown` → `q5|intermediate|2+`.
+- person: `q5|sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|unknown` → `q5|very_sparse|2+`.
 
 ### Cells still below minimum support
 
@@ -2489,10 +1950,6 @@ Scope: All days · destination purposes · all trips in the day's trip table (in
 | travel_day | q5 | intermediate | False | 1961 | 82.496 | 77.951 | 87.394 | 1118 | 85.343 | 80.939 | 89.925 | 1.035 | 0.967 | 1.099 |
 | travel_day | q5 | sparse | False | 453 | 74.226 | 66.740 | 82.078 | 331 | 75.222 | 65.610 | 84.264 | 1.013 | 0.867 | 1.142 |
 | travel_day | q5 | very_sparse | False | 973 | 82.129 | 74.303 | 90.424 | 464 | 87.627 | 79.907 | 97.110 | 1.067 | 0.960 | 1.198 |
-| travel_day | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 | person | q1 | dense | False | 473 | 57.620 | 50.981 | 64.680 | 476 | 62.513 | 55.859 | 69.707 | 1.085 | 0.958 | 1.244 |
 | person | q1 | intermediate | False | 1159 | 49.777 | 45.511 | 54.225 | 1197 | 55.582 | 50.277 | 62.273 | 1.117 | 0.999 | 1.246 |
 | person | q1 | sparse | False | 435 | 43.615 | 36.817 | 52.870 | 385 | 41.913 | 35.351 | 49.003 | 0.961 | 0.791 | 1.185 |
@@ -2513,10 +1970,6 @@ Scope: All days · destination purposes · all trips in the day's trip table (in
 | person | q5 | intermediate | False | 2201 | 74.507 | 69.740 | 79.311 | 1478 | 76.284 | 71.724 | 81.502 | 1.024 | 0.949 | 1.100 |
 | person | q5 | sparse | False | 542 | 62.182 | 56.076 | 70.020 | 452 | 66.746 | 57.878 | 75.016 | 1.073 | 0.906 | 1.213 |
 | person | q5 | very_sparse | False | 1149 | 68.352 | 61.018 | 76.023 | 605 | 76.404 | 68.438 | 85.223 | 1.118 | 0.979 | 1.279 |
-| person | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -2527,16 +1980,16 @@ Scope: All days · destination purposes · all trips in the day's trip table (in
 
 | basis | quintile | ratio | verdict_15 | raw_q5_q1_2008 | raw_q5_q1_2019 | reweighted_q5_q1_2008 | reweighted_q5_q1_2019 | m2_q5_q1_2008 | m2_q5_q1_2019 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 1.080 | equivalent | 1.304 | 1.225 | 1.304 | 1.225 | 1.216 | 1.188 |
-| travel_day | q2 | 1.071 | equivalent | 1.304 | 1.225 | 1.304 | 1.225 | 1.216 | 1.188 |
-| travel_day | q3 | 1.156 | inconclusive | 1.304 | 1.225 | 1.304 | 1.225 | 1.216 | 1.188 |
-| travel_day | q4 | 1.043 | equivalent | 1.304 | 1.225 | 1.304 | 1.225 | 1.216 | 1.188 |
-| travel_day | q5 | 1.014 | equivalent | 1.304 | 1.225 | 1.304 | 1.225 | 1.216 | 1.188 |
-| person | q1 | 1.116 | inconclusive | 1.510 | 1.410 | 1.510 | 1.410 | 1.216 | 1.188 |
-| person | q2 | 1.066 | equivalent | 1.510 | 1.410 | 1.510 | 1.410 | 1.216 | 1.188 |
-| person | q3 | 1.154 | inconclusive | 1.510 | 1.410 | 1.510 | 1.410 | 1.216 | 1.188 |
-| person | q4 | 1.047 | equivalent | 1.510 | 1.410 | 1.510 | 1.410 | 1.216 | 1.188 |
-| person | q5 | 1.042 | equivalent | 1.510 | 1.410 | 1.510 | 1.410 | 1.216 | 1.188 |
+| travel_day | q1 | 1.080 | equivalent | 1.304 | 1.225 | 1.300 | 1.237 | 1.216 | 1.188 |
+| travel_day | q2 | 1.071 | equivalent | 1.304 | 1.225 | 1.300 | 1.237 | 1.216 | 1.188 |
+| travel_day | q3 | 1.156 | inconclusive | 1.304 | 1.225 | 1.300 | 1.237 | 1.216 | 1.188 |
+| travel_day | q4 | 1.043 | equivalent | 1.304 | 1.225 | 1.300 | 1.237 | 1.216 | 1.188 |
+| travel_day | q5 | 1.014 | equivalent | 1.304 | 1.225 | 1.300 | 1.237 | 1.216 | 1.188 |
+| person | q1 | 1.116 | inconclusive | 1.510 | 1.410 | 1.487 | 1.432 | 1.216 | 1.188 |
+| person | q2 | 1.066 | equivalent | 1.510 | 1.410 | 1.487 | 1.432 | 1.216 | 1.188 |
+| person | q3 | 1.154 | inconclusive | 1.510 | 1.410 | 1.487 | 1.432 | 1.216 | 1.188 |
+| person | q4 | 1.047 | equivalent | 1.510 | 1.410 | 1.487 | 1.432 | 1.216 | 1.188 |
+| person | q5 | 1.042 | equivalent | 1.510 | 1.410 | 1.487 | 1.432 | 1.216 | 1.188 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -2545,7 +1998,24 @@ The positive income gradient survives density and car controls in both years.
 
 ## All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`)
 
-ENTD unknown income: 0.00% of respondents and 0.00% of kept described-day weight. EMP income is imputed; no equivalent unknown group.
+ENTD 2008 income is complete in this file: the released income bracket and consumption-unit count are populated. The dictionary and released fields do not establish whether income brackets were imputed upstream (see [ENTD income audit](./entd2008.md#income-imputation-audit-step-12)).
+
+### Weighted income quintile shares
+
+Shares use the full weekday respondent roster and individual weights; `n` is unweighted. Ties in income can produce unequal shares.
+
+| Year | Quintile | n | Share (%) |
+|---:|:---|---:|---:|
+| 2008 | q1 | 3359 | 20.00 |
+| 2008 | q2 | 3159 | 20.00 |
+| 2008 | q3 | 3615 | 20.00 |
+| 2008 | q4 | 3657 | 19.99 |
+| 2008 | q5 | 4752 | 20.02 |
+| 2019 | q1 | 2504 | 20.00 |
+| 2019 | q2 | 2662 | 20.00 |
+| 2019 | q3 | 2742 | 19.99 |
+| 2019 | q4 | 2885 | 20.01 |
+| 2019 | q5 | 3032 | 20.00 |
 
 ### Support audit (details in support.csv)
 
@@ -2560,7 +2030,7 @@ Scope: All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`), 
 | regression_M2 | 2008 | 18 | 0 | 0 | 642 |
 | regression_M2 | 2019 | 18 | 0 | 0 | 545 |
 | regression_input_cars | 2008 | 4 | 1 | 200 | 0 |
-| regression_input_cars | 2019 | 4 | 1 | 71 | 1 |
+| regression_input_cars | 2019 | 4 | 0 | 0 | 24 |
 | regression_input_density | 2008 | 4 | 0 | 0 | 1960 |
 | regression_input_density | 2019 | 4 | 0 | 0 | 1395 |
 | regression_input_income | 2008 | 5 | 0 | 0 | 2481 |
@@ -2571,14 +2041,14 @@ Scope: All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`), 
 | regression_input_weekday | 2019 | 5 | 0 | 0 | 1759 |
 | regression_pooled | 2008 | 23 | 5 | 200 | 0 |
 | regression_pooled | 2019 | 23 | 0 | 0 | 545 |
-| reweight_input_person | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_person | 2019 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_travel_day | 2019 | 80 | 23 | 200 | 0 |
-| reweight_person | 2008 | 5 | 0 | 0 | 3159 |
-| reweight_person | 2019 | 5 | 0 | 0 | 2504 |
-| reweight_travel_day | 2008 | 5 | 0 | 0 | 2481 |
-| reweight_travel_day | 2019 | 5 | 0 | 0 | 1781 |
+| reweight_input_person | 2008 | 77 | 17 | 200 | 0 |
+| reweight_input_person | 2019 | 77 | 18 | 92 | 1 |
+| reweight_input_travel_day | 2008 | 73 | 13 | 200 | 0 |
+| reweight_input_travel_day | 2019 | 73 | 16 | 92 | 1 |
+| reweight_person | 2008 | 52 | 0 | 0 | 68 |
+| reweight_person | 2019 | 52 | 0 | 0 | 56 |
+| reweight_travel_day | 2008 | 48 | 0 | 0 | 78 |
+| reweight_travel_day | 2019 | 48 | 0 | 0 | 50 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -2594,13 +2064,11 @@ Scope: All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`), 
 | travel_day | q3 | 2967 | 66.989 | 64.143 | 70.482 | 1980 | 75.854 | 72.891 | 78.625 | 1.132 | 1.075 | 1.179 | inconclusive | inconclusive |
 | travel_day | q4 | 3114 | 69.147 | 66.781 | 71.772 | 2120 | 73.747 | 70.830 | 76.664 | 1.067 | 1.020 | 1.118 | equivalent | inconclusive |
 | travel_day | q5 | 4048 | 75.962 | 73.152 | 78.578 | 2217 | 81.178 | 78.638 | 83.737 | 1.069 | 1.025 | 1.115 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 | person | q1 | 3359 | 49.971 | 47.656 | 52.478 | 2504 | 55.206 | 52.248 | 58.083 | 1.105 | 1.038 | 1.172 | inconclusive | inconclusive |
 | person | q2 | 3159 | 52.051 | 49.417 | 54.530 | 2662 | 57.508 | 54.386 | 60.548 | 1.105 | 1.037 | 1.174 | inconclusive | inconclusive |
 | person | q3 | 3615 | 55.549 | 52.886 | 58.712 | 2742 | 62.604 | 59.706 | 65.839 | 1.127 | 1.052 | 1.194 | inconclusive | inconclusive |
 | person | q4 | 3657 | 59.786 | 57.479 | 62.284 | 2885 | 63.465 | 60.103 | 67.275 | 1.062 | 0.996 | 1.126 | equivalent | inconclusive |
 | person | q5 | 4752 | 64.679 | 62.196 | 67.022 | 3032 | 70.891 | 68.007 | 74.001 | 1.096 | 1.051 | 1.153 | inconclusive | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -2625,18 +2093,16 @@ Scope: All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`), 
 
 | basis | quintile | n_2008 | mean_2008 | ci_2008_low | ci_2008_high | n_2019 | mean_2019 | ci_2019_low | ci_2019_high | ratio | ratio_ci_low | ratio_ci_high | verdict_15 | verdict_10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 2481 | 63.963 | 61.198 | 67.002 | 1781 | 69.423 | 66.424 | 72.103 | 1.085 | 1.024 | 1.136 | equivalent | inconclusive |
-| travel_day | q2 | 2558 | 63.741 | 61.004 | 66.796 | 1973 | 70.188 | 67.188 | 73.906 | 1.101 | 1.044 | 1.162 | inconclusive | inconclusive |
-| travel_day | q3 | 2967 | 66.989 | 64.143 | 70.482 | 1980 | 75.854 | 72.891 | 78.625 | 1.132 | 1.075 | 1.179 | inconclusive | inconclusive |
-| travel_day | q4 | 3114 | 69.147 | 66.781 | 71.772 | 2120 | 73.747 | 70.830 | 76.664 | 1.067 | 1.020 | 1.118 | equivalent | inconclusive |
-| travel_day | q5 | 4048 | 75.962 | 73.152 | 78.578 | 2217 | 81.178 | 78.638 | 83.737 | 1.069 | 1.025 | 1.115 | equivalent | inconclusive |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
-| person | q1 | 3359 | 49.971 | 47.656 | 52.478 | 2504 | 55.206 | 52.248 | 58.083 | 1.105 | 1.038 | 1.172 | inconclusive | inconclusive |
-| person | q2 | 3159 | 52.051 | 49.417 | 54.530 | 2662 | 57.508 | 54.386 | 60.548 | 1.105 | 1.037 | 1.174 | inconclusive | inconclusive |
-| person | q3 | 3615 | 55.549 | 52.886 | 58.712 | 2742 | 62.604 | 59.706 | 65.839 | 1.127 | 1.052 | 1.194 | inconclusive | inconclusive |
-| person | q4 | 3657 | 59.786 | 57.479 | 62.284 | 2885 | 63.465 | 60.103 | 67.275 | 1.062 | 0.996 | 1.126 | equivalent | inconclusive |
-| person | q5 | 4752 | 64.679 | 62.196 | 67.022 | 3032 | 70.891 | 68.007 | 74.001 | 1.096 | 1.051 | 1.153 | inconclusive | inconclusive |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
+| travel_day | q1 | 2481 | 64.335 | 61.606 | 67.488 | 1781 | 68.981 | 66.021 | 71.710 | 1.072 | 1.011 | 1.123 | equivalent | inconclusive |
+| travel_day | q2 | 2558 | 63.492 | 60.715 | 66.511 | 1973 | 70.342 | 66.838 | 73.700 | 1.108 | 1.051 | 1.168 | inconclusive | inconclusive |
+| travel_day | q3 | 2967 | 67.045 | 64.159 | 70.591 | 1980 | 75.825 | 73.002 | 78.568 | 1.131 | 1.074 | 1.179 | inconclusive | inconclusive |
+| travel_day | q4 | 3114 | 69.138 | 66.623 | 71.686 | 2120 | 73.879 | 70.899 | 76.697 | 1.069 | 1.020 | 1.122 | equivalent | inconclusive |
+| travel_day | q5 | 4048 | 76.075 | 73.364 | 78.610 | 2217 | 81.348 | 78.883 | 83.792 | 1.069 | 1.026 | 1.115 | equivalent | inconclusive |
+| person | q1 | 3359 | 50.807 | 48.544 | 53.592 | 2504 | 54.625 | 51.637 | 57.553 | 1.075 | 1.005 | 1.138 | equivalent | inconclusive |
+| person | q2 | 3159 | 51.752 | 49.111 | 54.226 | 2662 | 57.579 | 54.248 | 60.796 | 1.113 | 1.044 | 1.180 | inconclusive | inconclusive |
+| person | q3 | 3615 | 55.538 | 53.002 | 58.661 | 2742 | 62.614 | 59.767 | 66.043 | 1.127 | 1.053 | 1.193 | inconclusive | inconclusive |
+| person | q4 | 3657 | 59.804 | 57.397 | 62.383 | 2885 | 63.620 | 60.314 | 67.605 | 1.064 | 0.998 | 1.130 | equivalent | inconclusive |
+| person | q5 | 4752 | 64.898 | 62.355 | 67.280 | 3032 | 70.799 | 67.955 | 73.921 | 1.091 | 1.045 | 1.150 | equivalent | inconclusive |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -2647,176 +2113,79 @@ Scope: All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`), 
 
 | basis | gap | value_2008 | ci_2008_low | ci_2008_high | value_2019 | ci_2019_low | ci_2019_high | change | change_ci_low | change_ci_high |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | difference | 11.998 | 7.112 | 15.764 | 11.756 | 8.243 | 15.757 | -0.242 | -5.720 | 5.693 |
-| travel_day | ratio | 1.188 | 1.106 | 1.252 | 1.169 | 1.115 | 1.234 | -0.018 | -0.106 | 0.086 |
-| person | difference | 14.708 | 10.652 | 18.064 | 15.685 | 11.506 | 20.308 | 0.977 | -3.991 | 6.929 |
-| person | ratio | 1.294 | 1.207 | 1.376 | 1.284 | 1.205 | 1.386 | -0.010 | -0.117 | 0.118 |
+| travel_day | difference | 11.740 | 7.119 | 15.286 | 12.367 | 8.771 | 16.467 | 0.627 | -4.511 | 6.737 |
+| travel_day | ratio | 1.182 | 1.106 | 1.245 | 1.179 | 1.123 | 1.246 | -0.003 | -0.084 | 0.097 |
+| person | difference | 14.090 | 10.032 | 17.489 | 16.173 | 12.326 | 21.071 | 2.083 | -2.484 | 8.268 |
+| person | ratio | 1.277 | 1.190 | 1.358 | 1.296 | 1.221 | 1.395 | 0.019 | -0.077 | 0.161 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
 
 ### Collapsed joint cells
 
-- travel_day: `q1|dense|0` → `q1|all|all`.
-- travel_day: `q1|dense|1` → `q1|all|all`.
-- travel_day: `q1|dense|2+` → `q1|all|all`.
-- travel_day: `q1|dense|unknown` → `q1|all|all`.
-- travel_day: `q1|intermediate|0` → `q1|all|all`.
-- travel_day: `q1|intermediate|1` → `q1|all|all`.
-- travel_day: `q1|intermediate|2+` → `q1|all|all`.
-- travel_day: `q1|intermediate|unknown` → `q1|all|all`.
-- travel_day: `q1|sparse|0` → `q1|all|all`.
-- travel_day: `q1|sparse|1` → `q1|all|all`.
-- travel_day: `q1|sparse|2+` → `q1|all|all`.
-- travel_day: `q1|sparse|unknown` → `q1|all|all`.
-- travel_day: `q1|very_sparse|0` → `q1|all|all`.
-- travel_day: `q1|very_sparse|1` → `q1|all|all`.
-- travel_day: `q1|very_sparse|2+` → `q1|all|all`.
-- travel_day: `q1|very_sparse|unknown` → `q1|all|all`.
-- travel_day: `q2|dense|0` → `q2|all|all`.
-- travel_day: `q2|dense|1` → `q2|all|all`.
-- travel_day: `q2|dense|2+` → `q2|all|all`.
-- travel_day: `q2|dense|unknown` → `q2|all|all`.
-- travel_day: `q2|intermediate|0` → `q2|all|all`.
-- travel_day: `q2|intermediate|1` → `q2|all|all`.
-- travel_day: `q2|intermediate|2+` → `q2|all|all`.
-- travel_day: `q2|intermediate|unknown` → `q2|all|all`.
-- travel_day: `q2|sparse|0` → `q2|all|all`.
-- travel_day: `q2|sparse|1` → `q2|all|all`.
-- travel_day: `q2|sparse|2+` → `q2|all|all`.
-- travel_day: `q2|sparse|unknown` → `q2|all|all`.
-- travel_day: `q2|very_sparse|0` → `q2|all|all`.
-- travel_day: `q2|very_sparse|1` → `q2|all|all`.
-- travel_day: `q2|very_sparse|2+` → `q2|all|all`.
-- travel_day: `q2|very_sparse|unknown` → `q2|all|all`.
-- travel_day: `q3|dense|0` → `q3|all|all`.
-- travel_day: `q3|dense|1` → `q3|all|all`.
-- travel_day: `q3|dense|2+` → `q3|all|all`.
-- travel_day: `q3|dense|unknown` → `q3|all|all`.
-- travel_day: `q3|intermediate|0` → `q3|all|all`.
-- travel_day: `q3|intermediate|1` → `q3|all|all`.
-- travel_day: `q3|intermediate|2+` → `q3|all|all`.
-- travel_day: `q3|intermediate|unknown` → `q3|all|all`.
-- travel_day: `q3|sparse|0` → `q3|all|all`.
-- travel_day: `q3|sparse|1` → `q3|all|all`.
-- travel_day: `q3|sparse|2+` → `q3|all|all`.
-- travel_day: `q3|sparse|unknown` → `q3|all|all`.
-- travel_day: `q3|very_sparse|0` → `q3|all|all`.
-- travel_day: `q3|very_sparse|1` → `q3|all|all`.
-- travel_day: `q3|very_sparse|2+` → `q3|all|all`.
-- travel_day: `q3|very_sparse|unknown` → `q3|all|all`.
-- travel_day: `q4|dense|0` → `q4|all|all`.
-- travel_day: `q4|dense|1` → `q4|all|all`.
-- travel_day: `q4|dense|2+` → `q4|all|all`.
-- travel_day: `q4|dense|unknown` → `q4|all|all`.
-- travel_day: `q4|intermediate|0` → `q4|all|all`.
-- travel_day: `q4|intermediate|1` → `q4|all|all`.
-- travel_day: `q4|intermediate|2+` → `q4|all|all`.
-- travel_day: `q4|intermediate|unknown` → `q4|all|all`.
-- travel_day: `q4|sparse|0` → `q4|all|all`.
-- travel_day: `q4|sparse|1` → `q4|all|all`.
-- travel_day: `q4|sparse|2+` → `q4|all|all`.
-- travel_day: `q4|sparse|unknown` → `q4|all|all`.
-- travel_day: `q4|very_sparse|0` → `q4|all|all`.
-- travel_day: `q4|very_sparse|1` → `q4|all|all`.
-- travel_day: `q4|very_sparse|2+` → `q4|all|all`.
-- travel_day: `q4|very_sparse|unknown` → `q4|all|all`.
-- travel_day: `q5|dense|0` → `q5|all|all`.
-- travel_day: `q5|dense|1` → `q5|all|all`.
-- travel_day: `q5|dense|2+` → `q5|all|all`.
-- travel_day: `q5|dense|unknown` → `q5|all|all`.
-- travel_day: `q5|intermediate|0` → `q5|all|all`.
-- travel_day: `q5|intermediate|1` → `q5|all|all`.
-- travel_day: `q5|intermediate|2+` → `q5|all|all`.
-- travel_day: `q5|intermediate|unknown` → `q5|all|all`.
-- travel_day: `q5|sparse|0` → `q5|all|all`.
-- travel_day: `q5|sparse|1` → `q5|all|all`.
-- travel_day: `q5|sparse|2+` → `q5|all|all`.
-- travel_day: `q5|sparse|unknown` → `q5|all|all`.
-- travel_day: `q5|very_sparse|0` → `q5|all|all`.
-- travel_day: `q5|very_sparse|1` → `q5|all|all`.
-- travel_day: `q5|very_sparse|2+` → `q5|all|all`.
-- travel_day: `q5|very_sparse|unknown` → `q5|all|all`.
-- person: `q1|dense|0` → `q1|all|all`.
-- person: `q1|dense|1` → `q1|all|all`.
-- person: `q1|dense|2+` → `q1|all|all`.
-- person: `q1|dense|unknown` → `q1|all|all`.
-- person: `q1|intermediate|0` → `q1|all|all`.
-- person: `q1|intermediate|1` → `q1|all|all`.
-- person: `q1|intermediate|2+` → `q1|all|all`.
-- person: `q1|intermediate|unknown` → `q1|all|all`.
-- person: `q1|sparse|0` → `q1|all|all`.
-- person: `q1|sparse|1` → `q1|all|all`.
-- person: `q1|sparse|2+` → `q1|all|all`.
-- person: `q1|sparse|unknown` → `q1|all|all`.
-- person: `q1|very_sparse|0` → `q1|all|all`.
-- person: `q1|very_sparse|1` → `q1|all|all`.
-- person: `q1|very_sparse|2+` → `q1|all|all`.
-- person: `q1|very_sparse|unknown` → `q1|all|all`.
-- person: `q2|dense|0` → `q2|all|all`.
-- person: `q2|dense|1` → `q2|all|all`.
-- person: `q2|dense|2+` → `q2|all|all`.
-- person: `q2|dense|unknown` → `q2|all|all`.
-- person: `q2|intermediate|0` → `q2|all|all`.
-- person: `q2|intermediate|1` → `q2|all|all`.
-- person: `q2|intermediate|2+` → `q2|all|all`.
-- person: `q2|intermediate|unknown` → `q2|all|all`.
-- person: `q2|sparse|0` → `q2|all|all`.
-- person: `q2|sparse|1` → `q2|all|all`.
-- person: `q2|sparse|2+` → `q2|all|all`.
-- person: `q2|sparse|unknown` → `q2|all|all`.
-- person: `q2|very_sparse|0` → `q2|all|all`.
-- person: `q2|very_sparse|1` → `q2|all|all`.
-- person: `q2|very_sparse|2+` → `q2|all|all`.
-- person: `q2|very_sparse|unknown` → `q2|all|all`.
-- person: `q3|dense|0` → `q3|all|all`.
-- person: `q3|dense|1` → `q3|all|all`.
-- person: `q3|dense|2+` → `q3|all|all`.
-- person: `q3|dense|unknown` → `q3|all|all`.
-- person: `q3|intermediate|0` → `q3|all|all`.
-- person: `q3|intermediate|1` → `q3|all|all`.
-- person: `q3|intermediate|2+` → `q3|all|all`.
-- person: `q3|intermediate|unknown` → `q3|all|all`.
-- person: `q3|sparse|0` → `q3|all|all`.
-- person: `q3|sparse|1` → `q3|all|all`.
-- person: `q3|sparse|2+` → `q3|all|all`.
-- person: `q3|sparse|unknown` → `q3|all|all`.
-- person: `q3|very_sparse|0` → `q3|all|all`.
-- person: `q3|very_sparse|1` → `q3|all|all`.
-- person: `q3|very_sparse|2+` → `q3|all|all`.
-- person: `q3|very_sparse|unknown` → `q3|all|all`.
-- person: `q4|dense|0` → `q4|all|all`.
-- person: `q4|dense|1` → `q4|all|all`.
-- person: `q4|dense|2+` → `q4|all|all`.
-- person: `q4|dense|unknown` → `q4|all|all`.
-- person: `q4|intermediate|0` → `q4|all|all`.
-- person: `q4|intermediate|1` → `q4|all|all`.
-- person: `q4|intermediate|2+` → `q4|all|all`.
-- person: `q4|intermediate|unknown` → `q4|all|all`.
-- person: `q4|sparse|0` → `q4|all|all`.
-- person: `q4|sparse|1` → `q4|all|all`.
-- person: `q4|sparse|2+` → `q4|all|all`.
-- person: `q4|sparse|unknown` → `q4|all|all`.
-- person: `q4|very_sparse|0` → `q4|all|all`.
-- person: `q4|very_sparse|1` → `q4|all|all`.
-- person: `q4|very_sparse|2+` → `q4|all|all`.
-- person: `q4|very_sparse|unknown` → `q4|all|all`.
-- person: `q5|dense|0` → `q5|all|all`.
-- person: `q5|dense|1` → `q5|all|all`.
-- person: `q5|dense|2+` → `q5|all|all`.
-- person: `q5|dense|unknown` → `q5|all|all`.
-- person: `q5|intermediate|0` → `q5|all|all`.
-- person: `q5|intermediate|1` → `q5|all|all`.
-- person: `q5|intermediate|2+` → `q5|all|all`.
-- person: `q5|intermediate|unknown` → `q5|all|all`.
-- person: `q5|sparse|0` → `q5|all|all`.
-- person: `q5|sparse|1` → `q5|all|all`.
-- person: `q5|sparse|2+` → `q5|all|all`.
-- person: `q5|sparse|unknown` → `q5|all|all`.
-- person: `q5|very_sparse|0` → `q5|all|all`.
-- person: `q5|very_sparse|1` → `q5|all|all`.
-- person: `q5|very_sparse|2+` → `q5|all|all`.
-- person: `q5|very_sparse|unknown` → `q5|all|all`.
+- travel_day: 37.14% of the full-sample pooled target is in cells that combine two or more original cells.
+- person: 37.55% of the full-sample pooled target is in cells that combine two or more original cells.
+
+- travel_day: `q1|dense|1` → `q1|dense|1+`.
+- travel_day: `q1|dense|2+` → `q1|dense|1+`.
+- travel_day: `q1|dense|unknown` → `q1|dense|0`.
+- travel_day: `q1|intermediate|unknown` → `q1|intermediate|1`.
+- travel_day: `q1|sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|sparse|1` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|2+` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q2|dense|1` → `q2|dense|1+`.
+- travel_day: `q2|dense|2+` → `q2|dense|1+`.
+- travel_day: `q2|dense|unknown` → `q2|dense|1+`.
+- travel_day: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- travel_day: `q2|sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q3|dense|1` → `q3|dense|1+`.
+- travel_day: `q3|dense|2+` → `q3|dense|1+`.
+- travel_day: `q3|dense|unknown` → `q3|dense|1+`.
+- travel_day: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- travel_day: `q3|sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|unknown` → `q3|very_sparse|2+`.
+- travel_day: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- travel_day: `q4|sparse|0` → `q4|intermediate|0`.
+- travel_day: `q4|sparse|unknown` → `q4|sparse|2+`.
+- travel_day: `q4|very_sparse|0` → `q4|intermediate|0`.
+- travel_day: `q5|sparse|0` → `q5|intermediate|0`.
+- travel_day: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q1|dense|1` → `q1|dense|1+`.
+- person: `q1|dense|2+` → `q1|dense|1+`.
+- person: `q1|dense|unknown` → `q1|dense|0`.
+- person: `q1|intermediate|unknown` → `q1|intermediate|0`.
+- person: `q1|sparse|unknown` → `q1|very_sparse|1`.
+- person: `q1|very_sparse|unknown` → `q1|very_sparse|1`.
+- person: `q2|dense|1` → `q2|dense|1+`.
+- person: `q2|dense|2+` → `q2|dense|1+`.
+- person: `q2|dense|unknown` → `q2|dense|1+`.
+- person: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- person: `q2|sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q2|very_sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q3|dense|1` → `q3|dense|1+`.
+- person: `q3|dense|2+` → `q3|dense|1+`.
+- person: `q3|dense|unknown` → `q3|dense|1+`.
+- person: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- person: `q3|sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- person: `q4|sparse|0` → `q4|intermediate|0`.
+- person: `q4|sparse|unknown` → `q4|intermediate|0`.
+- person: `q4|very_sparse|0` → `q4|intermediate|0`.
+- person: `q4|very_sparse|unknown` → `q4|intermediate|0`.
+- person: `q5|intermediate|unknown` → `q5|intermediate|2+`.
+- person: `q5|sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|unknown` → `q5|very_sparse|2+`.
 
 ### Cells still below minimum support
 
@@ -2907,10 +2276,6 @@ Scope: All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`), 
 | travel_day | q5 | intermediate | False | 1930 | 78.586 | 74.743 | 82.405 | 1087 | 84.421 | 80.422 | 88.211 | 1.074 | 1.015 | 1.139 |
 | travel_day | q5 | sparse | False | 443 | 66.757 | 60.502 | 73.184 | 323 | 75.426 | 67.749 | 82.265 | 1.130 | 0.999 | 1.254 |
 | travel_day | q5 | very_sparse | False | 938 | 74.317 | 69.200 | 80.491 | 444 | 82.475 | 75.217 | 90.488 | 1.110 | 1.014 | 1.228 |
-| travel_day | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 | person | q1 | dense | False | 473 | 60.904 | 54.597 | 68.230 | 476 | 66.473 | 59.966 | 73.303 | 1.091 | 0.952 | 1.254 |
 | person | q1 | intermediate | False | 1159 | 53.372 | 49.581 | 57.830 | 1197 | 56.021 | 51.510 | 61.320 | 1.050 | 0.947 | 1.165 |
 | person | q1 | sparse | False | 435 | 46.131 | 40.229 | 53.155 | 385 | 47.276 | 40.498 | 54.379 | 1.025 | 0.842 | 1.203 |
@@ -2931,10 +2296,6 @@ Scope: All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`), 
 | person | q5 | intermediate | False | 2201 | 69.053 | 64.740 | 72.711 | 1478 | 73.321 | 68.864 | 77.537 | 1.062 | 0.986 | 1.136 |
 | person | q5 | sparse | False | 542 | 55.605 | 50.525 | 61.157 | 452 | 65.427 | 57.177 | 73.019 | 1.177 | 1.005 | 1.341 |
 | person | q5 | very_sparse | False | 1149 | 59.621 | 54.439 | 65.402 | 605 | 69.098 | 60.785 | 78.235 | 1.159 | 1.040 | 1.299 |
-| person | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -2945,16 +2306,16 @@ Scope: All days · all purposes · local (≤ 80 km) (`alldays-allpurp-local`), 
 
 | basis | quintile | ratio | verdict_15 | raw_q5_q1_2008 | raw_q5_q1_2019 | reweighted_q5_q1_2008 | reweighted_q5_q1_2019 | m2_q5_q1_2008 | m2_q5_q1_2019 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 1.085 | equivalent | 1.188 | 1.169 | 1.188 | 1.169 | 1.154 | 1.161 |
-| travel_day | q2 | 1.101 | inconclusive | 1.188 | 1.169 | 1.188 | 1.169 | 1.154 | 1.161 |
-| travel_day | q3 | 1.132 | inconclusive | 1.188 | 1.169 | 1.188 | 1.169 | 1.154 | 1.161 |
-| travel_day | q4 | 1.067 | equivalent | 1.188 | 1.169 | 1.188 | 1.169 | 1.154 | 1.161 |
-| travel_day | q5 | 1.069 | equivalent | 1.188 | 1.169 | 1.188 | 1.169 | 1.154 | 1.161 |
-| person | q1 | 1.105 | inconclusive | 1.294 | 1.284 | 1.294 | 1.284 | 1.154 | 1.161 |
-| person | q2 | 1.105 | inconclusive | 1.294 | 1.284 | 1.294 | 1.284 | 1.154 | 1.161 |
-| person | q3 | 1.127 | inconclusive | 1.294 | 1.284 | 1.294 | 1.284 | 1.154 | 1.161 |
-| person | q4 | 1.062 | equivalent | 1.294 | 1.284 | 1.294 | 1.284 | 1.154 | 1.161 |
-| person | q5 | 1.096 | inconclusive | 1.294 | 1.284 | 1.294 | 1.284 | 1.154 | 1.161 |
+| travel_day | q1 | 1.085 | equivalent | 1.188 | 1.169 | 1.182 | 1.179 | 1.154 | 1.161 |
+| travel_day | q2 | 1.101 | inconclusive | 1.188 | 1.169 | 1.182 | 1.179 | 1.154 | 1.161 |
+| travel_day | q3 | 1.132 | inconclusive | 1.188 | 1.169 | 1.182 | 1.179 | 1.154 | 1.161 |
+| travel_day | q4 | 1.067 | equivalent | 1.188 | 1.169 | 1.182 | 1.179 | 1.154 | 1.161 |
+| travel_day | q5 | 1.069 | equivalent | 1.188 | 1.169 | 1.182 | 1.179 | 1.154 | 1.161 |
+| person | q1 | 1.105 | inconclusive | 1.294 | 1.284 | 1.277 | 1.296 | 1.154 | 1.161 |
+| person | q2 | 1.105 | inconclusive | 1.294 | 1.284 | 1.277 | 1.296 | 1.154 | 1.161 |
+| person | q3 | 1.127 | inconclusive | 1.294 | 1.284 | 1.277 | 1.296 | 1.154 | 1.161 |
+| person | q4 | 1.062 | equivalent | 1.294 | 1.284 | 1.277 | 1.296 | 1.154 | 1.161 |
+| person | q5 | 1.096 | inconclusive | 1.294 | 1.284 | 1.277 | 1.296 | 1.154 | 1.161 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 
@@ -2963,7 +2324,24 @@ The positive income gradient survives density and car controls in both years.
 
 ## All days · all purposes · all trips in the day's trip table (incl. > 80 km) (`alldays-allpurp-daytable`)
 
-ENTD unknown income: 0.00% of respondents and 0.00% of kept described-day weight. EMP income is imputed; no equivalent unknown group.
+ENTD 2008 income is complete in this file: the released income bracket and consumption-unit count are populated. The dictionary and released fields do not establish whether income brackets were imputed upstream (see [ENTD income audit](./entd2008.md#income-imputation-audit-step-12)).
+
+### Weighted income quintile shares
+
+Shares use the full weekday respondent roster and individual weights; `n` is unweighted. Ties in income can produce unequal shares.
+
+| Year | Quintile | n | Share (%) |
+|---:|:---|---:|---:|
+| 2008 | q1 | 3359 | 20.00 |
+| 2008 | q2 | 3159 | 20.00 |
+| 2008 | q3 | 3615 | 20.00 |
+| 2008 | q4 | 3657 | 19.99 |
+| 2008 | q5 | 4752 | 20.02 |
+| 2019 | q1 | 2504 | 20.00 |
+| 2019 | q2 | 2662 | 20.00 |
+| 2019 | q3 | 2742 | 19.99 |
+| 2019 | q4 | 2885 | 20.01 |
+| 2019 | q5 | 3032 | 20.00 |
 
 ### Support audit (details in support.csv)
 
@@ -2978,7 +2356,7 @@ Scope: All days · all purposes · all trips in the day's trip table (incl. > 80
 | regression_M2 | 2008 | 18 | 0 | 0 | 660 |
 | regression_M2 | 2019 | 18 | 0 | 0 | 561 |
 | regression_input_cars | 2008 | 4 | 1 | 200 | 0 |
-| regression_input_cars | 2019 | 4 | 1 | 71 | 1 |
+| regression_input_cars | 2019 | 4 | 0 | 0 | 25 |
 | regression_input_density | 2008 | 4 | 0 | 0 | 2012 |
 | regression_input_density | 2019 | 4 | 0 | 0 | 1442 |
 | regression_input_income | 2008 | 5 | 0 | 0 | 2509 |
@@ -2989,14 +2367,14 @@ Scope: All days · all purposes · all trips in the day's trip table (incl. > 80
 | regression_input_weekday | 2019 | 5 | 0 | 0 | 1799 |
 | regression_pooled | 2008 | 23 | 5 | 200 | 0 |
 | regression_pooled | 2019 | 23 | 0 | 0 | 561 |
-| reweight_input_person | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_person | 2019 | 80 | 21 | 200 | 0 |
-| reweight_input_travel_day | 2008 | 80 | 20 | 200 | 0 |
-| reweight_input_travel_day | 2019 | 80 | 23 | 200 | 0 |
-| reweight_person | 2008 | 5 | 0 | 0 | 3159 |
-| reweight_person | 2019 | 5 | 0 | 0 | 2504 |
-| reweight_travel_day | 2008 | 5 | 0 | 0 | 2509 |
-| reweight_travel_day | 2019 | 5 | 0 | 0 | 1809 |
+| reweight_input_person | 2008 | 77 | 17 | 200 | 0 |
+| reweight_input_person | 2019 | 77 | 18 | 92 | 1 |
+| reweight_input_travel_day | 2008 | 73 | 13 | 200 | 0 |
+| reweight_input_travel_day | 2019 | 73 | 16 | 92 | 1 |
+| reweight_person | 2008 | 52 | 0 | 0 | 68 |
+| reweight_person | 2019 | 52 | 0 | 0 | 56 |
+| reweight_travel_day | 2008 | 48 | 0 | 0 | 80 |
+| reweight_travel_day | 2019 | 48 | 0 | 0 | 54 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -3012,13 +2390,11 @@ Scope: All days · all purposes · all trips in the day's trip table (incl. > 80
 | travel_day | q3 | 3044 | 72.595 | 69.144 | 77.200 | 2037 | 86.134 | 81.680 | 91.085 | 1.186 | 1.114 | 1.253 | inconclusive | different |
 | travel_day | q4 | 3212 | 76.248 | 72.686 | 79.233 | 2184 | 80.647 | 77.436 | 84.061 | 1.058 | 1.008 | 1.112 | equivalent | inconclusive |
 | travel_day | q5 | 4243 | 88.847 | 85.259 | 92.322 | 2316 | 90.608 | 87.391 | 94.803 | 1.020 | 0.975 | 1.075 | equivalent | equivalent |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 | person | q1 | 3359 | 52.595 | 50.148 | 55.481 | 2504 | 58.493 | 55.188 | 61.794 | 1.112 | 1.038 | 1.182 | inconclusive | inconclusive |
 | person | q2 | 3159 | 56.549 | 53.664 | 59.991 | 2662 | 63.855 | 59.515 | 68.181 | 1.129 | 1.044 | 1.213 | inconclusive | inconclusive |
 | person | q3 | 3615 | 61.605 | 58.639 | 66.219 | 2742 | 73.199 | 68.579 | 78.540 | 1.188 | 1.100 | 1.281 | inconclusive | different |
 | person | q4 | 3657 | 67.603 | 63.990 | 70.775 | 2885 | 71.998 | 68.197 | 75.584 | 1.065 | 1.003 | 1.132 | equivalent | inconclusive |
 | person | q5 | 4752 | 79.298 | 75.845 | 83.289 | 3032 | 82.317 | 78.524 | 87.091 | 1.038 | 0.979 | 1.091 | equivalent | equivalent |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -3043,18 +2419,16 @@ Scope: All days · all purposes · all trips in the day's trip table (incl. > 80
 
 | basis | quintile | n_2008 | mean_2008 | ci_2008_low | ci_2008_high | n_2019 | mean_2019 | ci_2019_low | ci_2019_high | ratio | ratio_ci_low | ratio_ci_high | verdict_15 | verdict_10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 2509 | 66.714 | 63.796 | 70.236 | 1809 | 72.532 | 69.182 | 75.962 | 1.087 | 1.018 | 1.152 | inconclusive | inconclusive |
-| travel_day | q2 | 2597 | 68.019 | 64.720 | 72.069 | 2010 | 76.009 | 71.935 | 80.607 | 1.117 | 1.053 | 1.187 | inconclusive | inconclusive |
-| travel_day | q3 | 3044 | 72.595 | 69.144 | 77.200 | 2037 | 86.134 | 81.680 | 91.085 | 1.186 | 1.114 | 1.253 | inconclusive | different |
-| travel_day | q4 | 3212 | 76.248 | 72.686 | 79.233 | 2184 | 80.647 | 77.436 | 84.061 | 1.058 | 1.008 | 1.112 | equivalent | inconclusive |
-| travel_day | q5 | 4243 | 88.847 | 85.259 | 92.322 | 2316 | 90.608 | 87.391 | 94.803 | 1.020 | 0.975 | 1.075 | equivalent | equivalent |
-| travel_day | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
-| person | q1 | 3359 | 52.595 | 50.148 | 55.481 | 2504 | 58.493 | 55.188 | 61.794 | 1.112 | 1.038 | 1.182 | inconclusive | inconclusive |
-| person | q2 | 3159 | 56.549 | 53.664 | 59.991 | 2662 | 63.855 | 59.515 | 68.181 | 1.129 | 1.044 | 1.213 | inconclusive | inconclusive |
-| person | q3 | 3615 | 61.605 | 58.639 | 66.219 | 2742 | 73.199 | 68.579 | 78.540 | 1.188 | 1.100 | 1.281 | inconclusive | different |
-| person | q4 | 3657 | 67.603 | 63.990 | 70.775 | 2885 | 71.998 | 68.197 | 75.584 | 1.065 | 1.003 | 1.132 | equivalent | inconclusive |
-| person | q5 | 4752 | 79.298 | 75.845 | 83.289 | 3032 | 82.317 | 78.524 | 87.091 | 1.038 | 0.979 | 1.091 | equivalent | equivalent |
-| person | unknown | 0 | - | - | - | 0 | - | - | - | - | - | - |  |  |
+| travel_day | q1 | 2509 | 66.890 | 64.133 | 70.269 | 1809 | 72.044 | 68.776 | 75.306 | 1.077 | 1.011 | 1.139 | equivalent | inconclusive |
+| travel_day | q2 | 2597 | 67.859 | 64.769 | 71.885 | 2010 | 76.276 | 72.452 | 80.949 | 1.124 | 1.058 | 1.189 | inconclusive | inconclusive |
+| travel_day | q3 | 3044 | 72.691 | 69.409 | 77.082 | 2037 | 86.406 | 82.158 | 91.740 | 1.189 | 1.111 | 1.262 | inconclusive | different |
+| travel_day | q4 | 3212 | 76.148 | 72.660 | 79.178 | 2184 | 80.795 | 77.315 | 84.280 | 1.061 | 1.013 | 1.119 | equivalent | inconclusive |
+| travel_day | q5 | 4243 | 88.798 | 85.633 | 92.322 | 2316 | 90.892 | 87.627 | 95.027 | 1.024 | 0.979 | 1.076 | equivalent | equivalent |
+| person | q1 | 3359 | 53.340 | 50.832 | 56.356 | 2504 | 57.820 | 54.537 | 61.247 | 1.084 | 1.011 | 1.151 | inconclusive | inconclusive |
+| person | q2 | 3159 | 56.302 | 53.441 | 59.562 | 2662 | 64.059 | 59.858 | 68.453 | 1.138 | 1.051 | 1.231 | inconclusive | inconclusive |
+| person | q3 | 3615 | 61.571 | 58.458 | 66.007 | 2742 | 73.555 | 68.872 | 79.134 | 1.195 | 1.108 | 1.294 | inconclusive | different |
+| person | q4 | 3657 | 67.557 | 63.992 | 70.678 | 2885 | 72.283 | 68.385 | 75.703 | 1.070 | 1.003 | 1.140 | equivalent | inconclusive |
+| person | q5 | 4752 | 79.362 | 76.066 | 83.257 | 3032 | 82.355 | 78.506 | 87.332 | 1.038 | 0.981 | 1.090 | equivalent | equivalent |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -3065,176 +2439,79 @@ Scope: All days · all purposes · all trips in the day's trip table (incl. > 80
 
 | basis | gap | value_2008 | ci_2008_low | ci_2008_high | value_2019 | ci_2019_low | ci_2019_high | change | change_ci_low | change_ci_high |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | difference | 22.134 | 17.511 | 26.578 | 18.076 | 13.367 | 22.568 | -4.057 | -11.307 | 2.884 |
-| travel_day | ratio | 1.332 | 1.254 | 1.418 | 1.249 | 1.178 | 1.319 | -0.083 | -0.198 | 0.040 |
-| person | difference | 26.703 | 22.209 | 31.062 | 23.825 | 18.926 | 29.325 | -2.879 | -9.444 | 4.827 |
-| person | ratio | 1.508 | 1.408 | 1.612 | 1.407 | 1.307 | 1.519 | -0.100 | -0.249 | 0.061 |
+| travel_day | difference | 21.909 | 17.329 | 26.352 | 18.848 | 14.247 | 23.516 | -3.061 | -10.128 | 4.105 |
+| travel_day | ratio | 1.328 | 1.250 | 1.409 | 1.262 | 1.192 | 1.334 | -0.066 | -0.184 | 0.056 |
+| person | difference | 26.022 | 21.334 | 30.299 | 24.535 | 19.534 | 29.901 | -1.487 | -7.969 | 6.202 |
+| person | ratio | 1.488 | 1.385 | 1.589 | 1.424 | 1.326 | 1.535 | -0.064 | -0.210 | 0.114 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
 
 ### Collapsed joint cells
 
-- travel_day: `q1|dense|0` → `q1|all|all`.
-- travel_day: `q1|dense|1` → `q1|all|all`.
-- travel_day: `q1|dense|2+` → `q1|all|all`.
-- travel_day: `q1|dense|unknown` → `q1|all|all`.
-- travel_day: `q1|intermediate|0` → `q1|all|all`.
-- travel_day: `q1|intermediate|1` → `q1|all|all`.
-- travel_day: `q1|intermediate|2+` → `q1|all|all`.
-- travel_day: `q1|intermediate|unknown` → `q1|all|all`.
-- travel_day: `q1|sparse|0` → `q1|all|all`.
-- travel_day: `q1|sparse|1` → `q1|all|all`.
-- travel_day: `q1|sparse|2+` → `q1|all|all`.
-- travel_day: `q1|sparse|unknown` → `q1|all|all`.
-- travel_day: `q1|very_sparse|0` → `q1|all|all`.
-- travel_day: `q1|very_sparse|1` → `q1|all|all`.
-- travel_day: `q1|very_sparse|2+` → `q1|all|all`.
-- travel_day: `q1|very_sparse|unknown` → `q1|all|all`.
-- travel_day: `q2|dense|0` → `q2|all|all`.
-- travel_day: `q2|dense|1` → `q2|all|all`.
-- travel_day: `q2|dense|2+` → `q2|all|all`.
-- travel_day: `q2|dense|unknown` → `q2|all|all`.
-- travel_day: `q2|intermediate|0` → `q2|all|all`.
-- travel_day: `q2|intermediate|1` → `q2|all|all`.
-- travel_day: `q2|intermediate|2+` → `q2|all|all`.
-- travel_day: `q2|intermediate|unknown` → `q2|all|all`.
-- travel_day: `q2|sparse|0` → `q2|all|all`.
-- travel_day: `q2|sparse|1` → `q2|all|all`.
-- travel_day: `q2|sparse|2+` → `q2|all|all`.
-- travel_day: `q2|sparse|unknown` → `q2|all|all`.
-- travel_day: `q2|very_sparse|0` → `q2|all|all`.
-- travel_day: `q2|very_sparse|1` → `q2|all|all`.
-- travel_day: `q2|very_sparse|2+` → `q2|all|all`.
-- travel_day: `q2|very_sparse|unknown` → `q2|all|all`.
-- travel_day: `q3|dense|0` → `q3|all|all`.
-- travel_day: `q3|dense|1` → `q3|all|all`.
-- travel_day: `q3|dense|2+` → `q3|all|all`.
-- travel_day: `q3|dense|unknown` → `q3|all|all`.
-- travel_day: `q3|intermediate|0` → `q3|all|all`.
-- travel_day: `q3|intermediate|1` → `q3|all|all`.
-- travel_day: `q3|intermediate|2+` → `q3|all|all`.
-- travel_day: `q3|intermediate|unknown` → `q3|all|all`.
-- travel_day: `q3|sparse|0` → `q3|all|all`.
-- travel_day: `q3|sparse|1` → `q3|all|all`.
-- travel_day: `q3|sparse|2+` → `q3|all|all`.
-- travel_day: `q3|sparse|unknown` → `q3|all|all`.
-- travel_day: `q3|very_sparse|0` → `q3|all|all`.
-- travel_day: `q3|very_sparse|1` → `q3|all|all`.
-- travel_day: `q3|very_sparse|2+` → `q3|all|all`.
-- travel_day: `q3|very_sparse|unknown` → `q3|all|all`.
-- travel_day: `q4|dense|0` → `q4|all|all`.
-- travel_day: `q4|dense|1` → `q4|all|all`.
-- travel_day: `q4|dense|2+` → `q4|all|all`.
-- travel_day: `q4|dense|unknown` → `q4|all|all`.
-- travel_day: `q4|intermediate|0` → `q4|all|all`.
-- travel_day: `q4|intermediate|1` → `q4|all|all`.
-- travel_day: `q4|intermediate|2+` → `q4|all|all`.
-- travel_day: `q4|intermediate|unknown` → `q4|all|all`.
-- travel_day: `q4|sparse|0` → `q4|all|all`.
-- travel_day: `q4|sparse|1` → `q4|all|all`.
-- travel_day: `q4|sparse|2+` → `q4|all|all`.
-- travel_day: `q4|sparse|unknown` → `q4|all|all`.
-- travel_day: `q4|very_sparse|0` → `q4|all|all`.
-- travel_day: `q4|very_sparse|1` → `q4|all|all`.
-- travel_day: `q4|very_sparse|2+` → `q4|all|all`.
-- travel_day: `q4|very_sparse|unknown` → `q4|all|all`.
-- travel_day: `q5|dense|0` → `q5|all|all`.
-- travel_day: `q5|dense|1` → `q5|all|all`.
-- travel_day: `q5|dense|2+` → `q5|all|all`.
-- travel_day: `q5|dense|unknown` → `q5|all|all`.
-- travel_day: `q5|intermediate|0` → `q5|all|all`.
-- travel_day: `q5|intermediate|1` → `q5|all|all`.
-- travel_day: `q5|intermediate|2+` → `q5|all|all`.
-- travel_day: `q5|intermediate|unknown` → `q5|all|all`.
-- travel_day: `q5|sparse|0` → `q5|all|all`.
-- travel_day: `q5|sparse|1` → `q5|all|all`.
-- travel_day: `q5|sparse|2+` → `q5|all|all`.
-- travel_day: `q5|sparse|unknown` → `q5|all|all`.
-- travel_day: `q5|very_sparse|0` → `q5|all|all`.
-- travel_day: `q5|very_sparse|1` → `q5|all|all`.
-- travel_day: `q5|very_sparse|2+` → `q5|all|all`.
-- travel_day: `q5|very_sparse|unknown` → `q5|all|all`.
-- person: `q1|dense|0` → `q1|all|all`.
-- person: `q1|dense|1` → `q1|all|all`.
-- person: `q1|dense|2+` → `q1|all|all`.
-- person: `q1|dense|unknown` → `q1|all|all`.
-- person: `q1|intermediate|0` → `q1|all|all`.
-- person: `q1|intermediate|1` → `q1|all|all`.
-- person: `q1|intermediate|2+` → `q1|all|all`.
-- person: `q1|intermediate|unknown` → `q1|all|all`.
-- person: `q1|sparse|0` → `q1|all|all`.
-- person: `q1|sparse|1` → `q1|all|all`.
-- person: `q1|sparse|2+` → `q1|all|all`.
-- person: `q1|sparse|unknown` → `q1|all|all`.
-- person: `q1|very_sparse|0` → `q1|all|all`.
-- person: `q1|very_sparse|1` → `q1|all|all`.
-- person: `q1|very_sparse|2+` → `q1|all|all`.
-- person: `q1|very_sparse|unknown` → `q1|all|all`.
-- person: `q2|dense|0` → `q2|all|all`.
-- person: `q2|dense|1` → `q2|all|all`.
-- person: `q2|dense|2+` → `q2|all|all`.
-- person: `q2|dense|unknown` → `q2|all|all`.
-- person: `q2|intermediate|0` → `q2|all|all`.
-- person: `q2|intermediate|1` → `q2|all|all`.
-- person: `q2|intermediate|2+` → `q2|all|all`.
-- person: `q2|intermediate|unknown` → `q2|all|all`.
-- person: `q2|sparse|0` → `q2|all|all`.
-- person: `q2|sparse|1` → `q2|all|all`.
-- person: `q2|sparse|2+` → `q2|all|all`.
-- person: `q2|sparse|unknown` → `q2|all|all`.
-- person: `q2|very_sparse|0` → `q2|all|all`.
-- person: `q2|very_sparse|1` → `q2|all|all`.
-- person: `q2|very_sparse|2+` → `q2|all|all`.
-- person: `q2|very_sparse|unknown` → `q2|all|all`.
-- person: `q3|dense|0` → `q3|all|all`.
-- person: `q3|dense|1` → `q3|all|all`.
-- person: `q3|dense|2+` → `q3|all|all`.
-- person: `q3|dense|unknown` → `q3|all|all`.
-- person: `q3|intermediate|0` → `q3|all|all`.
-- person: `q3|intermediate|1` → `q3|all|all`.
-- person: `q3|intermediate|2+` → `q3|all|all`.
-- person: `q3|intermediate|unknown` → `q3|all|all`.
-- person: `q3|sparse|0` → `q3|all|all`.
-- person: `q3|sparse|1` → `q3|all|all`.
-- person: `q3|sparse|2+` → `q3|all|all`.
-- person: `q3|sparse|unknown` → `q3|all|all`.
-- person: `q3|very_sparse|0` → `q3|all|all`.
-- person: `q3|very_sparse|1` → `q3|all|all`.
-- person: `q3|very_sparse|2+` → `q3|all|all`.
-- person: `q3|very_sparse|unknown` → `q3|all|all`.
-- person: `q4|dense|0` → `q4|all|all`.
-- person: `q4|dense|1` → `q4|all|all`.
-- person: `q4|dense|2+` → `q4|all|all`.
-- person: `q4|dense|unknown` → `q4|all|all`.
-- person: `q4|intermediate|0` → `q4|all|all`.
-- person: `q4|intermediate|1` → `q4|all|all`.
-- person: `q4|intermediate|2+` → `q4|all|all`.
-- person: `q4|intermediate|unknown` → `q4|all|all`.
-- person: `q4|sparse|0` → `q4|all|all`.
-- person: `q4|sparse|1` → `q4|all|all`.
-- person: `q4|sparse|2+` → `q4|all|all`.
-- person: `q4|sparse|unknown` → `q4|all|all`.
-- person: `q4|very_sparse|0` → `q4|all|all`.
-- person: `q4|very_sparse|1` → `q4|all|all`.
-- person: `q4|very_sparse|2+` → `q4|all|all`.
-- person: `q4|very_sparse|unknown` → `q4|all|all`.
-- person: `q5|dense|0` → `q5|all|all`.
-- person: `q5|dense|1` → `q5|all|all`.
-- person: `q5|dense|2+` → `q5|all|all`.
-- person: `q5|dense|unknown` → `q5|all|all`.
-- person: `q5|intermediate|0` → `q5|all|all`.
-- person: `q5|intermediate|1` → `q5|all|all`.
-- person: `q5|intermediate|2+` → `q5|all|all`.
-- person: `q5|intermediate|unknown` → `q5|all|all`.
-- person: `q5|sparse|0` → `q5|all|all`.
-- person: `q5|sparse|1` → `q5|all|all`.
-- person: `q5|sparse|2+` → `q5|all|all`.
-- person: `q5|sparse|unknown` → `q5|all|all`.
-- person: `q5|very_sparse|0` → `q5|all|all`.
-- person: `q5|very_sparse|1` → `q5|all|all`.
-- person: `q5|very_sparse|2+` → `q5|all|all`.
-- person: `q5|very_sparse|unknown` → `q5|all|all`.
+- travel_day: 36.95% of the full-sample pooled target is in cells that combine two or more original cells.
+- person: 37.55% of the full-sample pooled target is in cells that combine two or more original cells.
+
+- travel_day: `q1|dense|1` → `q1|dense|1+`.
+- travel_day: `q1|dense|2+` → `q1|dense|1+`.
+- travel_day: `q1|dense|unknown` → `q1|dense|0`.
+- travel_day: `q1|intermediate|unknown` → `q1|intermediate|1`.
+- travel_day: `q1|sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|sparse|1` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|2+` → `q1|sparse|1+`.
+- travel_day: `q1|sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|0` → `q1|sparse+very_sparse|0`.
+- travel_day: `q1|very_sparse|unknown` → `q1|sparse+very_sparse|0`.
+- travel_day: `q2|dense|1` → `q2|dense|1+`.
+- travel_day: `q2|dense|2+` → `q2|dense|1+`.
+- travel_day: `q2|dense|unknown` → `q2|dense|1+`.
+- travel_day: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- travel_day: `q2|sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|0` → `q2|sparse+very_sparse|0`.
+- travel_day: `q2|very_sparse|unknown` → `q2|sparse+very_sparse|0`.
+- travel_day: `q3|dense|1` → `q3|dense|1+`.
+- travel_day: `q3|dense|2+` → `q3|dense|1+`.
+- travel_day: `q3|dense|unknown` → `q3|dense|1+`.
+- travel_day: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- travel_day: `q3|sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|0` → `q3|intermediate|0`.
+- travel_day: `q3|very_sparse|unknown` → `q3|very_sparse|2+`.
+- travel_day: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- travel_day: `q4|sparse|0` → `q4|intermediate|0`.
+- travel_day: `q4|sparse|unknown` → `q4|sparse|2+`.
+- travel_day: `q4|very_sparse|0` → `q4|intermediate|0`.
+- travel_day: `q5|sparse|0` → `q5|intermediate|0`.
+- travel_day: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q1|dense|1` → `q1|dense|1+`.
+- person: `q1|dense|2+` → `q1|dense|1+`.
+- person: `q1|dense|unknown` → `q1|dense|0`.
+- person: `q1|intermediate|unknown` → `q1|intermediate|0`.
+- person: `q1|sparse|unknown` → `q1|very_sparse|1`.
+- person: `q1|very_sparse|unknown` → `q1|very_sparse|1`.
+- person: `q2|dense|1` → `q2|dense|1+`.
+- person: `q2|dense|2+` → `q2|dense|1+`.
+- person: `q2|dense|unknown` → `q2|dense|1+`.
+- person: `q2|intermediate|unknown` → `q2|intermediate|1`.
+- person: `q2|sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q2|very_sparse|unknown` → `q2|very_sparse|2+`.
+- person: `q3|dense|1` → `q3|dense|1+`.
+- person: `q3|dense|2+` → `q3|dense|1+`.
+- person: `q3|dense|unknown` → `q3|dense|1+`.
+- person: `q3|intermediate|unknown` → `q3|intermediate|1`.
+- person: `q3|sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|0` → `q3|sparse+very_sparse|0`.
+- person: `q3|very_sparse|unknown` → `q3|sparse+very_sparse|0`.
+- person: `q4|intermediate|unknown` → `q4|intermediate|2+`.
+- person: `q4|sparse|0` → `q4|intermediate|0`.
+- person: `q4|sparse|unknown` → `q4|intermediate|0`.
+- person: `q4|very_sparse|0` → `q4|intermediate|0`.
+- person: `q4|very_sparse|unknown` → `q4|intermediate|0`.
+- person: `q5|intermediate|unknown` → `q5|intermediate|2+`.
+- person: `q5|sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|0` → `q5|intermediate|0`.
+- person: `q5|very_sparse|unknown` → `q5|very_sparse|2+`.
 
 ### Cells still below minimum support
 
@@ -3325,10 +2602,6 @@ Scope: All days · all purposes · all trips in the day's trip table (incl. > 80
 | travel_day | q5 | intermediate | False | 2006 | 90.887 | 85.947 | 97.010 | 1131 | 92.055 | 87.686 | 96.759 | 1.013 | 0.944 | 1.074 |
 | travel_day | q5 | sparse | False | 466 | 76.561 | 69.911 | 84.094 | 338 | 88.394 | 76.529 | 100.840 | 1.155 | 1.003 | 1.325 |
 | travel_day | q5 | very_sparse | False | 990 | 88.300 | 80.432 | 97.304 | 471 | 98.599 | 89.169 | 109.034 | 1.117 | 1.006 | 1.277 |
-| travel_day | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| travel_day | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 | person | q1 | dense | False | 473 | 63.000 | 55.481 | 70.296 | 476 | 68.919 | 61.317 | 77.536 | 1.094 | 0.956 | 1.258 |
 | person | q1 | intermediate | False | 1159 | 54.986 | 50.797 | 59.417 | 1197 | 60.492 | 54.924 | 67.329 | 1.100 | 0.984 | 1.220 |
 | person | q1 | sparse | False | 435 | 49.466 | 42.838 | 57.242 | 385 | 48.187 | 41.518 | 55.510 | 0.974 | 0.796 | 1.131 |
@@ -3349,10 +2622,6 @@ Scope: All days · all purposes · all trips in the day's trip table (incl. > 80
 | person | q5 | intermediate | False | 2201 | 83.381 | 78.345 | 88.914 | 1478 | 82.947 | 78.032 | 88.542 | 0.995 | 0.915 | 1.071 |
 | person | q5 | sparse | False | 542 | 67.096 | 61.599 | 74.038 | 452 | 80.064 | 67.463 | 94.504 | 1.193 | 1.009 | 1.403 |
 | person | q5 | very_sparse | False | 1149 | 74.405 | 66.490 | 82.758 | 605 | 87.170 | 78.355 | 98.742 | 1.172 | 1.037 | 1.342 |
-| person | unknown | dense | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | intermediate | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
-| person | unknown | very_sparse | True | 0 | - | - | - | 0 | - | - | - | - | - | - |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
@@ -3363,16 +2632,16 @@ Scope: All days · all purposes · all trips in the day's trip table (incl. > 80
 
 | basis | quintile | ratio | verdict_15 | raw_q5_q1_2008 | raw_q5_q1_2019 | reweighted_q5_q1_2008 | reweighted_q5_q1_2019 | m2_q5_q1_2008 | m2_q5_q1_2019 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| travel_day | q1 | 1.087 | inconclusive | 1.332 | 1.249 | 1.332 | 1.249 | 1.235 | 1.195 |
-| travel_day | q2 | 1.117 | inconclusive | 1.332 | 1.249 | 1.332 | 1.249 | 1.235 | 1.195 |
-| travel_day | q3 | 1.186 | inconclusive | 1.332 | 1.249 | 1.332 | 1.249 | 1.235 | 1.195 |
-| travel_day | q4 | 1.058 | equivalent | 1.332 | 1.249 | 1.332 | 1.249 | 1.235 | 1.195 |
-| travel_day | q5 | 1.020 | equivalent | 1.332 | 1.249 | 1.332 | 1.249 | 1.235 | 1.195 |
-| person | q1 | 1.112 | inconclusive | 1.508 | 1.407 | 1.508 | 1.407 | 1.235 | 1.195 |
-| person | q2 | 1.129 | inconclusive | 1.508 | 1.407 | 1.508 | 1.407 | 1.235 | 1.195 |
-| person | q3 | 1.188 | inconclusive | 1.508 | 1.407 | 1.508 | 1.407 | 1.235 | 1.195 |
-| person | q4 | 1.065 | equivalent | 1.508 | 1.407 | 1.508 | 1.407 | 1.235 | 1.195 |
-| person | q5 | 1.038 | equivalent | 1.508 | 1.407 | 1.508 | 1.407 | 1.235 | 1.195 |
+| travel_day | q1 | 1.087 | inconclusive | 1.332 | 1.249 | 1.328 | 1.262 | 1.235 | 1.195 |
+| travel_day | q2 | 1.117 | inconclusive | 1.332 | 1.249 | 1.328 | 1.262 | 1.235 | 1.195 |
+| travel_day | q3 | 1.186 | inconclusive | 1.332 | 1.249 | 1.328 | 1.262 | 1.235 | 1.195 |
+| travel_day | q4 | 1.058 | equivalent | 1.332 | 1.249 | 1.328 | 1.262 | 1.235 | 1.195 |
+| travel_day | q5 | 1.020 | equivalent | 1.332 | 1.249 | 1.328 | 1.262 | 1.235 | 1.195 |
+| person | q1 | 1.112 | inconclusive | 1.508 | 1.407 | 1.488 | 1.424 | 1.235 | 1.195 |
+| person | q2 | 1.129 | inconclusive | 1.508 | 1.407 | 1.488 | 1.424 | 1.235 | 1.195 |
+| person | q3 | 1.188 | inconclusive | 1.508 | 1.407 | 1.488 | 1.424 | 1.235 | 1.195 |
+| person | q4 | 1.065 | equivalent | 1.508 | 1.407 | 1.488 | 1.424 | 1.235 | 1.195 |
+| person | q5 | 1.038 | equivalent | 1.508 | 1.407 | 1.488 | 1.424 | 1.235 | 1.195 |
 
 n is the unweighted count shown in each row; sources: ENTD 2008 and EMP 2019 cached scoped weekday tables, section 9.9.
 The ENTD 2008 documentation does not guarantee coverage beyond 80 km; observed coverage is similar (Scope section).
