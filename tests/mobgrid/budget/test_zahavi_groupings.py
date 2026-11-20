@@ -4,7 +4,7 @@ import duckdb
 import numpy as np
 import pytest
 import yaml
-from mobgrid.budget import modes_cache, scope
+from mobgrid.budget import emp2019, entd2008, modes_cache, scope
 from mobgrid.budget import zahavi_groupings as groupings
 from mobgrid.budget import zahavi_modes as modes
 
@@ -584,3 +584,25 @@ def test_summary_sorts_by_ratio_distance_and_suppresses_daytable():
     assert np.isnan(rows[2]["mean_abs_log_ratio"])
     assert np.isnan(rows[2]["ks_d"])
     assert "not compared" in rows[2]["status"]
+
+
+@pytest.mark.parametrize(
+    ("survey", "view"), [(entd2008, "q_tcm_menage"), (emp2019, "tcm_men")]
+)
+def test_harmonised_household_type_uses_documented_survey_codes(survey, view):
+    with duckdb.connect() as con:
+        con.execute(
+            f"""CREATE TABLE {view} AS SELECT * FROM (VALUES
+              ('h1','1'), ('h2','2'), ('h3','3'), ('h4','4'), ('h5','5'),
+              ('h6',NULL)
+            ) t(ident_men,typmen5)"""
+        )
+        actual = groupings.household_types(con, survey)
+    assert actual == {
+        "h1": "single_person",
+        "h2": "single_parent",
+        "h3": "couple",
+        "h4": "couple_with_children",
+        "h5": "other",
+        "h6": "unknown",
+    }

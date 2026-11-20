@@ -1,15 +1,18 @@
 """Grouping comparisons of daily travel time, section 9.9."""
 
 import logging
+import tempfile
 from dataclasses import dataclass
 from itertools import product
+from pathlib import Path
+from types import ModuleType
 from typing import Self
 
 import duckdb
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from mobgrid.budget import modes_cache
+from mobgrid.budget import emp2019, entd2008, modes_cache
 from mobgrid.budget import scope as scope_module
 from mobgrid.budget import variation_report as vr
 from mobgrid.budget import zahavi_income as income_module
@@ -20,6 +23,14 @@ LOGGER = logging.getLogger(__name__)
 DAYTABLE_STATUS = (
     "ENTD 2008 day-table coverage beyond 80 km not established; not compared"
 )
+
+HOUSEHOLD_TYPE_CODES = {
+    "1": "single_person",
+    "2": "single_parent",
+    "3": "couple",
+    "4": "couple_with_children",
+    "5": "other",
+}
 
 
 class OrderedDimension(BaseModel):
@@ -102,6 +113,72 @@ class GroupingResult:
     partition: PreparedGrouping
     cells: list[dict]
     summary: dict
+
+
+def household_types(
+    con: duckdb.DuckDBPyConnection, survey: ModuleType
+) -> dict[str, str]:
+    """Map the surveys' common documented TYPMEN5 household codes."""
+    if survey is entd2008:
+        table = "q_tcm_menage"
+    elif survey is emp2019:
+        table = "tcm_men"
+    else:
+        raise ValueError(f"Unsupported survey: {survey.__name__}")
+    rows = con.execute(
+        f"SELECT trim(CAST(ident_men AS VARCHAR)), "
+        f"trim(CAST(typmen5 AS VARCHAR)) FROM {table}"
+    ).fetchall()
+    result: dict[str, str] = {}
+    unknown = 0
+    for ident, code in rows:
+        if not ident or ident in result:
+            raise ValueError("Missing or duplicate household identifier")
+        if code is None or code == "":
+            result[ident] = "unknown"
+            unknown += 1
+        elif code in HOUSEHOLD_TYPE_CODES:
+            result[ident] = HOUSEHOLD_TYPE_CODES[code]
+        else:
+            raise ValueError(f"Undocumented household type code {code!r}")
+    if unknown:
+        LOGGER.warning(
+            "%s: %d households have unknown type", survey.SURVEY_NAME, unknown
+        )
+    return result
+
+
+def extract_attributes(
+    survey: ModuleType,
+    source: Path,
+    scratch: Path,
+    *,
+    entd_cars: Path | None = None,
+) -> tuple[
+    dict[str, str], dict[str, str], income_module.HouseholdVehicles, dict[str, str]
+]:
+    """Reuse Z2's harmonised attributes and add common household type."""
+    if survey not in (emp2019, entd2008):
+        raise ValueError(f"Unsupported survey: {survey.__name__}")
+    if survey is entd2008 and entd_cars is None:
+        raise ValueError("ENTD household vehicle source is required")
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=scratch) as temporary:
+        root = Path(temporary)
+        paths = survey.extract_tables(source, root / "tables")
+        with duckdb.connect() as con:
+            survey.register_views(con, paths)
+            income, density = income_module.respondent_attributes(con, survey)
+            household_type = household_types(con, survey)
+            if survey is emp2019:
+                vehicles = income_module.emp_household_vehicles(con)
+            else:
+                if entd_cars is None:
+                    raise ValueError("ENTD household vehicle source is required")
+                vehicles = income_module.load_entd_household_vehicles(
+                    entd_cars, root / "cars"
+                )
+    return income, density, vehicles, household_type
 
 
 @dataclass(frozen=True)

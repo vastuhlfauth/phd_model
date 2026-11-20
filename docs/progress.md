@@ -2,6 +2,16 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Grouping report: household type verified (2026-11-20)
+
+- Both releases document the same `TYPMEN5` codes: 1 single person,
+  2 single parent, 3 couple without children, 4 couple with children,
+  5 other/complex. Added the source entries to both dataset notes and a
+  tested mapping on the existing household views. The earlier label
+  verification open point is resolved.
+- Synthetic grouping tests: 23 passed; changed-file Ruff passed. The report
+  and CLI are not yet wired; no real-data report ran.
+
 ### Grouping report: cross-scope summary rows (2026-11-20)
 
 - Added one summary row per scope and grouping, sorted within scope by the
