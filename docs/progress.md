@@ -2,6 +2,24 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Grouping report: incomplete synthetic groundwork (2026-11-20)
+
+- Added ordered-neighbour configuration and a full-sample merge helper that
+  leaves nominal dimensions untouched. Added weighted eta-squared and a
+  fixed-cell distribution helper with a parent fallback for cells absent in
+  2008; an empty bootstrap cell does not trigger a new fallback.
+- The report, survey joins, all-scope calculations, confidence intervals,
+  per-mode model, CSVs, checkpointing and CLI remain unimplemented. The
+  module exits with an error if run as a report. No real-data report ran.
+- User decision: include all eight scopes; for the four day-table scopes show
+  within-year results only, suppressing cross-year comparisons because ENTD
+  coverage beyond 80 km is not established. Exclude unknown population
+  category from category partitions and report its weight share. Never merge
+  nominal levels; retain unresolved small cells in calculations, hide their
+  published levels, and disclose parent fallback shares.
+- Synthetic grouping tests and changed-file Ruff were run; see the task
+  report for their results. Runtime for the unimplemented report is unknown.
+
 ### Zahavi income correction: zero vehicles, joint cells and income shares
 
 - EMP households with `JNBVEH = 0` are classified as zero even when the
