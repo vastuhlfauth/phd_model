@@ -5,8 +5,15 @@ from dataclasses import dataclass
 from itertools import product
 from typing import Self
 
+import duckdb
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
+
+from mobgrid.budget import modes_cache
+from mobgrid.budget import scope as scope_module
+from mobgrid.budget import variation_report as vr
+from mobgrid.budget import zahavi_income as income_module
+from mobgrid.budget import zahavi_modes as modes
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +63,409 @@ class FixedDistribution:
     values: np.ndarray
     weights: np.ndarray
     fallback_share: float
+
+
+@dataclass(frozen=True)
+class GroupingDays:
+    """Scoped travel days, survey weights and grouping attributes, section 9.9."""
+
+    person: np.ndarray
+    household: np.ndarray
+    weights: np.ndarray
+    minutes: np.ndarray
+    attributes: dict[str, np.ndarray]
+
+
+@dataclass(frozen=True)
+class PreparedGrouping:
+    """Fixed partition and its full-sample merge audit, section 9.9."""
+
+    a: GroupingDays
+    b: GroupingDays
+    cells_a: np.ndarray
+    cells_b: np.ndarray
+    parents_a: np.ndarray
+    parents_b: np.ndarray
+    excluded_share_2008: float
+    excluded_share_2019: float
+    merges: list[tuple[str, str]]
+
+
+@dataclass(frozen=True)
+class GroupingResult:
+    """Prepared partition, cell rows and statistics, section 9.9."""
+
+    partition: PreparedGrouping
+    cells: list[dict]
+    summary: dict
+
+
+def read_grouping_days(
+    cache: modes_cache.SurveyCache,
+    selected: scope_module.Scope,
+    *,
+    income: dict[str, str],
+    density: dict[str, str],
+    vehicles: dict[str, str],
+    household_type: dict[str, str] | None = None,
+) -> GroupingDays:
+    """Read cached scoped weekdays with trips; minutes are per day, section 9.9."""
+    with duckdb.connect() as con:
+        rows = con.execute(
+            """WITH purpose AS (
+                SELECT day_id,
+                    bool_or(motive = 1.4 OR (motive >= 9 AND motive < 10)) AS work,
+                    count(*) FILTER (WHERE motive IS NULL) AS missing
+                FROM read_parquet(?) GROUP BY day_id
+            )
+            SELECT trim(CAST(d.ident_ind AS VARCHAR)) AS person,
+                trim(CAST(d.ident_men AS VARCHAR)) AS household,
+                d.pond_jour AS weight, d.total_time_min AS minutes,
+                coalesce(CAST(d.age_band AS VARCHAR), 'unknown') AS age_band,
+                coalesce(d.population_category, 'unknown') AS population,
+                d.income_quintile AS income,
+                coalesce(d.day_mode_group, 'unknown') AS day_mode_group,
+                p.day_id IS NULL AS missing_trips,
+                CASE WHEN p.work THEN 'work_study'
+                     WHEN p.missing > 0 THEN 'unknown'
+                     ELSE 'other' END AS day_purpose
+            FROM read_parquet(?) d LEFT JOIN purpose p ON p.day_id = d.day_id
+            ORDER BY d.day_id""",
+            [str(cache.trips(selected)), str(cache.days(selected))],
+        ).fetchnumpy()
+    rows = {key: vr._plain_array(value) for key, value in rows.items()}
+    if np.any(rows["missing_trips"]):
+        raise ValueError(
+            f"{np.sum(rows['missing_trips'])} days have missing scoped trips"
+        )
+    person = vr._text_values(rows["person"])
+    household = vr._text_values(rows["household"])
+    quintile = income_module._mapped_values(person, income, "Income")
+    if np.any(quintile != vr._text_values(rows["income"])):
+        raise ValueError("Reconstructed income differs from scoped cache")
+    attributes = {
+        "population": vr._text_values(rows["population"]),
+        "age_band": vr._text_values(rows["age_band"]),
+        "density": income_module._mapped_values(person, density, "Residence density"),
+        "income": quintile,
+        "vehicles": income_module._mapped_values(household, vehicles, "Vehicles"),
+        "day_purpose": vr._text_values(rows["day_purpose"]),
+        "day_mode_group": vr._text_values(rows["day_mode_group"]),
+    }
+    if household_type is not None:
+        attributes["household_type"] = income_module._mapped_values(
+            household, household_type, "Household type"
+        )
+    return GroupingDays(
+        person,
+        household,
+        np.asarray(rows["weight"], dtype=float),
+        np.asarray(rows["minutes"], dtype=float),
+        attributes,
+    )
+
+
+def grouping_catalog(*, household_type_available: bool) -> dict[str, tuple[str, ...]]:
+    """Requested travel-day partitions, section 9.9."""
+    catalog = {
+        "none": (),
+        "category": ("population",),
+        "age_band": ("age_band",),
+        "density": ("density",),
+        "income": ("income",),
+        "vehicles": ("vehicles",),
+        "day_purpose": ("day_purpose",),
+        "day_mode_group": ("day_mode_group",),
+        "day_mode_group_x_density": ("day_mode_group", "density"),
+        "day_mode_group_x_category": ("day_mode_group", "population"),
+        "day_mode_group_x_income": ("day_mode_group", "income"),
+        "day_mode_group_x_vehicles": ("day_mode_group", "vehicles"),
+        "category_x_density_x_income": ("population", "density", "income"),
+    }
+    if household_type_available:
+        catalog["household_type"] = ("household_type",)
+    return catalog
+
+
+def prepare_grouping(
+    a: GroupingDays,
+    b: GroupingDays,
+    dimensions: tuple[str, ...],
+    *,
+    config: MergeConfig,
+    minimum_n: int,
+) -> PreparedGrouping:
+    """Build a partition with full-sample ordered merges, section 9.9."""
+    samples = []
+    excluded = []
+    matrices = []
+    for sample in (a, b):
+        if any(name not in sample.attributes for name in dimensions):
+            raise ValueError(f"Missing grouping attributes for {dimensions}")
+        if any(
+            len(sample.attributes[name]) != len(sample.person) for name in dimensions
+        ):
+            raise ValueError("Grouping attributes must match the travel-day rows")
+        keep = np.ones(len(sample.person), dtype=bool)
+        if "population" in dimensions:
+            keep &= sample.attributes["population"] != "unknown"
+        total = sample.weights.sum()
+        if total <= 0 or not keep.any():
+            raise ValueError("Grouping has no positive retained survey support")
+        excluded.append(float(sample.weights[~keep].sum() / total))
+        filtered = GroupingDays(
+            sample.person[keep],
+            sample.household[keep],
+            sample.weights[keep],
+            sample.minutes[keep],
+            {name: values[keep] for name, values in sample.attributes.items()},
+        )
+        samples.append(filtered)
+        matrix = (
+            np.column_stack(
+                [filtered.attributes[name].astype(str) for name in dimensions]
+            )
+            if dimensions
+            else np.full((len(filtered.person), 1), "all")
+        )
+        if np.any(matrix == "") or np.any(np.char.find(matrix, "|") >= 0):
+            raise ValueError("Grouping labels must be nonempty and cannot contain '|'")
+        matrices.append(matrix)
+    mapping = merge_cells(
+        matrices[0],
+        samples[0].person,
+        matrices[1],
+        samples[1].person,
+        dimensions=dimensions if dimensions else ("all",),
+        config=config,
+        minimum_n=minimum_n,
+    )
+    labels = []
+    parents = []
+    for matrix in matrices:
+        unique, inverse = np.unique(matrix, axis=0, return_inverse=True)
+        targets = [mapping[tuple(row)] for row in unique]
+        labels.append(np.array(["|".join(target) for target in targets])[inverse])
+        parents.append(
+            np.array(
+                [target[0] if len(dimensions) > 1 else "all" for target in targets]
+            )[inverse]
+        )
+    merges = sorted(
+        ("|".join(original), "|".join(target))
+        for original, target in mapping.items()
+        if original != target
+    )
+    return PreparedGrouping(
+        samples[0],
+        samples[1],
+        labels[0],
+        labels[1],
+        parents[0],
+        parents[1],
+        excluded[0],
+        excluded[1],
+        merges,
+    )
+
+
+def _percentile_interval(values: np.ndarray, *, confidence: int) -> tuple[float, float]:
+    valid = values[np.isfinite(values)]
+    if not len(values) or len(valid) < np.ceil(0.95 * len(values)):
+        LOGGER.warning(
+            "Only %d of %d bootstrap draws are valid", len(valid), len(values)
+        )
+        return float("nan"), float("nan")
+    tail = (100 - confidence) / 2
+    low, high = np.percentile(valid, [tail, 100 - tail])
+    return float(low), float(high)
+
+
+def grouping_statistics(
+    a: GroupingDays,
+    b: GroupingDays,
+    cells_a: np.ndarray,
+    cells_b: np.ndarray,
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    minimum_n: int,
+    margins: tuple[float, float],
+    compare: bool,
+) -> tuple[list[dict], dict]:
+    """Cell levels, eta-squared and pooled temporal stability, section 9.9."""
+    if minimum_n <= 0 or len(draws_a.multipliers) != len(draws_b.multipliers):
+        raise ValueError("Invalid threshold or mismatched household draws")
+    labels = np.union1d(cells_a, cells_b)
+    if not len(labels):
+        raise ValueError("Grouping has no observations")
+    estimates = []
+    for sample, cells, draws in ((a, cells_a, draws_a), (b, cells_b, draws_b)):
+        if (
+            cells.ndim != 1
+            or len(cells) != len(sample.person)
+            or len(cells) != len(sample.household)
+            or len(cells) != len(sample.weights)
+            or len(cells) != len(sample.minutes)
+            or not len(cells)
+            or not np.all(np.isfinite(sample.minutes))
+            or not np.all(np.isfinite(sample.weights))
+            or np.any(sample.weights <= 0)
+        ):
+            raise ValueError("Invalid grouped travel-day observations")
+        codes = np.searchsorted(labels, cells)
+        counts = np.array(
+            [
+                len(np.unique(sample.person[codes == index]))
+                for index in range(len(labels))
+            ]
+        )
+        observation = modes.Observations(
+            sample.minutes, sample.weights, sample.household
+        )
+
+        def weighted_means(weights: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            totals = np.bincount(codes, weights=weights, minlength=len(labels))
+            sums = np.bincount(
+                codes, weights=weights * sample.minutes, minlength=len(labels)
+            )
+            means = np.divide(
+                sums, totals, out=np.full(len(labels), np.nan), where=totals > 0
+            )
+            return means, totals
+
+        means, totals = weighted_means(sample.weights)
+        rep_means = np.full((len(draws.multipliers), len(labels)), np.nan)
+        eta_draws = np.full(len(draws.multipliers), np.nan)
+        for rep in range(len(draws.multipliers)):
+            weights = draws.weights(observation, rep)
+            rep_means[rep], _ = weighted_means(weights)
+            if weights.sum() > 0:
+                eta_draws[rep] = weighted_eta_squared(sample.minutes, weights, cells)
+        eta = weighted_eta_squared(sample.minutes, sample.weights, cells)
+        eta_low, eta_high = _percentile_interval(eta_draws, confidence=95)
+        estimates.append(
+            (counts, means, totals / totals.sum(), rep_means, eta, eta_low, eta_high)
+        )
+
+    counts_a, means_a, shares_a, reps_a, eta_a, eta_a_low, eta_a_high = estimates[0]
+    counts_b, means_b, shares_b, reps_b, eta_b, eta_b_low, eta_b_high = estimates[1]
+    rows = []
+    pooled = (shares_a + shares_b) / 2
+    logs = np.full(len(labels), np.nan)
+    equivalent_10 = np.zeros(len(labels), dtype=bool)
+    equivalent_15 = np.zeros(len(labels), dtype=bool)
+    for index, label in enumerate(labels):
+        valid_level_a = counts_a[index] >= minimum_n
+        valid_level_b = counts_b[index] >= minimum_n
+        ratio = low = high = np.nan
+        verdict_10 = verdict_15 = ""
+        if compare and means_a[index] > 0 and means_b[index] > 0:
+            ratio = means_b[index] / means_a[index]
+            logs[index] = abs(np.log(ratio))
+            replicates = np.divide(
+                reps_b[:, index],
+                reps_a[:, index],
+                out=np.full(len(reps_a), np.nan),
+                where=reps_a[:, index] > 0,
+            )
+            low, high = _percentile_interval(replicates, confidence=90)
+            if np.isfinite(low) and np.isfinite(high):
+                verdict_15 = vr._equivalence_verdict((low, high), margins[0])
+                verdict_10 = vr._equivalence_verdict((low, high), margins[1])
+                equivalent_10[index] = verdict_10 == "equivalent"
+                equivalent_15[index] = verdict_15 == "equivalent"
+        visible = valid_level_a and valid_level_b
+        rows.append(
+            {
+                "cell": str(label),
+                "n_2008": int(counts_a[index]),
+                "n_2019": int(counts_b[index]),
+                "mean_2008": means_a[index] if valid_level_a else np.nan,
+                "mean_2019": means_b[index] if valid_level_b else np.nan,
+                "share_2008": shares_a[index] if valid_level_a else np.nan,
+                "share_2019": shares_b[index] if valid_level_b else np.nan,
+                "ratio": ratio if visible else np.nan,
+                "ratio_ci_low": low if visible else np.nan,
+                "ratio_ci_high": high if visible else np.nan,
+                "verdict_10": verdict_10 if visible else "",
+                "verdict_15": verdict_15 if visible else "",
+            }
+        )
+    complete = compare and np.all(np.isfinite(logs))
+    if compare and not complete:
+        LOGGER.warning(
+            "Temporal log-ratio statistics have cells without positive means"
+        )
+    summary = {
+        "eta2_2008": eta_a,
+        "eta2_2008_low": eta_a_low,
+        "eta2_2008_high": eta_a_high,
+        "eta2_2019": eta_b,
+        "eta2_2019_low": eta_b_low,
+        "eta2_2019_high": eta_b_high,
+        "mean_abs_log_ratio": float(np.dot(pooled, logs)) if complete else np.nan,
+        "max_abs_log_ratio": float(np.max(logs)) if complete else np.nan,
+        "equivalent_10_share": float(np.dot(pooled, equivalent_10))
+        if compare
+        else np.nan,
+        "equivalent_15_share": float(np.dot(pooled, equivalent_15))
+        if compare
+        else np.nan,
+        "n_cells": len(labels),
+    }
+    return rows, summary
+
+
+def evaluate_groupings(
+    a: GroupingDays,
+    b: GroupingDays,
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    selected: scope_module.Scope,
+    config: MergeConfig,
+    minimum_n: int,
+    margins: tuple[float, float],
+    timings: dict[str, float],
+) -> dict[str, GroupingResult]:
+    """Evaluate every available grouping on one scope, section 9.9."""
+    has_type = "household_type" in a.attributes and "household_type" in b.attributes
+    if ("household_type" in a.attributes) != ("household_type" in b.attributes):
+        LOGGER.warning("Household type is unavailable for one survey")
+    results = {}
+    for name, dimensions in grouping_catalog(household_type_available=has_type).items():
+        with modes._timed(timings, f"{selected.id} {name} cells"):
+            partition = prepare_grouping(
+                a, b, dimensions, config=config, minimum_n=minimum_n
+            )
+            cells, summary = grouping_statistics(
+                partition.a,
+                partition.b,
+                partition.cells_a,
+                partition.cells_b,
+                draws_a,
+                draws_b,
+                minimum_n=minimum_n,
+                margins=margins,
+                compare=selected.distance != "daytable",
+            )
+        status = (
+            "ENTD 2008 day-table coverage beyond 80 km not established; not compared"
+            if selected.distance == "daytable"
+            else ""
+        )
+        summary.update(
+            scope=selected.id,
+            grouping=name,
+            status=status,
+            excluded_share_2008=partition.excluded_share_2008,
+            excluded_share_2019=partition.excluded_share_2019,
+        )
+        for row in cells:
+            row.update(scope=selected.id, grouping=name, status=status)
+        results[name] = GroupingResult(partition, cells, summary)
+    return results
 
 
 def fixed_cell_distribution(a: CellSample, b: CellSample) -> FixedDistribution:

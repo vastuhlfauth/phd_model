@@ -2,6 +2,20 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Grouping report: cell statistics groundwork (2026-11-20)
+
+- Added cached weekday travel-day loading, the requested partition catalogue,
+  fixed ordered-secondary merges, unknown-category exclusion shares, cell
+  levels and pooled stability, and household-bootstrap eta-squared intervals.
+  Day-table comparisons are suppressed and carry the agreed coverage warning.
+- Household-type categories remain unresolved: both survey household tables
+  have a `TYPMEN5` field, but its code labels have not yet been verified.
+  The loader accepts a verified mapping, but no mapping is inferred.
+- Cell calculations are not yet wired to CSV or report output. The fixed-cell
+  statistics, per-mode model, cross-scope summary, resumable CLI and report
+  remain incomplete. No real-data report ran.
+- Synthetic grouping tests: 13 passed; changed-file Ruff passed.
+
 ### Grouping report: incomplete synthetic groundwork (2026-11-20)
 
 - Added ordered-neighbour configuration and a full-sample merge helper that

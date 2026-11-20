@@ -1,8 +1,10 @@
 """Synthetic tests for the grouping report, section 9.9."""
 
+import duckdb
 import numpy as np
 import pytest
 import yaml
+from mobgrid.budget import modes_cache, scope
 from mobgrid.budget import zahavi_groupings as groupings
 from mobgrid.budget import zahavi_modes as modes
 
@@ -127,3 +129,204 @@ def test_empty_bootstrap_cell_does_not_change_the_full_sample_fallback():
     )
     with pytest.raises(ValueError, match="2008 bootstrap support"):
         groupings.fixed_cell_distribution(a, b)
+
+
+def test_grouping_statistics_keep_small_cells_and_hide_their_levels():
+    a = groupings.GroupingDays(
+        person=np.array(["p1", "p2", "p3"]),
+        household=np.array(["h1", "h2", "h3"]),
+        weights=np.ones(3),
+        minutes=np.array([10.0, 30.0, 80.0]),
+        attributes={"population": np.array(["employed", "employed", "retired"])},
+    )
+    b = groupings.GroupingDays(
+        person=a.person,
+        household=a.household,
+        weights=np.ones(3),
+        minutes=np.array([10.0, 30.0, 80.0]),
+        attributes=a.attributes,
+    )
+    draws = modes.Draws(
+        households=np.array(["h1", "h2", "h3"]),
+        multipliers=np.ones((20, 3)),
+        seed=0,
+    )
+    rows, summary = groupings.grouping_statistics(
+        a,
+        b,
+        np.array(["employed", "employed", "retired"]),
+        np.array(["employed", "employed", "retired"]),
+        draws,
+        draws,
+        minimum_n=2,
+        margins=(0.15, 0.10),
+        compare=True,
+    )
+    assert rows[0]["mean_2008"] == pytest.approx(20.0)
+    assert rows[1]["n_2008"] == 1
+    assert np.isnan(rows[1]["mean_2008"])
+    assert summary["eta2_2008"] == pytest.approx(12 / 13)
+    assert summary["mean_abs_log_ratio"] == pytest.approx(0)
+    assert summary["equivalent_10_share"] == pytest.approx(1)
+
+
+def test_daytable_grouping_suppresses_every_cross_year_value():
+    day = groupings.GroupingDays(
+        person=np.array(["p1", "p2"]),
+        household=np.array(["h1", "h2"]),
+        weights=np.ones(2),
+        minutes=np.array([10.0, 30.0]),
+        attributes={},
+    )
+    draws = modes.Draws(households=day.household, multipliers=np.ones((20, 2)), seed=0)
+    rows, summary = groupings.grouping_statistics(
+        day,
+        day,
+        np.array(["all", "all"]),
+        np.array(["all", "all"]),
+        draws,
+        draws,
+        minimum_n=1,
+        margins=(0.15, 0.10),
+        compare=False,
+    )
+    assert rows[0]["mean_2008"] == pytest.approx(20.0)
+    assert rows[0]["mean_2019"] == pytest.approx(20.0)
+    assert np.isnan(rows[0]["ratio"])
+    assert rows[0]["verdict_10"] == ""
+    assert np.isnan(summary["mean_abs_log_ratio"])
+    assert np.isnan(summary["equivalent_10_share"])
+    assert summary["eta2_2008"] == pytest.approx(0)
+
+
+def test_category_grouping_excludes_unknown_and_preserves_weight_share(merge_config):
+    a = groupings.GroupingDays(
+        person=np.array(["p1", "p2", "p3"]),
+        household=np.array(["h1", "h2", "h3"]),
+        weights=np.array([1.0, 2.0, 1.0]),
+        minutes=np.array([10.0, 20.0, 30.0]),
+        attributes={
+            "population": np.array(["employed", "employed", "unknown"]),
+            "density": np.array(["dense", "intermediate", "sparse"]),
+            "income": np.array(["q1", "q1", "q2"]),
+        },
+    )
+    grouping = groupings.prepare_grouping(
+        a,
+        a,
+        ("population", "density", "income"),
+        config=merge_config,
+        minimum_n=2,
+    )
+    assert grouping.excluded_share_2008 == pytest.approx(0.25)
+    assert grouping.excluded_share_2019 == pytest.approx(0.25)
+    assert len(grouping.a.minutes) == 2
+    assert len(np.unique(grouping.cells_a)) == 1
+    assert set(grouping.parents_a) == {"employed"}
+    assert grouping.merges
+
+
+def test_grouping_catalog_has_each_requested_partition():
+    catalog = groupings.grouping_catalog(household_type_available=False)
+    assert len(catalog) == 13
+    assert catalog["day_mode_group_x_category"] == ("day_mode_group", "population")
+    assert catalog["category_x_density_x_income"] == (
+        "population",
+        "density",
+        "income",
+    )
+    assert "household_type" not in catalog
+    assert "household_type" in groupings.grouping_catalog(household_type_available=True)
+
+
+def test_grouping_days_read_only_scoped_cache_and_harmonised_attributes(tmp_path):
+    cache = modes_cache.SurveyCache(tmp_path)
+    with duckdb.connect() as con:
+        con.execute(
+            """COPY (SELECT * FROM (VALUES
+              ('d1','p1','h1',2.0,30.0,'30','employed','q1','car_driver'),
+              ('d2','p2','h2',1.0,10.0,'60','retired','q2','walking_only')
+            ) t(day_id,ident_ind,ident_men,pond_jour,total_time_min,age_band,
+                population_category,income_quintile,day_mode_group))
+            TO ? (FORMAT PARQUET)""",
+            [str(cache.days(scope.REFERENCE_SCOPE))],
+        )
+        con.execute(
+            """COPY (SELECT * FROM (VALUES
+              ('d1',9.1), ('d1',2.1), ('d2',2.1)
+            ) t(day_id,motive))
+            TO ? (FORMAT PARQUET)""",
+            [str(cache.trips(scope.REFERENCE_SCOPE))],
+        )
+    sample = groupings.read_grouping_days(
+        cache,
+        scope.REFERENCE_SCOPE,
+        income={"p1": "q1", "p2": "q2"},
+        density={"p1": "dense", "p2": "sparse"},
+        vehicles={"h1": "1", "h2": "0"},
+    )
+    assert sample.attributes["day_purpose"].tolist() == ["work_study", "other"]
+    assert sample.attributes["age_band"].tolist() == ["30", "60"]
+    assert sample.attributes["vehicles"].tolist() == ["1", "0"]
+    assert sample.minutes.tolist() == [30, 10]
+
+
+def test_missing_cached_trips_do_not_silently_remove_a_day(tmp_path):
+    cache = modes_cache.SurveyCache(tmp_path)
+    with duckdb.connect() as con:
+        con.execute(
+            """COPY (SELECT 'd1' day_id, 'p1' ident_ind, 'h1' ident_men,
+              1.0 pond_jour, 10.0 total_time_min, '30' age_band,
+              'employed' population_category, 'q1' income_quintile,
+              'walking_only' day_mode_group)
+            TO ? (FORMAT PARQUET)""",
+            [str(cache.days(scope.REFERENCE_SCOPE))],
+        )
+        con.execute(
+            """COPY (SELECT 'other' day_id, 2.1 motive)
+            TO ? (FORMAT PARQUET)""",
+            [str(cache.trips(scope.REFERENCE_SCOPE))],
+        )
+    with pytest.raises(ValueError, match="missing scoped trips"):
+        groupings.read_grouping_days(
+            cache,
+            scope.REFERENCE_SCOPE,
+            income={"p1": "q1"},
+            density={"p1": "dense"},
+            vehicles={"h1": "0"},
+        )
+
+
+def test_scope_evaluation_has_all_partitions_and_suppresses_daytable(merge_config):
+    a = groupings.GroupingDays(
+        person=np.array(["p1", "p2"]),
+        household=np.array(["h1", "h2"]),
+        weights=np.ones(2),
+        minutes=np.array([10.0, 30.0]),
+        attributes={
+            "population": np.array(["employed", "retired"]),
+            "age_band": np.array(["30", "60"]),
+            "density": np.array(["dense", "sparse"]),
+            "income": np.array(["q1", "q5"]),
+            "vehicles": np.array(["1", "0"]),
+            "day_purpose": np.array(["work_study", "other"]),
+            "day_mode_group": np.array(["car_driver", "walking_only"]),
+        },
+    )
+    draws = modes.Draws(a.household, np.ones((20, 2)), seed=0)
+    selected = scope.Scope.parse("round-dest-daytable")
+    result = groupings.evaluate_groupings(
+        a,
+        a,
+        draws,
+        draws,
+        selected=selected,
+        config=merge_config,
+        minimum_n=1,
+        margins=(0.15, 0.10),
+        timings={},
+    )
+    assert len(result) == 13
+    assert all(item.summary["scope"] == selected.id for item in result.values())
+    assert all(np.isnan(item.summary["mean_abs_log_ratio"]) for item in result.values())
+    assert all("not compared" in item.summary["status"] for item in result.values())
