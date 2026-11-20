@@ -2,6 +2,27 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Mode-cell report: per-mode B2 and rounding (2026-11-20)
+
+- Added per-mode user-day B2 decomposition with shared household-bootstrap
+  95% intervals, keeping the distance-selection term separate. The published
+  variant reads `distance_km_declared` from reconstructed step-11 trip legs,
+  not the speed-corrected Z1 cache. The alternative uses 2008 crow-fly km and
+  2019 crow-fly km rounded to whole kilometres.
+- Added C4 row-a nearest/up duration-rounding extrema per mode-user day.
+  Missing 2019 duration cells are flagged and their 2008 trip-weight share
+  recorded; these bounds are incomplete. Day-table comparisons are suppressed.
+- Synthetic timing: 500 days, two modes and 20 household draws across eight
+  scopes took 0.328 s for decomposition and rounding, excluding source
+  reconstruction and all other stages. Timing is logged per scope and stage.
+- Clarification for the subgroup stage: its cached `distance_km` comes from
+  step 11 and includes speed corrections; its output labels that source.
+  The published-distance B2 variant above deliberately uses the reconstructed
+  uncorrected producer value instead.
+- Remaining: both-rate energy and collapse tests; build/reuse trip-leg
+  reconstruction safely and connect all stages to resumable CLI/report,
+  six CSVs and Markdown. No real-data report or data write was run.
+
 ### Mode-cell report: mode-user reweighting (2026-11-20)
 
 - Added mode-specific 2019-to-2008 joint reweighting, with independently

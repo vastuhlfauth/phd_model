@@ -8,7 +8,7 @@ from dataclasses import dataclass, fields
 import duckdb
 import numpy as np
 
-from mobgrid.budget import modes_cache, scope
+from mobgrid.budget import modes_cache, scope, variation
 from mobgrid.budget import variation_report as vr
 from mobgrid.budget import zahavi_groupings as groupings
 from mobgrid.budget import zahavi_income as income_module
@@ -65,7 +65,9 @@ def aggregate_mode_days(
     if not len(day):
         raise ValueError("Trip columns must not be empty")
     day, mode, household = (
-        _text(day, "day"), _text(mode, "mode"), _text(household, "household")
+        _text(day, "day"),
+        _text(mode, "mode"),
+        _text(household, "household"),
     )
     weight, minutes, distance_km, energy_kj = (
         np.asarray(column, dtype=float)
@@ -82,9 +84,7 @@ def aggregate_mode_days(
         or np.any(energy_kj < 0)
     ):
         raise ValueError("Invalid trip weights, minutes, distance or energy")
-    _, day_first, day_inverse = np.unique(
-        day, return_index=True, return_inverse=True
-    )
+    _, day_first, day_inverse = np.unique(day, return_index=True, return_inverse=True)
     if np.any(weight != weight[day_first][day_inverse]):
         raise ValueError("A day has inconsistent trip weights")
     if np.any(household != household[day_first][day_inverse]):
@@ -155,8 +155,10 @@ def reweight_to_target(
     if np.any((target > 0) & (source == 0)):
         raise ValueError("A target joint cell lacks source support")
     factors = np.divide(
-        target / target.sum(), source / source.sum(),
-        out=np.zeros(size), where=source > 0,
+        target / target.sum(),
+        source / source.sum(),
+        out=np.zeros(size),
+        where=source > 0,
     )
     return source_weight * factors[source_index]
 
@@ -220,8 +222,11 @@ def read_mode_cell_data(
     ):
         raise ValueError("A day has inconsistent respondent attributes")
     days = aggregate_mode_days(
-        day=trips["day_id"], mode=trips["mode7"], household=trips["household"],
-        weight=trips["pond_jour"], minutes=trips["duration_min"],
+        day=trips["day_id"],
+        mode=trips["mode7"],
+        household=trips["household"],
+        weight=trips["pond_jour"],
+        minutes=trips["duration_min"],
         distance_km=trips["distance_km"],
         energy_kj=np.full(len(trips["day_id"]), np.nan),
     )
@@ -282,7 +287,8 @@ def _mode_level(
     known_trips = float(np.dot(weight, days.distance_trips[mask]))
     km = (
         float(np.dot(weight, days.distance_km[mask]) / total)
-        if known_trips > 0 else np.nan
+        if known_trips > 0
+        else np.nan
     )
     known_time = float(np.dot(weight, days.distance_minutes[mask]) / total)
     speed = 60 * km / known_time if known_time > 0 else np.nan
@@ -297,7 +303,14 @@ def _gap_split(
     time_a, distance_a, speed_a, known_a = national
     time_b, distance_b, speed_b, known_b = subgroup
     values = (
-        time_a, time_b, distance_a, distance_b, speed_a, speed_b, known_a, known_b
+        time_a,
+        time_b,
+        distance_a,
+        distance_b,
+        speed_a,
+        speed_b,
+        known_a,
+        known_b,
     )
     if not all(np.isfinite(value) and value > 0 for value in values):
         return (np.nan, np.nan, np.nan)
@@ -351,6 +364,7 @@ def mode_cell_statistics(
             "scope": selected.id,
             "mode": str(mode_names[0]),
             "cell": str(label),
+            "distance_source": "step11_speed_corrected",
             "comparison_status": (
                 groupings.DAYTABLE_STATUS if selected.distance == "daytable" else ""
             ),
@@ -372,8 +386,11 @@ def mode_cell_statistics(
             share = known_trips / all_trips if all_trips > 0 else np.nan
             row[f"distance_trip_share_{year}"] = share if visible else np.nan
             row[f"distance_status_{year}"] = (
-                "unavailable" if not visible or known_trips == 0 else
-                "incomplete" if known_trips < all_trips else "complete"
+                "unavailable"
+                if not visible or known_trips == 0
+                else "incomplete"
+                if known_trips < all_trips
+                else "complete"
             )
             all_days = np.ones(len(days.day), dtype=bool)
 
@@ -386,7 +403,8 @@ def mode_cell_statistics(
                 full = modes.Observations(days.minutes, weights, days.household)
                 ks = (
                     modes.weighted_ks(subgroup, full)
-                    if weights[mask].sum() > 0 else np.nan
+                    if weights[mask].sum() > 0
+                    else np.nan
                 )
                 return np.array([*level[:3], ks, *_gap_split(national, level)])
 
@@ -399,8 +417,15 @@ def mode_cell_statistics(
             means.append(point[0])
             replicate_means.append(replicas[:, 0])
             for column, value, replicate in zip(
-                ("minutes", "km", "speed", "ks", "distance_gap", "speed_gap",
-                 "selection_gap"),
+                (
+                    "minutes",
+                    "km",
+                    "speed",
+                    "ks",
+                    "distance_gap",
+                    "speed_gap",
+                    "selection_gap",
+                ),
                 point,
                 replicas.T,
                 strict=True,
@@ -413,8 +438,13 @@ def mode_cell_statistics(
                 )
                 row[f"{column}_{year}_low"] = low
                 row[f"{column}_{year}_high"] = high
-        row.update(ratio=np.nan, ratio_low=np.nan, ratio_high=np.nan,
-                   verdict_15="", verdict_10="")
+        row.update(
+            ratio=np.nan,
+            ratio_low=np.nan,
+            ratio_high=np.nan,
+            verdict_15="",
+            verdict_10="",
+        )
         if (
             selected.distance != "daytable"
             and min(row["n_2008"], row["n_2019"]) >= minimum_n
@@ -422,7 +452,8 @@ def mode_cell_statistics(
             and means[1] > 0
         ):
             ratios = np.divide(
-                replicate_means[1], replicate_means[0],
+                replicate_means[1],
+                replicate_means[0],
                 out=np.full(len(replicate_means[0]), np.nan),
                 where=replicate_means[0] > 0,
             )
@@ -457,8 +488,10 @@ def evaluate_mode_scope(
             for data in (a, b):
                 mask = data.days.mode == mode_name
                 subset = ModeDays(
-                    **{field.name: getattr(data.days, field.name)[mask]
-                       for field in fields(ModeDays)}
+                    **{
+                        field.name: getattr(data.days, field.name)[mask]
+                        for field in fields(ModeDays)
+                    }
                 )
                 samples.append(
                     ModeCellData(
@@ -470,14 +503,19 @@ def evaluate_mode_scope(
                     )
                 )
             for dimension in (
-                "density", "population", "income", "vehicles",
-                "household_type", "day_purpose",
+                "density",
+                "population",
+                "income",
+                "vehicles",
+                "household_type",
+                "day_purpose",
             ):
                 if any(dimension not in sample.attributes for sample in samples):
                     raise ValueError(f"Missing subgroup attribute {dimension}")
                 raw = [sample.attributes[dimension].astype(str) for sample in samples]
                 eligible = [
-                    labels != "unknown" if dimension == "population"
+                    labels != "unknown"
+                    if dimension == "population"
                     else np.ones(len(labels), dtype=bool)
                     for labels in raw
                 ]
@@ -487,9 +525,12 @@ def evaluate_mode_scope(
                 ]
                 if all(len(matrix) for matrix in matrices):
                     mapping = groupings.merge_cells(
-                        matrices[0], samples[0].days.day[eligible[0]],
-                        matrices[1], samples[1].days.day[eligible[1]],
-                        dimensions=("mode", dimension), config=merge_config,
+                        matrices[0],
+                        samples[0].days.day[eligible[0]],
+                        matrices[1],
+                        samples[1].days.day[eligible[1]],
+                        dimensions=("mode", dimension),
+                        config=merge_config,
                         minimum_n=minimum_n,
                     )
                     mapped = []
@@ -508,24 +549,33 @@ def evaluate_mode_scope(
                 estimates = mode_cell_statistics(
                     ModeCellSample(samples[0].days, mapped[0]),
                     ModeCellSample(samples[1].days, mapped[1]),
-                    draws_a, draws_b, selected=selected, minimum_n=minimum_n,
-                    caution_n=caution_n, margins=margins,
+                    draws_a,
+                    draws_b,
+                    selected=selected,
+                    minimum_n=minimum_n,
+                    caution_n=caution_n,
+                    margins=margins,
                 )
                 excluded = [
                     float(sample.days.weight[~mask].sum() / sample.days.weight.sum())
-                    if len(sample.days.weight) else np.nan
+                    if len(sample.days.weight)
+                    else np.nan
                     for sample, mask in zip(samples, eligible, strict=True)
                 ]
                 for row in estimates:
                     if dimension == "population" and row["cell"] == "unknown":
                         continue
                     row["grouping"] = dimension
-                    row["merged_from"] = "+".join(
-                        sorted(
-                            source[1] for source, target in mapping.items()
-                            if target[1] == row["cell"]
+                    row["merged_from"] = (
+                        "+".join(
+                            sorted(
+                                source[1]
+                                for source, target in mapping.items()
+                                if target[1] == row["cell"]
+                            )
                         )
-                    ) or row["cell"]
+                        or row["cell"]
+                    )
                     row["excluded_population_share_2008"] = excluded[0]
                     row["excluded_population_share_2019"] = excluded[1]
                     rows.append(row)
@@ -593,8 +643,10 @@ def mode_reweighting(
                 income = _text(data.attributes["income"], "income")
                 eligible = mode_mask & (population != "unknown") & (income != "unknown")
                 days = ModeDays(
-                    **{field.name: getattr(data.days, field.name)[eligible]
-                       for field in fields(ModeDays)}
+                    **{
+                        field.name: getattr(data.days, field.name)[eligible]
+                        for field in fields(ModeDays)
+                    }
                 )
                 matrix = np.column_stack(
                     [
@@ -607,36 +659,49 @@ def mode_reweighting(
                 all_weight = data.days.weight[mode_mask].sum()
                 excluded = (
                     float(data.days.weight[mode_mask & ~eligible].sum() / all_weight)
-                    if all_weight > 0 else np.nan
+                    if all_weight > 0
+                    else np.nan
                 )
                 prepared.append((days, matrix, _draw_weights(days, draws), excluded))
-            (days_a, matrix_a, weights_a, excluded_a), (
-                days_b, matrix_b, weights_b, excluded_b
+            (
+                (days_a, matrix_a, weights_a, excluded_a),
+                (days_b, matrix_b, weights_b, excluded_b),
             ) = prepared
             count_a, count_b = len(days_a.day), len(days_b.day)
             visible_a, visible_b = count_a >= minimum_n, count_b >= minimum_n
             row = {
-                "scope": selected.id, "mode": str(mode_name),
-                "n_2008": count_a, "n_2019": count_b,
+                "scope": selected.id,
+                "mode": str(mode_name),
+                "n_2008": count_a,
+                "n_2019": count_b,
                 "caution_2008": count_a < caution_n,
                 "caution_2019": count_b < caution_n,
-                "excluded_share_2008": excluded_a, "excluded_share_2019": excluded_b,
-                "mean_2008": np.nan, "mean_2019": np.nan,
-                "ratio_before": np.nan, "ratio_before_low": np.nan,
-                "ratio_before_high": np.nan, "ratio_after": np.nan,
-                "ratio_after_low": np.nan, "ratio_after_high": np.nan,
-                "lost_target_share": np.nan, "parent_fallback_share": np.nan,
-                "fixed_2008_mean": np.nan, "status": "",
+                "excluded_share_2008": excluded_a,
+                "excluded_share_2019": excluded_b,
+                "mean_2008": np.nan,
+                "mean_2019": np.nan,
+                "ratio_before": np.nan,
+                "ratio_before_low": np.nan,
+                "ratio_before_high": np.nan,
+                "ratio_after": np.nan,
+                "ratio_after_low": np.nan,
+                "ratio_after_high": np.nan,
+                "lost_target_share": np.nan,
+                "parent_fallback_share": np.nan,
+                "fixed_2008_mean": np.nan,
+                "status": "",
             }
             if count_a:
                 row["mean_2008"] = (
                     float(np.average(days_a.minutes, weights=days_a.weight))
-                    if visible_a else np.nan
+                    if visible_a
+                    else np.nan
                 )
             if count_b:
                 row["mean_2019"] = (
                     float(np.average(days_b.minutes, weights=days_b.weight))
-                    if visible_b else np.nan
+                    if visible_b
+                    else np.nan
                 )
             if selected.distance == "daytable":
                 row["status"] = groupings.DAYTABLE_STATUS
@@ -649,13 +714,19 @@ def mode_reweighting(
             joint_config = groupings.MergeConfig(
                 checkpoint_dir=merge_config.checkpoint_dir,
                 dimensions={
-                    name: rule for name, rule in merge_config.dimensions.items()
+                    name: rule
+                    for name, rule in merge_config.dimensions.items()
                     if name == "density"
                 },
             )
             mapping = groupings.merge_cells(
-                matrix_a, days_a.day, matrix_b, days_b.day,
-                dimensions=dimensions, config=joint_config, minimum_n=minimum_n,
+                matrix_a,
+                days_a.day,
+                matrix_b,
+                days_b.day,
+                dimensions=dimensions,
+                config=joint_config,
+                minimum_n=minimum_n,
             )
             combined = np.concatenate((matrix_a, matrix_b))
             original, inverse = np.unique(combined, axis=0, return_inverse=True)
@@ -665,8 +736,13 @@ def mode_reweighting(
             unique_labels, codes = np.unique(labels, return_inverse=True)
             codes_a, codes_b = codes[:count_a], codes[count_a:]
             point, lost = _target_mean(
-                codes_a, days_a.weight, codes_b, days_b.weight, days_b.minutes,
-                size=len(unique_labels), max_lost_share=max_lost_share,
+                codes_a,
+                days_a.weight,
+                codes_b,
+                days_b.weight,
+                days_b.minutes,
+                size=len(unique_labels),
+                max_lost_share=max_lost_share,
             )
             row["lost_target_share"] = lost
             observed_a = float(row["mean_2008"])
@@ -704,20 +780,28 @@ def mode_reweighting(
             for wa, wb in zip(weights_a, weights_b, strict=True):
                 mean_a = (
                     float(np.average(days_a.minutes, weights=wa))
-                    if wa.sum() else np.nan
+                    if wa.sum()
+                    else np.nan
                 )
                 mean_b = (
                     float(np.average(days_b.minutes, weights=wb))
-                    if wb.sum() else np.nan
+                    if wb.sum()
+                    else np.nan
                 )
                 adjusted, _ = _target_mean(
-                    codes_a, wa, codes_b, wb, days_b.minutes,
-                    size=len(unique_labels), max_lost_share=max_lost_share,
+                    codes_a,
+                    wa,
+                    codes_b,
+                    wb,
+                    days_b.minutes,
+                    size=len(unique_labels),
+                    max_lost_share=max_lost_share,
                 )
                 before.append(mean_b / mean_a if mean_a > 0 else np.nan)
                 after.append(adjusted / mean_a if mean_a > 0 else np.nan)
             for name, point_name, replicates in (
-                ("before", "ratio_before", before), ("after", "ratio_after", after)
+                ("before", "ratio_before", before),
+                ("after", "ratio_after", after),
             ):
                 if np.isfinite(row[point_name]):
                     low, high = groupings._percentile_interval(
@@ -725,6 +809,288 @@ def mode_reweighting(
                     )
                     row[f"ratio_{name}_low"] = low
                     row[f"ratio_{name}_high"] = high
+            rows.append(row)
+        return rows
+
+
+@dataclass(frozen=True)
+class ModeTrips:
+    """Scoped trips: durations in minutes and distances in km, section 9.9."""
+
+    day: np.ndarray
+    household: np.ndarray
+    mode: np.ndarray
+    weight: np.ndarray
+    minutes: np.ndarray
+    published_km: np.ndarray
+    crow_fly_km: np.ndarray
+
+
+def read_mode_trips(
+    con: duckdb.DuckDBPyConnection,
+    cache: modes_cache.SurveyCache,
+    selected: scope.Scope,
+) -> ModeTrips:
+    """Join scoped cached trips to reconstructed published distance, section 9.9.
+
+    ``trip_legs`` must have been reconstructed using the survey's step-11
+    formulas. The Z1 cache's corrected distance is not the published distance.
+    """
+    rows = con.execute(
+        """SELECT CAST(v.day_id AS VARCHAR) day_id,
+            CAST(v.ident_men AS VARCHAR) household, v.mode7, v.pond_jour,
+            v.duration_min, t.distance_km_declared, v.crow_fly_km,
+            count(t.day_id) OVER (PARTITION BY v.day_id, v.num_dep) matches
+        FROM read_parquet(?) v LEFT JOIN trip_legs t
+          ON t.day_id = v.day_id AND t.num_dep = v.num_dep""",
+        [str(cache.trips(selected))],
+    ).fetchnumpy()
+    rows = {name: vr._plain_array(value) for name, value in rows.items()}
+    if np.any(rows["matches"] != 1):
+        raise ValueError(
+            "Scoped cached trip does not match exactly one reconstructed trip"
+        )
+    return ModeTrips(
+        _text(rows["day_id"], "day"),
+        _text(rows["household"], "household"),
+        _text(rows["mode7"], "mode"),
+        np.asarray(rows["pond_jour"], dtype=float),
+        np.asarray(rows["duration_min"], dtype=float),
+        np.asarray(rows["distance_km_declared"], dtype=float),
+        np.asarray(rows["crow_fly_km"], dtype=float),
+    )
+
+
+def _mode_trip_days(
+    trips: ModeTrips, mode_name: str, distance: np.ndarray
+) -> ModeDays | None:
+    mask = trips.mode == mode_name
+    if not mask.any():
+        return None
+    km = np.asarray(distance[mask], dtype=float)
+    km = np.where(np.isfinite(km) & (km >= 0), km, np.nan)
+    return aggregate_mode_days(
+        day=trips.day[mask],
+        mode=trips.mode[mask],
+        household=trips.household[mask],
+        weight=trips.weight[mask],
+        minutes=trips.minutes[mask],
+        distance_km=km,
+        energy_kj=np.full(int(mask.sum()), np.nan),
+    )
+
+
+def _person_days(days: ModeDays, weight: np.ndarray) -> variation.PersonDays:
+    return variation.PersonDays(
+        weight=weight,
+        trips=days.trips,
+        distance_km=days.distance_km,
+        time_min=days.minutes,
+        household=days.household,
+        distance_trips=days.distance_trips,
+        distance_time_min=days.distance_minutes,
+    )
+
+
+def mode_decompositions(
+    a: ModeTrips,
+    b: ModeTrips,
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    selected: scope.Scope,
+    minimum_n: int,
+    caution_n: int,
+    timings: dict[str, float] | None = None,
+) -> list[dict]:
+    """B2 per mode-user day, with published and rounded crow-fly km."""
+    if minimum_n <= 0 or caution_n < minimum_n:
+        raise ValueError("Invalid disclosure thresholds")
+    if not len(draws_a.multipliers) or len(draws_a.multipliers) != len(
+        draws_b.multipliers
+    ):
+        raise ValueError("Both surveys need equal nonempty household draws")
+    with modes._timed(
+        {} if timings is None else timings, f"{selected.id} mode decomposition"
+    ):
+        rows = []
+        for mode_name in np.union1d(a.mode, b.mode):
+            for variant, distance_a, distance_b in (
+                ("published", a.published_km, b.published_km),
+                (
+                    "rounded_crow_fly",
+                    a.crow_fly_km,
+                    vr._rounded_crow_fly_km(b.crow_fly_km),
+                ),
+            ):
+                first = _mode_trip_days(a, str(mode_name), distance_a)
+                second = _mode_trip_days(b, str(mode_name), distance_b)
+                n_a = len(first.day) if first is not None else 0
+                n_b = len(second.day) if second is not None else 0
+                row = {
+                    "scope": selected.id,
+                    "mode": str(mode_name),
+                    "variant": variant,
+                    "n_2008": n_a,
+                    "n_2019": n_b,
+                    "caution_2008": n_a < caution_n,
+                    "caution_2019": n_b < caution_n,
+                    "status": "",
+                    "distance_a_km": np.nan,
+                    "distance_b_km": np.nan,
+                    "trips_a": np.nan,
+                    "trips_b": np.nan,
+                    "speed_a_kmh": np.nan,
+                    "speed_b_kmh": np.nan,
+                    "distance_share_a": np.nan,
+                    "distance_share_b": np.nan,
+                }
+                for name in ("delta", "trips", "distance", "speed", "selection"):
+                    row[name] = row[f"{name}_low"] = row[f"{name}_high"] = np.nan
+                if selected.distance == "daytable":
+                    row["status"] = groupings.DAYTABLE_STATUS
+                elif first is None or second is None or min(n_a, n_b) < minimum_n:
+                    row["status"] = "insufficient mode-user days"
+                else:
+                    full_a = _person_days(first, first.weight)
+                    full_b = _person_days(second, second.weight)
+                    if not (
+                        variation._has_positive_weighted_metrics(full_a)
+                        and variation._has_positive_weighted_metrics(full_b)
+                    ):
+                        row["status"] = "insufficient distance or duration support"
+                    else:
+                        point = variation.decompose(full_a, full_b)
+                        row["distance_a_km"] = point.distance_a_km
+                        row["distance_b_km"] = point.distance_b_km
+                        row["trips_a"] = point.trips_a
+                        row["trips_b"] = point.trips_b
+                        row["speed_a_kmh"] = 60 * point.speed_a_km_per_min
+                        row["speed_b_kmh"] = 60 * point.speed_b_km_per_min
+                        row["distance_share_a"] = point.distance_share_a
+                        row["distance_share_b"] = point.distance_share_b
+                        names = ("delta", "trips", "distance", "speed", "selection")
+                        keys = (
+                            "delta_min",
+                            "trips_min",
+                            "distance_min",
+                            "speed_min",
+                            "selection_min",
+                        )
+                        replications = np.full(
+                            (len(draws_a.multipliers), len(keys)), np.nan
+                        )
+                        wa, wb = (
+                            _draw_weights(first, draws_a),
+                            _draw_weights(second, draws_b),
+                        )
+                        for index, (weights_a, weights_b) in enumerate(
+                            zip(wa, wb, strict=True)
+                        ):
+                            sample_a = _person_days(first, weights_a)
+                            sample_b = _person_days(second, weights_b)
+                            if variation._has_positive_weighted_metrics(
+                                sample_a
+                            ) and variation._has_positive_weighted_metrics(sample_b):
+                                result = variation.decompose(sample_a, sample_b)
+                                replications[index] = [
+                                    getattr(result, key) for key in keys
+                                ]
+                        for index, (name, key) in enumerate(
+                            zip(names, keys, strict=True)
+                        ):
+                            row[name] = getattr(point, key)
+                            low, high = groupings._percentile_interval(
+                                replications[:, index], confidence=95
+                            )
+                            row[f"{name}_low"], row[f"{name}_high"] = low, high
+                rows.append(row)
+        return rows
+
+
+def mode_rounding_bounds(
+    a: ModeTrips,
+    b: ModeTrips,
+    *,
+    selected: scope.Scope,
+    config: variation.MeasurementConfig,
+    minimum_n: int,
+    caution_n: int,
+    seed: int,
+    timings: dict[str, float] | None = None,
+) -> list[dict]:
+    """C4 row-a nearest/up extrema per mode-user day, in minutes."""
+    if minimum_n <= 0 or caution_n < minimum_n:
+        raise ValueError("Invalid disclosure thresholds")
+    with modes._timed(
+        {} if timings is None else timings, f"{selected.id} mode rounding"
+    ):
+        rows = []
+        for mode_name in np.union1d(a.mode, b.mode):
+            masks = (a.mode == mode_name, b.mode == mode_name)
+            samples = [
+                _mode_trip_days(trips, str(mode_name), trips.published_km)
+                for trips in (a, b)
+            ]
+            n_a, n_b = (
+                len(sample.day) if sample is not None else 0 for sample in samples
+            )
+            row = {
+                "scope": selected.id,
+                "mode": str(mode_name),
+                "n_2008": n_a,
+                "n_2019": n_b,
+                "caution_2008": n_a < caution_n,
+                "caution_2019": n_b < caution_n,
+                "lower_min": np.nan,
+                "upper_min": np.nan,
+                "mean_min": np.nan,
+                "unmatched_2008_trip_share": np.nan,
+                "status": "",
+            }
+            if selected.distance == "daytable":
+                row["status"] = groupings.DAYTABLE_STATUS
+            elif samples[0] is None or samples[1] is None or min(n_a, n_b) < minimum_n:
+                row["status"] = "insufficient mode-user days"
+            else:
+                frames = [
+                    vr.SurveyFrames(
+                        "",
+                        {},
+                        {
+                            "mode7": trips.mode[mask],
+                            "duration_min": trips.minutes[mask],
+                            "pond_jour": trips.weight[mask],
+                        },
+                        {},
+                    )
+                    for trips, mask in zip((a, b), masks, strict=True)
+                ]
+                cells_a, _ = vr._rounding_cells(frames[0], config)
+                cells_b, _ = vr._rounding_cells(frames[1], config)
+                unmatched = ~np.isin(cells_a, cells_b)
+                row["unmatched_2008_trip_share"] = float(
+                    a.weight[masks[0]][unmatched].sum() / a.weight[masks[0]].sum()
+                )
+                if unmatched.any():
+                    row["status"] = "bounds incomplete: 2019 rounding cells missing"
+                changes = []
+                for variant in ("nearest", "up"):
+                    rng = np.random.default_rng(seed)
+                    for _ in range(config.rounding_draws):
+                        simulated = vr.simulate_rounding(
+                            frames[0], frames[1], variant, config=config, rng=rng
+                        )
+                        changes.append(
+                            float(
+                                np.dot(
+                                    a.weight[masks[0]], simulated - a.minutes[masks[0]]
+                                )
+                                / samples[0].weight.sum()
+                            )
+                        )
+                row["lower_min"], row["upper_min"] = min(changes), max(changes)
+                row["mean_min"] = float(np.mean(changes))
             rows.append(row)
         return rows
 

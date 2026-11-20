@@ -61,8 +61,11 @@ def test_missing_trip_energy_is_not_treated_as_zero() -> None:
 def test_target_reweight_matches_joint_distribution_and_preserves_input() -> None:
     target_cells = np.array([["employed", "dense", "q1"], ["retired", "sparse", "q2"]])
     source_cells = np.array(
-        [["employed", "dense", "q1"], ["employed", "dense", "q1"],
-         ["retired", "sparse", "q2"]]
+        [
+            ["employed", "dense", "q1"],
+            ["employed", "dense", "q1"],
+            ["retired", "sparse", "q2"],
+        ]
     )
     source_weight = np.array([1.0, 2.0, 9.0])
     result = cells.reweight_to_target(
@@ -95,12 +98,16 @@ def test_reweight_zeroes_source_only_cells_without_merging() -> None:
 
 def test_mode_decomposition_reproduces_change_without_selection() -> None:
     a = variation.PersonDays(
-        weight=np.array([1.0]), trips=np.array([2.0]),
-        distance_km=np.array([10.0]), time_min=np.array([20.0]),
+        weight=np.array([1.0]),
+        trips=np.array([2.0]),
+        distance_km=np.array([10.0]),
+        time_min=np.array([20.0]),
     )
     b = variation.PersonDays(
-        weight=np.array([1.0]), trips=np.array([2.0]),
-        distance_km=np.array([20.0]), time_min=np.array([40.0]),
+        weight=np.array([1.0]),
+        trips=np.array([2.0]),
+        distance_km=np.array([20.0]),
+        time_min=np.array([40.0]),
     )
     result = variation.decompose(a, b)
     assert result.selection_min == pytest.approx(0)
@@ -138,8 +145,14 @@ def test_mode_cells_include_hidden_days_in_national_comparison() -> None:
     b = _cell_sample([20.0, 20.0, 60.0])
     draws = modes.Draws(np.array(["1", "2", "3"]), np.ones((5, 3)), 0)
     rows = cells.mode_cell_statistics(
-        a, b, draws, draws, selected=scope.REFERENCE_SCOPE,
-        minimum_n=2, caution_n=3, margins=(0.15, 0.10),
+        a,
+        b,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        minimum_n=2,
+        caution_n=3,
+        margins=(0.15, 0.10),
     )
     dense = next(row for row in rows if row["cell"] == "dense")
     sparse = next(row for row in rows if row["cell"] == "sparse")
@@ -163,8 +176,14 @@ def test_mode_cells_daytable_suppresses_cross_year_results() -> None:
     draws = modes.Draws(np.array(["1", "2", "3"]), np.ones((5, 3)), 0)
     selected = next(s for s in scope.ALL_SCOPES if s.distance == "daytable")
     rows = cells.mode_cell_statistics(
-        sample, sample, draws, draws, selected=selected,
-        minimum_n=2, caution_n=3, margins=(0.15, 0.10),
+        sample,
+        sample,
+        draws,
+        draws,
+        selected=selected,
+        minimum_n=2,
+        caution_n=3,
+        margins=(0.15, 0.10),
     )
     row = next(item for item in rows if item["cell"] == "dense")
     assert row["minutes_2008"] == pytest.approx(10)
@@ -186,8 +205,14 @@ def test_distance_selection_is_separate_and_missing_distance_is_reported() -> No
     sample = cells.ModeCellSample(data, np.array(["dense", "dense", "sparse"]))
     draws = modes.Draws(np.array(["1", "2", "3"]), np.ones((5, 3)), 0)
     row = cells.mode_cell_statistics(
-        sample, sample, draws, draws, selected=scope.REFERENCE_SCOPE,
-        minimum_n=2, caution_n=3, margins=(0.15, 0.10),
+        sample,
+        sample,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        minimum_n=2,
+        caution_n=3,
+        margins=(0.15, 0.10),
     )[0]
     assert row["distance_status_2008"] == "incomplete"
     assert row["distance_trip_share_2008"] == pytest.approx(0.5)
@@ -202,16 +227,27 @@ def test_mode_cell_disclosure_thresholds_are_day_counts() -> None:
     n = len(labels)
     households = np.array([f"h{index:03d}" for index in range(n)])
     data = cells.aggregate_mode_days(
-        day=households, mode=np.repeat("walk", n), household=households,
-        weight=np.ones(n), minutes=np.repeat(10.0, n),
-        distance_km=np.ones(n), energy_kj=np.full(n, np.nan),
+        day=households,
+        mode=np.repeat("walk", n),
+        household=households,
+        weight=np.ones(n),
+        minutes=np.repeat(10.0, n),
+        distance_km=np.ones(n),
+        energy_kj=np.full(n, np.nan),
     )
     sample = cells.ModeCellSample(data, labels)
     draws = modes.Draws(households, np.ones((5, n)), 0)
     rows = {
-        row["cell"]: row for row in cells.mode_cell_statistics(
-            sample, sample, draws, draws, selected=scope.REFERENCE_SCOPE,
-            minimum_n=50, caution_n=100, margins=(0.15, 0.10),
+        row["cell"]: row
+        for row in cells.mode_cell_statistics(
+            sample,
+            sample,
+            draws,
+            draws,
+            selected=scope.REFERENCE_SCOPE,
+            minimum_n=50,
+            caution_n=100,
+            margins=(0.15, 0.10),
         )
     }
     assert np.isnan(rows["n49"]["minutes_2008"])
@@ -228,8 +264,14 @@ def test_absent_year_cell_is_not_compared() -> None:
     b = cells.ModeCellSample(a.days, np.array(["dense", "dense", "dense"]))
     draws = modes.Draws(np.array(["1", "2", "3"]), np.ones((5, 3)), 0)
     rows = cells.mode_cell_statistics(
-        a, b, draws, draws, selected=scope.REFERENCE_SCOPE,
-        minimum_n=1, caution_n=2, margins=(0.15, 0.10),
+        a,
+        b,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        minimum_n=1,
+        caution_n=2,
+        margins=(0.15, 0.10),
     )
     row = next(item for item in rows if item["cell"] == "sparse")
     assert row["n_2019"] == 0
@@ -258,7 +300,8 @@ def test_loads_mode_days_and_attributes_for_all_scopes(tmp_path: Path) -> None:
             )
     for selected in scope.ALL_SCOPES:
         data = cells.read_mode_cell_data(
-            cache, selected,
+            cache,
+            selected,
             income={"p1": "q1", "p2": "q2"},
             density={"p1": "dense", "p2": "sparse"},
             vehicles={"123": "1", "456": "0"},
@@ -266,23 +309,35 @@ def test_loads_mode_days_and_attributes_for_all_scopes(tmp_path: Path) -> None:
         )
         assert data.days.day.tolist() == ["d1", "d1", "d2"]
         assert data.attributes["day_purpose"].tolist() == [
-            "work_study", "work_study", "other"
+            "work_study",
+            "work_study",
+            "other",
         ]
         assert data.attributes["vehicles"].tolist() == ["1", "1", "0"]
         assert data.attributes["population"].tolist() == [
-            "employed", "employed", "retired"
+            "employed",
+            "employed",
+            "retired",
         ]
         draws = modes.Draws(np.array(["123", "456"]), np.ones((5, 2)), 0)
         rows = cells.evaluate_mode_scope(
-            data, data, draws, draws, selected=selected,
-            merge_config=groupings.MergeConfig(
-                checkpoint_dir=tmp_path, dimensions={}
-            ),
-            minimum_n=1, caution_n=2, margins=(0.15, 0.10),
+            data,
+            data,
+            draws,
+            draws,
+            selected=selected,
+            merge_config=groupings.MergeConfig(checkpoint_dir=tmp_path, dimensions={}),
+            minimum_n=1,
+            caution_n=2,
+            margins=(0.15, 0.10),
         )
         assert {row["grouping"] for row in rows} == {
-            "density", "population", "income", "vehicles",
-            "household_type", "day_purpose",
+            "density",
+            "population",
+            "income",
+            "vehicles",
+            "household_type",
+            "day_purpose",
         }
         assert {row["mode"] for row in rows} == {"walk", "car_driver"}
         assert all(row["scope"] == selected.id for row in rows)
@@ -295,8 +350,15 @@ def test_loads_mode_days_and_attributes_for_all_scopes(tmp_path: Path) -> None:
         },
     )
     rows = cells.evaluate_mode_scope(
-        data, data, draws, draws, selected=scope.REFERENCE_SCOPE,
-        merge_config=config, minimum_n=2, caution_n=3, margins=(0.15, 0.10),
+        data,
+        data,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        merge_config=config,
+        minimum_n=2,
+        caution_n=3,
+        margins=(0.15, 0.10),
     )
     density_rows = [
         r for r in rows if r["mode"] == "walk" and r["grouping"] == "density"
@@ -313,9 +375,13 @@ def _reweight_sample(minutes: list[float], population: list[str]) -> cells.ModeC
     n = len(minutes)
     households = np.array([f"h{i}" for i in range(n)])
     data = cells.aggregate_mode_days(
-        day=households, mode=np.repeat("walk", n), household=households,
-        weight=np.ones(n), minutes=np.array(minutes),
-        distance_km=np.ones(n), energy_kj=np.full(n, np.nan),
+        day=households,
+        mode=np.repeat("walk", n),
+        household=households,
+        weight=np.ones(n),
+        minutes=np.array(minutes),
+        distance_km=np.ones(n),
+        energy_kj=np.full(n, np.nan),
     )
     return cells.ModeCellData(
         data,
@@ -332,9 +398,15 @@ def test_mode_reweighting_targets_2008_users(tmp_path: Path) -> None:
     b = _reweight_sample([20, 40, 40, 40], ["employed"] + ["retired"] * 3)
     draws = modes.Draws(np.array(["h0", "h1", "h2", "h3"]), np.ones((5, 4)), 0)
     rows = cells.mode_reweighting(
-        a, b, draws, draws, selected=scope.REFERENCE_SCOPE,
+        a,
+        b,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
         merge_config=groupings.MergeConfig(checkpoint_dir=tmp_path, dimensions={}),
-        minimum_n=1, caution_n=2, max_lost_share=0.01,
+        minimum_n=1,
+        caution_n=2,
+        max_lost_share=0.01,
     )
     assert len(rows) == 1
     assert rows[0]["ratio_before"] == pytest.approx(3.5)
@@ -348,9 +420,15 @@ def test_mode_reweighting_reports_unsupported_2008_target(tmp_path: Path) -> Non
     b = _reweight_sample([20, 20], ["employed", "employed"])
     draws = modes.Draws(np.array(["h0", "h1"]), np.ones((5, 2)), 0)
     row = cells.mode_reweighting(
-        a, b, draws, draws, selected=scope.REFERENCE_SCOPE,
+        a,
+        b,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
         merge_config=groupings.MergeConfig(checkpoint_dir=tmp_path, dimensions={}),
-        minimum_n=1, caution_n=2, max_lost_share=0.01,
+        minimum_n=1,
+        caution_n=2,
+        max_lost_share=0.01,
     )[0]
     assert row["lost_target_share"] == pytest.approx(0.5)
     assert np.isnan(row["ratio_after"])
@@ -363,9 +441,15 @@ def test_absent_2008_joint_cell_uses_population_parent(tmp_path: Path) -> None:
     b.attributes["density"] = np.array(["sparse", "sparse"])
     draws = modes.Draws(np.array(["h0", "h1"]), np.ones((5, 2)), 0)
     row = cells.mode_reweighting(
-        a, b, draws, draws, selected=scope.REFERENCE_SCOPE,
+        a,
+        b,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
         merge_config=groupings.MergeConfig(checkpoint_dir=tmp_path, dimensions={}),
-        minimum_n=1, caution_n=2, max_lost_share=0.01,
+        minimum_n=1,
+        caution_n=2,
+        max_lost_share=0.01,
     )[0]
     assert row["parent_fallback_share"] == pytest.approx(1)
     assert row["fixed_2008_mean"] == pytest.approx(15)
@@ -373,8 +457,11 @@ def test_absent_2008_joint_cell_uses_population_parent(tmp_path: Path) -> None:
 
 def test_reweighting_support_cutoff_is_strict() -> None:
     args = (
-        np.array([0, 1]), np.array([99.0, 1.0]),
-        np.array([0]), np.array([1.0]), np.array([20.0]),
+        np.array([0, 1]),
+        np.array([99.0, 1.0]),
+        np.array([0]),
+        np.array([1.0]),
+        np.array([20.0]),
     )
     estimate, lost = cells._target_mean(*args, size=2, max_lost_share=0.01)
     assert lost == pytest.approx(0.01)
@@ -389,10 +476,148 @@ def test_reweighting_daytable_does_not_compare_years(tmp_path: Path) -> None:
     draws = modes.Draws(np.array(["h0", "h1"]), np.ones((5, 2)), 0)
     selected = next(s for s in scope.ALL_SCOPES if s.distance == "daytable")
     row = cells.mode_reweighting(
-        data, data, draws, draws, selected=selected,
+        data,
+        data,
+        draws,
+        draws,
+        selected=selected,
         merge_config=groupings.MergeConfig(checkpoint_dir=tmp_path, dimensions={}),
-        minimum_n=1, caution_n=2, max_lost_share=0.01,
+        minimum_n=1,
+        caution_n=2,
+        max_lost_share=0.01,
     )[0]
     assert np.isnan(row["ratio_before"])
     assert np.isnan(row["ratio_after"])
     assert "not compared" in row["status"]
+
+
+def _mode_trips(minutes: list[float], distance: list[float]) -> cells.ModeTrips:
+    n = len(minutes)
+    households = np.array([f"h{i}" for i in range(n)])
+    return cells.ModeTrips(
+        day=households,
+        household=households,
+        mode=np.repeat("walk", n),
+        weight=np.ones(n),
+        minutes=np.array(minutes),
+        published_km=np.array(distance),
+        crow_fly_km=np.array(distance),
+    )
+
+
+def test_per_mode_b2_and_whole_km_2019_variant() -> None:
+    a = _mode_trips([10, 10], [2, 2])
+    b = _mode_trips([20, 20], [3.6, 3.6])
+    draws = modes.Draws(np.array(["h0", "h1"]), np.ones((5, 2)), 0)
+    rows = cells.mode_decompositions(
+        a,
+        b,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        minimum_n=1,
+        caution_n=2,
+    )
+    published = next(row for row in rows if row["variant"] == "published")
+    rounded = next(row for row in rows if row["variant"] == "rounded_crow_fly")
+    assert published["delta"] == pytest.approx(10)
+    assert sum(
+        published[name] for name in ("trips", "distance", "speed", "selection")
+    ) == pytest.approx(10)
+    assert published["distance_b_km"] == pytest.approx(3.6)
+    assert rounded["distance_b_km"] == pytest.approx(4)
+
+
+def test_per_mode_rounding_uses_c4_nearest_and_up_bounds() -> None:
+    a = _mode_trips([11, 11], [1, 1])
+    b = _mode_trips([10, 10], [1, 1])
+    config = variation.MeasurementConfig(
+        rounding_draws=3,
+        rounding_levels=(1, 5, 15, 30),
+        duration_upper_min=(5, 10, 15, 30, 60),
+        minimum_duration_min=5,
+        short_duration_min=5,
+        short_distance_km=1,
+    )
+    row = cells.mode_rounding_bounds(
+        a,
+        b,
+        selected=scope.REFERENCE_SCOPE,
+        config=config,
+        minimum_n=1,
+        caution_n=2,
+        seed=3,
+    )[0]
+    assert row["lower_min"] == pytest.approx(-1)
+    assert row["upper_min"] == pytest.approx(4)
+    assert row["unmatched_2008_trip_share"] == 0
+
+
+def test_rounding_marks_missing_target_duration_cells() -> None:
+    a = _mode_trips([11, 11], [1, 1])
+    b = _mode_trips([30, 30], [1, 1])
+    config = variation.MeasurementConfig(
+        rounding_draws=3,
+        rounding_levels=(1, 5, 15, 30),
+        duration_upper_min=(5, 10, 15, 30, 60),
+        minimum_duration_min=5,
+        short_duration_min=5,
+        short_distance_km=1,
+    )
+    row = cells.mode_rounding_bounds(
+        a,
+        b,
+        selected=scope.REFERENCE_SCOPE,
+        config=config,
+        minimum_n=1,
+        caution_n=2,
+        seed=3,
+    )[0]
+    assert row["unmatched_2008_trip_share"] == 1
+    assert "incomplete" in row["status"]
+
+
+def test_trip_loader_uses_published_not_corrected_distance(tmp_path: Path) -> None:
+    cache = modes_cache.SurveyCache(tmp_path)
+    with duckdb.connect() as con:
+        con.execute(
+            """CREATE TABLE trip_legs AS SELECT 'd1' day_id, 1 num_dep,
+                40.0 distance_km_declared"""
+        )
+        con.execute(
+            """COPY (SELECT 'd1' day_id, 1 num_dep, '123' ident_men,
+                'walk' mode7, 1.0 pond_jour, 10.0 duration_min,
+                1.0 distance_km, 4.5 crow_fly_km) TO ? (FORMAT PARQUET)""",
+            [str(cache.trips(scope.REFERENCE_SCOPE))],
+        )
+        result = cells.read_mode_trips(con, cache, scope.REFERENCE_SCOPE)
+        assert result.published_km.tolist() == [40.0]
+        assert result.crow_fly_km.tolist() == [4.5]
+        con.execute("DELETE FROM trip_legs")
+        with pytest.raises(ValueError, match="exactly one"):
+            cells.read_mode_trips(con, cache, scope.REFERENCE_SCOPE)
+
+
+def test_decomposition_and_rounding_daytable_are_not_compared() -> None:
+    data = _mode_trips([10, 10], [2, 2])
+    draws = modes.Draws(np.array(["h0", "h1"]), np.ones((5, 2)), 0)
+    selected = next(s for s in scope.ALL_SCOPES if s.distance == "daytable")
+    config = variation.MeasurementConfig(
+        rounding_draws=3,
+        rounding_levels=(1, 5, 15, 30),
+        duration_upper_min=(5, 10, 15, 30, 60),
+        minimum_duration_min=5,
+        short_duration_min=5,
+        short_distance_km=1,
+    )
+    rows = cells.mode_decompositions(
+        data, data, draws, draws, selected=selected, minimum_n=1, caution_n=2
+    )
+    rounding = cells.mode_rounding_bounds(
+        data, data, selected=selected, config=config, minimum_n=1, caution_n=2, seed=3
+    )
+    assert all(
+        np.isnan(row["delta"]) and "not compared" in row["status"] for row in rows
+    )
+    assert np.isnan(rounding[0]["lower_min"])
+    assert "not compared" in rounding[0]["status"]
