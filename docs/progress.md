@@ -2,6 +2,29 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Spec: time per mode and the mobility model (2026-11-20)
+
+- Decision of 20 November 2026 (spec 9.9, new 10.4): the reference constant is
+  f_m, the national distribution of minutes per user day of each mode (EMP
+  2019, weekdays, reference scope), checked on ENTD 2008. It replaces the
+  daily budget per population category b_k, which becomes a validation
+  output. The constraint T(c) = B(c) is retired; total daily time is an
+  output.
+- New section 10.4, the mobility model: mode use as day patterns; required
+  time per mode from the O-D products; allocation within f_m by national
+  rank, with a correlation rho_m and a drift factor delta_m (default 1);
+  destinations by the radiation model tilted to fill the allocated time.
+  New package `mobgrid/mobility/`, a later step after the PT engine.
+- No density classes in the model, neither for mode use nor for time
+  (decision of 20 November 2026). They remain a test dimension: the INSEE
+  density grid of EMP 2019 in cross-section, the proxy of spec 9.9 only for
+  2008-2019 comparisons.
+- Step 11 (`mobgrid/budget`) gains f_m and the inputs of the mode-use model
+  (spec 9.9, re-estimation steps 5 and 6). Not started.
+- Spec files changed: 00, 01, 02, 03, 04, 05, 06, 09, 10, 12, 13, 14, 15,
+  16 and README. New placeholders are listed under "Open points from the
+  spec".
+
 ### Mode-cell report: CLI and synthetic integration (2026-11-20)
 
 - Added the all-scope CLI and Markdown report, with the six requested CSVs.
@@ -3239,6 +3262,43 @@ Status values: not started, in progress, review, merged.
 ## Open points from the spec
 
 Each item stays open until a value is decided; the value goes into `config/`.
+
+- [x] Sections 9.9 and 10.4: Saturday and Sunday get their own f_m, in a
+  later version (decision of 20 November 2026).
+- [ ] Section 9.12: car passengers, train and bike are not shown stable;
+  whether they keep a fixed f_m.
+- [x] Section 10.4: multimodal patterns split by their main combinations,
+  in a later version (decision of 20 November 2026).
+- [ ] Section 10.4: driving licence, PT pass and bike per cell.
+- [x] Section 10.4: household type per cell comes from the synthetic
+  population (decision of 20 November 2026).
+- [ ] Section 6.1: method of the synthetic population.
+- [x] Section 10.4: accessibility variables: time to the 1st, 2nd and 3rd
+  nearest opportunities, or opportunities within 15, 30 and 45 min, per
+  mode and opportunity type (decision of 20 November 2026).
+- [ ] Section 10.4: estimation sources of the accessibility terms (EMC²,
+  MOBPRO, EMP 2019 through CASD), combined with the national person and
+  household terms (to be tested).
+- [x] Section 10.4: multinomial logit, nested only if the tests call for it
+  (decision of 20 November 2026).
+- [ ] Section 10.4: purposes out of a mode's reach in the required time
+  (to be tested).
+- [x] Section 10.4: time is the ranking key (decision of 20 November 2026).
+- [ ] Section 10.4: calibration of rho_m (EMC², or categories in EMP 2019;
+  to be tested).
+- [x] Section 10.4: allocated time shorter than the nearest destinations:
+  the nearest are kept and the excess reported (decision of 20 November 2026).
+- [x] Section 10.4: the extended radiation parameter is calibrated on
+  MOBPRO with the time tilt in place, iterating (decision of 20 November 2026).
+- [ ] Section 10.4: delta_m as a yearly trend or only as a sensitivity
+  (to be tested).
+- [x] Section 10.4: travel outside the reference scope is added at its
+  observed level per population category, unchanged across scenarios
+  (decision of 20 November 2026).
+- [x] Section 9.9: income variables settled by the step 12 income report
+  (ENTD 2008 bracket midpoint per consumption unit; EMP 2019 imputed decile).
+- [x] No microdata for the 1994 survey: the per-mode constant cannot be
+  tested before 2008 (sections 10.4 and 15).
 
 - [x] Step 11/12 (section 9.9): the described-day chain uses all `K_DEPLOC`
   rows, including non-local rows, without joining voyage trips (decision

@@ -24,7 +24,7 @@ The baseline is 2021, the year of Filosofi 2021 and of the census and employment
 | Roads, bike infrastructure, nature, land use, PT stops | OSM extracts of 1 January 2022 | OSM extracts of 1 January 2024 | Geofabrik dated extracts |
 | PT timetables | 2026 GTFS, rebuilt for the network of 1 January 2022 (section 5.6) | 2026 GTFS, rebuilt for 1 January 2024 | No archived feeds found; frequencies are those of 2026 |
 | Commuting flows and modes | MOBPRO 2021 | MOBPRO 2023 | Validation of mode choice and of commune-to-commune work flows |
-| Daily travel time budget (and energy) | EMP 2019; EMC² surveys of 14 EPCIs (Cerema, published 2019–2022) | Same | EMP 2019 is pre-COVID; EMC² surveys were carried out from 2018 to 2022, some during the COVID period but never during lockdowns |
+| Daily travel time per mode, mode use (and energy) | EMP 2019; EMC² surveys of 14 EPCIs (Cerema, published 2019–2022) | Same | EMP 2019 is pre-COVID; EMC² surveys were carried out from 2018 to 2022, some during the COVID period but never during lockdowns |
 | Foreign regions | NUTS3 employment 2021 (Eurostat `nama_10r_3empers`) | NUTS3 employment 2023 | Jobs only, allocated with Overture (section 7.2) |
 | Boundaries | Communes and EPCI 2026; NUTS 2024 | Same | Recoding with the table de passage |
 
@@ -46,10 +46,10 @@ Long addresses are broken over several lines; they read as one URL.
 | Overture places | Release 2026-09-23.1, archived | Public S3 GeoParquet, read with DuckDB | Comparison of job keys; foreign jobs |
 | GTFS | 2026 feeds, snapshot of October 2026 | transport.data.gouv.fr API, producer resources (section 5.4); foreign portals | Public transport, rebuilt per state (section 5.6) |
 | Openings and closures of public transport lines | 1 January 2022 to October 2026, plus planned lines | Compiled for this project from public sources, with sources per entry: `config/French transit openings 2022 to 2026.csv` | Past PT states (section 5.6); dated events for scenarios (section 11.2) |
-| National travel survey (EMP 2019) | 2018–2019 | SDES public tables, open licence (also on data.gouv.fr) | Daily travel time budget; trip rates by purpose |
-| National travel survey (ENTD 2008) | 2007–2008 | SDES public tables, open licence | Change of the daily travel time budget between 2008 and 2019 (section 9.9) |
+| National travel survey (EMP 2019) | 2018–2019 | SDES public tables, open licence (also on data.gouv.fr) | Time per mode (f_m); mode use; trip rates by purpose (sections 9.9 and 10.4) |
+| National travel survey (ENTD 2008) | 2007–2008 | SDES public tables, open licence | Change of time per mode and of mode use between 2008 and 2019; check of f_m; transfer test of the mode-use model (sections 9.9 and 10.4) |
 | Households by number of cars (census, via the Tableau de bord des mobilités durables) | 2011, 2016, 2022; communes | https://www.data.gouv.fr/datasets/part-des-menages-selon-le-nombre-de-voiture-a-disposition | Car ownership grid (section 6.4) |
-| Territorial travel surveys (EMC², Cerema) | 14 territories, surveys 2018–2022 (section 5.4) | Cerema [TO CONFIRM: access conditions] | Daily travel time budget at local scale; trip rates by purpose; validation |
+| Territorial travel surveys (EMC², Cerema) | 14 territories, surveys 2018–2022 (section 5.4) | Cerema [TO CONFIRM: access conditions] | Time per mode and mode use at local scale; trip rates by purpose; calibration of the allocation (section 10.4); validation |
 | Cycle infrastructure (Géovélo, national schema) | Monthly files since mid-2022; the earliest (18 July 2022) stands for the 2021 state, the January 2024 file for the 2023 state | https://transport.data.gouv.fr/datasets/amenagements-cyclables-france-metropolitaine | Validation of OSM bike infrastructure; possibly the base bike network (section 8.1) |
 | NUTS boundaries | NUTS 2024 | https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/territorial-units-statistics | Study area |
 | Communes to EPCI table | 2026 | https://www.insee.fr/fr/information/7671844 | Aggregation zones |

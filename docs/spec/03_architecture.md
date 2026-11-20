@@ -1,6 +1,6 @@
 # 3. Architecture overview
 
-Figure 1 shows how the work splits. `landgrid` turns census, tax and POI data into origins and opportunities per cell, year and scenario, and flags every destination cell by opportunity type. `mobgrid` turns networks and timetables into O-D costs and accessibility products. The economic model combines both. Macro scenarios act on `landgrid`, infrastructure scenarios on `mobgrid`; the only flow between the two modules is the destination flags, representative points and opportunity counts that `landgrid` provides to `mobgrid`.
+Figure 1 shows how the work splits. `landgrid` turns census, tax and POI data into origins and opportunities per cell, year and scenario, and flags every destination cell by opportunity type. `mobgrid` turns networks and timetables into O-D costs and accessibility products. The mobility model of section 10.4 (mode use, time per mode, destinations) and the economic model combine both. Macro scenarios act on `landgrid`, infrastructure scenarios on `mobgrid`; the only flow between the two modules is the destination flags, representative points and opportunity counts that `landgrid` provides to `mobgrid`.
 
 ![Figure 1. Two modules: land use (origins and opportunities) and networks (O-D costs and accessibility), feeding the economic model.](figures/fig1_two_modules.png)
 

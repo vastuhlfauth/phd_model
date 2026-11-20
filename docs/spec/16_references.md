@@ -41,10 +41,12 @@
 - Hennessy, D. A., Wiesenthal, D. L. (1997). The relationship between traffic congestion, driver stress and direct versus indirect coping behaviours. Ergonomics 40(3), 348–361.
 - Fitch, D. T., Sharpnack, J., Handy, S. L. (2020). Psychological stress of bicycling with traffic: examining heart rate variability of bicyclists in natural urban environments. Transportation Research Part F 70, 81–97.
 - Google (2026). Routes API, method computeRoutes: reference documentation (fields duration, staticDuration, polyline; traffic on polylines).
+- Gordon, P., Richardson, H. W., Jun, M.-J. (1991). The commuting paradox: evidence from the top twenty. Journal of the American Planning Association 57(4), 416–420.
 - Guo, X., Tavakoli, A., Robartes, E., Angulo, A., Chen, T. D., Heydarian, A. (2022). Roadway design matters: variation in bicyclists' psycho-physiological responses in different urban roadway designs. arXiv:2202.13468.
 - Herrmann, S. D., et al. (2024). 2024 Adult Compendium of Physical Activities: a third update of the energy costs of human activities. Journal of Sport and Health Science 13(1), 6–12.
 - Holroyd, E. M., Scraggs, D. A. (1966). Waiting times for buses in central London. Traffic Engineering and Control 8(3), 158–160.
 - Hood, J., Sall, E., Charlton, B. (2011). A GPS-based bicycle route choice model for San Francisco, California. Transportation Letters 3(1), 63–75.
+- Hubert, J.-P., Toint, P. L. (2006). From average travel time budgets to daily travel time distributions: appraisal of two conjectures by Kölbl and Helbing and some consequences. Transportation Research Record 1985, 135–143.
 - INSEE (2022). Base permanente des équipements 2021: liste hiérarchisée des types d'équipements (updated 16 May 2022).
 - INSEE (2026). Liste et description des types d'équipements de la BPE au 1er janvier 2025 (updated April 2026).
 - Kittelson & Associates, KFH Group, et al. (2003). Transit Capacity and Quality of Service Manual, 2nd edition. TCRP Report 100, Transportation Research Board.
@@ -55,6 +57,7 @@
 - Larson, R. C., Odoni, A. R. (1981). Urban Operations Research. Prentice-Hall.
 - Legisocial (2025). Barème kilométrique 2025 (official mileage scale for cars).
 - Legrain, A., Eluru, N., El-Geneidy, A. M. (2015). Am stressed, must travel: the relationship between mode choice and commuting stress. Transportation Research Part F 34, 141–151.
+- Levinson, D. M., Kumar, A. (1994). The rational locator: why travel times have remained stable. Journal of the American Planning Association 60(3), 319–332.
 - Li, Z., Hensher, D. A. (2011). Crowding and public transport: a review of willingness to pay evidence and its relevance in project appraisal. Transport Policy 18(6), 880–887.
 - Ludlow, L. W., Weyand, P. G. (2016). Energy expenditure during level human walking: seeking a simple and accurate predictive solution. Journal of Applied Physiology 120(5), 481–494.
 - Marchetti, C. (1994). Anthropological invariants in travel behavior. Technological Forecasting and Social Change 47(1), 75–88.
@@ -78,6 +81,7 @@
 - Santé publique France (2017). Étude de santé sur l'environnement, la biosurveillance, l'activité physique et la nutrition (Esteban 2014–2016): chapitre corpulence.
 - Schafer, A., Victor, D. G. (2000). The future mobility of the world population. Transportation Research Part A 34(3), 171–205.
 - Shoup, D. C. (2006). Cruising for parking. Transport Policy 13(6), 479–486.
+- Shove, E., Pantzar, M., Watson, M. (2012). The Dynamics of Social Practice: Everyday Life and How It Changes. Sage, London.
 - Simini, F., González, M. C., Maritan, A., Barabási, A.-L. (2012). A universal model for mobility and migration patterns. Nature 484, 96–100.
 - Spitzer, H., Hettinger, T., Kaminsky, G. (1982). Tafeln für den Energieumsatz bei körperlicher Arbeit, 6th edition. Beuth, Berlin.
 - Stępniak, M., Pritchard, J. P., Geurs, K. T., Goliszek, S. (2019). The impact of temporal resolution on public transport accessibility measurement: review and case study in Poland. Journal of Transport Geography 75, 8–24.
@@ -90,6 +94,7 @@
 - Weiss, D. J., et al. (2018). A global map of travel time to cities to assess inequalities in accessibility in 2015. Nature 553, 333–336.
 - Wener, R. E., Evans, G. W. (2011). Comparing stress of car and train commuters. Transportation Research Part F 14(2), 111–116.
 - Weyand, P. G., Smith, B. R., Puyau, M. R., Butte, N. F. (2010). The mass-specific energy cost of human walking is set by stature. Journal of Experimental Biology 213, 3972–3979.
+- Wilson, A. G. (1967). A statistical theory of spatial distribution models. Transportation Research 1(3), 253–269.
 - Wilson, D. G., Schmidt, T. (2020). Bicycling Science, 4th edition. MIT Press.
 - Yang, Y., Herrera, C., Eagle, N., González, M. C. (2014). Limits of predictability in commuting flows in the absence of data for calibration. Scientific Reports 4, 5662.
 - Zahavi, Y., Talvitie, A. (1980). Regularities in travel time and money expenditure. Transportation Research Record 750, 13–19.

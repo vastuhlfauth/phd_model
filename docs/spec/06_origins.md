@@ -4,7 +4,9 @@
 
 One table per state with, for each 200 m cell of metropolitan France: individuals, households, household size, dwellings by type and occupation, age groups, active individuals and income indicators, with a flag for imputed values; aggregated to 1 km. The representative points used by the networks (section 4.2) come from these tables. Origins are in France only; residential change between 2020 and 2021 comes from the Eurostat 1 km grid.
 
-**Population categories of the whole study.** Every result by person (daily travel time budget, mode shares, accessibility) is given for five categories: children (under 18; 6–17 in travel surveys, which start at 6), employed, unemployed, retired, and other inactive (students aged 18 or more, homemakers, others). In each cell they come from the cell's age groups and the census commune tables of activity by age [TO CONFIRM: method of allocation to cells; whether students aged 18 or more stay in "other inactive"].
+**Population categories of the whole study.** Every result by person (daily travel time per mode and in total, mode use, accessibility) is given for five categories: children (under 18; 6–17 in travel surveys, which start at 6), employed, unemployed, retired, and other inactive (students aged 18 or more, homemakers, others). In each cell they come from the cell's age groups and the census commune tables of activity by age [TO CONFIRM: method of allocation to cells; whether students aged 18 or more stay in "other inactive"].
+
+**Synthetic population.** Household types (single person, couple, couple with children, single parent, other), used by the mobility model of section 10.4, come from the synthetic population generated from the tables of this section (decision of 20 November 2026) [TO CONFIRM: method of the synthetic population].
 
 ## 6.2 Inputs
 
@@ -57,7 +59,7 @@ logh = 't'  AND  NOT (ccthp = 'V'  AND  rppo_rs = 'RS')
 - **Model at commune scale:** the shares of the three classes are explained by accessibility (from the products of section 10, by mode) and income (Filosofi, deflated to constant euros), estimated on 2022 [TO CONFIRM: functional form, e.g. ordered or multinomial logit].
 - **Downscaling:** the model is applied to each 200 m cell with the cell's own accessibility and income, and the results are scaled to the commune counts of 2022.
 - **Other years and scenarios:** the same model gives car ownership for 2023 and for scenarios, so that it responds to accessibility and income.
-- **Use:** fixed costs of car ownership in the monetary cost (section 9.10) and car availability in the mode-choice model.
+- **Use:** fixed costs of car ownership in the monetary cost (section 9.10) and car availability in the mode-use model (section 10.4).
 
 ## 6.5 Validation
 
