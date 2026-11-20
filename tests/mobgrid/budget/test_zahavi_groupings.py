@@ -414,3 +414,113 @@ def test_fixed_counterfactual_reports_missing_cell_parent_share(merge_config):
     assert result["fallback_share"] == pytest.approx(1.0)
     assert result["predicted_2019"] == pytest.approx(20.0)
     assert result["ks_d"] == pytest.approx(0.0)
+
+
+def test_person_mode_use_and_time_decomposition_with_zero_days():
+    households = np.array(["h1", "h2", "h3"])
+    a = groupings.PersonModeData(
+        roster_household=households,
+        roster_weight=np.ones(3),
+        day_household=households,
+        day_weight=np.ones(3),
+        is_open=np.array([False, False, False]),
+        minutes=np.array([[10.0, 0], [0, 20.0], [0, 0]]),
+        used=np.array([[True, False], [False, True], [False, False]]),
+        modes=("walk", "car"),
+    )
+    b = groupings.PersonModeData(
+        roster_household=households,
+        roster_weight=np.ones(3),
+        day_household=households,
+        day_weight=np.ones(3),
+        is_open=np.array([False, False, False]),
+        minutes=np.array([[20.0, 0], [0, 30.0], [0, 10.0]]),
+        used=np.array([[True, False], [False, True], [False, True]]),
+        modes=("walk", "car"),
+    )
+    draws = modes.Draws(households, np.ones((20, 3)), seed=0)
+    result = groupings.person_mode_statistics(
+        a, b, draws, draws, compare=True, minimum_n=1
+    )
+    assert result["rows"][0]["use_2008"] == pytest.approx(1 / 3)
+    assert result["rows"][1]["use_2019"] == pytest.approx(2 / 3)
+    assert result["rows"][1]["user_minutes_2019"] == pytest.approx(20)
+    assert result["use_effect"] == pytest.approx(20 / 3)
+    assert result["time_effect"] == pytest.approx(10 / 3)
+    assert result["observed_2008"] == pytest.approx(10)
+    assert result["observed_2019"] == pytest.approx(20)
+    assert result["predicted_2019"] == pytest.approx(50 / 3)
+    assert result["use_effect_low"] == pytest.approx(20 / 3)
+    assert result["time_effect_high"] == pytest.approx(10 / 3)
+    assert result["ks_d"] == pytest.approx(1 / 3)
+
+
+def test_person_mode_daytable_keeps_levels_but_suppresses_change():
+    households = np.array(["h1", "h2"])
+    data = groupings.PersonModeData(
+        roster_household=households,
+        roster_weight=np.ones(2),
+        day_household=households,
+        day_weight=np.ones(2),
+        is_open=np.zeros(2, dtype=bool),
+        minutes=np.array([[10.0], [0.0]]),
+        used=np.array([[True], [False]]),
+        modes=("walk",),
+    )
+    draws = modes.Draws(households, np.ones((20, 2)), seed=0)
+    result = groupings.person_mode_statistics(
+        data, data, draws, draws, compare=False, minimum_n=1
+    )
+    assert result["rows"][0]["use_2019"] == pytest.approx(0.5)
+    assert result["rows"][0]["user_minutes_2019"] == pytest.approx(10)
+    assert np.isnan(result["use_effect"])
+    assert np.isnan(result["predicted_2019"])
+
+
+def test_person_mode_excludes_open_day_from_denominator():
+    households = np.array(["h1", "h2", "h3"])
+    data = groupings.PersonModeData(
+        roster_household=households,
+        roster_weight=np.ones(3),
+        day_household=households,
+        day_weight=np.ones(3),
+        is_open=np.array([False, False, True]),
+        minutes=np.array([[10.0], [0.0], [0.0]]),
+        used=np.array([[True], [False], [False]]),
+        modes=("walk",),
+    )
+    draws = modes.Draws(households, np.ones((20, 3)), seed=0)
+    result = groupings.person_mode_statistics(
+        data, data, draws, draws, compare=True, minimum_n=1
+    )
+    assert result["rows"][0]["use_2008"] == pytest.approx(0.5)
+    assert result["observed_2008"] == pytest.approx(5.0)
+    assert result["ks_d"] == pytest.approx(0)
+
+
+def test_person_mode_cache_loader_preserves_zero_days_and_open_days(tmp_path):
+    cache = modes_cache.SurveyCache(tmp_path)
+    with duckdb.connect() as con:
+        con.execute(
+            """COPY (SELECT * FROM (VALUES
+              ('h1', 1.0), ('h2', 1.0), ('h3', 1.0)
+            ) t(ident_men, weight)) TO ? (FORMAT PARQUET)""",
+            [str(cache.roster)],
+        )
+        con.execute(
+            """COPY (SELECT * FROM (VALUES
+              ('d1', 'h1', 1.0, TRUE), ('d2', 'h2', 1.0, FALSE)
+            ) t(day_id,ident_men,pond_jour,is_round)) TO ? (FORMAT PARQUET)""",
+            [str(cache.day_base)],
+        )
+        con.execute(
+            """COPY (SELECT 'd1' day_id, 'walk' mode7, 10.0 duration_min)
+            TO ? (FORMAT PARQUET)""",
+            [str(cache.trips(scope.REFERENCE_SCOPE))],
+        )
+    data = groupings.read_person_modes(cache, scope.REFERENCE_SCOPE)
+    assert data.roster_weight.sum() == pytest.approx(3)
+    assert data.is_open.tolist() == [False, True]
+    walk = data.modes.index("walk")
+    assert data.minutes[:, walk].tolist() == [10, 0]
+    assert data.used[:, walk].tolist() == [True, False]

@@ -100,6 +100,248 @@ class GroupingResult:
     summary: dict
 
 
+@dataclass(frozen=True)
+class PersonModeData:
+    """Weekday person base, open days, and mode minutes, section 9.9."""
+
+    roster_household: np.ndarray
+    roster_weight: np.ndarray
+    day_household: np.ndarray
+    day_weight: np.ndarray
+    is_open: np.ndarray
+    minutes: np.ndarray
+    used: np.ndarray
+    modes: tuple[str, ...]
+
+
+def read_person_modes(
+    cache: modes_cache.SurveyCache, selected: scope_module.Scope
+) -> PersonModeData:
+    """Read the section 9.9 person base and scoped weekday mode minutes."""
+    columns = ", ".join(
+        f"coalesce(sum(t.duration_min) FILTER (WHERE t.mode7 = '{mode}'), 0) "
+        f"AS minutes_{mode}, "
+        f"count(*) FILTER (WHERE t.mode7 = '{mode}') > 0 AS used_{mode}"
+        for mode in vr.MODE7_LABELS
+    )
+    labels = ", ".join(f"'{mode}'" for mode in vr.MODE7_LABELS)
+    with duckdb.connect() as con:
+        roster = con.execute(
+            "SELECT ident_men, weight FROM read_parquet(?)", [str(cache.roster)]
+        ).fetchnumpy()
+        days = con.execute(
+            f"""SELECT b.day_id, b.ident_men, b.pond_jour, b.is_round,
+                count(*) FILTER (WHERE t.day_id IS NOT NULL AND
+                    (t.mode7 IS NULL OR t.mode7 NOT IN ({labels}) OR
+                     t.duration_min IS NULL OR NOT isfinite(t.duration_min) OR
+                     t.duration_min < 0)) AS invalid_trips,
+                {columns}
+            FROM read_parquet(?) b LEFT JOIN read_parquet(?) t ON b.day_id = t.day_id
+            GROUP BY b.day_id, b.ident_men, b.pond_jour, b.is_round
+            ORDER BY b.day_id""",
+            [str(cache.day_base), str(cache.trips(selected))],
+        ).fetchnumpy()
+    roster = {key: vr._plain_array(value) for key, value in roster.items()}
+    days = {key: vr._plain_array(value) for key, value in days.items()}
+    if np.any(days["invalid_trips"]):
+        raise ValueError("Scoped cache contains invalid trip modes or minutes")
+    is_open = (
+        ~np.asarray(days["is_round"], dtype=bool)
+        if selected.days == "round"
+        else np.zeros(len(days["is_round"]), dtype=bool)
+    )
+    minutes = np.column_stack(
+        [np.asarray(days[f"minutes_{mode}"], dtype=float) for mode in vr.MODE7_LABELS]
+    )
+    used = np.column_stack(
+        [np.asarray(days[f"used_{mode}"], dtype=bool) for mode in vr.MODE7_LABELS]
+    )
+    if np.any(used[is_open]):
+        raise ValueError("Scoped cache includes trips on an excluded open day")
+    return PersonModeData(
+        vr._text_values(roster["ident_men"]),
+        np.asarray(roster["weight"], dtype=float),
+        vr._text_values(days["ident_men"]),
+        np.asarray(days["pond_jour"], dtype=float),
+        is_open,
+        minutes,
+        used,
+        vr.MODE7_LABELS,
+    )
+
+
+def _person_mode_values(
+    data: PersonModeData, roster_weight: np.ndarray, day_weight: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Use shares and minutes per user day against the kept-person base."""
+    denominator = float(roster_weight.sum() - day_weight[data.is_open].sum())
+    if denominator <= 0:
+        raise ValueError("The kept-person denominator is not positive")
+    weights = day_weight * ~data.is_open
+    users = weights @ data.used
+    minutes = weights @ data.minutes
+    return (
+        users / denominator,
+        np.divide(
+            minutes, users, out=np.full(len(data.modes), np.nan), where=users > 0
+        ),
+        denominator,
+    )
+
+
+def _person_mode_distribution(
+    a: PersonModeData,
+    b: PersonModeData,
+    denominator_b: float,
+) -> tuple[modes.Observations, modes.Observations]:
+    """Map weighted within-mode 2019 user ranks to 2008 minutes, section 9.9."""
+    kept_a = ~a.is_open
+    kept_b = ~b.is_open
+    predicted = np.zeros(len(b.day_weight))
+    for mode in range(len(a.modes)):
+        source = kept_a & a.used[:, mode] & (a.day_weight > 0)
+        target = kept_b & b.used[:, mode] & (b.day_weight > 0)
+        if not target.any():
+            continue
+        if not source.any():
+            raise ValueError(f"No 2008 user-day support for mode {a.modes[mode]}")
+        source_values = a.minutes[source, mode]
+        source_weights = a.day_weight[source]
+        source_order = np.argsort(source_values, kind="stable")
+        source_cdf = np.cumsum(source_weights[source_order]) / source_weights.sum()
+        target_indices = np.flatnonzero(target)
+        order = np.argsort(b.minutes[target, mode], kind="stable")
+        ordered_indices = target_indices[order]
+        target_weights = b.day_weight[ordered_indices]
+        ranks = (np.cumsum(target_weights) - target_weights / 2) / target_weights.sum()
+        indices = np.searchsorted(source_cdf, ranks, side="left")
+        predicted[ordered_indices] += source_values[source_order[indices]]
+    travelled = kept_b & np.any(b.used, axis=1)
+    remainder = denominator_b - b.day_weight[travelled].sum()
+    if remainder < 0:
+        raise ValueError("2019 travel-day weights exceed the kept-person denominator")
+    weights = np.r_[b.day_weight[travelled], remainder]
+    household = np.concatenate((b.day_household[travelled], np.array([""])))
+    return (
+        modes.Observations(np.r_[predicted[travelled], 0.0], weights, household),
+        modes.Observations(
+            np.r_[b.minutes[travelled].sum(axis=1), 0.0], weights, household
+        ),
+    )
+
+
+def person_mode_statistics(
+    a: PersonModeData,
+    b: PersonModeData,
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    compare: bool,
+    minimum_n: int,
+) -> dict:
+    """Person-day mode use, minutes, decomposition and distributions, section 9.9."""
+    if a.modes != b.modes or minimum_n <= 0:
+        raise ValueError("Mode labels must match and threshold must be positive")
+    if len(draws_a.multipliers) != len(draws_b.multipliers):
+        raise ValueError("Household draw counts must match")
+    for data in (a, b):
+        n = len(data.day_weight)
+        if (
+            data.minutes.shape != (n, len(data.modes))
+            or data.used.shape != data.minutes.shape
+            or len(data.day_household) != n
+            or len(data.is_open) != n
+            or len(data.roster_household) != len(data.roster_weight)
+            or not np.all(np.isfinite(data.minutes))
+            or not np.all(np.isfinite(data.day_weight))
+            or not np.all(np.isfinite(data.roster_weight))
+            or np.any(data.minutes < 0)
+            or np.any(data.day_weight < 0)
+            or np.any(data.roster_weight < 0)
+            or np.any((data.minutes > 0) & ~data.used)
+        ):
+            raise ValueError("Invalid per-person mode data")
+    ua, ta, _ = _person_mode_values(a, a.roster_weight, a.day_weight)
+    ub, tb, denom_b = _person_mode_values(b, b.roster_weight, b.day_weight)
+    rows = []
+    for index, name in enumerate(a.modes):
+        count_a = int(np.sum(a.used[:, index] & ~a.is_open))
+        count_b = int(np.sum(b.used[:, index] & ~b.is_open))
+        rows.append(
+            {
+                "mode": name,
+                "n_2008": count_a,
+                "n_2019": count_b,
+                "use_2008": ua[index] if count_a >= minimum_n else np.nan,
+                "use_2019": ub[index] if count_b >= minimum_n else np.nan,
+                "user_minutes_2008": ta[index] if count_a >= minimum_n else np.nan,
+                "user_minutes_2019": tb[index] if count_b >= minimum_n else np.nan,
+            }
+        )
+    result = {
+        "rows": rows,
+        "observed_2008": float(np.nansum(ua * ta)),
+        "observed_2019": float(np.nansum(ub * tb)),
+        "predicted_2019": np.nan,
+        "use_effect": np.nan,
+        "use_effect_low": np.nan,
+        "use_effect_high": np.nan,
+        "time_effect": np.nan,
+        "time_effect_low": np.nan,
+        "time_effect_high": np.nan,
+        "ks_d": np.nan,
+        "predicted_deciles": np.full(9, np.nan),
+        "observed_deciles": np.full(9, np.nan),
+    }
+    if not compare:
+        return result
+    if not np.all(np.isfinite(ta)) or not np.all(np.isfinite(tb)):
+        LOGGER.warning("Per-mode comparison unavailable: a mode has no user days")
+        return result
+    result["predicted_2019"] = float(np.dot(ub, ta))
+    result["use_effect"] = float(np.dot(ub - ua, ta))
+    result["time_effect"] = float(np.dot(ub, tb - ta))
+    predicted, observed = _person_mode_distribution(a, b, denom_b)
+    result["ks_d"] = modes.weighted_ks(predicted, observed)
+    result["predicted_deciles"] = modes.weighted_deciles(
+        predicted, np.arange(1, 10) / 10
+    )
+    result["observed_deciles"] = modes.weighted_deciles(observed, np.arange(1, 10) / 10)
+    use_effect = np.full(len(draws_a.multipliers), np.nan)
+    time_effect = np.full(len(draws_a.multipliers), np.nan)
+    indices = [
+        (
+            income_module._household_indices(data.roster_household, draws.households),
+            income_module._household_indices(data.day_household, draws.households),
+        )
+        for data, draws in ((a, draws_a), (b, draws_b))
+    ]
+    for rep in range(len(use_effect)):
+        values = []
+        for data, draws, (roster_idx, day_idx) in zip(
+            (a, b), (draws_a, draws_b), indices, strict=True
+        ):
+            rw = data.roster_weight * draws.multipliers[rep, roster_idx]
+            dw = data.day_weight * draws.multipliers[rep, day_idx]
+            if rw.sum() - dw[data.is_open].sum() <= 0:
+                break
+            values.append(_person_mode_values(data, rw, dw))
+        if len(values) != 2:
+            continue
+        rep_ua, rep_ta, _ = values[0]
+        rep_ub, rep_tb, _ = values[1]
+        if np.all(np.isfinite(rep_ta)) and np.all(np.isfinite(rep_tb)):
+            use_effect[rep] = np.dot(rep_ub - rep_ua, rep_ta)
+            time_effect[rep] = np.dot(rep_ub, rep_tb - rep_ta)
+    result["use_effect_low"], result["use_effect_high"] = _percentile_interval(
+        use_effect, confidence=95
+    )
+    result["time_effect_low"], result["time_effect_high"] = _percentile_interval(
+        time_effect, confidence=95
+    )
+    return result
+
+
 def read_grouping_days(
     cache: modes_cache.SurveyCache,
     selected: scope_module.Scope,

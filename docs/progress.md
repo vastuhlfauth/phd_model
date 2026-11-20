@@ -2,6 +2,21 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Grouping report: per-mode person estimates (2026-11-20)
+
+- Added cached mode-by-day loading and section 9.9's roster denominator,
+  including zero days and subtraction of open-day weights. The paired
+  household draws provide 95% intervals for the exact use-share and
+  time-per-user decomposition.
+- The fixed-mode distribution maps weighted mid-ranks of 2019 mode-user
+  days to the 2008 weighted empirical mode-user distributions, preserving
+  2019 mode-use combinations. Equal 2019 durations are ordered stably.
+  The distribution's finite-sample mean need not equal the analytical
+  fixed-mode mean. A negative residual zero-day weight is an explicit error.
+- Day-table cross-year results are suppressed. These functions are not yet
+  wired to the report; no real-data report ran. Household-type labels and
+  the cross-scope summaries, CLI, checkpointing and report remain open.
+
 ### Grouping report: fixed-cell statistics (2026-11-20)
 
 - Added fixed-cell predictions, observed/predicted mean ratios with paired
