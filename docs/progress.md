@@ -2,6 +2,53 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Mode-cell report: reference energy calculations (2026-11-20)
+
+- Added reference-scope KH and Compendium energy by overall population,
+  population category, density, income, vehicles and day-mode group, with
+  household-bootstrap intervals, ratios, verdicts and disclosure flags.
+  Day-mode per-person values are explicitly undefined. Attributable mode
+  energy uses the full roster, with non-users zero; open days and days with
+  only unsupported energy are excluded from both numerator and denominator.
+- Joined cached day energy and roster attributes to reconstructed mode energy
+  with consistency checks. Known daily mode energies must sum to cached totals;
+  synthetic tests also verify the per-person identity in bootstrap draws.
+  The collapse test and both rate-set loaders remain separate calculations
+  until the report orchestrator connects them.
+- Synthetic grouped-energy timing: 0.047 s for both rates, 500 days, two modes
+  and 20 draws, excluding reconstruction and all other stages. Together with
+  earlier synthetic stages (2.56 s), this is 2.607 s; workload scaling is
+  uncertain and excludes extraction, reconstruction and report I/O.
+- Local energy draw-weight and cache-join helpers are kept in the new module
+  to avoid changing shared functions during the running Z3 job; review for
+  merging into shared helpers later.
+- **Stage 5 remains:** connect all calculations and both rate sets to the
+  CLI; six CSVs, Markdown report, logging and summary; synthetic end-to-end
+  test and timing. No real-data report or data write was run.
+
+### Mode-cell report: energy groundwork, superseded above (2026-11-20)
+
+- Added a scoped trip-energy loader that joins the unchanged Z1 cache to
+  reconstructed step-11 KH or Compendium trip energy, and a reference-scope
+  collapse calculator. It computes pairwise and same-mode cross-year
+  weighted KS distances, shared-household bootstrap intervals, and the
+  median energy-versus-time contrast. Missing energy does not erase the
+  corresponding time distribution; median comparisons use pairs with
+  energy available for both modes.
+- Synthetic collapse timing: 500 days, two modes and 20 household draws,
+  both rate sets, took 0.016 s, excluding reconstruction, grouped energy,
+  and every other stage. No reliable full-report runtime is available.
+- **Stage 4 remains incomplete and uncommitted**: implement grouped daily
+  energy per travel day and per person for category, density, income and
+  vehicles; day-mode energy per travel day with per-person marked undefined;
+  per-mode attributable energy per person with zero users and open days
+  handled as agreed, and a sum-to-total test. Connect the collapse test to
+  both reconstructed rate sets and add end-to-end synthetic tests.
+- **Stage 5 remains:** safe, resumable source reconstruction and cache
+  handling; CLI, per-stage logs and summary, six CSVs and Markdown report,
+  and synthetic end-to-end checks. The module still exits with an explicit
+  not-implemented message when invoked. No real-data report or data write.
+
 ### Mode-cell report: per-mode B2 and rounding (2026-11-20)
 
 - Added per-mode user-day B2 decomposition with shared household-bootstrap

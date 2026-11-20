@@ -1,5 +1,6 @@
 """Synthetic tests for the mode-user-day analysis, section 9.9."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import duckdb
@@ -7,6 +8,7 @@ import numpy as np
 import pytest
 from mobgrid.budget import modes_cache, scope, variation
 from mobgrid.budget import zahavi_groupings as groupings
+from mobgrid.budget import zahavi_income as income
 from mobgrid.budget import zahavi_mode_cells as cells
 from mobgrid.budget import zahavi_modes as modes
 
@@ -621,3 +623,268 @@ def test_decomposition_and_rounding_daytable_are_not_compared() -> None:
     )
     assert np.isnan(rounding[0]["lower_min"])
     assert "not compared" in rounding[0]["status"]
+
+
+@pytest.mark.parametrize("rate", ["kh", "cp"])
+def test_energy_collapse_symmetric_and_identical_distributions(rate: str) -> None:
+    data = cells.aggregate_mode_days(
+        day=np.array(["d1", "d2", "d3", "d4"]),
+        mode=np.array(["walk", "walk", "car_driver", "car_driver"]),
+        household=np.array(["h1", "h2", "h3", "h4"]),
+        weight=np.ones(4),
+        minutes=np.array([10.0, 20.0, 10.0, 20.0]),
+        distance_km=np.ones(4),
+        energy_kj=np.array([30.0, 60.0, 30.0, 60.0]),
+    )
+    draws = modes.Draws(np.array(["h1", "h2", "h3", "h4"]), np.ones((5, 4)), 0)
+    rows = cells.energy_collapse(
+        data,
+        data,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        rate=rate,
+        minimum_n=2,
+        caution_n=3,
+    )
+    pair = next(
+        row for row in rows if row["kind"] == "within_year_pair" and row["year"] == 2008
+    )
+    assert pair["time_ks"] == pytest.approx(0)
+    assert pair["energy_ks"] == pytest.approx(0)
+    summary = next(
+        row
+        for row in rows
+        if row["kind"] == "within_year_median" and row["year"] == 2019
+    )
+    assert summary["time_ks"] == pytest.approx(0)
+    assert summary["energy_ks"] == pytest.approx(0)
+    assert summary["energy_ks_high"] == pytest.approx(0)
+
+
+def test_collapse_keeps_time_for_modes_without_energy() -> None:
+    data = cells.aggregate_mode_days(
+        day=np.array(["d1", "d2", "d3", "d4"]),
+        mode=np.array(["walk", "walk", "other", "other"]),
+        household=np.array(["h1", "h2", "h3", "h4"]),
+        weight=np.ones(4),
+        minutes=np.array([10.0, 20.0, 30.0, 40.0]),
+        distance_km=np.ones(4),
+        energy_kj=np.array([30.0, 60.0, np.nan, np.nan]),
+    )
+    draws = modes.Draws(np.array(["h1", "h2", "h3", "h4"]), np.ones((5, 4)), 0)
+    rows = cells.energy_collapse(
+        data,
+        data,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        rate="kh",
+        minimum_n=2,
+        caution_n=3,
+    )
+    pair = next(
+        row for row in rows if row["kind"] == "within_year_pair" and row["year"] == 2008
+    )
+    assert pair["time_ks"] == pytest.approx(1)
+    assert np.isnan(pair["energy_ks"])
+    assert "energy" in pair["status"]
+
+
+def test_energy_mode_loader_uses_reconstructed_step11_energy(tmp_path: Path) -> None:
+    cache = modes_cache.SurveyCache(tmp_path)
+    with duckdb.connect() as con:
+        con.execute(
+            """CREATE TABLE trip_legs AS SELECT 'd1' day_id, 1 num_dep,
+                40.0 energy_kh_kj, 30.0 energy_cp_kj"""
+        )
+        con.execute(
+            """COPY (SELECT 'd1' day_id, 1 num_dep, '123' ident_men,
+                'walk' mode7, 1.0 pond_jour, 10.0 duration_min,
+                1.0 distance_km) TO ? (FORMAT PARQUET)""",
+            [str(cache.trips(scope.REFERENCE_SCOPE))],
+        )
+        kh = cells.read_mode_energy(con, cache, scope.REFERENCE_SCOPE, rate="kh")
+        cp = cells.read_mode_energy(con, cache, scope.REFERENCE_SCOPE, rate="cp")
+        assert kh.energy_kj.tolist() == [40.0]
+        assert cp.energy_kj.tolist() == [30.0]
+
+
+def _energy_survey(factor: float) -> cells.EnergySurvey:
+    labels = {
+        "population": np.array(["employed", "employed", "employed"]),
+        "density": np.array(["dense", "dense", "dense"]),
+        "income": np.array(["q1", "q1", "q1"]),
+        "vehicles": np.array(["1", "1", "1"]),
+    }
+    return cells.EnergySurvey(
+        roster_household=np.array(["1", "2", "3"]),
+        roster_weight=np.array([10.0, 10.0, 10.0]),
+        roster_labels=labels,
+        day_id=np.array(["d1", "d2"]),
+        day_household=np.array(["1", "1"]),
+        day_weight=np.array([2.0, 3.0]),
+        day_labels={name: values[:2] for name, values in labels.items()},
+        day_mode=np.array(["car_driver", "unknown"]),
+        is_open=np.array([False, True]),
+        has_trips=np.array([True, False]),
+        energy_kj=np.array([30.0 * factor, 0.0]),
+        mode_kj={
+            "walk": np.array([10.0 * factor, 0.0]),
+            "car_driver": np.array([20.0 * factor, 0.0]),
+        },
+        mode_used={
+            "walk": np.array([True, False]),
+            "car_driver": np.array([True, False]),
+        },
+    )
+
+
+@pytest.mark.parametrize(("rate", "factor"), [("kh", 1.0), ("cp", 2.0)])
+def test_grouped_energy_and_mode_person_sum(rate: str, factor: float) -> None:
+    data = _energy_survey(factor)
+    draws = modes.Draws(np.array(["1", "2", "3"]), np.ones((5, 3)), 0)
+    rows = cells.energy_statistics(
+        data,
+        data,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        rate=rate,
+        minimum_n=1,
+        caution_n=2,
+        margins=(0.15, 0.10),
+        merge_config=groupings.MergeConfig(checkpoint_dir=Path("."), dimensions={}),
+    )
+    total = next(
+        r for r in rows if r["grouping"] == "overall" and r["basis"] == "person"
+    )
+    modes_rows = [r for r in rows if r["grouping"] == "mode" and r["basis"] == "person"]
+    assert total["mean_2008"] == pytest.approx(60 * factor / 27)
+    assert sum(r["mean_2008"] for r in modes_rows) == pytest.approx(total["mean_2008"])
+    assert all(r["ratio"] == pytest.approx(1) for r in modes_rows)
+    mode_group = next(
+        r for r in rows if r["grouping"] == "day_mode_group" and r["basis"] == "person"
+    )
+    assert np.isnan(mode_group["mean_2008"])
+    assert "not defined" in mode_group["status"]
+    category = next(
+        r for r in rows if r["grouping"] == "population" and r["basis"] == "travel_day"
+    )
+    assert category["mean_2008"] == pytest.approx(30 * factor)
+
+
+def test_energy_cache_join_and_unknown_only_days(tmp_path: Path) -> None:
+    cache = modes_cache.SurveyCache(tmp_path)
+    with duckdb.connect() as con:
+        con.execute(
+            """COPY (SELECT * FROM (VALUES
+                ('d1', 'p1', '1', 2.0),
+                ('d2', 'p1', '1', 3.0),
+                ('d3', 'p2', '2', 4.0)
+            ) AS x(day_id, ident_ind, ident_men, pond_jour))
+            TO ? (FORMAT PARQUET)""",
+            [str(cache.day_base)],
+        )
+        con.execute(
+            """COPY (SELECT * FROM (VALUES
+                ('d1', 30.0, 'car_driver'),
+                ('d3', NULL, 'other')
+            ) AS x(day_id, total_energy_kh_kj, day_mode_group))
+            TO ? (FORMAT PARQUET)""",
+            [str(cache.days(scope.REFERENCE_SCOPE))],
+        )
+    cached = income.CachedIncome(
+        people=income.People(
+            np.array(["p1", "p2", "p3"]),
+            np.array(["1", "2", "3"]),
+            np.array(["q1", "q1", "q1"]),
+            np.array([10.0, 10.0, 10.0]),
+        ),
+        days=income.Days(
+            np.array(["p1", "p1", "p2"]),
+            np.array(["1", "1", "2"]),
+            np.array(["q1", "q1", "q1"]),
+            np.array([2.0, 3.0, 4.0]),
+            np.array([10.0, 0.0, 10.0]),
+            np.array([False, True, False]),
+            np.array([True, False, True]),
+        ),
+        population=np.array(["employed"] * 3),
+        density=np.array(["dense"] * 3),
+        cars=np.array(["1"] * 3),
+        weekday=np.array(["monday"] * 3),
+    )
+    mode_days = cells.aggregate_mode_days(
+        day=np.array(["d1", "d1", "d3"]),
+        mode=np.array(["walk", "car_driver", "other"]),
+        household=np.array(["1", "1", "2"]),
+        weight=np.array([2.0, 2.0, 4.0]),
+        minutes=np.array([5.0, 5.0, 10.0]),
+        distance_km=np.ones(3),
+        energy_kj=np.array([10.0, 20.0, np.nan]),
+    )
+    survey = cells.read_energy_survey(cache, cached, mode_days, rate="kh")
+    draws = modes.Draws(np.array(["1", "2", "3"]), np.ones((5, 3)), 0)
+    rows = cells.energy_statistics(
+        survey,
+        survey,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        rate="kh",
+        minimum_n=1,
+        caution_n=2,
+        margins=(0.15, 0.10),
+        merge_config=groupings.MergeConfig(checkpoint_dir=tmp_path, dimensions={}),
+    )
+    total = next(
+        r for r in rows if r["grouping"] == "overall" and r["basis"] == "person"
+    )
+    assert total["mean_2008"] == pytest.approx(60 / (30 - 3 - 4))
+
+
+def test_energy_person_mode_accounting_in_every_draw() -> None:
+    data = _energy_survey(1)
+    draws = modes.Draws(
+        np.array(["1", "2", "3"]),
+        np.array([[1.0, 2.0, 1.0], [2.0, 1.0, 1.0], [0.0, 1.0, 2.0]]),
+        0,
+    )
+    rw = cells._energy_draw_weights(data.roster_household, data.roster_weight, draws)
+    dw = cells._energy_draw_weights(data.day_household, data.day_weight, draws)
+    roster = np.ones(3, dtype=bool)
+    days = np.ones(2, dtype=bool)
+    total = cells._energy_metric(data, roster, days, data.energy_kj, "person", rw, dw)
+    by_mode = [
+        cells._energy_metric(data, roster, days, values, "person", rw, dw)
+        for values in data.mode_kj.values()
+    ]
+    assert sum(value.value for value in by_mode) == pytest.approx(total.value)
+    assert sum((value.replicates for value in by_mode)) == pytest.approx(
+        total.replicates
+    )
+    invalid = replace(data, energy_kj=np.array([31.0, 0.0]))
+    with pytest.raises(ValueError, match="does not sum"):
+        cells._energy_survey_validate(invalid)
+
+
+def test_zero_2019_energy_has_zero_ratio(tmp_path: Path) -> None:
+    draws = modes.Draws(np.array(["1", "2", "3"]), np.ones((5, 3)), 0)
+    rows = cells.energy_statistics(
+        _energy_survey(1),
+        _energy_survey(0),
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        rate="kh",
+        minimum_n=1,
+        caution_n=2,
+        margins=(0.15, 0.10),
+        merge_config=groupings.MergeConfig(checkpoint_dir=tmp_path, dimensions={}),
+    )
+    total = next(
+        row for row in rows if row["grouping"] == "overall" and row["basis"] == "person"
+    )
+    assert total["ratio"] == 0
+    assert total["ratio_low"] == 0

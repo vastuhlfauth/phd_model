@@ -4,6 +4,7 @@ The report and command-line interface are not yet implemented.
 """
 
 from dataclasses import dataclass, fields
+from itertools import combinations
 
 import duckdb
 import numpy as np
@@ -1092,6 +1093,685 @@ def mode_rounding_bounds(
                 row["lower_min"], row["upper_min"] = min(changes), max(changes)
                 row["mean_min"] = float(np.mean(changes))
             rows.append(row)
+        return rows
+
+
+def read_mode_energy(
+    con: duckdb.DuckDBPyConnection,
+    cache: modes_cache.SurveyCache,
+    selected: scope.Scope,
+    *,
+    rate: str,
+) -> ModeDays:
+    """Aggregate modeled trip energy by mode-user day, in kJ above rest."""
+    if rate not in ("kh", "cp"):
+        raise ValueError(f"Unsupported energy rate set: {rate}")
+    rows = con.execute(
+        f"""SELECT CAST(v.day_id AS VARCHAR) day_id,
+            CAST(v.ident_men AS VARCHAR) household, v.mode7, v.pond_jour,
+            v.duration_min, v.distance_km, t.energy_{rate}_kj AS energy_kj,
+            count(t.day_id) OVER (PARTITION BY v.day_id, v.num_dep) matches
+        FROM read_parquet(?) v LEFT JOIN trip_legs t
+          ON t.day_id = v.day_id AND t.num_dep = v.num_dep""",
+        [str(cache.trips(selected))],
+    ).fetchnumpy()
+    rows = {name: vr._plain_array(value) for name, value in rows.items()}
+    if np.any(rows["matches"] != 1):
+        raise ValueError("Scoped cached trip does not match exactly one energy trip")
+    return aggregate_mode_days(
+        day=rows["day_id"],
+        mode=rows["mode7"],
+        household=rows["household"],
+        weight=rows["pond_jour"],
+        minutes=rows["duration_min"],
+        distance_km=rows["distance_km"],
+        energy_kj=rows["energy_kj"],
+    )
+
+
+def _energy_samples(
+    data: ModeDays, draws: modes.Draws
+) -> dict[str, tuple[ModeDays, np.ndarray]]:
+    result = {}
+    for mode_name in np.unique(data.mode):
+        mask = data.mode == mode_name
+        subset = ModeDays(
+            **{
+                field.name: getattr(data, field.name)[mask]
+                for field in fields(ModeDays)
+            }
+        )
+        result[str(mode_name)] = (subset, _draw_weights(subset, draws))
+    return result
+
+
+def _collapse_ks(
+    a: ModeDays, b: ModeDays, wa: np.ndarray, wb: np.ndarray
+) -> tuple[float, float]:
+    if wa.sum() <= 0 or wb.sum() <= 0:
+        return np.nan, np.nan
+    known_a, known_b = np.isfinite(a.energy_kj), np.isfinite(b.energy_kj)
+    time_ks = modes.weighted_ks(
+        modes.Observations(a.minutes, wa, a.household),
+        modes.Observations(b.minutes, wb, b.household),
+    )
+    energy_ks = np.nan
+    if wa[known_a].sum() > 0 and wb[known_b].sum() > 0:
+        energy_ks = modes.weighted_ks(
+            modes.Observations(a.energy_kj[known_a], wa[known_a], a.household[known_a]),
+            modes.Observations(b.energy_kj[known_b], wb[known_b], b.household[known_b]),
+        )
+    return time_ks, energy_ks
+
+
+def energy_collapse(
+    a: ModeDays,
+    b: ModeDays,
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    selected: scope.Scope,
+    rate: str,
+    minimum_n: int,
+    caution_n: int,
+    timings: dict[str, float] | None = None,
+) -> list[dict]:
+    """Compare within-year pairwise and cross-year mode distributions."""
+    if rate not in ("kh", "cp") or minimum_n <= 0 or caution_n < minimum_n:
+        raise ValueError("Invalid rate set or disclosure thresholds")
+    if selected != scope.REFERENCE_SCOPE:
+        raise ValueError("The energy collapse test uses the reference scope only")
+    if not len(draws_a.multipliers) or len(draws_a.multipliers) != len(
+        draws_b.multipliers
+    ):
+        raise ValueError("Both surveys need equal nonempty household draws")
+    with modes._timed({} if timings is None else timings, f"{rate} energy collapse"):
+        samples_a = _energy_samples(a, draws_a)
+        samples_b = _energy_samples(b, draws_b)
+        rows = []
+
+        def intervals(
+            row: dict,
+            point: tuple[float, float],
+            reps: np.ndarray,
+            visible: tuple[bool, bool],
+        ) -> None:
+            for index, name in enumerate(("time", "energy")):
+                if visible[index] and np.isfinite(point[index]):
+                    row[f"{name}_ks"] = point[index]
+                    low, high = groupings._percentile_interval(
+                        reps[:, index], confidence=95
+                    )
+                    row[f"{name}_ks_low"] = low
+                    row[f"{name}_ks_high"] = high
+
+        for year, samples in ((2008, samples_a), (2019, samples_b)):
+            point_pairs = []
+            replicate_pairs = []
+            for left, right in combinations(sorted(samples), 2):
+                sa, wa = samples[left]
+                sb, wb = samples[right]
+                row = {
+                    "kind": "within_year_pair",
+                    "year": year,
+                    "rate": rate,
+                    "scope": selected.id,
+                    "mode_a": left,
+                    "mode_b": right,
+                    "n_a": len(sa.day),
+                    "n_b": len(sb.day),
+                    "energy_n_a": int(np.isfinite(sa.energy_kj).sum()),
+                    "energy_n_b": int(np.isfinite(sb.energy_kj).sum()),
+                    "caution": min(len(sa.day), len(sb.day)) < caution_n,
+                    "time_ks": np.nan,
+                    "energy_ks": np.nan,
+                    "time_ks_low": np.nan,
+                    "time_ks_high": np.nan,
+                    "energy_ks_low": np.nan,
+                    "energy_ks_high": np.nan,
+                    "status": "",
+                }
+                row["energy_caution"] = (
+                    min(row["energy_n_a"], row["energy_n_b"]) < caution_n
+                )
+                point = _collapse_ks(sa, sb, sa.weight, sb.weight)
+                reps = np.asarray(
+                    [_collapse_ks(sa, sb, x, y) for x, y in zip(wa, wb, strict=True)]
+                )
+                if np.isfinite(point).all():
+                    point_pairs.append(point)
+                    replicate_pairs.append(reps)
+                time_visible = min(len(sa.day), len(sb.day)) >= minimum_n
+                energy_visible = min(row["energy_n_a"], row["energy_n_b"]) >= minimum_n
+                intervals(row, point, reps, (time_visible, energy_visible))
+                if not time_visible:
+                    row["status"] = "small mode cell hidden"
+                elif not energy_visible:
+                    row["status"] = "mode energy unavailable or hidden"
+                rows.append(row)
+            summary = {
+                "kind": "within_year_median",
+                "year": year,
+                "rate": rate,
+                "scope": selected.id,
+                "mode_a": "",
+                "mode_b": "",
+                "n_pairs": len(point_pairs),
+                "time_ks": np.nan,
+                "energy_ks": np.nan,
+                "time_ks_low": np.nan,
+                "time_ks_high": np.nan,
+                "energy_ks_low": np.nan,
+                "energy_ks_high": np.nan,
+                "energy_minus_time": np.nan,
+                "energy_minus_time_low": np.nan,
+                "energy_minus_time_high": np.nan,
+                "comparison": "",
+                "comparison_basis": "pairs with known energy in both modes",
+                "status": "",
+            }
+            if point_pairs:
+                point = np.median(np.asarray(point_pairs), axis=0)
+                rep_array = np.stack(replicate_pairs)
+                complete = np.isfinite(rep_array).all(axis=(0, 2))
+                medians = np.full((len(draws_a.multipliers), 2), np.nan)
+                medians[complete] = np.median(rep_array[:, complete, :], axis=0)
+                intervals(
+                    summary, (float(point[0]), float(point[1])), medians, (True, True)
+                )
+                summary["energy_minus_time"] = float(point[1] - point[0])
+                low, high = groupings._percentile_interval(
+                    medians[:, 1] - medians[:, 0], confidence=95
+                )
+                summary["energy_minus_time_low"], summary["energy_minus_time_high"] = (
+                    low,
+                    high,
+                )
+                summary["comparison"] = (
+                    "closer" if point[1] < point[0] else "not closer"
+                )
+            else:
+                summary["status"] = "fewer than two modes with known energy"
+            rows.append(summary)
+        for mode_name in sorted(samples_a.keys() | samples_b.keys()):
+            row = {
+                "kind": "across_year_mode",
+                "year": "",
+                "rate": rate,
+                "scope": selected.id,
+                "mode_a": mode_name,
+                "mode_b": mode_name,
+                "time_ks": np.nan,
+                "energy_ks": np.nan,
+                "time_ks_low": np.nan,
+                "time_ks_high": np.nan,
+                "energy_ks_low": np.nan,
+                "energy_ks_high": np.nan,
+                "status": "",
+            }
+            if mode_name not in samples_a or mode_name not in samples_b:
+                row["status"] = "mode unavailable in one year"
+            else:
+                sa, wa = samples_a[mode_name]
+                sb, wb = samples_b[mode_name]
+                row["n_a"], row["n_b"] = len(sa.day), len(sb.day)
+                row["energy_n_a"] = int(np.isfinite(sa.energy_kj).sum())
+                row["energy_n_b"] = int(np.isfinite(sb.energy_kj).sum())
+                row["caution"] = min(len(sa.day), len(sb.day)) < caution_n
+                row["energy_caution"] = (
+                    min(row["energy_n_a"], row["energy_n_b"]) < caution_n
+                )
+                time_visible = min(len(sa.day), len(sb.day)) >= minimum_n
+                energy_visible = min(row["energy_n_a"], row["energy_n_b"]) >= minimum_n
+                point = _collapse_ks(sa, sb, sa.weight, sb.weight)
+                reps = np.asarray(
+                    [_collapse_ks(sa, sb, x, y) for x, y in zip(wa, wb, strict=True)]
+                )
+                intervals(row, point, reps, (time_visible, energy_visible))
+                if not time_visible:
+                    row["status"] = "small mode cell hidden"
+                elif not energy_visible:
+                    row["status"] = "mode energy unavailable or hidden"
+            rows.append(row)
+        return rows
+
+
+@dataclass(frozen=True)
+class EnergySurvey:
+    """Reference-scope respondent and day energy in kJ above rest, section 9.9."""
+
+    roster_household: np.ndarray
+    roster_weight: np.ndarray
+    roster_labels: dict[str, np.ndarray]
+    day_id: np.ndarray
+    day_household: np.ndarray
+    day_weight: np.ndarray
+    day_labels: dict[str, np.ndarray]
+    day_mode: np.ndarray
+    is_open: np.ndarray
+    has_trips: np.ndarray
+    energy_kj: np.ndarray
+    mode_kj: dict[str, np.ndarray]
+    mode_used: dict[str, np.ndarray]
+
+
+def read_energy_survey(
+    cache: modes_cache.SurveyCache,
+    cached: income_module.CachedIncome,
+    mode_days: ModeDays,
+    *,
+    rate: str,
+) -> EnergySurvey:
+    """Join cached weekday persons and day energy to reconstructed mode energy."""
+    if rate not in ("kh", "cp"):
+        raise ValueError(f"Unsupported energy rate set: {rate}")
+    with duckdb.connect() as con:
+        rows = con.execute(
+            f"""SELECT CAST(b.day_id AS VARCHAR) day_id,
+                trim(CAST(b.ident_ind AS VARCHAR)) person,
+                trim(CAST(b.ident_men AS VARCHAR)) household, b.pond_jour AS weight,
+                d.day_id IS NOT NULL has_trips,
+                CASE WHEN d.day_id IS NULL THEN 0
+                     ELSE d.total_energy_{rate}_kj END AS energy_kj,
+                coalesce(d.day_mode_group, 'unknown') AS day_mode
+            FROM read_parquet(?) b LEFT JOIN read_parquet(?) d ON d.day_id=b.day_id
+            ORDER BY b.day_id""",
+            [str(cache.day_base), str(cache.days(scope.REFERENCE_SCOPE))],
+        ).fetchnumpy()
+    rows = {name: vr._plain_array(value) for name, value in rows.items()}
+    day_ids = _text(rows["day_id"], "day")
+    persons = _text(rows["person"], "day person")
+    households = _text(rows["household"], "day household")
+    roster_person = _text(cached.people.person, "roster person")
+    if len(day_ids) != len(np.unique(day_ids)) or len(roster_person) != len(
+        np.unique(roster_person)
+    ):
+        raise ValueError("Duplicate day or roster person")
+    if (
+        not np.array_equal(persons, _text(cached.days.person, "cached day person"))
+        or not np.array_equal(
+            households, _text(cached.days.household, "cached day household")
+        )
+        or not np.allclose(rows["weight"], cached.days.weight)
+        or not np.array_equal(rows["has_trips"], cached.days.has_trips)
+    ):
+        raise ValueError("Cached energy days do not match cached income days")
+    order = np.argsort(roster_person)
+    lookup = np.searchsorted(roster_person[order], persons)
+    if np.any(lookup >= len(order)) or np.any(roster_person[order][lookup] != persons):
+        raise ValueError("Day person missing from roster")
+    person_index = order[lookup]
+    if not np.array_equal(
+        _text(cached.people.household, "roster household")[person_index], households
+    ):
+        raise ValueError("Day household differs from roster household")
+    day_order = np.argsort(day_ids)
+    mode_index = np.searchsorted(day_ids[day_order], mode_days.day)
+    if np.any(mode_index >= len(day_ids)) or np.any(
+        day_ids[day_order][mode_index] != mode_days.day
+    ):
+        raise ValueError("Mode energy day missing from day base")
+    day_index = day_order[mode_index]
+    if (
+        not np.array_equal(households[day_index], mode_days.household)
+        or not np.allclose(rows["weight"][day_index], mode_days.weight)
+        or not np.array_equal(
+            np.unique(day_index), np.flatnonzero(cached.days.has_trips)
+        )
+    ):
+        raise ValueError("Mode energy records do not match cached travel days")
+    mode_kj, mode_used = {}, {}
+    for mode_name in np.unique(mode_days.mode):
+        selected = mode_days.mode == mode_name
+        indices = day_index[selected]
+        mode_kj[str(mode_name)] = np.zeros(len(day_ids))
+        mode_used[str(mode_name)] = np.zeros(len(day_ids), dtype=bool)
+        mode_kj[str(mode_name)][indices] = mode_days.energy_kj[selected]
+        mode_used[str(mode_name)][indices] = True
+    labels = {
+        "population": cached.population,
+        "density": cached.density,
+        "income": cached.people.income,
+        "vehicles": cached.cars,
+    }
+    survey = EnergySurvey(
+        roster_household=_text(cached.people.household, "roster household"),
+        roster_weight=cached.people.weight,
+        roster_labels=labels,
+        day_id=day_ids,
+        day_household=households,
+        day_weight=cached.days.weight,
+        day_labels={name: values[person_index] for name, values in labels.items()},
+        day_mode=_text(rows["day_mode"], "day mode"),
+        is_open=cached.days.is_open,
+        has_trips=cached.days.has_trips,
+        energy_kj=np.asarray(rows["energy_kj"], dtype=float),
+        mode_kj=mode_kj,
+        mode_used=mode_used,
+    )
+    _energy_survey_validate(survey)
+    return survey
+
+
+def _energy_survey_validate(data: EnergySurvey) -> None:
+    """Validate energy inputs and the daily mode-to-total accounting identity."""
+    n_people, n_days = len(data.roster_weight), len(data.day_weight)
+    if not n_people or any(
+        len(array) != n_people
+        for array in (data.roster_household, *data.roster_labels.values())
+    ):
+        raise ValueError("Invalid energy respondent arrays")
+    if any(
+        len(array) != n_days
+        for array in (
+            data.day_id,
+            data.day_household,
+            data.day_mode,
+            data.is_open,
+            data.has_trips,
+            data.energy_kj,
+            *data.day_labels.values(),
+            *data.mode_kj.values(),
+            *data.mode_used.values(),
+        )
+    ):
+        raise ValueError("Invalid energy day arrays")
+    if set(data.mode_kj) != set(data.mode_used):
+        raise ValueError("Mode energy and use labels differ")
+    if data.is_open.dtype != np.dtype(bool) or data.has_trips.dtype != np.dtype(bool):
+        raise ValueError("Open and travel-day indicators must be boolean")
+    if (
+        not np.isfinite(data.roster_weight).all()
+        or not np.isfinite(data.day_weight).all()
+        or np.any(data.roster_weight < 0)
+        or np.any(data.day_weight < 0)
+        or data.roster_weight.sum() <= 0
+        or np.any(np.isinf(data.energy_kj))
+        or np.any(data.energy_kj < 0)
+    ):
+        raise ValueError("Invalid energy weights or daily values")
+    known = np.isfinite(data.energy_kj)
+    if np.any(~data.has_trips & (~known | (data.energy_kj != 0))):
+        raise ValueError("Days without scoped trips must have zero energy")
+    total = np.zeros(n_days)
+    for mode_name, values in data.mode_kj.items():
+        used = data.mode_used[mode_name]
+        if (
+            used.dtype != np.dtype(bool)
+            or np.any(np.isinf(values))
+            or np.any(values < 0)
+        ):
+            raise ValueError("Invalid mode energy or use indicators")
+        if np.any(~used & ((~np.isfinite(values)) | (values != 0))):
+            raise ValueError("Non-users must have zero attributable energy")
+        total += np.where(np.isfinite(values), values, 0)
+    if not np.allclose(total[known], data.energy_kj[known], rtol=1e-8, atol=1e-8):
+        raise ValueError("Mode energy does not sum to daily energy")
+
+
+def _energy_draw_weights(
+    household: np.ndarray, weight: np.ndarray, draws: modes.Draws
+) -> np.ndarray:
+    universe = _text(np.asarray(draws.households), "draw household")
+    households = _text(household, "household")
+    if not np.array_equal(universe, np.unique(universe)):
+        raise ValueError("Draw households must be unique and sorted text")
+    if draws.multipliers.ndim != 2 or draws.multipliers.shape[1] != len(universe):
+        raise ValueError("Invalid household draw matrix")
+    if np.any(~np.isfinite(draws.multipliers)) or np.any(draws.multipliers < 0):
+        raise ValueError("Invalid household draw multipliers")
+    indices = income_module._household_indices(households, universe)
+    return draws.multipliers[:, indices] * weight
+
+
+def _energy_metric(
+    data: EnergySurvey,
+    roster_mask: np.ndarray,
+    day_mask: np.ndarray,
+    values: np.ndarray,
+    basis: str,
+    roster_draws: np.ndarray,
+    day_draws: np.ndarray,
+) -> modes.Metric:
+    """Weighted daily energy and aligned household replicates in kJ."""
+    known = np.isfinite(data.energy_kj)
+    travel = day_mask & ~data.is_open & data.has_trips & known
+    excluded = day_mask & (data.is_open | (data.has_trips & ~known))
+    numerators = np.where(travel, np.nan_to_num(values, nan=0.0), 0.0)
+    numerator = float(np.dot(data.day_weight, numerators))
+    rep_numerator = day_draws @ numerators
+    if basis == "travel_day":
+        denominator = float(data.day_weight[travel].sum())
+        rep_denominator = day_draws @ travel.astype(float)
+    elif basis == "person":
+        denominator = float(
+            data.roster_weight[roster_mask].sum() - data.day_weight[excluded].sum()
+        )
+        rep_denominator = roster_draws @ roster_mask.astype(
+            float
+        ) - day_draws @ excluded.astype(float)
+    else:
+        raise ValueError(f"Unknown energy basis {basis}")
+    if denominator < 0:
+        raise ValueError("Energy denominator after excluded days is negative")
+    replicates = np.divide(
+        rep_numerator,
+        rep_denominator,
+        out=np.full(len(rep_numerator), np.nan),
+        where=rep_denominator > 0,
+    )
+    return modes.Metric(
+        numerator / denominator if denominator > 0 else np.nan, replicates
+    )
+
+
+def energy_statistics(
+    a: EnergySurvey,
+    b: EnergySurvey,
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    selected: scope.Scope,
+    rate: str,
+    minimum_n: int,
+    caution_n: int,
+    margins: tuple[float, float],
+    merge_config: groupings.MergeConfig,
+    timings: dict[str, float] | None = None,
+) -> list[dict]:
+    """Energy by group and attributable mode, with household intervals."""
+    if selected != scope.REFERENCE_SCOPE or rate not in ("kh", "cp"):
+        raise ValueError("Energy levels require the reference scope and known rate set")
+    if minimum_n <= 0 or caution_n < minimum_n or not all(0 < m < 1 for m in margins):
+        raise ValueError("Invalid energy thresholds or equivalence margins")
+    if not len(draws_a.multipliers) or len(draws_a.multipliers) != len(
+        draws_b.multipliers
+    ):
+        raise ValueError("Both surveys need equal nonempty household draws")
+    for sample in (a, b):
+        _energy_survey_validate(sample)
+        for dimension in ("population", "density", "income", "vehicles"):
+            if (
+                dimension not in sample.day_labels
+                or dimension not in sample.roster_labels
+            ):
+                raise ValueError(f"Missing energy grouping {dimension}")
+    with modes._timed({} if timings is None else timings, f"{rate} grouped energy"):
+        day_weights = [
+            _energy_draw_weights(data.day_household, data.day_weight, draws)
+            for data, draws in ((a, draws_a), (b, draws_b))
+        ]
+        roster_weights = [
+            _energy_draw_weights(data.roster_household, data.roster_weight, draws)
+            for data, draws in ((a, draws_a), (b, draws_b))
+        ]
+        rows = []
+        for dimension in (
+            "overall",
+            "population",
+            "density",
+            "income",
+            "vehicles",
+            "day_mode_group",
+            "mode",
+        ):
+            raw_day = []
+            raw_roster = []
+            for data in (a, b):
+                if dimension == "overall":
+                    raw_day.append(np.full(len(data.day_id), "all"))
+                    raw_roster.append(np.full(len(data.roster_weight), "all"))
+                elif dimension == "day_mode_group":
+                    raw_day.append(_text(data.day_mode, "day mode"))
+                    raw_roster.append(np.full(len(data.roster_weight), ""))
+                elif dimension == "mode":
+                    raw_day.append(np.full(len(data.day_id), ""))
+                    raw_roster.append(np.full(len(data.roster_weight), "all"))
+                else:
+                    raw_day.append(_text(data.day_labels[dimension], dimension))
+                    raw_roster.append(_text(data.roster_labels[dimension], dimension))
+            mapping = {}
+            if dimension in ("density", "income", "vehicles"):
+                eligible = [
+                    data.has_trips & ~data.is_open & np.isfinite(data.energy_kj)
+                    for data in (a, b)
+                ]
+                matrices = [
+                    np.column_stack((np.full(mask.sum(), "all"), labels[mask]))
+                    for labels, mask in zip(raw_day, eligible, strict=True)
+                ]
+                if all(len(matrix) for matrix in matrices):
+                    mapping = groupings.merge_cells(
+                        matrices[0],
+                        a.day_id[eligible[0]],
+                        matrices[1],
+                        b.day_id[eligible[1]],
+                        dimensions=("all", dimension),
+                        config=merge_config,
+                        minimum_n=minimum_n,
+                    )
+
+            def mapped(labels: np.ndarray) -> np.ndarray:
+                unique, inverse = np.unique(labels, return_inverse=True)
+                targets = [
+                    mapping.get(("all", label), ("all", label))[1] for label in unique
+                ]
+                return np.asarray(targets)[inverse]
+
+            days_labels = [mapped(labels) for labels in raw_day]
+            roster_labels = [mapped(labels) for labels in raw_roster]
+            labels = (
+                sorted(a.mode_kj.keys() | b.mode_kj.keys())
+                if dimension == "mode"
+                else np.union1d(days_labels[0], days_labels[1]).tolist()
+            )
+            for label in labels:
+                if dimension == "population" and label == "unknown":
+                    continue
+                bases = ("person",) if dimension == "mode" else ("travel_day", "person")
+                for basis in bases:
+                    row = {
+                        "scope": selected.id,
+                        "rate": rate,
+                        "grouping": dimension,
+                        "cell": str(label),
+                        "basis": basis,
+                        "status": "",
+                        "ratio": np.nan,
+                        "ratio_low": np.nan,
+                        "ratio_high": np.nan,
+                        "verdict_15": "",
+                        "verdict_10": "",
+                    }
+                    if dimension == "day_mode_group" and basis == "person":
+                        row.update(
+                            mean_2008=np.nan,
+                            mean_2019=np.nan,
+                            status="not defined: days without trips have no mode group",
+                        )
+                        rows.append(row)
+                        continue
+                    metrics = []
+                    for index, (year, data) in enumerate(((2008, a), (2019, b))):
+                        if dimension == "mode":
+                            used = data.mode_used.get(
+                                label, np.zeros(len(data.day_id), dtype=bool)
+                            )
+                            values = data.mode_kj.get(label, np.zeros(len(data.day_id)))
+                            day_mask = np.ones(len(data.day_id), dtype=bool)
+                            roster_mask = np.ones(len(data.roster_weight), dtype=bool)
+                            count = int(
+                                np.sum(used & ~data.is_open & np.isfinite(values))
+                            )
+                            unavailable = bool(
+                                np.any(used & ~data.is_open & ~np.isfinite(values))
+                            )
+                        else:
+                            day_mask = days_labels[index] == label
+                            roster_mask = roster_labels[index] == label
+                            values = data.energy_kj
+                            count = int(
+                                np.sum(
+                                    day_mask
+                                    & data.has_trips
+                                    & ~data.is_open
+                                    & np.isfinite(data.energy_kj)
+                                )
+                            )
+                            unavailable = False
+                        metric = _energy_metric(
+                            data,
+                            roster_mask,
+                            day_mask,
+                            values,
+                            basis,
+                            roster_weights[index],
+                            day_weights[index],
+                        )
+                        metrics.append(metric)
+                        visible = count >= minimum_n and not unavailable
+                        row[f"n_{year}"] = count
+                        row[f"caution_{year}"] = count < caution_n
+                        row[f"mean_{year}"] = metric.value if visible else np.nan
+                        low, high = (
+                            groupings._percentile_interval(
+                                metric.replicates, confidence=95
+                            )
+                            if visible and np.isfinite(metric.value)
+                            else (np.nan, np.nan)
+                        )
+                        row[f"mean_{year}_low"], row[f"mean_{year}_high"] = low, high
+                        if unavailable:
+                            row["status"] = "mode energy unavailable"
+                        elif count < minimum_n and not row["status"]:
+                            row["status"] = "small cell hidden"
+                    if (
+                        np.isfinite(row["mean_2008"])
+                        and row["mean_2008"] > 0
+                        and np.isfinite(row["mean_2019"])
+                    ):
+                        ratios = np.divide(
+                            metrics[1].replicates,
+                            metrics[0].replicates,
+                            out=np.full(len(metrics[0].replicates), np.nan),
+                            where=metrics[0].replicates > 0,
+                        )
+                        low, high = groupings._percentile_interval(
+                            ratios, confidence=90
+                        )
+                        row.update(
+                            ratio=metrics[1].value / metrics[0].value,
+                            ratio_low=low,
+                            ratio_high=high,
+                        )
+                        if np.isfinite(low) and np.isfinite(high):
+                            row["verdict_15"] = vr._equivalence_verdict(
+                                (low, high), margins[0]
+                            )
+                            row["verdict_10"] = vr._equivalence_verdict(
+                                (low, high), margins[1]
+                            )
+                    rows.append(row)
         return rows
 
 
