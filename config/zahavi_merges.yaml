@@ -1,4 +1,5 @@
 # Adjacent levels only. Preferred pairs take precedence over other neighbours.
+checkpoint_dir: data/interim/budget/zahavi_groupings
 dimensions:
   density:
     levels: [dense, intermediate, sparse, very_sparse]

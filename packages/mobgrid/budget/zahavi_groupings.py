@@ -1,8 +1,12 @@
 """Grouping comparisons of daily travel time, section 9.9."""
 
+import argparse
+import json
 import logging
+import sys
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime
 from itertools import product
 from pathlib import Path
 from types import ModuleType
@@ -10,9 +14,10 @@ from typing import Self
 
 import duckdb
 import numpy as np
+import yaml
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from mobgrid.budget import emp2019, entd2008, modes_cache
+from mobgrid.budget import emp2019, entd2008, modes_cache, scope_cube, variation
 from mobgrid.budget import scope as scope_module
 from mobgrid.budget import variation_report as vr
 from mobgrid.budget import zahavi_income as income_module
@@ -58,6 +63,7 @@ class MergeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    checkpoint_dir: Path
     dimensions: dict[str, OrderedDimension]
 
 
@@ -444,7 +450,10 @@ def read_grouping_days(
             SELECT trim(CAST(d.ident_ind AS VARCHAR)) AS person,
                 trim(CAST(d.ident_men AS VARCHAR)) AS household,
                 d.pond_jour AS weight, d.total_time_min AS minutes,
-                coalesce(CAST(d.age_band AS VARCHAR), 'unknown') AS age_band,
+                CASE WHEN nullif(trim(CAST(d.age_band AS VARCHAR)), '') IS NULL
+                         THEN 'unknown'
+                     WHEN trim(CAST(d.age_band AS VARCHAR)) = '0' THEN '00'
+                     ELSE trim(CAST(d.age_band AS VARCHAR)) END AS age_band,
                 coalesce(d.population_category, 'unknown') AS population,
                 d.income_quintile AS income,
                 coalesce(d.day_mode_group, 'unknown') AS day_mode_group,
@@ -1093,5 +1102,684 @@ def weighted_eta_squared(
     return float(np.sum(cell_weight * (means - mean) ** 2) / total)
 
 
+def _json_value(value: object) -> object:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(f"Cannot serialize checkpoint value of type {type(value).__name__}")
+
+
+def _checkpoint_write(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, default=_json_value), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _table(
+    title: str,
+    selected: scope_module.Scope,
+    rows: list[dict],
+    fields: tuple[str, ...],
+    n_a: int,
+    n_b: int,
+    *,
+    basis: str = "days with scoped trips",
+) -> list[str]:
+    result = [
+        f"### {title}",
+        "",
+        f"Scope: {selected.label}, Monday-Friday; {basis}.",
+        "",
+        "| " + " | ".join(fields) + " |",
+        "| " + " | ".join("---" for _ in fields) + " |",
+        *[
+            "| " + " | ".join(modes._cell(row.get(field)) for field in fields) + " |"
+            for row in rows
+        ],
+        "",
+        f"n: 2008 {n_a}, 2019 {n_b} travel days; cell n is respondents. "
+        "Sources: ENTD 2008 and EMP 2019 weekday survey caches, section 9.9.",
+        *(["", DAYTABLE_STATUS] if selected.distance == "daytable" else []),
+        "",
+    ]
+    return result
+
+
+def _flatten_deciles(row: dict) -> dict:
+    result = {key: value for key, value in row.items() if not key.endswith("_deciles")}
+    for kind in ("predicted", "observed"):
+        for index, value in enumerate(row[f"{kind}_deciles"], start=1):
+            result[f"{kind}_d{index}"] = value
+    return result
+
+
+def run_report(
+    out: Path,
+    cache_a: modes_cache.SurveyCache,
+    cache_b: modes_cache.SurveyCache,
+    attrs_a: tuple[
+        dict[str, str], dict[str, str], income_module.HouseholdVehicles, dict[str, str]
+    ],
+    attrs_b: tuple[
+        dict[str, str], dict[str, str], income_module.HouseholdVehicles, dict[str, str]
+    ],
+    draws_a: modes.Draws,
+    draws_b: modes.Draws,
+    *,
+    selected_scopes: tuple[scope_module.Scope, ...],
+    minimum_n: int,
+    margins: tuple[float, float],
+    merge_config: MergeConfig,
+    checkpoint_dir: Path,
+    timings: dict[str, float] | None = None,
+    warning_messages: list[str] | None = None,
+) -> dict[str, float]:
+    """Write grouping and person-mode report from cached surveys, section 9.9."""
+    if not selected_scopes or len(set(selected_scopes)) != len(selected_scopes):
+        raise ValueError("Scopes must be nonempty and unique")
+    out.mkdir(parents=True, exist_ok=True)
+    if timings is None:
+        timings = {}
+    all_cells: list[dict] = []
+    all_stability: list[dict] = []
+    all_counter: list[dict] = []
+    counter_lookup: dict[tuple[str, str], dict] = {}
+    results: list[tuple[scope_module.Scope, dict]] = []
+    for selected in selected_scopes:
+        checkpoint = checkpoint_dir / f"{selected.id}.json"
+        with modes._timed(timings, f"{selected.id} scope"):
+            if checkpoint.is_file():
+                LOGGER.info("%s: resuming completed scope", selected.id)
+                result = json.loads(checkpoint.read_text(encoding="utf-8"))
+                if result["scope"] != selected.id:
+                    raise ValueError(f"Checkpoint scope mismatch: {checkpoint}")
+                for warning in result["warnings"]:
+                    LOGGER.warning("%s (resumed %s)", warning, selected.id)
+            else:
+                warning_start = (
+                    len(warning_messages) if warning_messages is not None else 0
+                )
+                with modes._timed(timings, f"{selected.id} cache read"):
+                    samples = [
+                        read_grouping_days(
+                            cache,
+                            selected,
+                            income=attrs[0],
+                            density=attrs[1],
+                            vehicles=attrs[2].classes,
+                            household_type=attrs[3],
+                        )
+                        for cache, attrs in ((cache_a, attrs_a), (cache_b, attrs_b))
+                    ]
+                grouped = evaluate_groupings(
+                    samples[0],
+                    samples[1],
+                    draws_a,
+                    draws_b,
+                    selected=selected,
+                    config=merge_config,
+                    minimum_n=minimum_n,
+                    margins=margins,
+                    timings=timings,
+                )
+                cell_rows = []
+                stability_rows = []
+                counters = {}
+                merges = {}
+                for name, group in grouped.items():
+                    cell_rows.extend(group.cells)
+                    stability_rows.append(group.summary)
+                    merges[name] = group.partition.merges
+                    with modes._timed(timings, f"{selected.id} {name} counterfactual"):
+                        counters[name] = counterfactual_statistics(
+                            group.partition,
+                            draws_a,
+                            draws_b,
+                            compare=selected.distance != "daytable",
+                        )
+                with modes._timed(timings, f"{selected.id} person modes"):
+                    person_a = read_person_modes(cache_a, selected)
+                    person_b = read_person_modes(cache_b, selected)
+                    person_result = person_mode_statistics(
+                        person_a,
+                        person_b,
+                        draws_a,
+                        draws_b,
+                        compare=selected.distance != "daytable",
+                        minimum_n=minimum_n,
+                    )
+                result = {
+                    "scope": selected.id,
+                    "n_2008": len(samples[0].person),
+                    "n_2019": len(samples[1].person),
+                    "cells": cell_rows,
+                    "stability": stability_rows,
+                    "counterfactuals": counters,
+                    "merges": merges,
+                    "person_modes": person_result,
+                    "warnings": (
+                        warning_messages[warning_start:]
+                        if warning_messages is not None
+                        else []
+                    ),
+                }
+                _checkpoint_write(checkpoint, result)
+            results.append((selected, result))
+            all_cells.extend(result["cells"])
+            all_stability.extend(result["stability"])
+            status = DAYTABLE_STATUS if selected.distance == "daytable" else ""
+            for name, values in result["counterfactuals"].items():
+                counter_lookup[(selected.id, name)] = values
+                all_counter.append(
+                    {
+                        "scope": selected.id,
+                        "grouping": name,
+                        "record_type": "cell_model",
+                        "status": status,
+                        **_flatten_deciles(values),
+                    }
+                )
+            person_result = result["person_modes"]
+            all_counter.extend(
+                {
+                    "scope": selected.id,
+                    "grouping": "per_mode",
+                    "record_type": "mode",
+                    "status": status,
+                    **row,
+                }
+                for row in person_result["rows"]
+            )
+            all_counter.append(
+                {
+                    "scope": selected.id,
+                    "grouping": "per_mode",
+                    "record_type": "mode_model",
+                    "status": status,
+                    **_flatten_deciles(
+                        {
+                            key: value
+                            for key, value in person_result.items()
+                            if key != "rows"
+                        }
+                    ),
+                }
+            )
+    with modes._timed(timings, "summary tables"):
+        summaries = summary_rows(all_stability, counter_lookup)
+    with modes._timed(timings, "write report"):
+        modes._csv_rows(out / "cells.csv", all_cells, ("scope", "grouping", "cell"))
+        modes._csv_rows(out / "stability.csv", all_stability, ("scope", "grouping"))
+        modes._csv_rows(
+            out / "counterfactual.csv",
+            all_counter,
+            ("scope", "grouping", "record_type"),
+        )
+        modes._csv_rows(out / "summary.csv", summaries, ("scope", "grouping"))
+        report = [
+            "# Daily travel time by grouping",
+            "",
+            "Weekdays, residents aged 6+; survey day weights and shared "
+            "household draws. "
+            "Density is the common residence proxy; vehicles are harmonised in-use "
+            "household vehicles. Income is the within-survey quintile. Work/study "
+            "days include a scoped trip for work or study.",
+            "",
+            "Nominal categories are never merged. Ordered secondary categories are "
+            "merged on full-sample respondent counts in both years and held fixed "
+            "in every draw. Cells below the threshold are hidden in cell tables "
+            "but retained in all aggregate calculations.",
+            "",
+            "Ratios are observed 2019 divided by predicted 2019; their intervals "
+            "are 90%, eta-squared, KS and decomposition intervals are 95%. "
+            "Intervals require at least 95% valid household draws. Missing 2008 "
+            "cells use their primary parent; the fallback share is reported.",
+            "",
+            "The person-mode distribution maps weighted mid-ranks within each "
+            "2019 mode to 2008 weighted empirical mode-user durations, preserving "
+            "the 2019 mode combinations; ties retain day order. Its discretised "
+            "mean can differ from the analytical fixed-mode mean.",
+            "",
+        ]
+        for selected, result in results:
+            na, nb = result["n_2008"], result["n_2019"]
+            report.extend([f"## {selected.label} (`{selected.id}`)", ""])
+            summary_scope = [row for row in summaries if row["scope"] == selected.id]
+            report.extend(
+                _table(
+                    "Grouping summary",
+                    selected,
+                    summary_scope,
+                    (
+                        "grouping",
+                        "eta2_2008",
+                        "eta2_2019",
+                        "mean_abs_log_ratio",
+                        "equivalent_10_share",
+                        "observed_over_predicted",
+                        "ratio_low",
+                        "ratio_high",
+                        "ks_d",
+                        "n_cells",
+                    ),
+                    na,
+                    nb,
+                )
+            )
+            for stability in result["stability"]:
+                name = stability["grouping"]
+                rows = [row for row in result["cells"] if row["grouping"] == name]
+                report.extend(
+                    _table(
+                        f"{name}: cell levels",
+                        selected,
+                        rows,
+                        (
+                            "cell",
+                            "n_2008",
+                            "n_2019",
+                            "mean_2008",
+                            "mean_2019",
+                            "share_2008",
+                            "share_2019",
+                            "ratio",
+                            "ratio_ci_low",
+                            "ratio_ci_high",
+                            "verdict_10",
+                            "verdict_15",
+                        ),
+                        na,
+                        nb,
+                    )
+                )
+                report.extend(
+                    _table(
+                        f"{name}: stability and explained variance",
+                        selected,
+                        [stability],
+                        (
+                            "eta2_2008",
+                            "eta2_2008_low",
+                            "eta2_2008_high",
+                            "eta2_2019",
+                            "eta2_2019_low",
+                            "eta2_2019_high",
+                            "mean_abs_log_ratio",
+                            "equivalent_10_share",
+                            "equivalent_15_share",
+                            "max_abs_log_ratio",
+                            "excluded_share_2008",
+                            "excluded_share_2019",
+                        ),
+                        na,
+                        nb,
+                    )
+                )
+                merge_rows = [
+                    {"original": original, "merged": target}
+                    for original, target in result["merges"][name]
+                ]
+                report.extend(
+                    _table(
+                        f"{name}: fixed full-sample merges",
+                        selected,
+                        merge_rows,
+                        ("original", "merged"),
+                        na,
+                        nb,
+                    )
+                )
+                values = result["counterfactuals"][name]
+                report.extend(
+                    _table(
+                        f"{name}: fixed-cell model",
+                        selected,
+                        [values],
+                        (
+                            "observed_2019",
+                            "predicted_2019",
+                            "observed_over_predicted",
+                            "ratio_low",
+                            "ratio_high",
+                            "mix_term",
+                            "fallback_share",
+                            "ks_d",
+                            "ks_low",
+                            "ks_high",
+                        ),
+                        na,
+                        nb,
+                    )
+                )
+                deciles = [
+                    {"decile": index + 1, "predicted": pred, "observed": obs}
+                    for index, (pred, obs) in enumerate(
+                        zip(
+                            values["predicted_deciles"],
+                            values["observed_deciles"],
+                            strict=True,
+                        )
+                    )
+                ]
+                report.extend(
+                    _table(
+                        f"{name}: fixed-cell deciles",
+                        selected,
+                        deciles,
+                        ("decile", "predicted", "observed"),
+                        na,
+                        nb,
+                    )
+                )
+            person = result["person_modes"]
+            report.extend(
+                _table(
+                    "Per-person mode use and user-day minutes",
+                    selected,
+                    person["rows"],
+                    (
+                        "mode",
+                        "n_2008",
+                        "n_2019",
+                        "use_2008",
+                        "use_2019",
+                        "user_minutes_2008",
+                        "user_minutes_2019",
+                    ),
+                    na,
+                    nb,
+                    basis="per person, zero-trip days included and open days removed",
+                )
+            )
+            report.extend(
+                _table(
+                    "Per-person fixed-mode model",
+                    selected,
+                    [person],
+                    (
+                        "observed_2008",
+                        "observed_2019",
+                        "predicted_2019",
+                        "use_effect",
+                        "use_effect_low",
+                        "use_effect_high",
+                        "time_effect",
+                        "time_effect_low",
+                        "time_effect_high",
+                        "ks_d",
+                    ),
+                    na,
+                    nb,
+                    basis="per person, zero-trip days included and open days removed",
+                )
+            )
+            mode_deciles = [
+                {"decile": index + 1, "predicted": pred, "observed": obs}
+                for index, (pred, obs) in enumerate(
+                    zip(
+                        person["predicted_deciles"],
+                        person["observed_deciles"],
+                        strict=True,
+                    )
+                )
+            ]
+            report.extend(
+                _table(
+                    "Per-person fixed-mode deciles",
+                    selected,
+                    mode_deciles,
+                    ("decile", "predicted", "observed"),
+                    na,
+                    nb,
+                    basis="per person, zero-trip days included and open days removed",
+                )
+            )
+        report.extend(["## Cross-scope comparison", ""])
+        report.extend(
+            [
+                "Scope: the combinations listed below, Monday-Friday, days with trips.",
+                "",
+                "| scope | grouping | eta2_2008 | eta2_2019 | mean_abs_log_ratio | "
+                "ratio | ratio_low | ratio_high | status |",
+                "|---|---|---|---|---|---|---|---|---|",
+            ]
+        )
+        for row in summaries:
+            report.append(
+                "| "
+                + " | ".join(
+                    modes._cell(row[field])
+                    for field in (
+                        "scope",
+                        "grouping",
+                        "eta2_2008",
+                        "eta2_2019",
+                        "mean_abs_log_ratio",
+                        "observed_over_predicted",
+                        "ratio_low",
+                        "ratio_high",
+                        "status",
+                    )
+                )
+                + " |"
+            )
+        report.extend(
+            [
+                "",
+                "n: see the per-scope tables above. Sources: ENTD 2008 and EMP 2019.",
+                "",
+            ]
+        )
+        out.with_suffix(".md").write_text("\n".join(report), encoding="utf-8")
+    return timings
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run all scopes from signed Z1 caches without rebuilding trip legs."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--merge-config", type=Path, default=vr.ROOT / "config" / "zahavi_merges.yaml"
+    )
+    parser.add_argument(
+        "--income-config", type=Path, default=vr.ROOT / "config" / "zahavi_income.yaml"
+    )
+    parser.add_argument(
+        "--modes-config", type=Path, default=vr.ROOT / "config" / "zahavi_modes.yaml"
+    )
+    parser.add_argument("--config", type=Path, default=vr.DEFAULT_CONFIG_PATH)
+    parser.add_argument(
+        "--variation-config",
+        type=Path,
+        default=scope_cube.DEFAULT_VARIATION_CONFIG_PATH,
+    )
+    parser.add_argument(
+        "--emp2019-data-path", type=Path, default=emp2019.DEFAULT_DATA_PATH
+    )
+    parser.add_argument(
+        "--entd2008-data-path", type=Path, default=entd2008.DEFAULT_DATA_PATH
+    )
+    args = parser.parse_args(argv)
+    with args.merge_config.open(encoding="utf-8") as stream:
+        merge_config = MergeConfig.model_validate(yaml.safe_load(stream))
+    with args.income_config.open(encoding="utf-8") as stream:
+        income_config = income_module.IncomeConfig.model_validate(
+            yaml.safe_load(stream)
+        )
+    with args.modes_config.open(encoding="utf-8") as stream:
+        config = modes.ReportConfig.model_validate(yaml.safe_load(stream))
+    variation_config = variation.load_variation_config(args.variation_config)
+    cache_dir = vr.ROOT / config.cache_dir
+    logs_dir = vr.ROOT / config.logs_dir
+    car_path = vr.ROOT / income_config.entd_cars
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    log_path = logs_dir / f"{stamp}_zahavi_groupings.log"
+    summary_path = logs_dir / f"{stamp}_zahavi_groupings_summary.md"
+    counter = modes._WarningCounter()
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    stream_handler = logging.StreamHandler(sys.stderr)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    file_handler.setFormatter(formatter)
+    stream_handler.setFormatter(formatter)
+    root_logger = logging.getLogger()
+    old_level = root_logger.level
+    root_logger.setLevel(logging.INFO)
+    for handler in (file_handler, stream_handler, counter):
+        root_logger.addHandler(handler)
+    timings: dict[str, float] = {}
+    counts: list[str] = []
+    success = False
+    try:
+        with modes._timed(timings, "load existing caches"):
+            caches = [
+                income_module.read_signed_cache(
+                    survey,
+                    source,
+                    cache_dir,
+                    activity_stay_min=variation_config.scope.activity_stay_min,
+                    config_path=args.config,
+                )
+                for survey, source in (
+                    (entd2008, args.entd2008_data_path),
+                    (emp2019, args.emp2019_data_path),
+                )
+            ]
+        if (
+            modes.__file__ is None
+            or income_module.__file__ is None
+            or scope_cube.__file__ is None
+        ):
+            raise RuntimeError("Cannot identify checkpoint inputs")
+        checkpoint = income_module.checkpoint_directory(
+            vr.ROOT / merge_config.checkpoint_dir,
+            caches,
+            (
+                Path(__file__),
+                Path(modes.__file__),
+                Path(income_module.__file__),
+                Path(scope_cube.__file__),
+                args.merge_config,
+                args.income_config,
+                args.modes_config,
+                args.variation_config,
+                car_path,
+            ),
+        )
+        attribute_checkpoint = checkpoint / "attributes.json"
+        with modes._timed(timings, "extract respondent attributes"):
+            if attribute_checkpoint.is_file():
+                LOGGER.info("Resuming respondent attributes from checkpoint")
+                stored = json.loads(attribute_checkpoint.read_text(encoding="utf-8"))
+                attributes = [
+                    (
+                        item["income"],
+                        item["density"],
+                        income_module.HouseholdVehicles(**item["vehicles"]),
+                        item["household_type"],
+                    )
+                    for item in stored["surveys"]
+                ]
+            else:
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    attributes = [
+                        extract_attributes(
+                            entd2008,
+                            args.entd2008_data_path,
+                            root / "entd",
+                            entd_cars=car_path,
+                        ),
+                        extract_attributes(
+                            emp2019, args.emp2019_data_path, root / "emp"
+                        ),
+                    ]
+                _checkpoint_write(
+                    attribute_checkpoint,
+                    {
+                        "surveys": [
+                            {
+                                "income": item[0],
+                                "density": item[1],
+                                "vehicles": {
+                                    "classes": item[2].classes,
+                                    "weights": item[2].weights,
+                                    "out_of_use_share": item[2].out_of_use_share,
+                                },
+                                "household_type": item[3],
+                            }
+                            for item in attributes
+                        ]
+                    },
+                )
+        with modes._timed(timings, "shared household draws"):
+            seed_a, seed_b = np.random.SeedSequence(config.seed).spawn(2)
+            draws_a = modes.make_draws(
+                modes._roster_households(caches[0]),
+                n_reps=config.bootstrap_reps,
+                seed=seed_a,
+            )
+            draws_b = modes.make_draws(
+                modes._roster_households(caches[1]),
+                n_reps=config.bootstrap_reps,
+                seed=seed_b,
+            )
+        with modes._timed(timings, "count reference samples"):
+            for year, cache in ((2008, caches[0]), (2019, caches[1])):
+                roster, days, trips = modes._sample_counts(
+                    cache, scope_module.REFERENCE_SCOPE
+                )
+                counts.append(
+                    f"{year}: {roster} roster persons, {days} days, {trips} trips."
+                )
+        run_report(
+            args.out,
+            caches[0],
+            caches[1],
+            attributes[0],
+            attributes[1],
+            draws_a,
+            draws_b,
+            selected_scopes=scope_module.ALL_SCOPES,
+            minimum_n=config.minimum_cell_n,
+            margins=(
+                variation_config.equivalence_margin,
+                variation_config.secondary_equivalence_margin,
+            ),
+            merge_config=merge_config,
+            checkpoint_dir=checkpoint,
+            timings=timings,
+            warning_messages=counter.messages,
+        )
+        success = True
+    finally:
+        if not success:
+            LOGGER.error("Grouping report failed; see traceback and log.")
+        lines = [
+            "# Zahavi grouping report summary",
+            "",
+            f"Status: {'completed' if success else 'failed'}.",
+            f"Inputs: {args.entd2008_data_path}; {args.emp2019_data_path}; {car_path}.",
+            f"Scopes: {', '.join(item.id for item in scope_module.ALL_SCOPES)}.",
+            f"Household draws per survey: {config.bootstrap_reps}.",
+            *counts,
+            f"Output: {args.out}; report: {args.out.with_suffix('.md')}.",
+            "",
+            "## Stage timings (seconds)",
+            *[f"- {stage}: {seconds:.2f}" for stage, seconds in timings.items()],
+            "",
+            "## Warnings",
+            *([f"- {message}" for message in counter.messages] or ["- None."]),
+        ]
+        summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        for handler in (file_handler, stream_handler, counter):
+            root_logger.removeHandler(handler)
+            handler.close()
+        root_logger.setLevel(old_level)
+    return 0
+
+
 if __name__ == "__main__":
-    raise NotImplementedError("The grouping report and CLI have not been implemented")
+    raise SystemExit(main())

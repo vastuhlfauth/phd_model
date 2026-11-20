@@ -2,6 +2,30 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Grouping report: CLI and output (2026-11-20)
+
+- Completed `python -m mobgrid.budget.zahavi_groupings --out docs\data\step12_groupings`:
+  eight scopes, four CSVs, Markdown report,
+  timestamped log and run summary. It reads signed Z1/Z2 caches and shared
+  household draws; it does not rebuild trip legs. Attribute and scope
+  checkpoints resume only under a matching input, configuration and code
+  signature. Stage elapsed times are logged.
+- Day-table cross-year results are blank and labelled throughout; small-cell
+  values are hidden without removing their contributions. Population
+  exclusions and absent-2008 parent fallback shares are reported. Age-band
+  code `0` is normalized to the documented `00` before grouping.
+- Synthetic integration covers all eight scopes, output, CLI and checkpoint
+  resume. Changed-module tests: 25 passed; Ruff passed. The fixed-mode
+  distribution uses weighted mid-rank matching within each mode, not
+  independent mode draws. No real-data report was run.
+- Synthetic timing: 500 persons per year, 10 draws and 14 groupings in one
+  scope took 0.360 s for cell statistics and 0.281 s for counterfactuals.
+  A naive linear scaling to 15,500 persons and 200 draws across eight scopes
+  suggests roughly 45 minutes including previously observed extraction time;
+  30–120 minutes is a very uncertain planning range, not a measured runtime.
+  Cell cardinality, bootstrap validity, disk I/O and mode calculations may
+  change it substantially. The generated run summary reports actual timings.
+
 ### Grouping report: household type verified (2026-11-20)
 
 - Both releases document the same `TYPMEN5` codes: 1 single person,

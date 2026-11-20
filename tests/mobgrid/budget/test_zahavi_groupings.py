@@ -245,7 +245,7 @@ def test_grouping_days_read_only_scoped_cache_and_harmonised_attributes(tmp_path
         con.execute(
             """COPY (SELECT * FROM (VALUES
               ('d1','p1','h1',2.0,30.0,'30','employed','q1','car_driver'),
-              ('d2','p2','h2',1.0,10.0,'60','retired','q2','walking_only')
+              ('d2','p2','h2',1.0,10.0,'0','retired','q2','walking_only')
             ) t(day_id,ident_ind,ident_men,pond_jour,total_time_min,age_band,
                 population_category,income_quintile,day_mode_group))
             TO ? (FORMAT PARQUET)""",
@@ -266,7 +266,7 @@ def test_grouping_days_read_only_scoped_cache_and_harmonised_attributes(tmp_path
         vehicles={"h1": "1", "h2": "0"},
     )
     assert sample.attributes["day_purpose"].tolist() == ["work_study", "other"]
-    assert sample.attributes["age_band"].tolist() == ["30", "60"]
+    assert sample.attributes["age_band"].tolist() == ["30", "00"]
     assert sample.attributes["vehicles"].tolist() == ["1", "0"]
     assert sample.minutes.tolist() == [30, 10]
 
@@ -606,3 +606,193 @@ def test_harmonised_household_type_uses_documented_survey_codes(survey, view):
         "h5": "other",
         "h6": "unknown",
     }
+
+
+def test_synthetic_report_writes_all_csvs_and_resumes(
+    tmp_path, merge_config, monkeypatch
+):
+    import csv
+
+    cache = modes_cache.SurveyCache(tmp_path / "cache")
+    cache.root.mkdir()
+    selected_scopes = scope.ALL_SCOPES
+    with duckdb.connect() as con:
+        con.execute(
+            """CREATE TABLE days AS SELECT
+            'd' || i AS day_id, 'p' || i AS ident_ind, 'h' || i AS ident_men,
+            1.0 pond_jour, 10.0 + i AS total_time_min, '30' age_band,
+            'employed' population_category, 'q1' income_quintile,
+            'walking_only' day_mode_group, TRUE is_round
+            FROM range(1, 9) t(i)"""
+        )
+        con.execute(
+            """CREATE TABLE trips AS SELECT day_id,
+              CASE CAST(substr(day_id, 2) AS INT)
+                WHEN 1 THEN 'walk' WHEN 2 THEN 'bike'
+                WHEN 3 THEN 'car_driver' WHEN 4 THEN 'car_passenger'
+                WHEN 5 THEN 'urban_pt' WHEN 6 THEN 'train' ELSE 'other'
+              END AS mode7, total_time_min duration_min, 9.1 motive FROM days"""
+        )
+        con.execute(
+            "COPY (SELECT ident_men, 1.0 weight FROM days) TO ? (FORMAT PARQUET)",
+            [str(cache.roster)],
+        )
+        con.execute(
+            """COPY (SELECT day_id, ident_men, pond_jour, is_round FROM days)
+            TO ? (FORMAT PARQUET)""",
+            [str(cache.day_base)],
+        )
+        for selected in selected_scopes:
+            con.execute("COPY days TO ? (FORMAT PARQUET)", [str(cache.days(selected))])
+            con.execute(
+                "COPY trips TO ? (FORMAT PARQUET)", [str(cache.trips(selected))]
+            )
+    people = [f"p{i}" for i in range(1, 9)]
+    households = np.array([f"h{i}" for i in range(1, 9)])
+    vehicles = groupings.income_module.HouseholdVehicles(
+        classes=dict.fromkeys(households, "1"),
+        weights=dict.fromkeys(households, 1.0),
+    )
+    attrs = (
+        dict.fromkeys(people, "q1"),
+        dict.fromkeys(people, "dense"),
+        vehicles,
+        dict.fromkeys(households, "single_person"),
+    )
+    draws = modes.Draws(households, np.ones((3, 8)), seed=0)
+    out = tmp_path / "report"
+    checkpoint = tmp_path / "checkpoints"
+    kwargs = {
+        "selected_scopes": selected_scopes,
+        "minimum_n": 1,
+        "margins": (0.15, 0.10),
+        "merge_config": merge_config,
+        "checkpoint_dir": checkpoint,
+    }
+    timings = groupings.run_report(
+        out, cache, cache, attrs, attrs, draws, draws, **kwargs
+    )
+    elapsed = sum(timings[f"{item.id} scope"] for item in selected_scopes)
+    print(f"synthetic report: 8 persons, 3 draws, 8 scopes in {elapsed:.3f}s")
+    report = out.with_suffix(".md").read_text(encoding="utf-8")
+    assert "ENTD 2008 day-table coverage beyond 80 km not established" in report
+    for name in ("cells.csv", "stability.csv", "counterfactual.csv", "summary.csv"):
+        assert (out / name).is_file()
+    with (out / "summary.csv").open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    assert len(rows) == 112
+    assert all(
+        not row["observed_over_predicted"]
+        for row in rows
+        if row["scope"] == "round-dest-daytable"
+    )
+    with (out / "counterfactual.csv").open(encoding="utf-8", newline="") as stream:
+        counter_rows = list(csv.DictReader(stream))
+    for row in counter_rows:
+        if row["scope"].endswith("daytable"):
+            assert row["status"] == groupings.DAYTABLE_STATUS
+            assert not row["predicted_2019"]
+            assert not row["ks_d"]
+    groupings.run_report(out, cache, cache, attrs, attrs, draws, draws, **kwargs)
+    assert out.with_suffix(".md").read_text(encoding="utf-8") == report
+
+    modes_config = yaml.safe_load(
+        (groupings.vr.ROOT / "config" / "zahavi_modes.yaml").read_text(encoding="utf-8")
+    )
+    modes_config.update(
+        cache_dir=str(tmp_path / "caches"),
+        logs_dir=str(tmp_path / "logs"),
+        bootstrap_reps=3,
+        minimum_cell_n=1,
+    )
+    config_path = tmp_path / "modes.yaml"
+    config_path.write_text(yaml.safe_dump(modes_config), encoding="utf-8")
+    monkeypatch.setattr(
+        groupings.income_module, "read_signed_cache", lambda *a, **k: cache
+    )
+    monkeypatch.setattr(
+        groupings.income_module,
+        "checkpoint_directory",
+        lambda *a: tmp_path / "cli-checkpoints",
+    )
+    monkeypatch.setattr(groupings, "extract_attributes", lambda *a, **k: attrs)
+    cli_out = tmp_path / "cli-report"
+    assert (
+        groupings.main(["--out", str(cli_out), "--modes-config", str(config_path)]) == 0
+    )
+    assert (cli_out / "summary.csv").is_file()
+    assert len(list((tmp_path / "logs").glob("*_zahavi_groupings_summary.md"))) == 1
+
+
+def test_synthetic_stage_timings_with_crossed_cells(merge_config):
+    n = 500
+    reps = 10
+    rng = np.random.default_rng(42)
+    households = np.array([f"h{i:04d}" for i in range(n)])
+    data = groupings.GroupingDays(
+        person=np.array([f"p{i:04d}" for i in range(n)]),
+        household=households,
+        weights=rng.uniform(0.5, 2.0, n),
+        minutes=rng.uniform(5.0, 100.0, n),
+        attributes={
+            "population": rng.choice(
+                [
+                    "children_6_17",
+                    "employed",
+                    "unemployed",
+                    "retired",
+                    "other_inactive",
+                ],
+                n,
+            ),
+            "age_band": rng.choice(["00", "15", "30", "40", "50", "60"], n),
+            "density": rng.choice(
+                ["dense", "intermediate", "sparse", "very_sparse"], n
+            ),
+            "income": rng.choice(["q1", "q2", "q3", "q4", "q5"], n),
+            "vehicles": rng.choice(["0", "1", "2+"], n),
+            "day_purpose": rng.choice(["work_study", "other"], n),
+            "day_mode_group": rng.choice(
+                ["walking_only", "cycle", "car_driver", "urban_pt", "multimodal"], n
+            ),
+            "household_type": rng.choice(
+                [
+                    "single_person",
+                    "single_parent",
+                    "couple",
+                    "couple_with_children",
+                    "other",
+                ],
+                n,
+            ),
+        },
+    )
+    draws = modes.Draws(households, np.ones((reps, n)), seed=0)
+    timings = {}
+    result = groupings.evaluate_groupings(
+        data,
+        data,
+        draws,
+        draws,
+        selected=scope.REFERENCE_SCOPE,
+        config=merge_config,
+        minimum_n=10,
+        margins=(0.15, 0.10),
+        timings=timings,
+    )
+    for name, grouping in result.items():
+        with modes._timed(timings, f"{name} counterfactual"):
+            counter = groupings.counterfactual_statistics(
+                grouping.partition, draws, draws, compare=True
+            )
+        assert counter["observed_over_predicted"] == pytest.approx(1.0)
+    cells_seconds = sum(
+        value for key, value in timings.items() if key.endswith("cells")
+    )
+    counter_seconds = sum(
+        value for key, value in timings.items() if key.endswith("counterfactual")
+    )
+    print(
+        f"synthetic crossed stage: {n} persons, {reps} draws, 14 groupings, "
+        f"one scope: cells {cells_seconds:.3f}s, counterfactual {counter_seconds:.3f}s"
+    )
