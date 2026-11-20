@@ -1,0 +1,113 @@
+scope,grouping,eta2_2008,eta2_2019,mean_abs_log_ratio,equivalent_10_share,observed_over_predicted,ratio_low,ratio_high,ks_d,n_cells,status
+round-dest-local,day_mode_group_x_income,0.154274408,0.1686198746,0.08635908788,0,1.067746708,1.047410821,1.088994587,0.04777596329,34,
+round-dest-local,day_mode_group_x_category,0.1745254425,0.1985699284,0.08097833396,0,1.069528919,1.046654366,1.092464969,0.05022015566,45,
+round-dest-local,day_mode_group_x_vehicles,0.1486771366,0.1760288724,,0.278544066,1.069675286,1.047841246,1.09145317,0.04859896585,29,
+round-dest-local,day_mode_group,0.1454808923,0.157627339,0.07010361492,0.1694212634,1.07046303,1.049264377,1.092653543,0.04877718928,9,
+round-dest-local,day_mode_group_x_density,0.1498267773,0.16391535,0.07455157717,0.03330811079,1.070844903,1.049173807,1.094094247,0.04921792265,25,
+round-dest-local,income,0.007465589119,0.007051368435,0.07719263972,0,1.079848948,1.055741075,1.100949517,0.05367951879,5,
+round-dest-local,vehicles,0.000769962919,0.006248410544,,0.3890930152,1.080181102,1.055473838,1.101135747,0.05389604424,4,
+round-dest-local,density,0.003643197457,0.006815908935,0.07674334426,0,1.080469374,1.055730312,1.101760201,0.05433372637,4,
+round-dest-local,none,1.009120726e-29,4.497393264e-29,0.07766352696,0,1.080758951,1.056578575,1.10124087,0.05420764364,1,
+round-dest-local,category_x_density_x_income,0.05128876161,0.05736395069,0.1034337067,0.02440309988,1.082422781,1.057179444,1.106876119,0.0556228429,60,
+round-dest-local,household_type,0.001421486368,0.002413405775,0.07926677905,0,1.083026758,1.058924242,1.103547021,0.05419470629,5,
+round-dest-local,day_purpose,0.02037133932,0.01496819288,,0.5425930299,1.08456031,1.061263767,1.106253514,0.05613448961,3,
+round-dest-local,category,0.03306298775,0.04148285502,0.08239163016,0,1.0877056,1.063685544,1.109904693,0.0580111715,5,
+round-dest-local,age_band,0.04053351505,0.05032589407,0.0920891491,0,1.099136908,1.075979939,1.120560901,0.06457362509,6,
+round-dest-daytable,age_band,0.04024413424,0.04135491451,,,,,,,6,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,category,0.03653359059,0.03481145338,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,category_x_density_x_income,0.05490966241,0.05161588974,,,,,,,60,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,day_mode_group,0.1473026261,0.1332846767,,,,,,,9,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,day_mode_group_x_category,0.179306557,0.1697514435,,,,,,,45,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,day_mode_group_x_density,0.1515406541,0.1407483944,,,,,,,25,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,day_mode_group_x_income,0.1573543629,0.1420762637,,,,,,,34,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,day_mode_group_x_vehicles,0.1495746538,0.1463672426,,,,,,,30,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,day_purpose,0.02163203918,0.01125955861,,,,,,,3,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,density,0.002396675369,0.006071713528,,,,,,,4,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,household_type,0.002059573552,0.001715503961,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,income,0.01002350105,0.007326122706,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,none,8.103401844e-30,3.666267187e-29,,,,,,,1,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-dest-daytable,vehicles,0.0001494940262,0.003771619526,,,,,,,4,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-local,day_mode_group_x_category,0.1514436973,0.1606105536,0.1044771529,0.1174321199,1.086708151,1.06025636,1.110488882,0.05404842045,45,
+round-allpurp-local,day_mode_group_x_income,0.1333476909,0.1278269376,0.1081516423,0,1.087568146,1.061699085,1.110564831,0.05330290452,35,
+round-allpurp-local,day_mode_group_x_vehicles,0.1260688386,0.1337183725,,0,1.090423077,1.066245458,1.11409864,0.05413315819,31,
+round-allpurp-local,day_mode_group,0.1235787959,0.1170431036,0.09331762428,0.169130285,1.090741767,1.066058343,1.113721618,0.054278395,9,
+round-allpurp-local,day_mode_group_x_density,0.1276120688,0.1200585141,0.09665980878,0.07356582284,1.090898407,1.066510524,1.11431328,0.05470746061,26,
+round-allpurp-local,category_x_density_x_income,0.04122983484,0.05074780158,0.1156785715,0.02394519692,1.096552296,1.06811452,1.120116407,0.05770815815,60,
+round-allpurp-local,density,0.003772457261,0.003863691334,0.09308596887,0,1.096896071,1.068998554,1.12072687,0.05791177287,4,
+round-allpurp-local,income,0.007876632011,0.006859893604,0.09310053368,0,1.097015103,1.069257333,1.119902715,0.05774162208,5,
+round-allpurp-local,vehicles,0.0003248715909,0.005244189636,,0.3900392175,1.097297339,1.06913963,1.120095529,0.05799027082,4,
+round-allpurp-local,none,8.930147145e-30,4.083173063e-29,0.09329862147,0,1.09778951,1.06952738,1.120899132,0.0581784993,1,
+round-allpurp-local,household_type,0.0004105695236,0.001062416783,0.09469966902,0.2486955366,1.099774302,1.072920684,1.12120328,0.05850413628,5,
+round-allpurp-local,day_purpose,0.01056372981,0.009514681595,,0,1.100202713,1.071922839,1.123582169,0.05944680812,3,
+round-allpurp-local,category,0.02333219939,0.03713198453,0.09394007807,0,1.102273186,1.075294014,1.126651831,0.06090300118,5,
+round-allpurp-local,age_band,0.02842788526,0.04547065964,0.0993215271,0.1275462537,1.10977807,1.083559666,1.134780921,0.06553404649,6,
+round-allpurp-daytable,age_band,0.02938256805,0.03935753544,,,,,,,6,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,category,0.02763509784,0.03307814472,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,category_x_density_x_income,0.04634014053,0.04845233349,,,,,,,60,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,day_mode_group,0.1275090915,0.1020870191,,,,,,,9,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,day_mode_group_x_category,0.1589988273,0.1405668363,,,,,,,45,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,day_mode_group_x_density,0.1315067477,0.1059822534,,,,,,,26,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,day_mode_group_x_income,0.1388659104,0.1122299377,,,,,,,35,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,day_mode_group_x_vehicles,0.1293253723,0.1143451642,,,,,,,32,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,day_purpose,0.01214993874,0.008041363453,,,,,,,3,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,density,0.002738178114,0.003541749386,,,,,,,4,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,household_type,0.0008013187481,0.0009075057962,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,income,0.01073135735,0.00825192008,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,none,8.672378431e-30,2.165745225e-29,,,,,,,1,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+round-allpurp-daytable,vehicles,2.718995828e-06,0.003416146924,,,,,,,4,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-local,day_mode_group_x_income,0.1496166577,0.1683647729,0.08094624219,0,1.060762456,1.038714988,1.08166227,0.04339952086,35,
+alldays-dest-local,day_mode_group_x_vehicles,0.1442222759,0.1769894309,,0.2782645522,1.062965926,1.040925485,1.085228379,0.0444302106,30,
+alldays-dest-local,day_mode_group,0.141057749,0.1586939226,0.06266125969,0.3088504512,1.063704929,1.040830308,1.085643404,0.04460701718,9,
+alldays-dest-local,day_mode_group_x_density,0.1451270601,0.1652799574,0.07255119563,0.03344648838,1.064135296,1.039624105,1.085441506,0.04488524822,26,
+alldays-dest-local,day_mode_group_x_category,0.1705533611,0.1970076196,0.08262067663,0,1.06497412,1.043523609,1.087094497,0.04745103695,45,
+alldays-dest-local,income,0.006416826045,0.005850565049,0.07180018347,0,1.074023039,1.049114509,1.09495815,0.05022041167,5,
+alldays-dest-local,vehicles,0.0005154511981,0.006097688425,,0.3887120179,1.074030661,1.048965311,1.096190738,0.05022752773,4,
+alldays-dest-local,density,0.003307813391,0.006758737547,0.0706663514,0,1.074250933,1.049660117,1.097189984,0.05039353067,4,
+alldays-dest-local,none,1.300994261e-30,3.772860628e-29,0.0718988634,1,1.074546663,1.049039119,1.096208571,0.05053469096,1,
+alldays-dest-local,household_type,0.001214004972,0.002484110963,0.07272738178,0.2416326385,1.075910337,1.051617613,1.098370704,0.0504905568,5,
+alldays-dest-local,category_x_density_x_income,0.04798924036,0.05695969448,0.1001544657,0,1.078540401,1.053268607,1.102299881,0.05293149139,60,
+alldays-dest-local,day_purpose,0.02006336931,0.0139752409,,0.5444618797,1.079219345,1.054855245,1.101750852,0.05291491328,3,
+alldays-dest-local,category,0.03273367999,0.0414396978,0.07897595946,0,1.083928132,1.05944854,1.106586427,0.05573508133,5,
+alldays-dest-local,age_band,0.04066532244,0.0498258269,0.08764154173,0,1.093428063,1.068287647,1.115081217,0.06109483286,6,
+alldays-dest-daytable,age_band,0.03748179425,0.03643728762,,,,,,,6,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,category,0.03365118423,0.0319930793,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,category_x_density_x_income,0.05030710015,0.05036185123,,,,,,,60,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,day_mode_group,0.1335067812,0.1164570624,,,,,,,9,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,day_mode_group_x_category,0.165803077,0.1506093914,,,,,,,45,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,day_mode_group_x_density,0.137410398,0.126502735,,,,,,,27,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,day_mode_group_x_income,0.1450573266,0.1269082603,,,,,,,36,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,day_mode_group_x_vehicles,0.1370861649,0.126313551,,,,,,,32,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,day_purpose,0.0150361424,0.004629762642,,,,,,,3,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,density,0.001797603644,0.00532301851,,,,,,,4,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,household_type,0.001260782161,0.001660319601,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,income,0.01172262657,0.007358112222,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,none,8.363336319e-31,1.043205747e-29,,,,,,,1,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-dest-daytable,vehicles,9.659745278e-05,0.002690756452,,,,,,,4,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-local,day_mode_group_x_income,0.1309077601,0.1295179198,0.1020520089,0,1.07937003,1.054584204,1.102476132,0.04762439078,35,
+alldays-allpurp-local,day_mode_group_x_category,0.1502660444,0.1617274831,0.1041981591,0.1148606553,1.081382093,1.057029142,1.10245161,0.05007711473,45,
+alldays-allpurp-local,day_mode_group_x_vehicles,0.123848883,0.1363969562,,0.09110752842,1.082631514,1.058789766,1.106735669,0.04876490182,32,
+alldays-allpurp-local,day_mode_group,0.1213621191,0.1200167665,0.08514862301,0.1717657766,1.082951002,1.05940836,1.10674675,0.04888612857,9,
+alldays-allpurp-local,day_mode_group_x_density,0.1250560631,0.123537996,0.0920590308,0.03487197882,1.083439995,1.059136116,1.106211147,0.04930846348,27,
+alldays-allpurp-local,density,0.003183455236,0.004170857554,0.08537039821,0,1.089052762,1.060886393,1.113974942,0.05251486173,4,
+alldays-allpurp-local,vehicles,0.0002212665533,0.004913392172,,0.3895847512,1.089513528,1.06271502,1.112231583,0.05274557264,4,
+alldays-allpurp-local,income,0.007166882586,0.005878431662,0.08633538654,0,1.08955726,1.062114555,1.11012683,0.05273735982,5,
+alldays-allpurp-local,none,2.326056741e-29,2.863761477e-29,0.08611503897,0,1.089931706,1.062730311,1.112563373,0.05296002944,1,
+alldays-allpurp-local,household_type,0.00024072013,0.001027669204,0.08682235244,0.2447374283,1.091188122,1.065447011,1.113168769,0.0532028582,5,
+alldays-allpurp-local,category_x_density_x_income,0.03881653479,0.05096509492,0.1118427668,0,1.091237781,1.062602202,1.113501673,0.0536946848,61,
+alldays-allpurp-local,day_purpose,0.01080809753,0.008742631643,,0,1.093039253,1.065974993,1.115147123,0.05458740433,3,
+alldays-allpurp-local,category,0.02359465326,0.03737037907,0.08912324016,0,1.096804112,1.070018562,1.118954158,0.05715847706,5,
+alldays-allpurp-local,age_band,0.0295789019,0.04494159417,0.09394179464,0.126907028,1.102830102,1.077038008,1.124672245,0.06077278246,6,
+alldays-allpurp-daytable,age_band,0.02690896643,0.0322561601,,,,,,,6,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,category,0.02472591643,0.02855746482,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,category_x_density_x_income,0.04328318314,0.04493285408,,,,,,,61,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,day_mode_group,0.1132251996,0.09231147927,,,,,,,9,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,day_mode_group_x_category,0.1439139143,0.1270414135,,,,,,,45,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,day_mode_group_x_density,0.1173262733,0.1001783143,,,,,,,28,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,day_mode_group_x_income,0.126992564,0.1020590553,,,,,,,36,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,day_mode_group_x_vehicles,0.1160896112,0.1025596631,,,,,,,34,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,day_purpose,0.006092987539,0.001671965746,,,,,,,3,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,density,0.002251360262,0.003673035835,,,,,,,4,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,household_type,0.0004682757718,0.0007380763242,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,income,0.01409513877,0.007864821612,,,,,,,5,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,none,2.151046229e-29,5.330274503e-30,,,,,,,1,ENTD 2008 day-table coverage beyond 80 km not established; not compared
+alldays-allpurp-daytable,vehicles,0.0001636529579,0.002835462934,,,,,,,4,ENTD 2008 day-table coverage beyond 80 km not established; not compared
