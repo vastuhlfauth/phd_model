@@ -13,7 +13,7 @@ It covers two states (2021 and 2023) and scenarios. The full specification is in
 
 - `docs/spec/`: the specification, one file per section (cite as "section 9.3").
 - `docs/data/`: one page per dataset (columns, types, units, samples). Read it before using a dataset. **Never guess a column name.**
-- `docs/progress.md`: what is done, decisions, assumptions, open points. Read it first; update it at the end of every task.
+- `docs/progress.md`: current state, steps, assumptions and open points. Read it first. The history is in `docs/progress/`: one log per area (`log_networks.md`, `log_time_budget.md`), newest entry first, and `decisions.md`. Search these files for your step; never read them whole.
 - `config/`: every parameter, in YAML, validated with pydantic. No parameter, path, year or threshold in code.
 - `data/`: raw and derived data, never committed. `data/raw/` is read-only.
 - `legacy/`: previous scripts, for reference only. Do not import them.
@@ -53,7 +53,8 @@ Rules for speed:
 4. **Keep functions small and typed,** with docstrings that state units and the spec section they implement.
 5. **`[TO CONFIRM: …]` items:** use the value in `config/`, mark it with a `TODO(confirm)` comment, and list it in `docs/progress.md`. Never invent a value silently.
 6. **Before finishing,** run `ruff check` on the files you changed and `pytest` on the test files you changed or added, and fix every failure. Never run the whole test suite: it takes over an hour, and I run it myself.
-7. **Finish** by updating `docs/progress.md`: what was done, assumptions, open points.
+7. **Finish** by adding one dated entry of at most 25 lines at the top of your area's log in `docs/progress/`, decisions to `docs/progress/decisions.md`, and by updating `docs/progress.md` (step status, assumptions, open points).
+8. **Read only what the task names:** the spec sections it cites (search the file for the section heading), not whole spec files; the latest entries of your area's log, not the whole history.
 
 ## Do not
 

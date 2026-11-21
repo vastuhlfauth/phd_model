@@ -1,0 +1,96 @@
+# Progress log: networks (steps 6, 8, 9, 10)
+
+OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
+Newest entry first. Add yours at the top.
+
+### Step 6b: edge-cost groundwork (2026-11-21)
+
+- Added a deterministic directed mode edge key and retained `tracktype` on
+  edges for the requested one-to-one cost join and surface fallback. The edge
+  cache version is 5. Segment identity also prevents repeated endpoint pairs
+  on one way from duplicating control counts.
+- Validation: 14 synthetic edge tests passed; Ruff and Pylance diagnostics
+  passed.
+- This is groundwork only: the BD ALTI unpack CLI, elevation integration,
+  car and active-mode costs, resumable cost stage and Géovélo report remain.
+  The BD ALTI and Géovélo dataset pages are still absent; document their
+  verified schemas before using those datasets. No unpacking, pilot or
+  national build was run.
+
+### Step 6b: road classes (2026-11-21)
+
+- Added the configured highway allowlist, filtering unknown ways before graph
+  segmentation, and ensured ways without a highway remain foot-only.
+  The edge-build cache version is 4.
+- The edge report counts dropped ways by highway value and tabulates car
+  non-road edges by their effective access tag and value; access rules for
+  known classes are unchanged.
+- Synthetic edge tests: 13 passed; Ruff and Pylance syntax checks passed.
+  No pilot or national build was run. Elevation, costs and the Géovélo
+  comparison remain to be implemented.
+- Set section 9.7's provisional bike parameters k=37, P_max=200 W and
+  descent cap=30 km/h in `config/energy.yaml` (`TODO(confirm)`: calibrate
+  against observed commuter speeds). The energy-rate tests: 13 passed;
+  Ruff passed.
+- The bike solver now applies `v_max,desc` only on negative gradients,
+  as confirmed by the user; class caps still apply on every gradient.
+  At the configured P_0 the descent cap does not bind on level ground.
+  The focused bike tests: 30 passed; Ruff passed.
+- Elevation groundwork only: an ESRI ASCII grid sampler interpolates across
+  aligned tile boundaries and propagates missing cells; a directional profile
+  helper computes climb, descent and mean grade. Three synthetic tests passed;
+  Ruff passed. Neither helper is connected to network outputs yet.
+- There are no dataset pages for BD ALTI or Géovélo in `docs/data/`; their
+  schemas and the remaining elevation, car and bike costs, cost-stage CLI,
+  Géovélo check and unpack CLI remain to be completed. Windows `tar`
+  successfully listed the Gironde `.7z`, so `py7zr` is not needed here.
+
+### Step 6: OSM network pilot pipeline
+
+- OSM extraction reads all nodes in the WGS84 area bounds, joins unnested way
+  references to nodes covered by the once-simplified area, then reads only
+  out-of-bounds nodes needed by retained ways. The stages are resumable and
+  the extraction signature is version 3.
+- Directed edges apply configured access exclusions, count direction-filtered
+  controls along each edge, and record same-mode `to_degree`. Lengths use
+  DuckDB's ellipsoidal spheroid function on ordered node coordinates (WGS84
+  parameters, numerically GRS80-equivalent at sub-millimetre edge precision);
+  geometry remains EPSG:3035.
+- Edge fields and rules are documented in
+  [docs/data/osm_edges.md](docs/data/osm_edges.md). The user generated the
+  connectivity report at `docs/data/step06_osm_pilot.md`.
+- Open points: area simplification tolerance is provisionally 10 m and
+  `maxspeed=walk` is provisionally 5 km/h; both are marked `TODO(confirm)` in
+  `config/network.yaml`.
+- Final focused validation: 13 synthetic tests passed, 1 pilot test deselected,
+  and Ruff passed. No PBF/pilot or national run was performed during validation.
+- User ran the 2021 pilot extraction on 2026-11-19: cached stages were reused,
+  yielding 438,593 ways and 3,688,154 nodes in 20.9 seconds, with no warnings.
+  This timing is for the cached run, not a fresh extraction.
+- User ran the 2021 pilot edge build: 4,464,264 directed mode edges and
+  3,688,154 nodes in 1,487.6 seconds, with no warnings. The connectivity report
+  was written; its acceptance results have not been assessed here.
+- Run the pilot with:
+  `python -m mobgrid.osm.extract --state 2021 --area pilot`
+  `python -m mobgrid.osm.edges --state 2021 --area pilot --report docs/data/step06_osm_pilot.md`
+- Follow-up fixes (2026-11-19): generic `access` no longer opens car-restricted
+  non-road classes; bicycle-only access on footway and steps is enforced.
+  Extraction retains the seven R2 hint tags, and edge rows now include nullable
+  `speed_context`. Segment assignment uses cumulative graph-node counts and
+  logs the elapsed time for every build stage, including connectivity/report.
+- Monaco edge benchmark (2,503 ways, 10,909 nodes; same 14,203 edges): the
+  prior range join took 2.180 s overall (0.097 s assigning segments); the
+  linear assignment took 2.934 s (0.153 s assigning segments). This is one
+  small sequential sample, not evidence of a pilot speedup. The requested
+  under-5-minute pilot target remains unverified; no 2021 pilot or national run
+  was performed.
+- Current focused validation: 17 OSM tests passed, 1 pilot test deselected;
+  Ruff passed. The report header now describes ellipsoidal lengths from the
+  ordered node latitude/longitude coordinates.
+
+### Notes moved from the steps table (2026-11-21)
+
+| Step | Content | Status | Branch | Notes |
+|---|---|---|---|---|
+| 0 | GTFS rebuilding test | merged | `step/gtfs-rebuild-test` | **2026-10-15/16 national policy (no manual review):** tram alone keeps the automatic OSM relation rule (confirmed parameters); metro, rail, bus and ferry (including BHNS/express, whose own automatic cut rule is retired) keep every 2026 route in both past states by default, changed only by the PT openings list's auto-applied exact/stop-confirmed, high/medium-confidence matches. A `keep`/`modify` row gives no instruction at all (falls through to the tram rule or default keep); a `remove` row's effect depends on `change_type` -- `new_line`/`reopening` drop the route, `extension` cuts it at its old terminus, `new_station` removes only that stop (`mobgrid.pt.pt_changes.OpeningDerivedChange.instruction_at`, `mobgrid.pt.route_edits`); several rows' cuts/stop-removals on one route combine rather than any one dropping it; a `suspension` row never produces an instruction (settled decision: a temporary works closure does not remove a line from a state meant to represent the normal network). Precedence: openings list > tram automatic rule > default keep (`mobgrid.pt.pt_policy.resolve_route_presence`, tested). `to_review`/`not_applied` are informational only; nothing in the pipeline reads them. Lines closed before 2026 (`state` `add`) are left out and listed in the report as a known gap. The metro/bus/ferry/rail calibration numbers are kept in `config/gtfs_rebuild.yaml`/the report as a historical/screening reference only; metro's false changes are not investigated further. All 47 high/medium-confidence networks now have a resolved GTFS resource, including `Twisto (Caen la mer)`, mapped against the existing Normandy regional aggregate (resource 81942) rather than acquiring a second, duplicate-trip dedicated feed (2026-10-16 decision: an aggregate-only network is an accepted, normal outcome, not a gap to close). `mobgrid.pt map-and-apply-all` maps and applies every network in one resumable, logged, offline-only batch run (never downloads; raises a clear error if a resource isn't acquired yet), grouping network-name aliases by resolved GTFS resource id so each resource is read exactly once. `acquire --check-aom-coverage` confirmed 0 of 1,127 metropolitan AOMs are fully uncovered (865, including Twisto, have only indirect/aggregate coverage, accepted as sufficient -- no population filter needed). National run complete: 47 of 47 networks mapped, 53 rows applied (69 route-level edits), 5 rows left as accepted residual gaps (IDF-17, GES-06, NAQ-03, OCC-05, PAC-05), 0 regressions on reconciliation. The future national PT-build step must keep only the dedicated producer feed's copy of an agency that also appears in a broader aggregate, before any trip-level dedup across feeds (recorded below under "Open points from the spec"). Merged into `main` 2026-10-16. |
+| 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Leg formulas of section 9.1 to 9.8: `rates.py` (`config/energy.yaml` loader, KH/Compendium activity rates, `sedentary_energy_kj`), `walk.py` (Tobler speed, Minetti gradient factor, stairs), `bike.py` (force-balance speed solver, ride/stop energy, separated-infra factor, e-bike pedelec assist), `legs.py` (`Leg` chain T=sum(t)/E=sum(e), waiting, PT ride crowding, car congestion). Reproduces every section 9.2 reference rate and the 9.3/9.7 checks (gradient factors, 1 km flat walk 160/211 kJ, 10 m stairs 22.9 kJ, 16 km/h mechanical power ~52.5 W, +-mass speed changes, one-stop energy). Second round of fixes (user-reported, 2026-10-19): unified clamp formula `P_r = clamp(P0.(1+k.i), 0, Pmax)` on every grade fixes a zero-speed plateau just past a flat descent (`bike.select_ride_power_w`/`ride_speed_and_power`/`required_power_w`); e-bike rider/motor energy now split by `s_r = P_r/(P_r+P_m)` on every edge and stop (`ebike_ride_speed_and_power`, `ebike_rider_share`, `bike_ride_energy_kj`/`stop_energy_kj`'s new `rider_share`); `climbing_work_j_per_kg` is now signed; bike stops add time (`bike.stop_time_s`, new `config.bike.stops`, TODO(confirm)); terminal walking legs use the active rate set's c0, not a hardcoded Compendium; added the carpool passenger (`config.car.carpool_passenger`, TODO(confirm)) alongside the household passenger; bus/train rides use the first-phase standing shares of 9.5 everywhere, not seated-only; new `config.bike.ebike.effort_factor_by_level` (TODO(confirm), default 1.0) hooks a future rider-effort-vs-assist calibration. **Third round (after step 11's P0 calibration and a new `docs/spec/09_trip_legs_energy.md`):** section 9.7 gains an unloaded pedalling cost, `e = m.u_ped.t_ped` with `u_ped` = 1 net MET/pedalled minute (`config.bike.pedalling_unloaded_net_met`, ACSM/Swain 2000, not TODO(confirm): a literature value), on the rider's own mass only, for bike and e-bike riders alike, not scaled by `rider_share` or `separated_infra_factor` (`bike.unloaded_pedalling_energy_kj`, new keyword-only params of `bike.bike_ride_energy_kj`); `config.bike.power.p0_w` is now `34.8` (confirmed by step 11's EMP calibration, no longer `null`), `k`/`p_max_w`/`v_max_descent_kmh` stay TODO(confirm). `checks.py`'s own illustrative set-A P0 (~52.5 W, self-derived from the 16 km/h force-balance check) is unaffected; its "metabolic rate, 16 km/h flat" check now expects ~18.2 kJ/min (was ~13.1) with the unloaded term added; F4's roll/climb/stops/drag decomposition deliberately excludes the unloaded term (documented: a mechanical-work-only split). Verification command `python -m mobgrid.energy.checks --out docs/data/step7_energy` (`checks.py`, matplotlib dev dependency) writes 10 PNGs (F1-F10, F7 now also covers F7b's fixed-time panels, F9 now has three panels A/B/C) plus `docs/data/step7_energy_checks.md` (27 PASS/0 FAIL/10 COMPARE, rerun after the third round); run once, committed. Ruff clean; 71 energy tests pass (361 total, 3 pilot deselected). |
