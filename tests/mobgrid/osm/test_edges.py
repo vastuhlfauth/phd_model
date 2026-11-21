@@ -115,7 +115,13 @@ def _raw_tables(tmp_path):
             (69, map {'highway':'residential',
                       'maxspeed:type':'FR:zone30'}, [141, 142]),
             (70, map {'highway':'residential',
-                      'zone:maxspeed':'FR:motorway'}, [143, 144])
+                      'zone:maxspeed':'FR:motorway'}, [143, 144]),
+            (71, map {'highway':'services', 'motorcar':'yes'}, [145, 146]),
+            (72, map {'highway':'rest_area', 'access':'yes'}, [147, 148]),
+            (73, map {'highway':'crossing', 'bicycle':'yes'}, [149, 150]),
+            (74, map {'highway':'passing_place', 'foot':'yes'}, [151, 152]),
+            (75, map {'highway':'ser', 'access':'yes'}, [153, 154]),
+            (76, map {'railway':'platform', 'access':'yes'}, [155, 156])
     """)
     connection.execute("""
         CREATE TABLE nodes (
@@ -126,7 +132,7 @@ def _raw_tables(tmp_path):
         )
     """)
     node_rows = []
-    for node_id in range(1, 145):
+    for node_id in range(1, 157):
         tags = (
             "map {'highway':'traffic_signals'}"
             if node_id == 3
@@ -427,6 +433,19 @@ def test_nonroad_access_requires_mode_specific_tags(tmp_path) -> None:
     assert bike_ways == [(62,), (64,), (65,), (66,)]
 
 
+def test_unknown_highways_are_dropped_and_platform_is_foot_only(tmp_path) -> None:
+    connection, result = _build(tmp_path)
+    modes = connection.execute(
+        """
+        SELECT DISTINCT way_id, mode FROM read_parquet(?)
+        WHERE way_id BETWEEN 55 AND 56 OR way_id BETWEEN 71 AND 76
+        ORDER BY way_id, mode
+        """,
+        [result.edges_path],
+    ).fetchall()
+    assert modes == [(76, "foot")]
+
+
 def test_directional_control_counts_and_to_degree(tmp_path) -> None:
     connection, result = _build(tmp_path)
     signal_counts = connection.execute(
@@ -632,6 +651,8 @@ def test_pilot_report_contains_connectivity_and_edge_checks(tmp_path) -> None:
         report,
         state=2021,
         area="pilot",
+        ways_path=tmp_path / "ways.parquet",
+        config=load_network_config("config/network.yaml"),
     )
 
     text = report.read_text(encoding="utf-8")
@@ -648,6 +669,12 @@ def test_pilot_report_contains_connectivity_and_edge_checks(tmp_path) -> None:
     assert "Zero-length directed edges" in text
     assert "Maxspeed coverage by class and mode" in text
     assert "Bike infrastructure length" in text
+    assert "Dropped highway values" in text
+    assert "| services | 1 |" in text
+    assert "| bus_stop | 2 |" in text
+    assert "Car access on non-road classes" in text
+    assert "| path | motor_vehicle | yes | 2 |" in text
+    assert "| track | access | yes | 2 |" in text
 
 
 def test_largest_strong_component_counts_nodes_and_directed_length(tmp_path) -> None:

@@ -204,9 +204,7 @@ def access_sql(mode: Mode, config: NetworkConfig) -> str:
             "WHERE list_contains("
             f"{allowed_values}, trim(mode_access_value.value)))"
         )
-    hard_highways = (
-        config.unusable_highways + rule.hard_excluded_highways
-    )
+    hard_highways = rule.hard_excluded_highways
     hard_exclusion = (
         "lower(way_tags['highway']) IN ("
         + ", ".join(_sql_text(value) for value in hard_highways)
@@ -250,8 +248,18 @@ def access_sql(mode: Mode, config: NetworkConfig) -> str:
         if mode_specific_highways
         else ""
     )
+    missing_highway_guard = (
+        "WHEN way_tags['highway'] IS NULL THEN FALSE "
+        if mode != "foot"
+        else ""
+    )
     return (
         "CASE "
+        "WHEN way_tags['highway'] IS NOT NULL AND "
+        f"lower(way_tags['highway']) NOT IN "
+        f"({', '.join(_sql_text(value) for value in config.known_highways)}) "
+        "THEN FALSE "
+        f"{missing_highway_guard}"
         f"WHEN {hard_exclusion} THEN FALSE "
         f"{specific_access_rule}"
         f"WHEN {access} IS NOT NULL AND {denied_list} THEN FALSE "
@@ -380,7 +388,7 @@ def _input_signature(
         }
     return hashlib.sha256(
         json.dumps(
-            {"version": 3, "inputs": inputs, "config": config.model_dump(mode="json")},
+            {"version": 4, "inputs": inputs, "config": config.model_dump(mode="json")},
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()
@@ -397,7 +405,16 @@ def _cache_schema(
     }
 
 
-def _build_points_sql(ways_path: str, nodes_path: str) -> str:
+def _build_points_sql(
+    ways_path: str, nodes_path: str, config: NetworkConfig | None = None
+) -> str:
+    known = ""
+    if config is not None:
+        classes = ", ".join(_sql_text(value) for value in config.known_highways)
+        known = (
+            "WHERE w.tags['highway'] IS NULL "
+            f"OR lower(w.tags['highway']) IN ({classes})"
+        )
     return f"""
         CREATE OR REPLACE TEMP TABLE _osm_way_points AS
         SELECT w.way_id, w.tags AS way_tags, ref.node_sequence,
@@ -410,6 +427,7 @@ def _build_points_sql(ways_path: str, nodes_path: str) -> str:
         CROSS JOIN UNNEST(w.refs) WITH ORDINALITY
             AS ref(node_id, node_sequence)
         JOIN read_parquet('{nodes_path}') n USING (node_id)
+        {known}
     """
 
 
@@ -763,7 +781,7 @@ def build_directed_edges(
     ways_source = _sql_path(ways)
     nodes_source = _sql_path(nodes)
     stage_started = time.perf_counter()
-    connection.execute(_build_points_sql(ways_source, nodes_source))
+    connection.execute(_build_points_sql(ways_source, nodes_source, config))
     _log_stage_elapsed("expand-way-nodes", stage_started)
     stage_started = time.perf_counter()
     _build_graph_nodes(connection)
@@ -915,9 +933,42 @@ def write_step06_report(
     *,
     state: int,
     area: str,
+    ways_path: str | Path,
+    config: NetworkConfig,
 ) -> None:
     """Write the section 14.5 step-6 network and connectivity report."""
     source = _sql_path(edges_path)
+    ways_source = _sql_path(ways_path)
+    known = ", ".join(_sql_text(value) for value in config.known_highways)
+    dropped_rows = connection.execute(f"""
+        SELECT tags['highway'], count(DISTINCT way_id)
+        FROM read_parquet('{ways_source}')
+        WHERE tags['highway'] IS NOT NULL
+          AND lower(tags['highway']) NOT IN ({known})
+        GROUP BY tags['highway']
+        ORDER BY tags['highway']
+    """).fetchall()
+    car_classes = ", ".join(
+        _sql_text(value) for value in config.access_rules["car"].excluded_highways
+    )
+    tag_cases = " ".join(
+        f"WHEN nullif(w.tags[{_sql_text(tag)}], '') IS NOT NULL "
+        f"THEN {_sql_text(tag)}"
+        for tag in config.access_rules["car"].precedence
+    )
+    tag_value = "coalesce(" + ", ".join(
+        f"nullif(w.tags[{_sql_text(tag)}], '')"
+        for tag in config.access_rules["car"].precedence
+    ) + ")"
+    car_rows = connection.execute(f"""
+        SELECT e.highway, CASE {tag_cases} END AS access_tag,
+               {tag_value} AS access_value, count(*), sum(e.length_m)
+        FROM read_parquet('{source}') e
+        JOIN read_parquet('{ways_source}') w USING (way_id)
+        WHERE e.mode = 'car' AND lower(e.highway) IN ({car_classes})
+        GROUP BY e.highway, access_tag, access_value
+        ORDER BY e.highway, access_tag, access_value
+    """).fetchall()
     class_rows = connection.execute(f"""
         SELECT coalesce(highway, '(no highway)') AS highway, mode,
                count(*) AS edge_count, sum(length_m) AS length_m
@@ -965,6 +1016,26 @@ def write_step06_report(
     lines.extend(
         f"| {mode} | {highway} | {edge_count:,} | {_format_length(length)} |"
         for highway, mode, edge_count, length in class_rows
+    )
+    lines.extend([
+        "",
+        "## Dropped highway values",
+        "",
+        "| Highway value | Ways |",
+        "|---|---:|",
+    ])
+    lines.extend(f"| {highway} | {count:,} |" for highway, count in dropped_rows)
+    lines.extend([
+        "",
+        "## Car access on non-road classes",
+        "",
+        "| Highway class | Access tag | Value | Directed edges | Length (m) |",
+        "|---|---|---|---:|---:|",
+    ])
+    lines.extend(
+        f"| {highway} | {tag or '(default)'} | {value or '(none)'} | "
+        f"{count:,} | {_format_length(length)} |"
+        for highway, tag, value, count, length in car_rows
     )
     lines.extend(
         [
@@ -1131,6 +1202,8 @@ def main(argv: list[str] | None = None) -> int:
             report_path,
             state=args.state,
             area=args.area,
+            ways_path=ways_path,
+            config=config,
         )
         _log_stage_elapsed("connectivity-and-report", report_started)
     finally:

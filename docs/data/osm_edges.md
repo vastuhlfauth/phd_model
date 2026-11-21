@@ -54,7 +54,9 @@ ends and nodes shared by at least two kept ways. Other retained way nodes and
 area traffic-control nodes are also present with `graph_node=false`.
 The extracted way tag maps also retain `zone:traffic`, `source:maxspeed`,
 `maxspeed:type`, `zone:maxspeed`, `tracktype`, `service` and `area` for
-downstream speed and surface processing.
+downstream speed and surface processing. The edge-build report joins those
+extracted ways to car edges to identify the access tag and value for each
+car-accessible non-road class.
 Segments are assigned by the cumulative graph-node count along each way;
 interior graph nodes also serve as the preceding segment's endpoint. This
 avoids joining every way point against sequence ranges.
@@ -70,9 +72,10 @@ path, pedestrian, cycleway and bridleway requires an explicit `motorcar` or
 `customers`; generic `access` does not open these classes. Steps, corridors,
 bus stops, platforms and elevators never allow cars. Bike access on footway
 and steps requires an explicit `bicycle` tag; pedestrian ways remain open to
-bikes. The highway classes
-`construction`, `proposed`, `abandoned`, `razed`, `disused`, `raceway`,
-`bus_guideway`, `escape` and `elevator` are unconditionally excluded.
+bikes. Only the highway classes listed in `known_highways` are retained.
+Other highway values are dropped before graph-node detection and reported as
+counts of extracted ways by value. Ways without a highway are retained only
+for foot access to platforms.
 
 | Mode | Access-tag precedence | Default/exclusion rules | Direction rules |
 |---|---|---|---|

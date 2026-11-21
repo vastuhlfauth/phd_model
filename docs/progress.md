@@ -2,6 +2,18 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 6b: road classes (2026-11-21)
+
+- Added the configured highway allowlist, filtering unknown ways before graph
+  segmentation, and ensured ways without a highway remain foot-only.
+  The edge-build cache version is 4.
+- The edge report counts dropped ways by highway value and tabulates car
+  non-road edges by their effective access tag and value; access rules for
+  known classes are unchanged.
+- Synthetic edge tests: 13 passed; Ruff and Pylance syntax checks passed.
+  No pilot or national build was run. Elevation, costs and the Géovélo
+  comparison remain to be implemented.
+
 ### Step 6: OSM network pilot pipeline
 
 - OSM extraction reads all nodes in the WGS84 area bounds, joins unnested way
