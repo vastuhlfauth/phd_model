@@ -47,3 +47,12 @@ def test_directional_elevation_profile_and_missing_nodes():
     )
     assert missing.climb_m is None
     assert missing.mean_grade is None
+
+
+def test_unaligned_grids_are_rejected(tmp_path):
+    west = tmp_path / "west.asc"
+    east = tmp_path / "east.asc"
+    _grid(west, 0, [[10, 20], [0, 10]])
+    _grid(east, 51, [[30, 40], [20, 30]])
+    with pytest.raises(ValueError, match="unaligned ASCII grid"):
+        sample_elevations([west, east], np.array([25.0]), np.array([25.0]))

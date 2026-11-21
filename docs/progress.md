@@ -23,7 +23,7 @@ Read this file at the start of every task and update it at the end.
   The focused bike tests: 30 passed; Ruff passed.
 - Elevation groundwork only: an ESRI ASCII grid sampler interpolates across
   aligned tile boundaries and propagates missing cells; a directional profile
-  helper computes climb, descent and mean grade. Two synthetic tests passed;
+  helper computes climb, descent and mean grade. Three synthetic tests passed;
   Ruff passed. Neither helper is connected to network outputs yet.
 - There are no dataset pages for BD ALTI or Géovélo in `docs/data/`; their
   schemas and the remaining elevation, car and bike costs, cost-stage CLI,

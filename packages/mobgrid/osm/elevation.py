@@ -73,19 +73,9 @@ def sample_elevations(
     base = grids[0]
     for grid in grids[1:]:
         if not (
-            np.isclose(grid.cellsize, base.cellsize)
-            and np.isclose(
-                (grid.x_center - base.x_center) / base.cellsize,
-                round((grid.x_center - base.x_center) / base.cellsize),
-                atol=1e-6,
-                rtol=0,
-            )
-            and np.isclose(
-                (grid.y_center - base.y_center) / base.cellsize,
-                round((grid.y_center - base.y_center) / base.cellsize),
-                atol=1e-6,
-                rtol=0,
-            )
+            grid.cellsize == base.cellsize
+            and ((grid.x_center - base.x_center) / base.cellsize).is_integer()
+            and ((grid.y_center - base.y_center) / base.cellsize).is_integer()
         ):
             raise ValueError(f"unaligned ASCII grid: {grid.path}")
     fx = (x - base.x_center) / base.cellsize
