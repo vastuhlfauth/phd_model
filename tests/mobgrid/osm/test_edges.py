@@ -176,6 +176,54 @@ def _build(tmp_path):
     return connection, result
 
 
+def test_edge_keys_distinguish_repeated_segments_and_rebuilds(tmp_path) -> None:
+    connection, ways_path, nodes_path = _raw_tables(tmp_path)
+    connection.execute("""
+        INSERT INTO ways VALUES
+            (100, map {'highway':'residential', 'tracktype':'grade2'},
+             [1, 2, 1, 2])
+    """)
+    connection.execute("COPY ways TO ? (FORMAT PARQUET)", [str(ways_path)])
+    config = load_network_config("config/network.yaml")
+    first = build_directed_edges(
+        connection, ways_path, nodes_path, tmp_path / "first", config=config
+    )
+    second = build_directed_edges(
+        connection, ways_path, nodes_path, tmp_path / "second", config=config
+    )
+    rows = connection.execute(
+        """
+        SELECT edge_key, node_ids, stop_count, tracktype
+        FROM read_parquet(?)
+        WHERE way_id = 100 AND mode = 'foot' AND is_forward
+        ORDER BY edge_key
+        """,
+        [first.edges_path],
+    ).fetchall()
+    assert len(rows) == 3
+    assert len({row[0] for row in rows}) == 3
+    assert sum(row[2] for row in rows) == 2
+    assert all(row[3] == "grade2" for row in rows)
+    assert connection.execute(
+        """
+        SELECT count(*), count(DISTINCT edge_key)
+        FROM read_parquet(?)
+        """,
+        [first.edges_path],
+    ).fetchone()[0] == connection.execute(
+        "SELECT count(DISTINCT edge_key) FROM read_parquet(?)", [first.edges_path]
+    ).fetchone()[0]
+    assert connection.execute(
+        """
+        SELECT count(*) FROM (
+            SELECT edge_key FROM read_parquet(?)
+            EXCEPT SELECT edge_key FROM read_parquet(?)
+        )
+        """,
+        [first.edges_path, second.edges_path],
+    ).fetchone()[0] == 0
+
+
 def test_edge_build_logs_elapsed_time_for_each_stage(tmp_path, caplog) -> None:
     with caplog.at_level(logging.INFO, logger="mobgrid.osm.edges"):
         _build(tmp_path)

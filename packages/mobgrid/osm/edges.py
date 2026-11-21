@@ -26,6 +26,7 @@ from mobgrid.pt.osm_route_extraction import configure_extraction_connection
 logger = logging.getLogger(__name__)
 
 EDGE_COLUMNS = {
+    "edge_key",
     "way_id",
     "from_node_id",
     "to_node_id",
@@ -43,6 +44,7 @@ EDGE_COLUMNS = {
     "foot_access",
     "bike_infra",
     "surface",
+    "tracktype",
     "smoothness",
     "busway",
     "lanes_bus",
@@ -388,7 +390,7 @@ def _input_signature(
         }
     return hashlib.sha256(
         json.dumps(
-            {"version": 4, "inputs": inputs, "config": config.model_dump(mode="json")},
+            {"version": 5, "inputs": inputs, "config": config.model_dump(mode="json")},
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()
@@ -459,7 +461,7 @@ def _build_segments_sql() -> str:
             FROM numbered_points
             WHERE is_graph_node AND graph_node_count > 1
         )
-        SELECT way_id, any_value(way_tags) AS way_tags,
+        SELECT way_id, segment_index, any_value(way_tags) AS way_tags,
                arg_min(node_id, node_sequence) AS from_node_id,
                arg_max(node_id, node_sequence) AS to_node_id,
                min(node_sequence) AS from_sequence,
@@ -512,18 +514,18 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
     )
     return f"""
         WITH directions AS (
-            SELECT way_id, way_tags, from_node_id, to_node_id,
+            SELECT way_id, segment_index, way_tags, from_node_id, to_node_id,
                    node_ids, length_m, geom, true AS is_forward
             FROM _osm_way_segments
             UNION ALL
-            SELECT way_id, way_tags, to_node_id AS from_node_id,
+            SELECT way_id, segment_index, way_tags, to_node_id AS from_node_id,
                    from_node_id AS to_node_id,
                    list_reverse(node_ids) AS node_ids,
                    length_m, ST_Reverse(geom) AS geom, false AS is_forward
             FROM _osm_way_segments
         ),
         control_counts AS (
-            SELECT d.way_id, d.from_node_id, d.to_node_id, d.is_forward,
+            SELECT d.way_id, d.segment_index, d.is_forward,
                    sum(
                        CASE WHEN lower(n.tags['highway']) = 'traffic_signals'
                                  AND {signal_direction}
@@ -549,7 +551,7 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                 AS edge_node(node_id, node_sequence)
             JOIN read_parquet('{nodes_path}') n USING (node_id)
             WHERE edge_node.node_sequence > 1
-            GROUP BY d.way_id, d.from_node_id, d.to_node_id, d.is_forward
+            GROUP BY d.way_id, d.segment_index, d.is_forward
         ),
         attributes AS (
             SELECT d.*,
@@ -571,6 +573,7 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                    d.way_tags['highway'] AS highway,
                    d.way_tags['lanes'] AS lanes,
                    d.way_tags['surface'] AS surface,
+                   d.way_tags['tracktype'] AS tracktype,
                    d.way_tags['smoothness'] AS smoothness,
                    d.way_tags['busway'] AS busway,
                    d.way_tags['lanes:bus'] AS lanes_bus,
@@ -583,8 +586,7 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
             FROM directions d
             JOIN control_counts controls
               ON controls.way_id = d.way_id
-             AND controls.from_node_id = d.from_node_id
-             AND controls.to_node_id = d.to_node_id
+              AND controls.segment_index = d.segment_index
              AND controls.is_forward = d.is_forward
             JOIN _osm_segment_tiles tiles
               ON tiles.northing_m = floor(
@@ -619,12 +621,15 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
             FROM neighbours
             GROUP BY mode, node_id
         )
-        SELECT e.way_id, e.from_node_id, e.to_node_id, e.is_forward,
+        SELECT concat(e.way_id, ':', e.segment_index, ':',
+                      e.mode, ':', CASE WHEN e.is_forward THEN 'f' ELSE 'r' END)
+                   AS edge_key,
+               e.way_id, e.from_node_id, e.to_node_id, e.is_forward,
                e.mode, e.node_ids, e.length_m, e.highway, e.maxspeed_kmh,
                e.speed_context,
                e.motorroad, e.lanes, e.car_access, e.bike_access, e.foot_access,
                {bike_class} AS bike_infra,
-               e.surface, e.smoothness, e.busway, e.lanes_bus, e.lanes_psv,
+               e.surface, e.tracktype, e.smoothness, e.busway, e.lanes_bus, e.lanes_psv,
                e.signal_count, e.stop_count, e.crossing_count,
                e.mini_roundabout_count, coalesce(d.to_degree, 0) AS to_degree,
                e.cell_1km_id, e.tile_id, ST_AsWKB(e.geom) AS geometry_wkb

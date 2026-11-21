@@ -2,6 +2,20 @@
 
 Read this file at the start of every task and update it at the end.
 
+### Step 6b: edge-cost groundwork (2026-11-21)
+
+- Added a deterministic directed mode edge key and retained `tracktype` on
+  edges for the requested one-to-one cost join and surface fallback. The edge
+  cache version is 5. Segment identity also prevents repeated endpoint pairs
+  on one way from duplicating control counts.
+- Validation: 14 synthetic edge tests passed; Ruff and Pylance diagnostics
+  passed.
+- This is groundwork only: the BD ALTI unpack CLI, elevation integration,
+  car and active-mode costs, resumable cost stage and Géovélo report remain.
+  The BD ALTI and Géovélo dataset pages are still absent; document their
+  verified schemas before using those datasets. No unpacking, pilot or
+  national build was run.
+
 ### Step 6b: road classes (2026-11-21)
 
 - Added the configured highway allowlist, filtering unknown ways before graph

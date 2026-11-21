@@ -27,6 +27,7 @@
 
 | Column | Type | Meaning |
 |---|---|---|
+| `edge_key` | string | Deterministic `way_id:segment_index:mode:direction` key, with direction `f` or `r`; unique per directed mode edge within one build |
 | `way_id` | int64 | OSM way id |
 | `from_node_id`, `to_node_id` | int64 | Directed edge endpoints |
 | `is_forward` | bool | True follows the stored way reference order |
@@ -40,7 +41,7 @@
 | `lanes` | string, nullable | Raw `lanes` value |
 | `car_access`, `bike_access`, `foot_access` | bool | Effective access flags before one-way filtering |
 | `bike_infra` | string, nullable | Direction-specific class from the table below |
-| `surface`, `smoothness` | string, nullable | Raw OSM values |
+| `surface`, `tracktype`, `smoothness` | string, nullable | Raw OSM values |
 | `busway`, `lanes_bus`, `lanes_psv` | string, nullable | Raw bus-lane values |
 | `signal_count`, `stop_count`, `crossing_count`, `mini_roundabout_count` | int8 | Direction-filtered control-node counts along the edge, excluding its first node |
 | `to_degree` | int64 | Distinct neighbouring graph nodes of `to_node_id` for this mode, considering incoming and outgoing edges |
@@ -57,9 +58,11 @@ The extracted way tag maps also retain `zone:traffic`, `source:maxspeed`,
 downstream speed and surface processing. The edge-build report joins those
 extracted ways to car edges to identify the access tag and value for each
 car-accessible non-road class.
-Segments are assigned by the cumulative graph-node count along each way;
+Segments are assigned an index by the cumulative graph-node count along each way;
 interior graph nodes also serve as the preceding segment's endpoint. This
 avoids joining every way point against sequence ranges.
+The key is stable for unchanged way segmentation; splitting a way at a new
+graph node can change subsequent segment indexes and keys.
 
 ## Access and direction rules
 
