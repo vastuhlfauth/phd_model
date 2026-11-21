@@ -1,0 +1,76 @@
+workbook_id,series,year,minutes,speed_kmh,status
+1,France (national),1982,54.8,19.05,used
+2,France (Eurostat),1994,58.2,36.39,single point in its series
+3,France (national),1994,54.7,25.34,used
+6,France (national),2008,56.3,26.86,used
+8,France (national),2019,62,25.68,used
+9,Austria (Eurostat),1995,68.8,24.51,single point in its series
+10,Austria (national),2014,70,30.86,single point in its series
+14,Denmark (national),2019,56,42.86,used
+17,Denmark (national),2023,55.2,41.63,used
+18,Denmark (national),2024,58,41.38,used
+19,Denmark (national),2025,57.5,41.01,used
+21,Finland (Eurostat),1999,84.3,32.6,used
+22,Finland (national),1999,83,32.53,used
+24,Finland (Eurostat),2005,70.7,35.47,used
+25,Finland (national),2016,73,33.45,used
+28,Germany (national),2002,76,26.05,used
+29,Germany (Eurostat),2002,79.2,29.17,single point in its series
+30,Germany (national),2008,82,27.8,used
+31,Germany (national),2017,85,27.53,used
+32,Germany (national),2023,84,25,used
+36,Italy (national),2016,58,29.79,used
+37,Italy (national),2019,50,28.8,used
+44,Netherlands (national),1995,61.8,30.49,used
+46,Netherlands (national),1996,61.0,30.78,used
+47,Netherlands (national),1997,63.0,30.87,used
+48,Netherlands (national),1998,61.8,31.13,used
+49,Netherlands (Eurostat),1998,66.1,30.5,used
+50,Netherlands (national),1999,61.8,31.5,used
+51,Netherlands (national),2000,60.8,31.61,used
+52,Netherlands (national),2001,60.0,31.76,used
+53,Netherlands (Eurostat),2006,59.9,31.95,used
+54,Netherlands (national),2007,60.7,32.19,used
+55,Norway (national),1992,59,32.64,used
+57,Norway (Eurostat),2001,62,35.81,used
+58,Norway (Eurostat),2005,68.2,33.34,used
+59,Norway (national),2009,76,33.24,used
+60,Norway (national),2014,78,36.31,used
+64,Sweden (national),1978,75,33.04,used
+65,Sweden (Vilhelmson),1978,80,33.9,used
+66,Sweden (national),1984,79,31.67,used
+67,Sweden (Vilhelmson),1984,81,34.67,used
+68,Sweden (Vilhelmson),1991,79,35.24,used
+72,Sweden (Eurostat),2000,62.6,42.27,single point in its series
+74,Sweden (national),2012.5,71,38.87,used
+75,Switzerland (national),1994,82.6,22.74,used
+76,Switzerland (national),2000,93.3,22.51,used
+77,Switzerland (Eurostat),2000,88.8,32.16,used
+79,Switzerland (national),2005,97.5,21.66,used
+80,Switzerland (Eurostat),2005,84.5,26.34,used
+81,Switzerland (national),2010,91.7,24.01,used
+82,Switzerland (national),2015,90.4,24.42,used
+84,United Kingdom (national),2002,64.1,29.68,used
+85,United Kingdom (national),2013,59.8,29.11,used
+86,United Kingdom (national),2014,59.3,28.92,used
+87,United Kingdom (national),2015,60.5,29.08,used
+88,United Kingdom (national),2018,62.0,27.88,used
+89,United Kingdom (national),2019,60.8,28.27,used
+92,United Kingdom (national),2024,59.5,27.04,used
+93,United Kingdom (national),1972.5,58.0,20.41,used
+98,United Kingdom (Eurostat),2000,59.2,30.3,used
+99,United Kingdom (Eurostat),2005,63.3,30.14,used
+100,United Kingdom (national),1965,57.4,16.9,used
+101,United Kingdom (national),1996,61.2,30.2,used
+13,Denmark (Eurostat),2001,,,excluded: Denmark 2001: workbook flags under-recording
+15,Denmark (national),2021,,,excluded: Covid years 2020-2022
+16,Denmark (national),2022,,,excluded: Covid years 2020-2022
+26,Finland (national),2021,,,excluded: Covid years 2020-2022
+38,Italy (national),2020,,,excluded: Covid years 2020-2022
+40,Latvia (Eurostat),2003,,,excluded: Latvia 2003: implausibly low
+69,Sweden (Vilhelmson),1994,,,excluded: Sweden 1994: under-reported after method switch
+70,Sweden (national),1995,,,excluded: Sweden 1995: under-reported after method switch
+71,Sweden (Vilhelmson),1995,,,excluded: Sweden 1995: under-reported after method switch
+83,Switzerland (national),2021,,,excluded: Covid years 2020-2022
+90,United Kingdom (national),2021,,,excluded: Covid years 2020-2022
+91,United Kingdom (national),2022,,,excluded: Covid years 2020-2022

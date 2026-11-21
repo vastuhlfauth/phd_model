@@ -1,0 +1,7 @@
+series,n_points,years,min_min_per_day,max_min_per_day,range_min,max_over_min,mean,cv_pct,excluded_covid_years
+France — ENTD / EMP,4,1982–2019,54.7,62,7.3,1.133,57.0,5.2,none
+England/GB — NTS,10,1965–2024,57.4,64.1,6.7,1.117,60.3,3.1,none
+Switzerland — MZMV,5,1994–2015,82.6,97.5,14.9,1.18,91.1,5.4,2021
+Germany — MiD,4,2002–2023,76,85,9,1.118,81.8,4.3,none
+Netherlands — CBS (OVG/MON),9,1985–2007,60.0,63.0,3.0,1.05,61.4,1.3,none
+Denmark — TU,4,2019–2025,55.2,58,2.8,1.051,56.7,2.0,2021; 2022

@@ -1,0 +1,4 @@
+specification,n_estimates,n_series,elasticity_time_wrt_speed,ols_se,cluster_bootstrap_95_low,cluster_bootstrap_95_high,implied_elasticity_distance_wrt_speed
+"All series (national, Eurostat and Vilhelmson families kept separate)",58,16,0.085,0.085,-0.341,0.2,1.085
+National sources only,45,10,0.109,0.085,-0.273,0.307,1.109
+"National sources, confidence A only",43,9,0.104,0.082,-0.292,0.272,1.104

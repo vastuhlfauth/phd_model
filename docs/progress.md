@@ -45,6 +45,587 @@ Read this file at the start of every task and update it at the end.
   Ruff passed. The report header now describes ellipsoidal lengths from the
   ordered node latitude/longitude coordinates.
 
+### Spec: time per mode and the mobility model (2026-11-20)
+
+- Decision of 20 November 2026 (spec 9.9, new 10.4): the reference constant is
+  f_m, the national distribution of minutes per user day of each mode (EMP
+  2019, weekdays, reference scope), checked on ENTD 2008. It replaces the
+  daily budget per population category b_k, which becomes a validation
+  output. The constraint T(c) = B(c) is retired; total daily time is an
+  output.
+- New section 10.4, the mobility model: mode use as day patterns; required
+  time per mode from the O-D products; allocation within f_m by national
+  rank, with a correlation rho_m and a drift factor delta_m (default 1);
+  destinations by the radiation model tilted to fill the allocated time.
+  New package `mobgrid/mobility/`, a later step after the PT engine.
+- No density classes in the model, neither for mode use nor for time
+  (decision of 20 November 2026). They remain a test dimension: the INSEE
+  density grid of EMP 2019 in cross-section, the proxy of spec 9.9 only for
+  2008-2019 comparisons.
+- Step 11 (`mobgrid/budget`) gains f_m and the inputs of the mode-use model
+  (spec 9.9, re-estimation steps 5 and 6). Not started.
+- Spec files changed: 00, 01, 02, 03, 04, 05, 06, 09, 10, 12, 13, 14, 15,
+  16 and README. New placeholders are listed under "Open points from the
+  spec".
+
+### Mode-cell report: CLI and synthetic integration (2026-11-20)
+
+- Added the all-scope CLI and Markdown report, with the six requested CSVs.
+  Signed Z1 caches are read without modification; source trip legs and
+  respondent attributes are rebuilt in temporary directories. The existing
+  cache makes reruns possible, but report-stage checkpoints were not added.
+- The report includes all-scope subgroup and reweighting tables, B2 variants
+  and rounding bounds, reference-scope energy and collapse results, disclosure
+  notes, fallback/support information and unsupported-energy coverage. Each
+  stage logs elapsed time; the dated log and summary use the configured logs
+  directory. Per-scope and rate-set intervals are in the CSVs.
+- Synthetic end-to-end CLI uses temporary fixtures for both surveys and all
+  eight scopes. Report writing took 0.12 s for four days, two modes and five
+  draws; this is not a comparable 500-day benchmark. Scaling the earlier
+  2.607 s calculation stages linearly by days, modes and draws gives about
+  79 minutes for 26,000 days, seven modes and 200 draws. This is highly
+  uncertain: pairwise KS, I/O, source extraction, reconstruction and report
+  writing do not follow that scaling and were not measured at full size.
+- CLI config-file defaults follow the existing Z3 CLI pattern, since the
+  requested no-extra-flags command needs them and the shared config modules
+  cannot be changed while Z3 runs. They can all be overridden via CLI flags.
+- No real-data report or data write was run. Open point: compare synthetic
+  estimate with the user's eventual full-run summary.
+
+### Mode-cell report: reference energy calculations (2026-11-20)
+
+- Added reference-scope KH and Compendium energy by overall population,
+  population category, density, income, vehicles and day-mode group, with
+  household-bootstrap intervals, ratios, verdicts and disclosure flags.
+  Day-mode per-person values are explicitly undefined. Attributable mode
+  energy uses the full roster, with non-users zero; open days and days with
+  only unsupported energy are excluded from both numerator and denominator.
+- Joined cached day energy and roster attributes to reconstructed mode energy
+  with consistency checks. Known daily mode energies must sum to cached totals;
+  synthetic tests also verify the per-person identity in bootstrap draws.
+  The collapse test and both rate-set loaders remain separate calculations
+  until the report orchestrator connects them.
+- Synthetic grouped-energy timing: 0.047 s for both rates, 500 days, two modes
+  and 20 draws, excluding reconstruction and all other stages. Together with
+  earlier synthetic stages (2.56 s), this is 2.607 s; workload scaling is
+  uncertain and excludes extraction, reconstruction and report I/O.
+- Local energy draw-weight and cache-join helpers are kept in the new module
+  to avoid changing shared functions during the running Z3 job; review for
+  merging into shared helpers later.
+- **Stage 5 remains:** connect all calculations and both rate sets to the
+  CLI; six CSVs, Markdown report, logging and summary; synthetic end-to-end
+  test and timing. No real-data report or data write was run.
+
+### Mode-cell report: energy groundwork, superseded above (2026-11-20)
+
+- Added a scoped trip-energy loader that joins the unchanged Z1 cache to
+  reconstructed step-11 KH or Compendium trip energy, and a reference-scope
+  collapse calculator. It computes pairwise and same-mode cross-year
+  weighted KS distances, shared-household bootstrap intervals, and the
+  median energy-versus-time contrast. Missing energy does not erase the
+  corresponding time distribution; median comparisons use pairs with
+  energy available for both modes.
+- Synthetic collapse timing: 500 days, two modes and 20 household draws,
+  both rate sets, took 0.016 s, excluding reconstruction, grouped energy,
+  and every other stage. No reliable full-report runtime is available.
+- **Stage 4 remains incomplete and uncommitted**: implement grouped daily
+  energy per travel day and per person for category, density, income and
+  vehicles; day-mode energy per travel day with per-person marked undefined;
+  per-mode attributable energy per person with zero users and open days
+  handled as agreed, and a sum-to-total test. Connect the collapse test to
+  both reconstructed rate sets and add end-to-end synthetic tests.
+- **Stage 5 remains:** safe, resumable source reconstruction and cache
+  handling; CLI, per-stage logs and summary, six CSVs and Markdown report,
+  and synthetic end-to-end checks. The module still exits with an explicit
+  not-implemented message when invoked. No real-data report or data write.
+
+### Mode-cell report: per-mode B2 and rounding (2026-11-20)
+
+- Added per-mode user-day B2 decomposition with shared household-bootstrap
+  95% intervals, keeping the distance-selection term separate. The published
+  variant reads `distance_km_declared` from reconstructed step-11 trip legs,
+  not the speed-corrected Z1 cache. The alternative uses 2008 crow-fly km and
+  2019 crow-fly km rounded to whole kilometres.
+- Added C4 row-a nearest/up duration-rounding extrema per mode-user day.
+  Missing 2019 duration cells are flagged and their 2008 trip-weight share
+  recorded; these bounds are incomplete. Day-table comparisons are suppressed.
+- Synthetic timing: 500 days, two modes and 20 household draws across eight
+  scopes took 0.328 s for decomposition and rounding, excluding source
+  reconstruction and all other stages. Timing is logged per scope and stage.
+- Clarification for the subgroup stage: its cached `distance_km` comes from
+  step 11 and includes speed corrections; its output labels that source.
+  The published-distance B2 variant above deliberately uses the reconstructed
+  uncorrected producer value instead.
+- Remaining: both-rate energy and collapse tests; build/reuse trip-leg
+  reconstruction safely and connect all stages to resumable CLI/report,
+  six CSVs and Markdown. No real-data report or data write was run.
+
+### Mode-cell report: mode-user reweighting (2026-11-20)
+
+- Added mode-specific 2019-to-2008 joint reweighting, with independently
+  paired household-draw intervals for raw and reweighted ratios. Unknown
+  population category or income is excluded and its weight share recorded.
+  Sparse density neighbours may merge; population categories and income
+  quintiles remain separate. Small retained joint cells still contribute.
+- The configured Z2 maximum lost-target share applies to each draw and is
+  strict: below it, rescale onto common support; at or above it, the
+  reweighted estimate is unavailable. The 2008 fixed-cell diagnostic uses
+  the population parent when a 2019 cell has no 2008 observations and
+  reports the fallback share; a missing parent is explicitly unavailable.
+  Day-table cross-year output is suppressed and labelled.
+- Synthetic timing: 500 days, two modes and 20 household draws over all
+  eight scopes took 0.078 s, excluding extraction and all other stages;
+  timings are logged per scope. This is not a full-report runtime estimate.
+- Remaining: connect both completed stages to the output, implement
+  per-mode B2 and whole-km distance variant, duration-rounding bounds,
+  both-rate energy and collapse tests, and the resumable CLI/report with
+  six CSVs and Markdown. No real-data report or data write was run.
+
+### Mode-cell report: subgroup statistics (2026-11-20)
+
+- Added scoped mode-user-day loading and all six subgroup analyses, using the
+  Z3 ordered-neighbour merge rules while preserving nominal categories.
+  Household identifiers are text before bootstrap lookup. Mode national
+  comparisons retain hidden and unknown-category days; unknown population
+  categories are excluded from category cells with their weight share shown.
+- Cell outputs include per-year minutes, known-distance km/day and aggregate
+  speed, 95% household-bootstrap intervals, weighted KS against national mode
+  users, and an additive distance/speed/selection split. Missing-distance
+  km are a lower bound, with trip coverage and a separate selection term.
+  Cells below 50 days are hidden, those below 100 flagged, and day-table
+  cross-year results are blank and labelled. The caller supplies thresholds.
+- Synthetic timing: 500 days, two modes and 20 household draws in all eight
+  scopes took 2.141 s for cell calculations (0.22–0.38 s per scope); this
+  excludes data loading and every later stage. It is not a report runtime.
+  Stage timing is logged by `evaluate_mode_scope`.
+- Still to do: integrate the cell stage into the report and verify its
+  end-to-end output; reweighting, B2/crow-fly and rounding, energy/collapse,
+  the resumable CLI and all six CSVs and Markdown. Parent fallback remains
+  to be implemented where a 2008 comparison cell is absent. No real-data
+  report or data write was run.
+
+### Mode-cell report: isolated foundations (2026-11-20)
+
+- The report is **not complete**. Added isolated mode-user-day aggregation
+  and exact joint-target reweighting primitives. Aggregation retains
+  distance-known counts and time for B2's selection term, preserves missing
+  energy, and converts household identifiers to text. Reweighting does not
+  merge nominal levels and explicitly rejects unsupported target cells.
+- Synthetic checks cover aggregation at a constant energy rate, missing
+  energy, inconsistent weights, exact joint-target reweighting and missing
+  support, B2 decomposition, and weighted-KS symmetry. The module does not
+  yet implement the CLI; running it explicitly reports that fact. Eight
+  synthetic tests passed; Ruff and Pylance syntax checks passed.
+- Decision: day-mode-group energy is per day with trips only; its per-person
+  basis is undefined because zero-trip days have no mode group. Per-mode
+  per-person energy is attributable, including non-users as zero, and must
+  sum to total per-person energy. Category, density, income and vehicle
+  groupings use both bases.
+- Remaining: load and join mode-user days and survey attributes for all eight
+  scopes; implement cell estimates and bootstrap intervals, subgroup versus
+  national KS and distance/speed gap split, suppression and caution flags,
+  day-table labels and cross-year suppression, and absent-2008 parent
+  fallback. Integrate Z2's draw/support policy with the new target reweighting
+  without merging nominal categories and report raw and reweighted ratios.
+- Remaining: per-mode published/rounded-crow-fly B2 decomposition and C4
+  rounding bounds; reconstruct trip energy with both rate sets without
+  modifying the signed Z1 cache, implement grouped and attributable energy
+  with the agreed bases and per-person sum check, and implement all pairwise
+  and cross-year collapse tests with bootstrap intervals. Wire the six CSVs,
+  Markdown report, resumable checkpoints, logging, summary and CLI; add
+  synthetic end-to-end coverage. Runtime is unmeasured.
+- No shared helper was changed; the new target reweighting function is local
+  to the new module and should be considered for a later shared-helper merge.
+  No real-data report or data write was run.
+
+### Grouping report: CLI and output (2026-11-20)
+
+- Completed `python -m mobgrid.budget.zahavi_groupings --out docs\data\step12_groupings`:
+  eight scopes, four CSVs, Markdown report,
+  timestamped log and run summary. It reads signed Z1/Z2 caches and shared
+  household draws; it does not rebuild trip legs. Attribute and scope
+  checkpoints resume only under a matching input, configuration and code
+  signature. Stage elapsed times are logged.
+- Day-table cross-year results are blank and labelled throughout; small-cell
+  values are hidden without removing their contributions. Population
+  exclusions and absent-2008 parent fallback shares are reported. Age-band
+  code `0` is normalized to the documented `00` before grouping.
+- Synthetic integration covers all eight scopes, output, CLI and checkpoint
+  resume. Changed-module tests: 25 passed; Ruff passed. The fixed-mode
+  distribution uses weighted mid-rank matching within each mode, not
+  independent mode draws. No real-data report was run.
+- Synthetic timing: 500 persons per year, 10 draws and 14 groupings in one
+  scope took 0.360 s for cell statistics and 0.281 s for counterfactuals.
+  A naive linear scaling to 15,500 persons and 200 draws across eight scopes
+  suggests roughly 45 minutes including previously observed extraction time;
+  30–120 minutes is a very uncertain planning range, not a measured runtime.
+  Cell cardinality, bootstrap validity, disk I/O and mode calculations may
+  change it substantially. The generated run summary reports actual timings.
+
+### Grouping report: household type verified (2026-11-20)
+
+- Both releases document the same `TYPMEN5` codes: 1 single person,
+  2 single parent, 3 couple without children, 4 couple with children,
+  5 other/complex. Added the source entries to both dataset notes and a
+  tested mapping on the existing household views. The earlier label
+  verification open point is resolved.
+- Synthetic grouping tests: 23 passed; changed-file Ruff passed. The report
+  and CLI are not yet wired; no real-data report ran.
+
+### Grouping report: cross-scope summary rows (2026-11-20)
+
+- Added one summary row per scope and grouping, sorted within scope by the
+  counterfactual ratio's distance from one. The four day-table scopes retain
+  within-year eta-squared but suppress all cross-year summary fields and
+  display the coverage warning.
+- Household-type label verification, report rendering, the resumable CLI,
+  checkpointing and synthetic runtime timings remain open. No real-data
+  report ran.
+
+### Grouping report: per-mode person estimates (2026-11-20)
+
+- Added cached mode-by-day loading and section 9.9's roster denominator,
+  including zero days and subtraction of open-day weights. The paired
+  household draws provide 95% intervals for the exact use-share and
+  time-per-user decomposition.
+- The fixed-mode distribution maps weighted mid-ranks of 2019 mode-user
+  days to the 2008 weighted empirical mode-user distributions, preserving
+  2019 mode-use combinations. Equal 2019 durations are ordered stably.
+  The distribution's finite-sample mean need not equal the analytical
+  fixed-mode mean. A negative residual zero-day weight is an explicit error.
+- Day-table cross-year results are suppressed. These functions are not yet
+  wired to the report; no real-data report ran. Household-type labels and
+  the cross-scope summaries, CLI, checkpointing and report remain open.
+
+### Grouping report: fixed-cell statistics (2026-11-20)
+
+- Added fixed-cell predictions, observed/predicted mean ratios with paired
+  household-bootstrap 90% intervals, mix terms, weighted KS with 95%
+  intervals and both distributions' deciles. Full-sample absent cells use
+  their parent distribution; their 2019 weight share is recorded. Empty
+  bootstrap support invalidates that replicate instead of changing the
+  fixed partition or silently selecting a new parent.
+- Day-table cross-year results are suppressed. These calculations are not
+  yet connected to a report or CLI; no real-data report ran. Household-type
+  labels, per-mode statistics, cross-scope summaries and output remain open.
+
+### Grouping report: cell statistics groundwork (2026-11-20)
+
+- Added cached weekday travel-day loading, the requested partition catalogue,
+  fixed ordered-secondary merges, unknown-category exclusion shares, cell
+  levels and pooled stability, and household-bootstrap eta-squared intervals.
+  Day-table comparisons are suppressed and carry the agreed coverage warning.
+- Household-type categories remain unresolved: both survey household tables
+  have a `TYPMEN5` field, but its code labels have not yet been verified.
+  The loader accepts a verified mapping, but no mapping is inferred.
+- Cell calculations are not yet wired to CSV or report output. The fixed-cell
+  statistics, per-mode model, cross-scope summary, resumable CLI and report
+  remain incomplete. No real-data report ran.
+- Synthetic grouping tests: 13 passed; changed-file Ruff passed.
+
+### Grouping report: incomplete synthetic groundwork (2026-11-20)
+
+- Added ordered-neighbour configuration and a full-sample merge helper that
+  leaves nominal dimensions untouched. Added weighted eta-squared and a
+  fixed-cell distribution helper with a parent fallback for cells absent in
+  2008; an empty bootstrap cell does not trigger a new fallback.
+- The report, survey joins, all-scope calculations, confidence intervals,
+  per-mode model, CSVs, checkpointing and CLI remain unimplemented. The
+  module exits with an error if run as a report. No real-data report ran.
+- User decision: include all eight scopes; for the four day-table scopes show
+  within-year results only, suppressing cross-year comparisons because ENTD
+  coverage beyond 80 km is not established. Exclude unknown population
+  category from category partitions and report its weight share. Never merge
+  nominal levels; retain unresolved small cells in calculations, hide their
+  published levels, and disclose parent fallback shares.
+- Synthetic grouping tests and changed-file Ruff were run; see the task
+  report for their results. Runtime for the unimplemented report is unknown.
+
+### Zahavi income correction: zero vehicles, joint cells and income shares
+
+- EMP households with `JNBVEH = 0` are classified as zero even when the
+  follow-up `JNBVHS` and all out-of-use counts are blank.
+- Joint reweighting starts from observed cells only and pools sparse cells
+  individually within quintile. The report and reweighting CSV show the
+  full-sample pooled target share in merged cells, by estimation basis.
+- The report shows each quintile's individual-weighted roster share, omits
+  an empty ENTD unknown-income group, and quotes all three vehicle questions.
+  The ENTD release is complete; its dictionary does not establish upstream
+  imputation.
+- Validation: 41 synthetic income tests passed and Ruff passed; the
+  real-data report was not rerun.
+
+### Zahavi income correction: harmonised household vehicles (2026-11-20)
+
+- ENTD `q_menage.csv` contains `V1_JNBCCVUL`; classes use
+  `V1_JNBVEH + V1_JNBCCVUL`. EMP `Q_MENAGE_public` contains all three
+  out-of-use counts, so the in-use total subtracts them from `JNBVEH`.
+  Missing out-of-use counts become zero only for `JNBVHS = 2`; otherwise
+  the class is unknown. A fallback uses `JNBVEH` and reports the weighted
+  `JNBVHS = 1` household share if the counts are absent.
+- Dataset notes now quote the questionnaire prompts and document the
+  harmonised definition. The income report generator adds household-weighted
+  shares for 0, 1, 2+ and unknown classes with unweighted household n.
+- Synthetic checks: 40 income tests passed; changed-file Ruff passed.
+  No real-data report was run; regenerate with
+  `python -m mobgrid.budget.zahavi_income --out docs\data\step12_income`.
+
+### Zahavi income correction: grouped warnings (2026-11-19)
+
+- Insufficient bootstrap intervals are reported once per estimate group,
+  with counts by valid/total draw count; regression summaries also count
+  rank-deficient draws and nonfinite effects. Individual coefficients
+  retain their own 95%-valid-draw requirement.
+- The final support audit also emits zero-respondent, zero-household rows
+  for original reweighting cells absent from one year, with all that year's
+  draws marked empty.
+- Synthetic income tests: 38 passed; Ruff passed. The real report was not
+  rerun.
+
+### Zahavi income correction: earlier vehicle definitions (2026-11-19)
+
+- This preliminary cars-only interpretation was superseded by the
+  2026-11-20 harmonisation above, after verifying `V1_JNBCCVUL` and the
+  EMP public out-of-use count fields.
+
+### Zahavi income correction: reweighting (2026-11-19)
+
+- Joint cells below the configured respondent minimum are pooled within
+  quintile: cars 1 and 2+ first, then sparse and very sparse density.
+  The existing fallback pools all density and car categories within a
+  quintile if a cell still has no common support. A remaining small cell
+  is reported explicitly and that quintile's reweighted estimates are
+  unavailable; no additional unrequested merge is invented.
+- Each draw records its lost pooled-target share in `reweighted.csv`.
+  The target is rescaled onto common cells only below the configured 1%
+  limit; the strict boundary and retained estimates have synthetic checks.
+  `support.csv` includes both original and collapsed cells.
+- Synthetic-only validation; no real-data report ran. Car wording and
+  warning aggregation remain outstanding.
+
+### Zahavi income correction: regression (2026-11-19)
+
+- Sparse observed predictor levels are pooled with configured adjacent
+  levels using respondent counts in both full samples, before drawing.
+  The report lists each merge and `support.csv` includes original levels
+  as well as fitted columns. Missing income remains a separate 2008
+  category rather than being assigned to a known quintile.
+- Bootstrap WLS drops empty columns only for that draw and retains
+  coefficients identifiable despite other rank deficiencies; each effect
+  keeps its own valid-draw interval. The pooled design never constructs
+  a 2019 interaction for 2008-only unknown income.
+- Synthetic checks: 32 passed; Ruff passed. Reweighting, car definition and
+  warning aggregation are not yet corrected. No real-data report ran.
+
+### Zahavi income correction: support audit (2026-11-19)
+
+- Added per-scope `support.csv` with respondents, households and empty
+  household draws for each regression column and reweighting cell, per
+  year; structural pooled-model zeros are flagged. The report includes a
+  compact group/year summary. Per-person empty cells use the net
+  denominator after open-day removal.
+- Synthetic-only validation; no real-data report or data write. Remaining
+  corrections: sparse-level merging, per-coefficient rank handling, joint
+  cell collapse and partial-support draws, vehicle wording, and warnings.
+
+### Zahavi income supplement: bootstrap warning investigation (2026-11-19)
+
+- The completed run summary records 23 or 40 travel-day reweighting draws
+  and 11 per-person reweighting draws without common support, depending on
+  scope. It also records 79 rank-deficient draws in three regression fits
+  per scope. The summary does not identify their cells, predictors or years.
+- Z2 discards a whole reweighting draw if any joint cell lacks support.
+  A synthetic two-quintile check confirmed that this also discards a Q5
+  result when only Q1 has lost support and Q5 remains estimable.
+- Z2 also discards every coefficient in a rank-deficient WLS draw. A
+  synthetic check confirmed that a missing nuisance-indicator column can
+  make the full design singular even when the Q5 coefficient is identifiable
+  from the remaining columns.
+- The inherited interval rule requires 190 of 200 valid draws, so these
+  wholesale exclusions suppress intervals. The missing real-data cells and
+  regression columns remain unverified; sparse household categories are a
+  hypothesis, not a confirmed cause. Do not infer the affected predictor
+  or accept the report as a complete set of intervals from this summary.
+- Follow-up: add cell/term-specific diagnostics and assess estimability
+  separately, retaining the shared household draws and paired intervals.
+  No code, real-data outputs or checkpoints were changed or rerun during
+  this investigation.
+
+### Zahavi income supplement: report and CLI (2026-11-19)
+
+- Completed income levels, paired gaps and 90% ratio intervals, pooled
+  joint-distribution reweighting, M0–M2 and pooled weighted regressions,
+  quintile-by-density tables, conclusion grids, five CSVs and Markdown.
+  The ENTD unknown-income group is separate; the imputed EMP income has
+  no equivalent group. Both years use the step 11 density proxy and
+  household cars grouped 0, 1, 2+.
+- Per-person cell support accounts for excluded open-day weights before
+  collapsing empty cells. Estimates require at least 95% valid bootstrap
+  draws for an interval, including the 90% cross-year ratio interval.
+  The ratio-validity guard is local to Z2 because the existing shared
+  ratio helper filters invalid draws without that guard; consider merging
+  this rule into shared code later.
+- Reuse Z1's signed caches and household draws; completed scopes checkpoint
+  under `data/interim/budget/zahavi_income` and resume when input signatures,
+  report code and configuration match. No report was run on real data;
+  both existing Z1 cache signatures were verified read-only.
+- Open point: exact ENTD/EMP household vehicle coverage still needs
+  questionnaire verification. The M2 gap is a conditional geometric
+  ratio, not the reweighted arithmetic-mean gap.
+- Run: `python -m mobgrid.budget.zahavi_income --out docs/data/step12_income`.
+  Runtime is unmeasured; an eight-fit synthetic WLS benchmark extrapolated
+  to about 3 minutes for 11,200 fits alone, excluding I/O, extraction,
+  reweighting and other work. Allow roughly 15–60 minutes; actual time
+  may differ substantially.
+- Synthetic income tests: 28 passed; changed Python files pass Ruff.
+  No full suite, real-data report or download was run.
+
+### Zahavi income supplement: controls groundwork (2026-11-19)
+
+- Added cache-roster joins for income, residence proxy, car bands and
+  weekday; both survey car-count inputs retain missing values explicitly.
+- Added pooled-weight estimates with shared paired draws and a documented
+  common-support collapse: pool cars within density, then pool density and
+  cars within a quintile if a density is absent in one year. Added
+  weighted log-regression design, bootstrap and percentage-effect helpers,
+  plus the quintile-by-density table with suppression and warning flags.
+- Synthetic checks: 21 passed; changed-file Ruff passed. Remaining:
+  survey attribute extraction and joins, invoking the complete models,
+  real-data edge cases for empty person-denominator cells, the CLI, report,
+  CSVs and conclusion grid. No real-data report ran. Runtime is unmeasured.
+
+### Zahavi income supplement: level and gap calculations (2026-11-19)
+
+- Added weekday travel-day and per-person estimators using the Z1 shared
+  household multipliers, including zero-trip people and subtracting open
+  days. Level and ratio rows suppress small cells and keep the 2008
+  unknown-income group separate; gap rows calculate 95% intervals from
+  paired household draws.
+- Synthetic checks: 11 passed; Ruff passed. Cache joins and report/CLI
+  integration remain outstanding; no real-data report ran.
+
+### Zahavi income supplement: ENTD car input (2026-11-19)
+
+- Added a standalone CP1252 household-car loader using `V1_JNBVEH` and
+  household IDs, retaining the existing signed mode caches. Counts are
+  grouped 0, 1 and 2+; blanks remain unknown, and malformed counts and
+  duplicate IDs fail explicitly.
+- The supplied 20,178-household file has no blank counts. All 18,632 Kish
+  respondents match a household with a nonblank count. Exact vehicle
+  coverage against EMP 2019 still needs questionnaire verification.
+- Synthetic loader and income tests: 8 passed; changed-file Ruff passed.
+  The loader is not yet wired into a report. No real-data report ran and
+  no files under `data/` were written.
+
+### Zahavi income supplement: partial groundwork (2026-11-19)
+
+- Added independent helpers in `zahavi_income.py` for the existing survey
+  income quintiles, unknown-income shares, paired Q5-minus-Q1 gap changes,
+  pooled joint-cell weights on common support, and numpy weighted least
+  squares. No shared function or cache signature was modified.
+- Synthetic checks: 6 passed; changed Python files pass Ruff. Pylance
+  reports no syntax errors in the new module. The real-data income report
+  was not run and no files under `data/` or the mode outputs were written.
+- Incomplete: report/CLI, per-person and day levels, ratio and gap tables,
+  collapse of empty cells, bootstrap regression models, density tables,
+  conclusion grid, and item-by-item commits. No runtime estimate for the
+  unimplemented CLI is available.
+- The public ENTD release lists household-vehicle and vehicle-description
+  files, but neither is locally available. Identify and validate the
+  household car-count variable before implementing the 2008 car control;
+  do not infer that the variable is absent. See `docs/data/entd2008.md`.
+- The existing cache stores income and density for trip days but not the
+  full roster's income or both surveys' requested density proxy; join
+  validated respondent attributes without rebuilding or modifying Z1's
+  signed caches. Use temporary files for any extraction.
+
+### Zahavi B3 cached household-ID correction (2026-11-19)
+
+- Reproduced the reported B3 interval crash with numeric Parquet household
+  IDs: the draw roster used text IDs but the B3 sample retained integers.
+  The B3 cache reader now uses the same text-normalisation helper as the
+  roster and other cached samples. Existing caches remain valid.
+- The user's run measured cache construction at 22.1 min (ENTD) and
+  9.4 min (EMP); the reference-scope analysis reached B3 after about
+  1.8 min. All-scope completion time remains unmeasured.
+- Rerun the same report command; no cache rebuild is required. No real-data
+  report was run by the assistant.
+- Validation: numeric-ID regression failed before the fix; all 15 tests
+  in the touched mode-report module now pass, and changed-file Ruff passes.
+
+### Zahavi mode supplement CLI (2026-11-19)
+
+- Completed the report CLI and six CSVs, using the signed survey caches,
+  shared household draws and all eight scope switches. Missing or invalid
+  caches are built automatically; report-only code edits do not invalidate
+  trip-leg caches. Stages are timed and a dated log and summary are written.
+- The reference-scope stability table checks the rounded 52.0/57.0
+  minutes/person against the scope cube and warns on a discrepancy; this
+  comparison remains unverified on real data. B3 point terms are quoted
+  from the existing report; missing mode-level intervals use its estimator
+  and the shared draws only when source and cached trip counts agree.
+  Km/trip and speed shares are approximate because the source terms are
+  rounded; mismatched counts leave new intervals unavailable with a warning.
+- Synthetic cache builds took 14.05 s and 13.49 s; the subsequent tiny
+  one-scope report took roughly 1-2 s. These timings do not support a
+  reliable estimate for national data or all scopes. No real-data report
+  was run; the earlier pending notes below are historical.
+- Final validation: 18 synthetic tests passed across the two touched
+  modules; Ruff passed on the changed Python files.
+- Run `python -m mobgrid.budget.zahavi_modes --out docs\data\step12_modes`.
+  The existing reference-scope B3 report must be present at the configured
+  source path. No separate cache command is needed.
+
+### Zahavi B3 quotation (2026-11-19)
+
+- Added direct quotation of the existing reference-scope B3 tables, with
+  suppression and signed km/trip and speed shares of the within-mode term.
+  Shares are approximate because the source publishes rounded mode terms.
+- B3 provides aggregate intervals but not per-mode intervals; these remain
+  unavailable rather than silently recomputing the decomposition. Ten
+  synthetic tests passed; Ruff passed. CLI wiring remains outstanding.
+
+### Zahavi mode stability calculations (2026-11-19)
+
+- Added mode-user, day-mode-group and per-person weighted means and shared
+  household intervals, plus trip and minute shares. The per-person path
+  calls the scope-cube's `daily_energy` estimator and removes open days.
+- Nine synthetic tests passed, including mode totals and open/zero days.
+  CLI output and the historical 52.0/57.0 minute check remain to be wired.
+
+### Zahavi mode comparisons (2026-11-19)
+
+- Added weighted interpolated and step deciles, trip-duration thresholds,
+  weighted KS distances and paired household-bootstrap intervals. Crow-fly
+  band comparisons preserve the same-commune flag when rounding EMP
+  distances to whole kilometres.
+- Seven synthetic tests passed; Ruff passed. Report/CSV wiring is pending;
+  no real-data report was run.
+
+### Zahavi mode distributions (2026-11-19)
+
+- Added cached weekday trip, mode-user-day and step-11 day-mode-group
+  samples, with weighted ECDFs and Gaussian densities on minute grids.
+  Each group uses a pooled bandwidth with equal total weight per survey;
+  zero-variance densities are explicitly unavailable. Small cells are blank.
+- Three synthetic tests passed; Ruff passed. CLI/CSV wiring and the remaining
+  comparison, stability and B3 tables are still outstanding.
+
+### Zahavi mode-report cache (2026-11-19)
+
+- Added a survey cache API for all eight weekday scopes: signed Parquet
+  trip and day tables, the person-weekday roster and the full described-day
+  base needed to remove open days from the per-person denominator.
+  Signatures cover source data, the energy configuration, scope threshold
+  and reconstruction code; a completed cache is reused without rebuilding
+  trip legs. Each cache stage logs its elapsed time.
+- Synthetic cache tests passed for both surveys (3 passed); Ruff passed.
+  No real-data report or long-running computation was run.
+- Open: the Zahavi mode-report CLI, outputs and the 52.0/57.0 minute
+  reference checks are not yet implemented; the cache API is not yet wired
+  into a report. Existing user files under `docs/article/figures/` were left
+  untouched.
+
 ### Report runtime observation (2026-11-18)
 
 - The first EMP report was still running after about 57 minutes; its CPU
@@ -2724,6 +3305,43 @@ Status values: not started, in progress, review, merged.
 ## Open points from the spec
 
 Each item stays open until a value is decided; the value goes into `config/`.
+
+- [x] Sections 9.9 and 10.4: Saturday and Sunday get their own f_m, in a
+  later version (decision of 20 November 2026).
+- [ ] Section 9.12: car passengers, train and bike are not shown stable;
+  whether they keep a fixed f_m.
+- [x] Section 10.4: multimodal patterns split by their main combinations,
+  in a later version (decision of 20 November 2026).
+- [ ] Section 10.4: driving licence, PT pass and bike per cell.
+- [x] Section 10.4: household type per cell comes from the synthetic
+  population (decision of 20 November 2026).
+- [ ] Section 6.1: method of the synthetic population.
+- [x] Section 10.4: accessibility variables: time to the 1st, 2nd and 3rd
+  nearest opportunities, or opportunities within 15, 30 and 45 min, per
+  mode and opportunity type (decision of 20 November 2026).
+- [ ] Section 10.4: estimation sources of the accessibility terms (EMC²,
+  MOBPRO, EMP 2019 through CASD), combined with the national person and
+  household terms (to be tested).
+- [x] Section 10.4: multinomial logit, nested only if the tests call for it
+  (decision of 20 November 2026).
+- [ ] Section 10.4: purposes out of a mode's reach in the required time
+  (to be tested).
+- [x] Section 10.4: time is the ranking key (decision of 20 November 2026).
+- [ ] Section 10.4: calibration of rho_m (EMC², or categories in EMP 2019;
+  to be tested).
+- [x] Section 10.4: allocated time shorter than the nearest destinations:
+  the nearest are kept and the excess reported (decision of 20 November 2026).
+- [x] Section 10.4: the extended radiation parameter is calibrated on
+  MOBPRO with the time tilt in place, iterating (decision of 20 November 2026).
+- [ ] Section 10.4: delta_m as a yearly trend or only as a sensitivity
+  (to be tested).
+- [x] Section 10.4: travel outside the reference scope is added at its
+  observed level per population category, unchanged across scenarios
+  (decision of 20 November 2026).
+- [x] Section 9.9: income variables settled by the step 12 income report
+  (ENTD 2008 bracket midpoint per consumption unit; EMP 2019 imputed decile).
+- [x] No microdata for the 1994 survey: the per-mode constant cannot be
+  tested before 2008 (sections 10.4 and 15).
 
 - [x] Step 11/12 (section 9.9): the described-day chain uses all `K_DEPLOC`
   rows, including non-local rows, without joining voyage trips (decision

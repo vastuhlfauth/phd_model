@@ -1,0 +1,12 @@
+trip_grid_max_min: 240
+day_grid_max_min: 360
+minimum_cell_n: 50
+thresholds_min: [15, 30, 45, 60, 14, 29, 44, 59]
+bootstrap_reps: 200
+seed: 0
+cache_dir: data/interim/budget
+b3_report: docs/data/step12_variation.md
+logs_dir: logs
+reference_2008_min: 52.0
+reference_2019_min: 57.0
+reference_tolerance_min: 0.05

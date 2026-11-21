@@ -1,0 +1,15 @@
+# Adjacent levels only. Preferred pairs take precedence over other neighbours.
+checkpoint_dir: data/interim/budget/zahavi_groupings
+dimensions:
+  density:
+    levels: [dense, intermediate, sparse, very_sparse]
+    preferred: [[sparse, very_sparse]]
+  income:
+    levels: [q1, q2, q3, q4, q5]
+    preferred: []
+  age_band:
+    levels: ['00', '15', '30', '40', '50', '60']
+    preferred: []
+  vehicles:
+    levels: ['0', '1', '2+']
+    preferred: [['1', '2+'], ['0', '1']]

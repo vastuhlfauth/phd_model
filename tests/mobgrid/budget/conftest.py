@@ -109,9 +109,9 @@ _K_INDIVIDU_ROWS = [
     for i in range(1, 14)
 ]
 
-#: `JNBVEH` (step 12's B1 V3: household cars 0/1/2+), cycling over 0-2.
-_Q_MENAGE_HEADER = "IDENT_MEN;pond_menC;JNBVEH"
-_Q_MENAGE_ROWS = [f"M{i};100.0;{(i - 1) % 3}" for i in range(1, 14)]
+#: Broad in-use vehicle count fields used by the income supplement.
+_Q_MENAGE_HEADER = "IDENT_MEN;pond_menC;JNBVEH;JNBVHS;JNBVPHS;JNBCCHS;JNBVULHS"
+_Q_MENAGE_ROWS = [f"M{i};100.0;{(i - 1) % 3};2;;;" for i in range(1, 14)]
 
 #: TCM_MEN's `TUU2017_RES` (section 9.9's density proxy) and
 #: `STATUTCOM_UU_RES`/`DENSITECOM_RES` (the residence density itself,

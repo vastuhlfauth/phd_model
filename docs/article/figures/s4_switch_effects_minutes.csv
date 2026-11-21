@@ -1,0 +1,7 @@
+switch_from_reference,basis,effect_on_2008_level_min_[95CI],effect_on_2019_level_min_[95CI],effect_on_change_min_(point; = 2019 effect - 2008 effect),effect_on_ratio_[90CI]
+days: round → alldays,per day with trips,"+0.34 [-0.01, +0.77]","-0.03 [-0.35, +0.31]",-0.37,"-0.0062 [-0.0136, -0.0002]"
+days: round → alldays,per person,"+0.04 [-0.31, +0.40]","-0.69 [-1.05, -0.35]",-0.73,"-0.0141 [-0.0220, -0.0056]"
+purposes: dest → allpurp,per day with trips,"+3.71 [+3.27, +4.30]","+5.16 [+4.53, +5.77]",+1.45,"+0.0170 [+0.0064, +0.0283]"
+purposes: dest → allpurp,per person,"+4.27 [+3.84, +4.82]","+5.61 [+5.02, +6.20]",+1.34,"+0.0164 [+0.0045, +0.0284]"
+distance: local → daytable,per day with trips,"+3.08 [+2.34, +3.91]","+2.61 [+1.84, +3.48]",-0.47,"-0.0107 [-0.0267, +0.0031]"
+distance: local → daytable,per person,"+3.10 [+2.43, +3.95]","+2.63 [+1.92, +3.46]",-0.47,"-0.0140 [-0.0321, +0.0023]"

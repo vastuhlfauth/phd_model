@@ -46,7 +46,7 @@ The table summarises what each product keeps.
 |---|---|---|---|
 | Opportunity curves (section 10.2) | Origin at 200 m (walk, PT) or 1 km (bike, car); every destination counted at full resolution | No: binned by cost (time, distance, energy) | Cumulative and radiative accessibility; intervening-opportunity models |
 | Nearest destinations of each type | Same | No | First service or nature area in reach; access to PT stops |
-| O-D table (job and social destinations) | As computed | Only for storage: PT to 1 km, car beyond 30 km optionally | Distribution model, mode-share model, daily energy, monetary cost |
+| O-D table (job and social destinations) | As computed | Only for storage: PT to 1 km, car beyond 30 km optionally | Mobility model (section 10.4), daily energy, monetary cost |
 
 **Distribution model with aggregated alternatives.** When far car destinations are stored in bands, the destination-choice model stays consistent if utilities include ln(opportunities) as a size term with a heterogeneity correction (Ben-Akiva & Lerman 1985); alternatively the model is estimated on a sample of 1 km alternatives (McFadden 1978).
 
