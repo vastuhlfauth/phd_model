@@ -229,6 +229,24 @@ def test_ride_speed_and_power_caps_a_steep_descent(config, crr) -> None:
     assert 0.0 <= power
 
 
+def test_descent_cap_does_not_limit_flat_or_uphill(config, crr) -> None:
+    cap = 30.0 / 3.6
+    for gradient in (0.0, 0.001):
+        speed, power = ride_speed_and_power(
+            gradient, 500.0, 37.0, 500.0, RIDER_MASS_KG, crr,
+            config.bike.cda_m2, config.bike.rho_air_kg_per_m3,
+            config.bike.drivetrain_efficiency, cap,
+        )
+        assert speed > cap
+        assert power == pytest.approx(500.0)
+        class_speed, _ = ride_speed_and_power(
+            gradient, 500.0, 37.0, 500.0, RIDER_MASS_KG, crr,
+            config.bike.cda_m2, config.bike.rho_air_kg_per_m3,
+            config.bike.drivetrain_efficiency, cap, class_cap_m_per_s=cap,
+        )
+        assert class_speed == pytest.approx(cap)
+
+
 def test_ride_energy_components_direction_asymmetry() -> None:
     # Same edge, opposite directions: the signed climb term flips sign
     # (section 9.7; 14.7 "per edge and direction").

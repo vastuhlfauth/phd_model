@@ -235,8 +235,8 @@ def ride_speed_and_power(
     """Speed and rider power on one edge, by direction (section 9.7).
 
     P_r = ``select_ride_power_w`` on every grade; if the resulting speed
-    would exceed v_max,desc or a (not yet modelled) infrastructure-class
-    cap, speed is capped there and P_r reduced to the power that exactly
+    would exceed v_max,desc on a descent or an infrastructure-class cap
+    on any grade, speed is capped and P_r reduced to the power that exactly
     holds the cap (braking absorbs any excess mechanically, at no
     metabolic cost, so the reduced P_r is never negative). Returns
     ``(speed_m_per_s, rider_power_w)``.
@@ -246,7 +246,7 @@ def ride_speed_and_power(
         power_w, mass_total_kg, gradient, rolling_resistance, cda_m2,
         rho_air_kg_per_m3, drivetrain_efficiency, headwind_m_per_s,
     )
-    cap_m_per_s = v_max_descent_m_per_s
+    cap_m_per_s = v_max_descent_m_per_s if gradient < 0 else float("inf")
     if class_cap_m_per_s is not None:
         cap_m_per_s = min(cap_m_per_s, class_cap_m_per_s)
     if speed_m_per_s > cap_m_per_s:
