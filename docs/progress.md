@@ -35,7 +35,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Edges built for the 2021 pilot; step 6b (elevation, speeds, costs) in progress |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Edges built for the 2021 pilot; step 6b elevation and BD ALTI unpack complete, car free-flow speeds/costs remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |

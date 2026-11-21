@@ -1,12 +1,20 @@
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
-from mobgrid.osm.elevation import edge_elevation_profile, sample_elevations
+from mobgrid.osm.elevation import (
+    ElevationSummary,
+    edge_elevation_profile,
+    enrich_edges_with_elevation,
+    sample_elevations,
+    write_elevation_report,
+)
 
 
-def _grid(path, x_corner, rows):
+def _grid(path, x_corner, rows, y_corner=0):
     path.write_text(
-        "ncols 2\nnrows 2\n"
-        f"xllcorner {x_corner}\nyllcorner 0\ncellsize 25\n"
+        f"ncols {len(rows[0])}\nnrows {len(rows)}\n"
+        f"xllcorner {x_corner}\nyllcorner {y_corner}\ncellsize 25\n"
         "NODATA_value -9999\n"
         + "\n".join(" ".join(str(value) for value in row) for row in rows)
         + "\n",
@@ -56,3 +64,97 @@ def test_unaligned_grids_are_rejected(tmp_path):
     _grid(east, 51, [[30, 40], [20, 30]])
     with pytest.raises(ValueError, match="unaligned ASCII grid"):
         sample_elevations([west, east], np.array([25.0]), np.array([25.0]))
+
+
+def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
+    tmp_path,
+):
+    import duckdb
+
+    grid = tmp_path / "tile.asc"
+    _grid(grid, 700000, [[10, 15, 12], [10, 15, 12]], y_corner=6600000)
+    edges = tmp_path / "edges.parquet"
+    nodes = tmp_path / "nodes.parquet"
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    connection.register(
+        "_test_lambert93",
+        pa.table(
+            {
+                "x": [700012.5, 700037.5, 700062.5, 701000.0],
+                "y": [6600012.5] * 4,
+            }
+        ),
+    )
+    coordinates = connection.execute("""
+        SELECT ST_X(ST_Transform(
+                   ST_Point(x, y), 'EPSG:2154', 'EPSG:3035', true
+               )) AS x,
+               ST_Y(ST_Transform(
+                   ST_Point(x, y), 'EPSG:2154', 'EPSG:3035', true
+               )) AS y
+        FROM _test_lambert93
+    """).fetchall()
+    pq.write_table(
+        pa.table(
+            {
+                "edge_key": ["forward", "reverse", "missing"],
+                "node_ids": pa.array(
+                    [[1, 2, 3], [3, 2, 1], [3, 4]],
+                    type=pa.list_(pa.int64()),
+                ),
+                "length_m": [50.0, 50.0, 25.0],
+            }
+        ),
+        edges,
+    )
+    pq.write_table(
+        pa.table(
+            {
+                "node_id": [1, 2, 3, 4],
+                "x": [row[0] for row in coordinates],
+                "y": [row[1] for row in coordinates],
+            }
+        ),
+        nodes,
+    )
+
+    try:
+        summary = enrich_edges_with_elevation(
+            connection, edges, nodes, [grid]
+        )
+        profiles = {
+            row[0]: row[1:]
+            for row in connection.execute(
+                f"SELECT edge_key, climb_m, descent_m, mean_grade "
+                f"FROM read_parquet('{edges.as_posix()}')"
+            ).fetchall()
+        }
+    finally:
+        connection.close()
+
+    assert profiles["forward"][:2] == pytest.approx((5.0, 3.0))
+    assert profiles["forward"][2] == pytest.approx(0.04, abs=1e-4)
+    assert profiles["reverse"][:2] == pytest.approx((3.0, 5.0))
+    assert profiles["reverse"][2] == pytest.approx(-0.04, abs=1e-4)
+    assert profiles["missing"] == (None, None, None)
+    assert summary.nodes_without_elevation == 1
+    assert summary.nodes_without_tile == 1
+
+
+def test_elevation_report_distinguishes_uncovered_nodes_from_missing_samples(
+    tmp_path,
+):
+    report = tmp_path / "elevation.md"
+
+    write_elevation_report(
+        ElevationSummary(3, 2, 1, 1),
+        report,
+        state=2021,
+        area="pilot",
+        tile_count=2,
+    )
+
+    contents = report.read_text(encoding="utf-8")
+    assert "Nodes with no covering tile: 1" in contents
+    assert "Nodes with no valid elevation sample: 2" in contents

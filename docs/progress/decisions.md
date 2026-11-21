@@ -1,5 +1,13 @@
 ## Decisions taken while coding
 
+- 2026-11-21, step 6b: select BD ALTI archives by intersecting department
+  commune contours with the configured, buffered pilot geometry, rather than
+  assuming a fixed neighbour list. Store elevations and directional profiles
+  directly on `edges.parquet`; transform node coordinates from EPSG:3035 to
+  the raster CRS EPSG:2154 before sampling. The elevation report separates
+  nodes outside all tile footprints from no-data interpolation results.
+  Windows `tar` 3.8.9 listed the configured 7z archive, so no `py7zr`
+  dependency was added; extraction was not run per the task instruction.
 - 2026-10-19, step 11, the spec 09 replacement flagged below (2026-10-19,
   step 7 second round) is resolved: the user confirmed `docs/spec/09_trip_legs_energy.md`
   (commit `76e5260`, "Spec 9: bike descents, e-bike rider share,

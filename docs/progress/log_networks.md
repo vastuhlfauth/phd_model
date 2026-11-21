@@ -3,6 +3,22 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: BD ALTI and edge elevation (2026-11-21)
+
+- Added `mobgrid.osm.unpack_bdalti`: it intersects the configured pilot buffer
+  with 2021 department contours, selects the corresponding `bdalti` manifest
+  archives, and atomically unpacks them under `data/interim/bdalti/D###/`.
+- Added the edge-elevation stage: node coordinates transform from EPSG:3035 to
+  the BD ALTI EPSG:2154 grid; ordered OSM segments produce directional endpoint
+  elevations, climb, descent and mean grade on `edges.parquet`.
+- The elevation report separates nodes outside every tile from nodes with no
+  valid interpolation sample. Added data pages for BD ALTI and commune contours.
+- Synthetic elevation/unpack tests: 9 passed; Ruff and Pylance diagnostics
+  passed. The native Windows `tar` listed the Gironde archive; no extraction,
+  pilot, or national build was run.
+- Unpack command: `python -m mobgrid.osm.unpack_bdalti --area pilot`
+- Car free-flow speed and delay costs remain for step 6b.
+
 ### Step 6b: edge-cost groundwork (2026-11-21)
 
 - Added a deterministic directed mode edge key and retained `tracktype` on
