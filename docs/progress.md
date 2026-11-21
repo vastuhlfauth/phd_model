@@ -13,6 +13,19 @@ Read this file at the start of every task and update it at the end.
 - Synthetic edge tests: 13 passed; Ruff and Pylance syntax checks passed.
   No pilot or national build was run. Elevation, costs and the Géovélo
   comparison remain to be implemented.
+- Set section 9.7's provisional bike parameters k=37, P_max=200 W and
+  descent cap=30 km/h in `config/energy.yaml` (`TODO(confirm)`: calibrate
+  against observed commuter speeds). The energy-rate tests: 13 passed;
+  Ruff passed.
+- Open before the bike cost stage: section 9.7 applies `v_max,desc` on
+  descents, but `energy.bike.ride_speed_and_power` applies it to every
+  grade. For example, with 500 W on the flat it limits speed to 30 km/h,
+  versus 39.3 km/h without that cap. Clarification is needed before
+  coupling the stage to that solver.
+- There are no dataset pages for BD ALTI or Géovélo in `docs/data/`; their
+  schemas and the remaining elevation, car and bike costs, cost-stage CLI,
+  Géovélo check and unpack CLI remain to be completed. Windows `tar`
+  successfully listed the Gironde `.7z`, so `py7zr` is not needed here.
 
 ### Step 6: OSM network pilot pipeline
 

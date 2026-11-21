@@ -26,10 +26,12 @@ def test_config_loads_and_validates() -> None:
     config = _config()
     assert config.reference_mass_kg > 0
     assert config.rate_set in ("kh", "compendium")
-    # P0 is confirmed by the section 9.9 re-estimation (EMP 2019, step
-    # 11); k and P_max remain unconfirmed placeholders (section 9.7).
+    # P0 is confirmed by the section 9.9 re-estimation; the other
+    # parameters are the provisional values of section 9.7.
     assert config.bike.power.p0_w == pytest.approx(34.8)
-    assert config.bike.power.k is None
+    assert config.bike.power.k == pytest.approx(37.0)
+    assert config.bike.power.p_max_w == pytest.approx(200.0)
+    assert config.bike.power.v_max_descent_kmh == pytest.approx(30.0)
 
 
 @pytest.mark.parametrize(
