@@ -9,6 +9,7 @@ One page per dataset, written with `/schema` before any step uses the dataset. A
 | GTFS acquisition inventory | [gtfs.md](gtfs.md) | Configured snapshot; service dates checked independently | 2, 0 |
 | Commune contours | [commune_contours.md](commune_contours.md) | 2021 | 6 |
 | BD ALTI 25 m elevation grids | [bdalti.md](bdalti.md) | Departmental editions in the manifest | 6 |
+| OSM directed edges and car costs | [osm_edges.md](osm_edges.md) | 2022 and 2024 extracts | 6 |
 | EMP 2019 public tables | [emp2019.md](emp2019.md) | Fieldwork 2018-2019; public release December 2021, updated November 2024 | 11 |
 
 ## Template for a dataset page

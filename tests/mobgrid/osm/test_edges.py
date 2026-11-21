@@ -7,6 +7,7 @@ from mobgrid.osm.edges import (
     _build_graph_nodes,
     _build_points_sql,
     _build_segments_sql,
+    _input_signature,
     build_directed_edges,
     connectivity_summaries,
     write_step06_report,
@@ -174,6 +175,27 @@ def _build(tmp_path):
         config=load_network_config("config/network.yaml"),
     )
     return connection, result
+
+
+def test_car_speed_parameter_changes_do_not_invalidate_edge_build_cache(
+    tmp_path,
+) -> None:
+    connection, ways_path, nodes_path = _raw_tables(tmp_path)
+    config = load_network_config("config/network.yaml")
+    changed_density = config.car_speed.urban_density.model_copy(
+        update={"radius_m": config.car_speed.urban_density.radius_m + 1}
+    )
+    changed_car_speed = config.car_speed.model_copy(
+        update={"urban_density": changed_density}
+    )
+    changed_config = config.model_copy(update={"car_speed": changed_car_speed})
+
+    try:
+        assert _input_signature(ways_path, nodes_path, config) == _input_signature(
+            ways_path, nodes_path, changed_config
+        )
+    finally:
+        connection.close()
 
 
 def test_edge_keys_distinguish_repeated_segments_and_rebuilds(tmp_path) -> None:

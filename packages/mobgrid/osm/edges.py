@@ -390,7 +390,13 @@ def _input_signature(
         }
     return hashlib.sha256(
         json.dumps(
-            {"version": 5, "inputs": inputs, "config": config.model_dump(mode="json")},
+            {
+                "version": 5,
+                "inputs": inputs,
+                "config": config.model_dump(
+                    mode="json", exclude={"car_speed"}
+                ),
+            },
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()

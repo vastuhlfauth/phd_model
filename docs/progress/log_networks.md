@@ -3,6 +3,24 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: car free-flow costs (2026-11-21)
+
+- Added configured car free-flow speeds with `maxspeed` precedence, class/context
+  defaults, per-class realism factors, and speed-limit buckets; directional
+  control counts and qualifying to-node degrees add configured delays.
+- Untagged contexts use clipped car-edge length within a centroid radius.
+  The threshold maximizes length-weighted agreement on tagged urban/rural
+  edges; the report records agreement and urban directed-length shares by
+  class, including zero-share classes.
+- Defaults, class overrides, realism factors, density settings, delays and
+  bucket bounds are provisional `TODO(confirm)` values in
+  `config/network.yaml`; see `docs/progress.md`.
+- Speed-only config changes no longer invalidate enriched edges, preserving
+  BD ALTI results when tuning car parameters.
+- Validation: 28 focused edge/elevation/unpack/speed tests passed; Ruff and
+  Pylance diagnostics passed. No archive extraction, pilot or national build
+  was run. Bike costs remain for step 6b.
+
 ### Step 6b: BD ALTI and edge elevation (2026-11-21)
 
 - Added `mobgrid.osm.unpack_bdalti`: it intersects the configured pilot buffer

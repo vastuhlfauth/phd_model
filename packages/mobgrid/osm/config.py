@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 Mode = Literal["car", "bike", "foot"]
+SpeedContext = Literal["urban", "rural", "zone30", "motorway"]
+PositiveSpeed = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 
 
 class AccessRule(BaseModel):
@@ -25,6 +33,56 @@ class AccessRule(BaseModel):
     included_highways: tuple[str, ...] = ()
     sidewalk_values: tuple[str, ...] = ()
     default_allowed: bool
+
+
+class UrbanDensityConfig(BaseModel):
+    """Road-density fallback for untagged car-speed context."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    radius_m: float = Field(gt=0)
+    fallback_threshold_km: float = Field(ge=0)
+    fit_strategy: Literal["max_length_weighted_agreement"]
+
+
+class CarDelayConfig(BaseModel):
+    """Free-flow control and junction delay parameters."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    per_control_s: float = Field(gt=0)
+    at_to_node_s: float = Field(ge=0)
+    degree_threshold: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_junction_delay(self) -> CarDelayConfig:
+        if self.at_to_node_s >= self.per_control_s:
+            raise ValueError("to-node delay must be smaller than per-control delay")
+        return self
+
+
+class CarSpeedConfig(BaseModel):
+    """Configured defaults, class factors, density rule and delay parameters."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    defaults_kmh_by_context: dict[SpeedContext, PositiveSpeed]
+    class_overrides_kmh_by_context: dict[
+        SpeedContext, dict[str, PositiveSpeed]
+    ]
+    realism_factor_by_highway: dict[str, PositiveSpeed]
+    speed_limit_bucket_upper_bounds_kmh: tuple[PositiveSpeed, ...]
+    urban_density: UrbanDensityConfig
+    delays: CarDelayConfig
+
+    @field_validator("speed_limit_bucket_upper_bounds_kmh")
+    @classmethod
+    def validate_speed_buckets(cls, value: tuple[float, ...]) -> tuple[float, ...]:
+        if not value or any(bound <= 0 for bound in value):
+            raise ValueError("speed buckets must contain positive upper bounds")
+        if tuple(sorted(set(value))) != value:
+            raise ValueError("speed bucket upper bounds must increase strictly")
+        return value
 
 
 class NetworkConfig(BaseModel):
@@ -48,6 +106,7 @@ class NetworkConfig(BaseModel):
     speed_context_values: dict[
         str, Literal["urban", "rural", "zone30", "motorway"]
     ]
+    car_speed: CarSpeedConfig
     mph_to_kmh: float = Field(gt=0)
     busway_values: tuple[str, ...]
     bike_classes: dict[

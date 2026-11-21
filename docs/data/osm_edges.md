@@ -20,8 +20,10 @@
   `nodes.parquet`. Node coordinates and edge geometry use EPSG:3035; edge
   lengths are ellipsoidal metres summed from the ordered OSM node coordinates.
   DuckDB's spheroid function uses WGS84 parameters, numerically equivalent to
-  GRS80 at sub-millimetre precision for road-edge lengths. No elevation or
-  travel times are populated in this step.
+  GRS80 at sub-millimetre precision for road-edge lengths. The edge-build step
+  itself does not populate elevation or travel times; the elevation stage adds
+  directional profiles to `edges.parquet`, and car costs are stored in the
+  one-to-one `car_costs.parquet` keyed by `edge_key`.
 
 ## Edge columns
 
@@ -37,6 +39,9 @@
 | `highway` | string, nullable | OSM road class |
 | `maxspeed_kmh` | float64, nullable | Parsed maxspeed in km/h |
 | `speed_context` | string, nullable | Context parsed from `zone:traffic`, `source:maxspeed`, `maxspeed:type` or `zone:maxspeed` (`urban`, `rural`, `zone30`, `motorway`); retained independently of numeric maxspeed |
+| `elevation_from_m`, `elevation_to_m` | float64, nullable | Elevation at the directed endpoints, sampled from BD ALTI |
+| `climb_m`, `descent_m` | float64, nullable | Sum of positive and negative height changes along ordered OSM nodes |
+| `mean_grade` | float64, nullable | Endpoint elevation change divided by horizontal edge length; dimensionless |
 | `motorroad` | bool | `motorroad=yes` (also accepts `true` and `1`) |
 | `lanes` | string, nullable | Raw `lanes` value |
 | `car_access`, `bike_access`, `foot_access` | bool | Effective access flags before one-way filtering |
@@ -63,6 +68,26 @@ interior graph nodes also serve as the preceding segment's endpoint. This
 avoids joining every way point against sequence ranges.
 The key is stable for unchanged way segmentation; splitting a way at a new
 graph node can change subsequent segment indexes and keys.
+
+## Car free-flow costs
+
+`car_costs.parquet` has one row per car `edge_key` (therefore one row per
+direction). It contains `time_s`, `is_urban`, `road_class`, and
+`speed_limit_bucket`. The speed limit uses `maxspeed_kmh` when present;
+otherwise a configured class/context default applies. The urban-density rule
+fits a length-weighted threshold against edges tagged urban or rural and uses
+the configured fallback only when both labels are not available. The report
+records the fitted agreement and urban directed-length share by road class.
+All defaults, realism factors, density parameters, delays, and bucket bounds
+are in `config/network.yaml` with `TODO(confirm)` markers.
+
+| Column | Type | Unit | Meaning |
+|---|---|---|---|
+| `edge_key` | string | none | One-to-one directed edge key from `edges.parquet` |
+| `time_s` | float64 | seconds | Free-flow time including configured control and to-node delays |
+| `is_urban` | bool | none | Explicit urban/rural context or fitted road-density classification |
+| `road_class` | string, nullable | none | OSM `highway` class |
+| `speed_limit_bucket` | string | none | Configured bucket of the numeric/default limit before realism factor |
 
 ## Access and direction rules
 

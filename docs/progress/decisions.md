@@ -8,6 +8,15 @@
   nodes outside all tile footprints from no-data interpolation results.
   Windows `tar` 3.8.9 listed the configured 7z archive, so no `py7zr`
   dependency was added; extraction was not run per the task instruction.
+- 2026-11-21, step 6b: store car costs in a one-to-one directed-edge
+  `car_costs.parquet`, separate from geometry/elevation. `maxspeed` takes
+  precedence over provisional class/context defaults; untagged contexts use
+  a fitted length-weighted road-density threshold, and each directional
+  control plus qualifying to-node contributes a configured delay. All
+  provisional speeds, realism factors, density settings, delays and bucket
+  bounds remain `TODO(confirm)` in `config/network.yaml`. Exclude car-speed
+  settings from the edge-build cache signature so tuning them cannot replace
+  already-enriched edges.
 - 2026-10-19, step 11, the spec 09 replacement flagged below (2026-10-19,
   step 7 second round) is resolved: the user confirmed `docs/spec/09_trip_legs_energy.md`
   (commit `76e5260`, "Spec 9: bike descents, e-bike rider share,

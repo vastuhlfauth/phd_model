@@ -35,7 +35,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Edges built for the 2021 pilot; step 6b elevation and BD ALTI unpack complete, car free-flow speeds/costs remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Step 6b BD ALTI unpack/elevation and provisional car free-flow costs complete; bike costs remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -48,6 +48,9 @@ Status values: not started, in progress, review, merged.
 
 - [EMP 2019 public tables](data/emp2019.md) (step 11)
 - [ENTD 2008 public tables](data/entd2008.md) (step 11, section 9.9's 2008-2019 comparison)
+- [Commune contours](data/commune_contours.md) (step 6)
+- [BD ALTI 25 m elevation grids](data/bdalti.md) (step 6)
+- [OSM directed edges and car costs](data/osm_edges.md) (step 6)
 
 ## Assumptions to check
 
@@ -56,6 +59,15 @@ Status values: not started, in progress, review, merged.
   upper end, 12 min, in `config/energy.yaml`
   `waiting.headway_regime_threshold_min`, since the spec gives a range
   rather than a single value.
+- 2026-11-21, step 6b: provisional car-speed values in
+  `config/network.yaml` (`TODO(confirm)`): context defaults are 50 km/h
+  urban, 80 km/h rural, 30 km/h zone30 and 130 km/h motorway, with class
+  overrides for trunk/primary roads; all realism factors are 1.0 until R4.
+  Untagged context uses car-edge length within a 500 m centroid radius and
+  a fitted length-weighted urban/rural separator (1 km fallback). Control
+  delays are 5 s per control and 2 s at to-nodes of degree 3+, with
+  30/50/80/110 km/h speed-limit bucket bounds. Confirm defaults, class
+  overrides, factors, density rule, delays and buckets against the pilot/R4.
 - 2026-10-09, bootstrap, the initial base configuration contains the EPSG:3035 coordinate system and 200 m/1 km resolutions; `config/base.yaml`.
 - 2026-10-12, step 0, a pattern's expected outcome defaults to "kept" at
   both state dates unless it is one of section 5.6's listed known
@@ -78,6 +90,10 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
+- [ ] Step 6b (section 8.4): validate car class/context defaults and
+  overrides, realism factors, urban-density radius/fallback/fitting rule,
+  control and junction delays, and speed-limit buckets; provisional values
+  are marked `TODO(confirm)` in `config/network.yaml`.
 - [x] Sections 9.9 and 10.4: Saturday and Sunday get their own f_m, in a
   later version (decision of 20 November 2026).
 - [ ] Section 9.12: car passengers, train and bike are not shown stable;
