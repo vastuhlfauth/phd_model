@@ -6,7 +6,9 @@ import argparse
 import json
 import logging
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -134,6 +136,25 @@ def _safe_members(listing: str) -> tuple[str, ...]:
     return tuple(members)
 
 
+def _tile_members(members: Sequence[str]) -> tuple[str, ...]:
+    tiles = tuple(member for member in members if member.lower().endswith(".asc"))
+    names = [PurePosixPath(member).name.casefold() for member in tiles]
+    if len(names) != len(set(names)):
+        raise ValueError("BD ALTI archive contains duplicate tile names")
+    return tiles
+
+
+def _remove_staging_directory(directory: Path) -> None:
+    path = str(directory.resolve())
+    if sys.platform == "win32":
+        path = (
+            "\\\\?\\UNC\\" + path[2:]
+            if path.startswith("\\\\")
+            else "\\\\?\\" + path
+        )
+    shutil.rmtree(path)
+
+
 def _archive_signature(archive: Path, members: Sequence[str]) -> dict[str, object]:
     stat = archive.stat()
     return {
@@ -141,6 +162,7 @@ def _archive_signature(archive: Path, members: Sequence[str]) -> dict[str, objec
         "size_bytes": stat.st_size,
         "mtime_ns": stat.st_mtime_ns,
         "members": list(members),
+        "layout": "flat",
     }
 
 
@@ -156,6 +178,7 @@ def _valid_existing_unpack(destination: Path, archive: Path) -> int | None:
         recorded.get("archive") != archive.name
         or recorded.get("size_bytes") != stat.st_size
         or recorded.get("mtime_ns") != stat.st_mtime_ns
+        or recorded.get("layout") != "flat"
     ):
         return None
     raw_members = recorded.get("members")
@@ -163,17 +186,17 @@ def _valid_existing_unpack(destination: Path, archive: Path) -> int | None:
         isinstance(member, str) for member in raw_members
     ):
         return None
-    members = _safe_members("\n".join(raw_members))
+    members = _tile_members(_safe_members("\n".join(raw_members)))
     if not all(
-        (destination / Path(*PurePosixPath(member).parts)).exists()
+        (destination / PurePosixPath(member).name).is_file()
         for member in members
     ):
         return None
-    return sum(member.lower().endswith(".asc") for member in members)
+    return len(members)
 
 
 def unpack_archive(archive_path: str | Path, destination: str | Path) -> UnpackResult:
-    """Atomically unpack one verified 7z listing with Windows ``tar``."""
+    """Atomically unpack only raster tiles to flat paths with Windows ``tar``."""
     archive = Path(archive_path)
     if not archive.is_file():
         raise FileNotFoundError(archive)
@@ -193,31 +216,43 @@ def unpack_archive(archive_path: str | Path, destination: str | Path) -> UnpackR
         text=True,
     )
     members = _safe_members(listing.stdout)
+    tiles = _tile_members(members)
     signature = _archive_signature(archive, members)
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        prefix=f".{target.name}.", dir=target.parent
-    ) as temporary_directory:
-        temporary = Path(temporary_directory)
-        subprocess.run(
-            ["tar", "-xf", str(archive.resolve()), "-C", str(temporary)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        for member in members:
-            extracted = temporary / Path(*PurePosixPath(member).parts)
-            if not extracted.exists():
-                raise OSError(f"archive member was not extracted: {member}")
+    temporary = Path(tempfile.mkdtemp(prefix=".t", dir=target.parent))
+    try:
+        by_depth: dict[int, list[str]] = {}
+        for tile in tiles:
+            depth = len(PurePosixPath(tile).parts) - 1
+            by_depth.setdefault(depth, []).append(tile)
+        member_list = temporary / "_tiles.txt"
+        for depth, group in by_depth.items():
+            member_list.write_text("\n".join(group) + "\n", encoding="utf-8")
+            subprocess.run(
+                [
+                    "tar", "-xf", str(archive.resolve()), "-C", str(temporary),
+                    "--strip-components", str(depth), "-T", str(member_list),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        member_list.unlink()
+        for member in tiles:
+            extracted = temporary / PurePosixPath(member).name
+            if not extracted.is_file():
+                raise OSError(f"archive tile was not extracted: {member}")
             if not extracted.resolve().is_relative_to(temporary.resolve()):
                 raise ValueError(f"unsafe extracted archive member: {member!r}")
-        tile_count = sum(member.lower().endswith(".asc") for member in members)
         (temporary / _MARKER_NAME).write_text(
             json.dumps(signature, indent=2), encoding="utf-8"
         )
         temporary.replace(target)
-    return UnpackResult(target, tile_count, False)
+    finally:
+        if temporary.exists():
+            _remove_staging_directory(temporary)
+    return UnpackResult(target, len(tiles), False)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -275,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     for department, source in selected.items():
         archive = project_root / source.local_path
         department_folder = "D" + department.zfill(3)
-        destination = output_directory / department_folder / source.id
+        destination = output_directory / department_folder
         result = unpack_archive(archive, destination)
         unpacked.append(result)
         logger.info(

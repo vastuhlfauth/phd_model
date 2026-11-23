@@ -3,6 +3,23 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: Windows flat BD ALTI unpack (2026-11-23)
+
+- Fixed Windows path-length failures by extracting only listed `.asc` tiles
+  into short staging folders and flattening to `bdalti/D###/<tile>.asc`;
+  department outputs no longer include the manifest source id.
+- Checked native `tar --help` and option parsing: `-s` is unsupported;
+  `--strip-components` with tile-only `-T` lists works, including mixed depths.
+- Reject duplicate basenames case-insensitively and verify every tile before
+  promotion/reuse. Failed staging trees use `\\?\` cleanup on Windows.
+- The sampler already finds flat tiles with recursive discovery; unchanged.
+- Regression fixtures use names listed from the real D016 archive. A tiny
+  synthetic archive exercises native tar; flat final paths are under 160
+  characters at the project root. No real archive extraction was run.
+- Validation: 10 unpack tests passed; Ruff clean; no Pylance errors.
+- Retry: `python -m mobgrid.osm.unpack_bdalti --area pilot`
+  Move aside old nested/stale department outputs first; they are preserved.
+
 ### Step 6b: car free-flow costs (2026-11-21)
 
 - Added configured car free-flow speeds with `maxspeed` precedence, class/context

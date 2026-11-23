@@ -8,8 +8,8 @@
   rasters. Tile names identify `25M`, `LAMB93` and the `IGN69` vertical datum.
 - **CRS:** Lambert-93, EPSG:2154; elevations are metres referenced to IGN69.
 - **Coverage:** The unpack command selects departments whose commune contours
-  intersect the buffered pilot area and writes each archive under
-  `data/interim/bdalti/D###/`.
+  intersect the buffered pilot area and extracts only `.asc` tiles, flattened
+  to `data/interim/bdalti/D###/<tile>.asc`.
 - **Keys and joins:** OSM node `x`, `y` values are transformed from EPSG:3035
   to EPSG:2154 for sampling; edge profiles join to directed edges by `edge_key`.
 
@@ -29,3 +29,10 @@ leaves the node sample null.
   grids are rejected rather than silently shifted.
 - No-data and nodes outside all tile footprints are counted separately in the
   elevation report.
+- Windows `tar` lacks `-s`; tile-only file lists and `--strip-components`
+  remove archive nesting, using short staging folders under the output root.
+  Duplicate tile basenames (including case-only differences) are rejected.
+- Every listed tile is checked by basename before promotion and on reuse.
+  Failed staging folders are removed with Windows extended-length paths.
+  Old nested or stale department outputs must be moved aside before retrying;
+  the unpacker does not overwrite them.

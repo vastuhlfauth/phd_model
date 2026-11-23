@@ -1,5 +1,10 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6b: flatten BD ALTI raster tiles at department level,
+  rejecting duplicate basenames before extraction. Native Windows tar lacks
+  `-s`, so group listed tiles by nesting depth and use `--strip-components`
+  with tile-only file lists. Keep short staging folders and extended-length
+  Windows cleanup; preserve old nested/stale output rather than overwriting it.
 - 2026-11-21, step 6b: select BD ALTI archives by intersecting department
   commune contours with the configured, buffered pilot geometry, rather than
   assuming a fixed neighbour list. Store elevations and directional profiles

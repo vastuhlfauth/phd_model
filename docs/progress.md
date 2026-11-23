@@ -7,6 +7,7 @@ Read this file at the start of every task and update it at the end.
 This file holds the current state only. Search the history for your step; don't read it whole.
 
 - `docs/progress/log_networks.md`: steps 6, 8, 9 and 10. Latest entries:
+  - Step 6b: Windows flat BD ALTI unpack (2026-11-23)
   - Step 6b: edge-cost groundwork (2026-11-21)
   - Step 6b: road classes (2026-11-21)
   - Step 6: OSM network pilot pipeline
@@ -35,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Step 6b BD ALTI unpack/elevation and provisional car free-flow costs complete; bike costs remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Step 6b BD ALTI unpack/elevation and provisional car free-flow costs complete; Windows unpack uses flat tiles and long-path-safe cleanup; bike costs remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -94,6 +95,9 @@ Each item stays open until a value is decided; the value goes into `config/`.
   overrides, realism factors, urban-density radius/fallback/fitting rule,
   control and junction delays, and speed-limit buckets; provisional values
   are marked `TODO(confirm)` in `config/network.yaml`.
+- [ ] Step 6b: user rerun of BD ALTI unpack after the Windows path-length
+  fix; move aside old nested/stale department outputs first. Real archive
+  extraction was not run during validation; no new parameter assumptions.
 - [x] Sections 9.9 and 10.4: Saturday and Sunday get their own f_m, in a
   later version (decision of 20 November 2026).
 - [ ] Section 9.12: car passengers, train and bike are not shown stable;
