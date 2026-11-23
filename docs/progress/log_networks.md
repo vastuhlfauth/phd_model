@@ -3,6 +3,24 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6: edge-build performance (2026-11-23)
+
+- Bumped edge-build cache version to 7; narrowed point and segment rows,
+  materialized per-way attributes, sparse controls, directions and allowed edges,
+  and computed degrees from allowed edges.
+- Compute centroids, cells and tiles once per segment; reverse geometry only
+  for output. Added elapsed logs for the new stages and disabled DuckDB
+  insertion-order preservation for the CLI.
+- Version 6 regression baselines match every edge column on synthetic cases
+  and 14,149 Monaco directed edges; lengths match within 1 mm.
+- Monaco local builds: 1.65 s old and 0.36 s new; these are not pilot timings.
+  Replicated Monaco segment test: ordered-line length 0.381 s, pairwise lag
+  0.466 s, so the existing ordered-line calculation was retained.
+- CLI uses the existing extraction connection setup and configured interim
+  path; memory limit and threads are not exposed by the loaded configs.
+- Validation: 19 edge tests passed; Ruff and Pylance clean. No pilot run.
+- Pilot timing and the under-five-minute target remain to be verified by user.
+
 ### Step 6b: bike speed-table groundwork (2026-11-23)
 
 - Added the provisional grade grid, tolerances, class and highway speed caps.

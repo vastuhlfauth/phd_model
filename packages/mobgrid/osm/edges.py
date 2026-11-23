@@ -348,29 +348,6 @@ def direction_sql(mode: Mode, config: NetworkConfig) -> str:
     """
 
 
-def _control_direction_sql(
-    tags_expression: str,
-    is_forward_expression: str,
-    *,
-    signal: bool = False,
-) -> str:
-    direction = f"lower(trim({tags_expression}['direction']))"
-    if signal:
-        signal_direction = (
-            f"lower(trim({tags_expression}['traffic_signals:direction']))"
-        )
-        direction = (
-            f"coalesce(nullif({signal_direction}, ''), "
-            f"nullif({direction}, ''))"
-        )
-    return (
-        f"CASE WHEN {direction} = 'forward' "
-        f"THEN {is_forward_expression} "
-        f"WHEN {direction} = 'backward' "
-        f"THEN NOT ({is_forward_expression}) ELSE TRUE END"
-    )
-
-
 def _write_parquet_atomic(
     connection: duckdb.DuckDBPyConnection, query: str, destination: Path
 ) -> None:
@@ -393,7 +370,7 @@ def _input_signature(
     return hashlib.sha256(
         json.dumps(
             {
-                "version": 6,
+                "version": 7,
                 "inputs": inputs,
                 "config": config.model_dump(
                     mode="json", exclude={"car_speed", "bike_speed_table"}
@@ -427,8 +404,7 @@ def _build_points_sql(
         )
     return f"""
         CREATE OR REPLACE TEMP TABLE _osm_way_points AS
-        SELECT w.way_id, w.tags AS way_tags, ref.node_sequence,
-               ref.node_id, n.tags AS node_tags, n.lat, n.lon,
+        SELECT w.way_id, ref.node_sequence, ref.node_id, n.lat, n.lon,
                ST_Transform(
                    ST_Point(n.lon, n.lat),
                    'EPSG:4326', 'EPSG:3035', true
@@ -469,7 +445,7 @@ def _build_segments_sql() -> str:
             FROM numbered_points
             WHERE is_graph_node AND graph_node_count > 1
         )
-        SELECT way_id, segment_index, any_value(way_tags) AS way_tags,
+        SELECT way_id, segment_index,
                arg_min(node_id, node_sequence) AS from_node_id,
                arg_max(node_id, node_sequence) AS to_node_id,
                min(node_sequence) AS from_sequence,
@@ -487,22 +463,22 @@ def _build_segments_sql() -> str:
     """
 
 
-def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
+def _build_way_attributes_sql(config: NetworkConfig, ways_path: str) -> str:
     accesses = {
         mode: access_sql(mode, config) for mode in ("car", "bike", "foot")
     }
-    directions = {
-        mode: direction_sql(mode, config) for mode in ("car", "bike", "foot")
-    }
-    mode_values = ", ".join(f"('{mode}')" for mode in ("car", "bike", "foot"))
-    allowed_by_mode = " OR ".join(
-        f"(mode = '{mode}' AND {accesses[mode]} AND {directions[mode]})"
+    directions = ", ".join(
+        f"{direction_sql(mode, config).replace('is_forward', str(forward).upper())} "
+        f"AS {mode}_{'forward' if forward else 'reverse'}"
         for mode in ("car", "bike", "foot")
+        for forward in (True, False)
     )
-    bike_class = bike_infrastructure_sql(
-        "way_tags", "is_forward", "bike_access", config
+    bike_classes = ", ".join(
+        bike_infrastructure_sql("way_tags", str(forward).upper(), "bike_access", config)
+        + " "
+        f"AS bike_infra_{'forward' if forward else 'reverse'}"
+        for forward in (True, False)
     )
-    maxspeed = maxspeed_sql("way_tags", config)
     speed_context_cases = " ".join(
         f"WHEN {_sql_text(token.casefold())} THEN {_sql_text(context)}"
         for token, context in config.speed_context_values.items()
@@ -513,148 +489,153 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
         + f"])) {speed_context_cases} END"
         for tag in config.speed_context_tags
     ) + ")"
-    tile_size = config.tile_size_m
-    signal_direction = _control_direction_sql(
-        "n.tags", "d.is_forward", signal=True
-    )
-    node_direction = _control_direction_sql(
-        "n.tags", "d.is_forward"
-    )
     return f"""
-        WITH directions AS (
-            SELECT way_id, segment_index, way_tags, from_node_id, to_node_id,
-                   node_ids, length_m, geom, true AS is_forward
-            FROM _osm_way_segments
-            UNION ALL
-            SELECT way_id, segment_index, way_tags, to_node_id AS from_node_id,
-                   from_node_id AS to_node_id,
-                   list_reverse(node_ids) AS node_ids,
-                   length_m, ST_Reverse(geom) AS geom, false AS is_forward
-            FROM _osm_way_segments
+        CREATE OR REPLACE TEMP TABLE _way_attributes AS
+        WITH ways AS (
+            SELECT way_id, tags AS way_tags FROM read_parquet('{ways_path}')
         ),
-        control_counts AS (
-            SELECT d.way_id, d.segment_index, d.is_forward,
-                   sum(
-                       CASE WHEN (lower(n.tags['highway']) = 'traffic_signals'
-                                  OR (lower(n.tags['highway']) = 'crossing'
-                                      AND lower(n.tags['crossing'])
-                                          = 'traffic_signals'))
-                                 AND {signal_direction}
-                            THEN 1 ELSE 0 END
-                   )::TINYINT AS signal_count,
-                   sum(
-                       CASE WHEN lower(n.tags['highway']) = 'stop'
-                                 AND {node_direction}
-                            THEN 1 ELSE 0 END
-                   )::TINYINT AS stop_count,
-                   sum(
-                       CASE WHEN lower(n.tags['highway']) = 'give_way'
-                                 AND {node_direction}
-                            THEN 1 ELSE 0 END
-                   )::TINYINT AS give_way_count,
-                   sum(
-                       CASE WHEN lower(n.tags['highway']) = 'crossing'
-                                 AND coalesce(lower(n.tags['crossing']), '')
-                                     <> 'traffic_signals'
-                                 AND {node_direction}
-                            THEN 1 ELSE 0 END
-                   )::TINYINT AS crossing_count,
-                   sum(
-                       CASE WHEN lower(n.tags['highway']) = 'mini_roundabout'
-                                 AND {node_direction}
-                            THEN 1 ELSE 0 END
-                   )::TINYINT AS mini_roundabout_count
-            FROM directions d
-            CROSS JOIN UNNEST(d.node_ids) WITH ORDINALITY
-                AS edge_node(node_id, node_sequence)
-            JOIN read_parquet('{nodes_path}') n USING (node_id)
-            WHERE edge_node.node_sequence > 1
-            GROUP BY d.way_id, d.segment_index, d.is_forward
-        ),
-        attributes AS (
-            SELECT d.*,
-                   controls.signal_count,
-                   controls.stop_count,
-                   controls.give_way_count,
-                   controls.crossing_count,
-                   controls.mini_roundabout_count,
+        access AS (
+            SELECT *,
                    {accesses["car"]} AS car_access,
                    {accesses["bike"]} AS bike_access,
-                   {accesses["foot"]} AS foot_access,
-                   d.length_m,
-                   {maxspeed} AS maxspeed_kmh,
-                   {speed_context} AS speed_context,
-                   coalesce(
-                       lower(d.way_tags['motorroad']) IN ('yes', 'true', '1'),
-                       false
-                   )
-                       AS motorroad,
-                   d.way_tags['highway'] AS highway,
-                   d.way_tags['oneway'] AS oneway,
-                   d.way_tags['lanes'] AS lanes,
-                   d.way_tags['surface'] AS surface,
-                   d.way_tags['tracktype'] AS tracktype,
-                   d.way_tags['smoothness'] AS smoothness,
-                   d.way_tags['busway'] AS busway,
-                   d.way_tags['lanes:bus'] AS lanes_bus,
-                   d.way_tags['lanes:psv'] AS lanes_psv,
-                   floor(ST_Y(ST_Centroid(d.geom)) / 1000)::BIGINT
-                       * 100000
-                     + floor(ST_X(ST_Centroid(d.geom)) / 1000)::BIGINT
-                       AS cell_1km_id,
-                   tiles.tile_id
-            FROM directions d
-            JOIN control_counts controls
-              ON controls.way_id = d.way_id
-              AND controls.segment_index = d.segment_index
-             AND controls.is_forward = d.is_forward
-            JOIN _osm_segment_tiles tiles
-              ON tiles.northing_m = floor(
-                    ST_Y(ST_Centroid(d.geom)) / {tile_size}
-                 ) * {tile_size}
-             AND tiles.easting_m = floor(
-                    ST_X(ST_Centroid(d.geom)) / {tile_size}
-                 ) * {tile_size}
-        ),
-        per_mode AS (
-            SELECT attributes.*, mode
-            FROM attributes
-            CROSS JOIN (VALUES {mode_values}) AS modes(mode)
-        ),
-        allowed_edges AS (
-            SELECT *
-            FROM per_mode
-            WHERE {allowed_by_mode}
-        ),
-        neighbours AS (
-            SELECT mode, from_node_id AS node_id,
-                   to_node_id AS neighbour_id
-            FROM allowed_edges
-            UNION
-            SELECT mode, to_node_id AS node_id,
-                   from_node_id AS neighbour_id
-            FROM allowed_edges
-        ),
-        node_degrees AS (
-            SELECT mode, node_id,
-                   count(DISTINCT neighbour_id) AS to_degree
-            FROM neighbours
-            GROUP BY mode, node_id
+                   {accesses["foot"]} AS foot_access
+            FROM ways
         )
+        SELECT way_id, car_access, bike_access, foot_access, {directions},
+               {bike_classes}, {maxspeed_sql("way_tags", config)} AS maxspeed_kmh,
+               {speed_context} AS speed_context,
+               coalesce(lower(way_tags['motorroad']) IN ('yes', 'true', '1'), false)
+                   AS motorroad,
+               way_tags['highway'] AS highway, way_tags['oneway'] AS oneway,
+               way_tags['lanes'] AS lanes, way_tags['surface'] AS surface,
+               way_tags['tracktype'] AS tracktype, way_tags['smoothness'] AS smoothness,
+               way_tags['busway'] AS busway, way_tags['lanes:bus'] AS lanes_bus,
+               way_tags['lanes:psv'] AS lanes_psv
+        FROM access
+    """
+
+
+def _build_control_tables(
+    connection: duckdb.DuckDBPyConnection, nodes_path: str
+) -> None:
+    started = time.perf_counter()
+    connection.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _control_nodes AS
+        SELECT node_id,
+               CASE WHEN lower(tags['highway']) = 'crossing'
+                         AND lower(tags['crossing']) = 'traffic_signals'
+                    THEN 'traffic_signals' ELSE lower(tags['highway']) END AS kind,
+               lower(trim(tags['direction'])) AS direction,
+               coalesce(nullif(lower(trim(tags['traffic_signals:direction'])), ''),
+                        nullif(lower(trim(tags['direction'])), '')) AS signal_direction
+        FROM read_parquet('{nodes_path}')
+        WHERE lower(tags['highway']) IN
+              ('traffic_signals', 'stop', 'give_way', 'crossing', 'mini_roundabout')
+    """)
+    _log_stage_elapsed("identify-control-nodes", started)
+    started = time.perf_counter()
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _control_counts AS
+        WITH relevant AS (
+            SELECT s.way_id, s.segment_index, d.is_forward, c.kind,
+                   CASE WHEN c.kind = 'traffic_signals' THEN c.signal_direction
+                        ELSE c.direction END AS direction
+            FROM _control_nodes c
+            JOIN _osm_way_points p USING (node_id)
+            JOIN _osm_way_segments s
+              ON s.way_id = p.way_id
+             AND p.node_sequence BETWEEN s.from_sequence AND s.to_sequence
+            CROSS JOIN (VALUES (true), (false)) d(is_forward)
+            WHERE (d.is_forward AND p.node_sequence > s.from_sequence)
+               OR (NOT d.is_forward AND p.node_sequence < s.to_sequence)
+        )
+        SELECT way_id, segment_index, is_forward,
+               count(*) FILTER (WHERE kind = 'traffic_signals')::TINYINT
+                   AS signal_count,
+               count(*) FILTER (WHERE kind = 'stop')::TINYINT AS stop_count,
+               count(*) FILTER (WHERE kind = 'give_way')::TINYINT AS give_way_count,
+               count(*) FILTER (WHERE kind = 'crossing')::TINYINT AS crossing_count,
+               count(*) FILTER (WHERE kind = 'mini_roundabout')::TINYINT
+                   AS mini_roundabout_count
+        FROM relevant
+        WHERE direction IS NULL OR direction NOT IN ('forward', 'backward')
+           OR (direction = 'forward' AND is_forward)
+           OR (direction = 'backward' AND NOT is_forward)
+        GROUP BY way_id, segment_index, is_forward
+    """)
+    _log_stage_elapsed("count-controls", started)
+
+
+def _build_allowed_edges(connection: duckdb.DuckDBPyConnection) -> None:
+    started = time.perf_counter()
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _directions AS
+        SELECT way_id, segment_index, from_node_id, to_node_id, true AS is_forward
+        FROM _osm_way_segments
+        UNION ALL
+        SELECT way_id, segment_index, to_node_id, from_node_id, false AS is_forward
+        FROM _osm_way_segments
+    """)
+    _log_stage_elapsed("expand-directions", started)
+    started = time.perf_counter()
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _allowed_edges AS
+        SELECT d.*, m.mode
+        FROM _directions d
+        JOIN _way_attributes a USING (way_id)
+        CROSS JOIN (VALUES ('car'), ('bike'), ('foot')) m(mode)
+        WHERE (m.mode = 'car' AND a.car_access AND
+               CASE WHEN d.is_forward THEN a.car_forward ELSE a.car_reverse END)
+           OR (m.mode = 'bike' AND a.bike_access AND
+               CASE WHEN d.is_forward THEN a.bike_forward ELSE a.bike_reverse END)
+           OR (m.mode = 'foot' AND a.foot_access AND
+               CASE WHEN d.is_forward THEN a.foot_forward ELSE a.foot_reverse END)
+    """)
+    _log_stage_elapsed("filter-allowed-edges", started)
+    started = time.perf_counter()
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _node_degrees AS
+        WITH neighbours AS (
+            SELECT mode, from_node_id AS node_id, to_node_id AS neighbour_id
+            FROM _allowed_edges
+            UNION ALL
+            SELECT mode, to_node_id AS node_id, from_node_id AS neighbour_id
+            FROM _allowed_edges
+        )
+        SELECT mode, node_id, count(DISTINCT neighbour_id) AS to_degree
+        FROM neighbours GROUP BY mode, node_id
+    """)
+    _log_stage_elapsed("compute-node-degrees", started)
+
+
+def _build_edges_query() -> str:
+    return """
         SELECT concat(e.way_id, ':', e.segment_index, ':',
                       e.mode, ':', CASE WHEN e.is_forward THEN 'f' ELSE 'r' END)
                    AS edge_key,
                e.way_id, e.from_node_id, e.to_node_id, e.is_forward,
-               e.mode, e.node_ids, e.length_m, e.highway, e.maxspeed_kmh, e.oneway,
-               e.speed_context,
-               e.motorroad, e.lanes, e.car_access, e.bike_access, e.foot_access,
-               {bike_class} AS bike_infra,
-               e.surface, e.tracktype, e.smoothness, e.busway, e.lanes_bus, e.lanes_psv,
-               e.signal_count, e.stop_count, e.give_way_count, e.crossing_count,
-               e.mini_roundabout_count, coalesce(d.to_degree, 0) AS to_degree,
-               e.cell_1km_id, e.tile_id, ST_AsWKB(e.geom) AS geometry_wkb
-        FROM allowed_edges e
-        LEFT JOIN node_degrees d
+               e.mode, CASE WHEN e.is_forward THEN s.node_ids
+                            ELSE list_reverse(s.node_ids) END AS node_ids,
+               s.length_m, a.highway, a.maxspeed_kmh, a.oneway, a.speed_context,
+               a.motorroad, a.lanes, a.car_access, a.bike_access, a.foot_access,
+               CASE WHEN e.is_forward THEN a.bike_infra_forward
+                    ELSE a.bike_infra_reverse END AS bike_infra,
+               a.surface, a.tracktype, a.smoothness, a.busway, a.lanes_bus, a.lanes_psv,
+               coalesce(c.signal_count, 0::TINYINT) AS signal_count,
+               coalesce(c.stop_count, 0::TINYINT) AS stop_count,
+               coalesce(c.give_way_count, 0::TINYINT) AS give_way_count,
+               coalesce(c.crossing_count, 0::TINYINT) AS crossing_count,
+               coalesce(c.mini_roundabout_count, 0::TINYINT) AS mini_roundabout_count,
+               coalesce(d.to_degree, 0) AS to_degree,
+               l.cell_1km_id, l.tile_id,
+               ST_AsWKB(CASE WHEN e.is_forward THEN s.geom
+                             ELSE ST_Reverse(s.geom) END) AS geometry_wkb
+        FROM _allowed_edges e
+        JOIN _osm_way_segments s USING (way_id, segment_index)
+        JOIN _way_attributes a USING (way_id)
+        JOIN _osm_segment_locations l USING (way_id, segment_index)
+        LEFT JOIN _control_counts c USING (way_id, segment_index, is_forward)
+        LEFT JOIN _node_degrees d
           ON d.mode = e.mode AND d.node_id = e.to_node_id
     """
 
@@ -663,14 +644,19 @@ def _register_segment_tiles(
     connection: duckdb.DuckDBPyConnection, tile_size_m: int
 ) -> None:
     """Assign configured tile ids with the shared EPSG:3035 grid helper."""
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _osm_segment_centroids AS
+        SELECT way_id, segment_index, ST_Centroid(geom) AS centroid
+        FROM _osm_way_segments
+    """)
     connection.execute(f"""
         CREATE OR REPLACE TEMP TABLE _osm_segment_tile_origins AS
         SELECT DISTINCT
-               (floor(ST_Y(ST_Centroid(geom)) / {tile_size_m})
+               (floor(ST_Y(centroid) / {tile_size_m})
                     * {tile_size_m})::BIGINT AS northing_m,
-               (floor(ST_X(ST_Centroid(geom)) / {tile_size_m})
+               (floor(ST_X(centroid) / {tile_size_m})
                     * {tile_size_m})::BIGINT AS easting_m
-        FROM _osm_way_segments
+        FROM _osm_segment_centroids
     """)
     origins = connection.execute("""
         SELECT northing_m, easting_m
@@ -698,6 +684,17 @@ def _register_segment_tiles(
         """)
     finally:
         connection.unregister("_osm_tile_id_map")
+    connection.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _osm_segment_locations AS
+        SELECT c.way_id, c.segment_index,
+               floor(ST_Y(c.centroid) / 1000)::BIGINT * 100000
+                 + floor(ST_X(c.centroid) / 1000)::BIGINT AS cell_1km_id,
+               t.tile_id
+        FROM _osm_segment_centroids c
+        JOIN _osm_segment_tiles t
+          ON t.northing_m = floor(ST_Y(c.centroid) / {tile_size_m}) * {tile_size_m}
+         AND t.easting_m = floor(ST_X(c.centroid) / {tile_size_m}) * {tile_size_m}
+    """)
 
 
 def _build_graph_nodes(connection: duckdb.DuckDBPyConnection) -> None:
@@ -809,6 +806,9 @@ def build_directed_edges(
     connection.execute(_build_points_sql(ways_source, nodes_source, config))
     _log_stage_elapsed("expand-way-nodes", stage_started)
     stage_started = time.perf_counter()
+    connection.execute(_build_way_attributes_sql(config, ways_source))
+    _log_stage_elapsed("compute-way-attributes", stage_started)
+    stage_started = time.perf_counter()
     _build_graph_nodes(connection)
     _log_stage_elapsed("identify-graph-nodes", stage_started)
     stage_started = time.perf_counter()
@@ -817,10 +817,12 @@ def build_directed_edges(
     stage_started = time.perf_counter()
     _register_segment_tiles(connection, config.tile_size_m)
     _log_stage_elapsed("assign-tiles", stage_started)
+    _build_control_tables(connection, nodes_source)
+    _build_allowed_edges(connection)
     stage_started = time.perf_counter()
     _write_parquet_atomic(
         connection,
-        _build_edges_query(config, nodes_source),
+        _build_edges_query(),
         edges_path,
     )
     _log_stage_elapsed("write-directed-edges", stage_started)
@@ -1146,6 +1148,13 @@ def _configure_logging(path: Path) -> None:
     )
 
 
+def _configure_edge_connection(
+    connection: duckdb.DuckDBPyConnection, interim_path: str
+) -> None:
+    configure_extraction_connection(connection, interim_path)
+    connection.execute("SET preserve_insertion_order = false")
+
+
 def _artifact_path(task: str, suffix: str) -> Path:
     return Path("logs") / f"{date.today().isoformat()}_{task}{suffix}"
 
@@ -1211,7 +1220,9 @@ def main(argv: list[str] | None = None) -> int:
     nodes_path = input_directory / "nodes.parquet"
     started = time.perf_counter()
     connection = duckdb.connect()
-    configure_extraction_connection(connection, pilot.paths["interim"])
+    connection_started = time.perf_counter()
+    _configure_edge_connection(connection, pilot.paths["interim"])
+    _log_stage_elapsed("configure-connection", connection_started)
     try:
         result = build_directed_edges(
             connection,

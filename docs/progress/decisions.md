@@ -1,5 +1,8 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6: retain ellipsoidal ordered-line segment lengths;
+  pairwise lag was slower on replicated Monaco data. Materialize narrow
+  per-way/segment intermediates without changing the edge schema.
 - 2026-11-23, step 6b: retain the requested 0.5%-grade bike speed grid
   and refine interpolated speeds with vectorised force balance: plain linear
   interpolation exceeds the requested tolerance at cap/coasting transitions.

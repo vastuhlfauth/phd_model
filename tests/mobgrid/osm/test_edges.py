@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import duckdb
 from common.grid import cell_id
@@ -7,6 +8,7 @@ from mobgrid.osm.edges import (
     _build_graph_nodes,
     _build_points_sql,
     _build_segments_sql,
+    _configure_edge_connection,
     _input_signature,
     build_directed_edges,
     connectivity_summaries,
@@ -178,6 +180,102 @@ def _build(tmp_path):
     return connection, result
 
 
+def _baseline_raw_tables(tmp_path):
+    connection, ways_path, nodes_path = _raw_tables(tmp_path)
+    connection.execute("""
+        INSERT INTO ways VALUES
+            (100, map {'highway':'residential', 'tracktype':'grade2'},
+             [1, 2, 1, 2]),
+            (101, map {'highway':'residential'}, [73, 74, 75, 73]),
+            (102, map {'highway':'residential'}, [1, 999999, 2])
+    """)
+    connection.execute("COPY ways TO ? (FORMAT PARQUET)", [str(ways_path)])
+    return connection, ways_path, nodes_path
+
+
+def _assert_edges_match_baseline(connection, edges_path, baseline) -> None:
+    columns = connection.execute(
+        "DESCRIBE SELECT * FROM read_parquet(?)", [str(edges_path)]
+    ).fetchall()
+    assert columns == connection.execute(
+        "DESCRIBE SELECT * FROM read_parquet(?)", [str(baseline)]
+    ).fetchall()
+    comparable = ", ".join(
+        f'"{column[0]}"' for column in columns if column[0] != "length_m"
+    )
+    for left, right in (
+        (str(edges_path), str(baseline)),
+        (str(baseline), str(edges_path)),
+    ):
+        assert connection.execute(
+            f"""
+            SELECT count(*) FROM (
+                SELECT {comparable} FROM read_parquet(?)
+                EXCEPT ALL
+                SELECT {comparable} FROM read_parquet(?)
+            )
+            """,
+            [left, right],
+        ).fetchone()[0] == 0
+    assert connection.execute(
+        """
+        SELECT count(*)
+        FROM read_parquet(?) actual
+        JOIN read_parquet(?) expected USING (edge_key)
+        WHERE abs(actual.length_m - expected.length_m) > 0.001
+           OR (actual.length_m IS NULL) <> (expected.length_m IS NULL)
+        """,
+        [str(edges_path), str(baseline)],
+    ).fetchone()[0] == 0
+
+
+def test_edge_output_matches_baseline(tmp_path) -> None:
+    connection, ways_path, nodes_path = _baseline_raw_tables(tmp_path)
+    result = build_directed_edges(
+        connection, ways_path, nodes_path, tmp_path / "output",
+        config=load_network_config("config/network.yaml"),
+    )
+    _assert_edges_match_baseline(
+        connection, result.edges_path,
+        Path("tests/fixtures/osm_edges_synthetic_baseline.parquet"),
+    )
+    connection.close()
+
+
+def test_monaco_edge_output_matches_baseline(tmp_path) -> None:
+    """Monaco 2022-01-01: © OpenStreetMap contributors, ODbL 1.0."""
+    fixtures = Path("tests/fixtures")
+    connection = duckdb.connect()
+    _configure_edge_connection(connection, str(tmp_path))
+    result = build_directed_edges(
+        connection,
+        fixtures / "osm_monaco_ways.parquet",
+        fixtures / "osm_monaco_nodes.parquet",
+        tmp_path / "output",
+        config=load_network_config("config/network.yaml"),
+    )
+    _assert_edges_match_baseline(
+        connection, result.edges_path, fixtures / "osm_monaco_baseline.parquet"
+    )
+    connection.close()
+
+
+def test_edge_connection_disables_insertion_order(tmp_path) -> None:
+    connection = duckdb.connect()
+    _configure_edge_connection(connection, str(tmp_path))
+    assert connection.execute(
+        "SELECT current_setting('preserve_insertion_order')"
+    ).fetchone() == (False,)
+    connection.close()
+
+
+def test_intermediate_tables_do_not_carry_tag_maps(tmp_path) -> None:
+    connection, _ = _build(tmp_path)
+    for table in ("_osm_way_points", "_osm_way_segments", "_way_attributes"):
+        columns = connection.execute(f"DESCRIBE {table}").fetchall()
+        assert all(not column[1].startswith("MAP(") for column in columns)
+
+
 def test_car_speed_parameter_changes_do_not_invalidate_edge_build_cache(
     tmp_path,
 ) -> None:
@@ -262,9 +360,15 @@ def test_edge_build_logs_elapsed_time_for_each_stage(tmp_path, caplog) -> None:
     stages = (
         "load-spatial",
         "expand-way-nodes",
+        "compute-way-attributes",
         "identify-graph-nodes",
         "assign-segments",
         "assign-tiles",
+        "identify-control-nodes",
+        "count-controls",
+        "expand-directions",
+        "filter-allowed-edges",
+        "compute-node-degrees",
         "write-directed-edges",
         "write-graph-nodes",
         "write-cache-metadata",
@@ -676,7 +780,7 @@ def test_linear_segmentation_matches_range_join_for_loops_and_closed_ways(
             JOIN _osm_graph_node_ids g USING (node_id)
         ),
         ranges AS (
-            SELECT way_id, way_tags, node_id AS from_node_id,
+            SELECT way_id, node_id AS from_node_id,
                    node_sequence AS from_sequence,
                    lead(node_id) OVER (
                        PARTITION BY way_id ORDER BY node_sequence
@@ -686,7 +790,7 @@ def test_linear_segmentation_matches_range_join_for_loops_and_closed_ways(
                    ) AS to_sequence
             FROM graph_way_nodes
         )
-        SELECT r.way_id, r.way_tags, r.from_node_id, r.to_node_id,
+        SELECT r.way_id, r.from_node_id, r.to_node_id,
                r.from_sequence, r.to_sequence,
                list(p.node_id ORDER BY p.node_sequence) AS node_ids,
                ST_Length_Spheroid(
@@ -701,7 +805,7 @@ def test_linear_segmentation_matches_range_join_for_loops_and_closed_ways(
           ON p.way_id = r.way_id
          AND p.node_sequence BETWEEN r.from_sequence AND r.to_sequence
         WHERE r.to_node_id IS NOT NULL
-        GROUP BY r.way_id, r.way_tags, r.from_node_id, r.to_node_id,
+        GROUP BY r.way_id, r.from_node_id, r.to_node_id,
                  r.from_sequence, r.to_sequence
     """
     connection.execute(old_range_query)
