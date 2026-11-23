@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Active-mode costs clip grades and correct bike stop delay; bridge/tunnel correction, smoothing, pilot timing, unified stage and Géovélo check remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Bridge/tunnel profiles and active-cost grade clipping/stop delay implemented; smoothing, pilot timing, unified stage and Géovélo check remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |

@@ -22,6 +22,7 @@ FloatArray = npt.NDArray[np.float64]
 logger = logging.getLogger(__name__)
 
 _PROFILE_COLUMNS = (
+    "node_elevations_m",
     "elevation_from_m",
     "elevation_to_m",
     "climb_m",
@@ -215,6 +216,106 @@ class ElevationSummary:
     nodes_without_elevation: int
     nodes_without_tile: int
     edges_without_profile: int
+    bridge_length_m: float = 0.0
+    tunnel_length_m: float = 0.0
+
+
+def _prepare_way_elevations(
+    connection: duckdb.DuckDBPyConnection,
+    ways: Path,
+    nodes: Path,
+    edges: Path,
+) -> tuple[float, float]:
+    """Interpolate bridge and tunnel profiles along full OSM ways (8.1)."""
+    connection.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _osm_way_elevations AS
+        WITH points AS (
+            SELECT w.way_id, ref.node_sequence, ref.node_id,
+                   n.x, n.y, n.graph_node, s.elevation_m,
+                   coalesce(lower(trim(w.tags['bridge'])) <> 'no', false) AS bridge,
+                   coalesce(lower(trim(w.tags['tunnel'])) <> 'no', false) AS tunnel,
+                   lag(n.x) OVER way_order AS previous_x,
+                   lag(n.y) OVER way_order AS previous_y
+            FROM read_parquet('{_sql_path(ways)}') w
+            SEMI JOIN (
+                SELECT DISTINCT way_id FROM read_parquet('{_sql_path(edges)}')
+            ) e USING (way_id)
+            CROSS JOIN UNNEST(w.refs) WITH ORDINALITY AS ref(node_id, node_sequence)
+            LEFT JOIN read_parquet('{_sql_path(nodes)}') n USING (node_id)
+            LEFT JOIN _osm_sampled_node_elevations s USING (node_id)
+            WINDOW way_order AS (PARTITION BY w.way_id ORDER BY ref.node_sequence)
+        ), distances AS (
+            SELECT *, sum(
+                CASE WHEN node_sequence = 1 THEN 0
+                     ELSE sqrt(pow(x - previous_x, 2) + pow(y - previous_y, 2))
+                END
+            ) OVER way_order AS distance_m,
+            count(*) OVER (PARTITION BY way_id) AS node_count,
+            first(elevation_m) OVER whole_way AS start_m,
+            last(elevation_m) OVER whole_way AS end_m
+            FROM points
+            WINDOW way_order AS (PARTITION BY way_id ORDER BY node_sequence),
+                   whole_way AS (
+                       PARTITION BY way_id ORDER BY node_sequence
+                       ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                   )
+        ), profiles AS (
+            SELECT *, max(distance_m) OVER (PARTITION BY way_id) AS length_m,
+                   count(x) OVER (PARTITION BY way_id) = node_count AS has_coordinates
+            FROM distances
+        )
+        SELECT way_id, node_sequence, node_id, x, y, graph_node, distance_m,
+               bridge, tunnel, length_m,
+               CASE
+                 WHEN NOT (bridge OR tunnel)
+                      OR node_sequence = 1 OR node_sequence = node_count
+                 THEN elevation_m
+                 WHEN has_coordinates AND length_m > 0
+                 THEN start_m + (end_m - start_m) * distance_m / length_m
+               END AS elevation_m
+        FROM profiles
+    """)
+    invalid = connection.execute("""
+        SELECT count(*) FROM _osm_way_elevations
+        WHERE x IS NULL OR y IS NULL OR graph_node IS NULL
+    """).fetchone()[0]
+    if invalid:
+        raise ValueError(f"{invalid} way nodes lack coordinates or graph-node status")
+    bridge, tunnel = connection.execute("""
+        SELECT coalesce(sum(length_m) FILTER (WHERE bridge), 0),
+               coalesce(sum(length_m) FILTER (WHERE tunnel), 0)
+        FROM (
+            SELECT way_id, first(bridge) AS bridge, first(tunnel) AS tunnel,
+                   first(length_m) AS length_m,
+                   count(elevation_m) = count(*) AS complete
+            FROM _osm_way_elevations GROUP BY way_id
+        )
+        WHERE complete AND length_m > 0
+    """).fetchone()
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _osm_way_segment_elevations AS
+        WITH numbered AS (
+            SELECT *,
+                   sum(CASE WHEN graph_node THEN 1 ELSE 0 END) OVER (
+                       PARTITION BY way_id ORDER BY node_sequence
+                   ) AS graph_count,
+                   max(node_sequence) OVER (PARTITION BY way_id) AS last_sequence
+            FROM _osm_way_elevations
+        ), segment_points AS (
+            SELECT *, graph_count - 1 AS segment_index
+            FROM numbered WHERE NOT graph_node OR node_sequence < last_sequence
+            UNION ALL
+            SELECT *, graph_count - 2 AS segment_index
+            FROM numbered WHERE graph_node AND graph_count > 1
+        )
+        SELECT *, row_number() OVER segment_order AS segment_ordinal,
+               count(*) OVER (PARTITION BY way_id, segment_index) AS segment_count
+        FROM segment_points
+        WINDOW segment_order AS (
+            PARTITION BY way_id, segment_index ORDER BY node_sequence
+        )
+    """)
+    return float(bridge), float(tunnel)
 
 
 def _sql_path(path: str | Path) -> str:
@@ -230,14 +331,23 @@ def enrich_edges_with_elevation(
     edges_path: str | Path,
     nodes_path: str | Path,
     elevation_paths: Sequence[str | Path],
+    *,
+    ways_path: str | Path,
+    way_elevations_path: str | Path,
 ) -> ElevationSummary:
     """Add directional profiles to the edge table in EPSG:3035 metres (8.1)."""
     edges = Path(edges_path)
     nodes = Path(nodes_path)
+    ways = Path(ways_path)
+    way_elevations = Path(way_elevations_path)
+    if way_elevations.resolve() in (edges.resolve(), nodes.resolve(), ways.resolve()):
+        raise ValueError("way elevation output must be separate from input tables")
     if not edges.is_file():
         raise FileNotFoundError(edges)
     if not nodes.is_file():
         raise FileNotFoundError(nodes)
+    if not ways.is_file():
+        raise FileNotFoundError(ways)
     grids = [Path(path) for path in elevation_paths]
     if not grids:
         raise ValueError("no BD ALTI ASCII grids supplied")
@@ -275,9 +385,36 @@ def enrich_edges_with_elevation(
     connection.register("_osm_sampled_node_elevations", sampled_nodes)
     temporary = edges.with_name(edges.stem + ".elevation.tmp.parquet")
     temporary_nodes = nodes.with_name(nodes.stem + ".elevation.tmp.parquet")
+    temporary_ways = way_elevations.with_name(
+        way_elevations.stem + ".elevation.tmp.parquet"
+    )
     try:
         edge_source = _sql_path(edges)
         node_source = _sql_path(nodes)
+        bridge_length, tunnel_length = _prepare_way_elevations(
+            connection, ways, nodes, edges
+        )
+        mismatch = connection.execute(f"""
+            SELECT count(*)
+            FROM read_parquet('{edge_source}') e
+            CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY AS ref(node_id, ordinal)
+            LEFT JOIN _osm_way_segment_elevations p
+              ON p.way_id = e.way_id
+             AND p.segment_index = try_cast(split_part(e.edge_key, ':', 2) AS BIGINT)
+             AND p.segment_ordinal = CASE WHEN e.is_forward THEN ref.ordinal
+                 ELSE p.segment_count - ref.ordinal + 1 END
+            WHERE p.node_id IS NULL OR p.node_id <> ref.node_id
+               OR p.segment_count <> len(e.node_ids)
+        """).fetchone()[0]
+        if mismatch:
+            raise ValueError(f"{mismatch} edge nodes do not match their way profiles")
+        way_elevations.parent.mkdir(parents=True, exist_ok=True)
+        write_parquet(
+            connection,
+            "SELECT way_id, node_sequence, node_id, distance_m, elevation_m "
+            "FROM _osm_way_elevations ORDER BY way_id, node_sequence",
+            temporary_ways,
+        )
         node_columns = [
             row[0]
             for row in connection.execute(
@@ -301,22 +438,30 @@ def enrich_edges_with_elevation(
             CREATE OR REPLACE TEMP TABLE _osm_edge_elevation_profiles AS
             WITH ordered_nodes AS (
                 SELECT e.edge_key, edge_node.node_sequence,
-                       n.x, n.y, sampled.elevation_m,
+                       n.x, n.y, p.elevation_m,
                        lag(n.x) OVER edge_order AS previous_x,
                        lag(n.y) OVER edge_order AS previous_y,
-                       lag(sampled.elevation_m) OVER edge_order
+                       lag(p.elevation_m) OVER edge_order
                            AS previous_elevation_m
                 FROM read_parquet('{edge_source}') e
                 CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
                     AS edge_node(node_id, node_sequence)
                 JOIN read_parquet('{node_source}') n USING (node_id)
-                LEFT JOIN _osm_sampled_node_elevations sampled USING (node_id)
+                JOIN _osm_way_segment_elevations p
+                  ON p.way_id = e.way_id
+                 AND p.segment_index = try_cast(
+                     split_part(e.edge_key, ':', 2) AS BIGINT
+                 )
+                 AND p.segment_ordinal = CASE WHEN e.is_forward
+                     THEN edge_node.node_sequence
+                     ELSE p.segment_count - edge_node.node_sequence + 1 END
                 WINDOW edge_order AS (
                     PARTITION BY e.edge_key ORDER BY edge_node.node_sequence
                 )
             ),
             edge_stats AS (
                 SELECT edge_key,
+                       list(elevation_m ORDER BY node_sequence) AS node_elevations_m,
                        first(elevation_m ORDER BY node_sequence)
                            AS elevation_from_m,
                        last(elevation_m ORDER BY node_sequence)
@@ -337,7 +482,7 @@ def enrich_edges_with_elevation(
                 FROM ordered_nodes
                 GROUP BY edge_key
             )
-            SELECT edge_key, elevation_from_m, elevation_to_m,
+            SELECT edge_key, node_elevations_m, elevation_from_m, elevation_to_m,
                    CASE WHEN has_complete_profile THEN climb_m END AS climb_m,
                    CASE WHEN has_complete_profile THEN descent_m END
                        AS descent_m,
@@ -368,6 +513,7 @@ def enrich_edges_with_elevation(
             """,
             temporary,
         )
+        temporary_ways.replace(way_elevations)
         temporary_nodes.replace(nodes)
         temporary.replace(edges)
         edge_count, missing_profiles = connection.execute(
@@ -381,12 +527,15 @@ def enrich_edges_with_elevation(
         connection.unregister("_osm_sampled_node_elevations")
         temporary.unlink(missing_ok=True)
         temporary_nodes.unlink(missing_ok=True)
+        temporary_ways.unlink(missing_ok=True)
 
     return ElevationSummary(
         int(edge_count),
         int(np.count_nonzero(~np.isfinite(elevations))),
         uncovered_nodes,
         int(missing_profiles),
+        bridge_length,
+        tunnel_length,
     )
 
 
@@ -409,6 +558,8 @@ def write_elevation_report(
 - Nodes with no covering tile: {summary.nodes_without_tile:,}
 - Nodes with no valid elevation sample: {summary.nodes_without_elevation:,}
 - Edges with incomplete elevation profiles: {summary.edges_without_profile:,}
+- Bridge length interpolated: {summary.bridge_length_m:,.1f} m
+- Tunnel length interpolated: {summary.tunnel_length_m:,.1f} m
 - Units: metres; mean grade is dimensionless.
 """,
         encoding="utf-8",
@@ -443,6 +594,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     edges_path = nodes_path.with_name("edges.parquet")
     tile_directory = root / pilot.paths["interim"] / "bdalti"
+    ways_path = (
+        root / pilot.paths["interim"] / "osm" / str(args.state) / args.area
+        / "ways.parquet"
+    )
     elevation_paths = sorted(tile_directory.rglob("*.asc"))
     if not elevation_paths:
         raise FileNotFoundError(
@@ -456,7 +611,9 @@ def main(argv: list[str] | None = None) -> int:
     connection = open_connection()
     try:
         summary = enrich_edges_with_elevation(
-            connection, edges_path, nodes_path, elevation_paths
+            connection, edges_path, nodes_path, elevation_paths,
+            ways_path=ways_path,
+            way_elevations_path=nodes_path.with_name("way_elevations.parquet"),
         )
     finally:
         connection.close()

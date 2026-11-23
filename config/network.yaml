@@ -39,6 +39,9 @@ kept_tags:
   - lanes:psv
   - surface
   - smoothness
+  - bridge
+  - tunnel
+  - layer
   - zone:traffic
   - source:maxspeed
   - maxspeed:type

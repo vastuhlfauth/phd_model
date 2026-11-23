@@ -3,8 +3,11 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
-### Step 6b: grade clipping and bike stop delay (2026-11-23)
+### Step 6b: way elevation and active costs (2026-11-23)
 
+- Extract bridge, tunnel and layer tags; interpolate complete bridge/tunnel
+  ways between endpoints by distance and store per-way and directed profiles.
+- Report treated bridge/tunnel length once per way; preserve raw node samples.
 - Active costs clip walking and bike grades to their respective configured
   ranges; a grade report counts affected directed segments by mode/highway
   and ranks the 20 longest affected edges, retaining their original grades.

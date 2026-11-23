@@ -51,6 +51,9 @@ def test_network_config_loads_state_sources_and_tile_size() -> None:
         "tracktype",
         "service",
         "area",
+        "bridge",
+        "tunnel",
+        "layer",
     } <= set(config.kept_tags)
 
 
@@ -121,7 +124,8 @@ def test_extraction_passes_keep_area_ways_and_all_their_nodes(tmp_path) -> None:
                 'highway':'residential', 'zone:traffic':'FR:urban',
                 'source:maxspeed':'FR:rural', 'maxspeed:type':'FR:zone30',
                 'zone:maxspeed':'FR:motorway', 'tracktype':'grade2',
-                'service':'driveway', 'area':'yes'
+                'service':'driveway', 'area':'yes', 'bridge':'yes',
+                'tunnel':'no', 'layer':'1'
             }, [1, 2]),
             ('way', 11, map {'highway':'service'}, [3, 4]),
             ('way', 12, map {'railway':'platform'}, [2, 3]),
@@ -156,7 +160,8 @@ def test_extraction_passes_keep_area_ways_and_all_their_nodes(tmp_path) -> None:
         """
         SELECT tags['zone:traffic'], tags['source:maxspeed'],
                tags['maxspeed:type'], tags['zone:maxspeed'],
-               tags['tracktype'], tags['service'], tags['area']
+               tags['tracktype'], tags['service'], tags['area'],
+               tags['bridge'], tags['tunnel'], tags['layer']
         FROM kept_ways WHERE way_id = 10
         """
     ).fetchone() == (
@@ -167,6 +172,9 @@ def test_extraction_passes_keep_area_ways_and_all_their_nodes(tmp_path) -> None:
         "grade2",
         "driveway",
         "yes",
+        "yes",
+        "no",
+        "1",
     )
     connection.execute("COPY kept_ways TO ? (FORMAT PARQUET)", [str(ways_path)])
     connection.execute("""

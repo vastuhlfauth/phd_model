@@ -48,6 +48,7 @@ def _write_tables(tmp_path: Path) -> tuple[Path, Path]:
             way_id BIGINT,
             mode VARCHAR,
             node_ids BIGINT[],
+            node_elevations_m DOUBLE[],
             length_m DOUBLE,
             highway VARCHAR,
             bike_infra VARCHAR,
@@ -63,9 +64,9 @@ def _write_tables(tmp_path: Path) -> tuple[Path, Path]:
     """)
     connection.execute("""
         INSERT INTO edges VALUES
-            ('walk:f', 10, 'foot', [1, 2, 3], 100, 'residential', NULL,
+            ('walk:f', 10, 'foot', [1, 2, 3], [0, 2.5, 10], 100, 'residential', NULL,
              NULL, NULL, 0, 0, 0, 0, 2, 3),
-            ('bike:f', 10, 'bike', [1, 2, 3], 100, 'residential',
+            ('bike:f', 10, 'bike', [1, 2, 3], [0, 2.5, 10], 100, 'residential',
              'mixed_traffic', 'asphalt', NULL, 0, 0, 0, 0, 2, 3)
     """)
     connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
@@ -156,6 +157,32 @@ def test_sloped_edge_costs_match_energy_package_segment_by_segment(tmp_path):
     assert summary.incomplete_profile_count == 0
 
 
+def test_active_costs_use_way_specific_elevations(tmp_path):
+    edges_path, nodes_path = _write_tables(tmp_path)
+    connection = duckdb.connect()
+    connection.execute(
+        "CREATE TABLE edges AS SELECT * FROM read_parquet(?)", [str(edges_path)]
+    )
+    connection.execute(
+        "UPDATE edges SET node_elevations_m = [0, 0, 0] WHERE mode = 'foot'"
+    )
+    connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
+    energy = load_energy_config(ENERGY_PATH)
+    try:
+        enrich_active_edge_costs(
+            connection, edges_path, nodes_path, tmp_path / "costs.parquet",
+            energy=energy, network=load_network_config(NETWORK_PATH),
+        )
+        walk_time = connection.execute(
+            "SELECT walk_time_s FROM read_parquet(?) WHERE edge_key = 'walk:f'",
+            [str(tmp_path / "costs.parquet")],
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    assert walk_time == pytest.approx(100 / (energy.walking.v0_kmh / 3.6))
+
+
 def test_steps_use_configured_stair_formula(tmp_path):
     edges_path, nodes_path = _write_tables(tmp_path)
     connection = duckdb.connect()
@@ -167,6 +194,9 @@ def test_steps_use_configured_stair_formula(tmp_path):
     )
     connection.execute(
         "UPDATE edges SET highway = 'steps' WHERE edge_key = 'walk:f'"
+    )
+    connection.execute(
+        "UPDATE edges SET node_elevations_m = [0, 5, 10] WHERE edge_key = 'walk:f'"
     )
     connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
     connection.execute(
@@ -212,6 +242,11 @@ def test_missing_node_elevation_leaves_edge_costs_null_and_is_counted(tmp_path):
         "UPDATE nodes SET elevation_m = NULL WHERE node_id = 2"
     )
     connection.execute("COPY nodes TO ? (FORMAT PARQUET)", [str(nodes_path)])
+    connection.execute(
+        "CREATE TABLE edges AS SELECT * FROM read_parquet(?)", [str(edges_path)]
+    )
+    connection.execute("UPDATE edges SET node_elevations_m = [0, NULL, 10]")
+    connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
     connection.close()
 
     connection = duckdb.connect()
@@ -449,6 +484,11 @@ def test_extreme_grades_are_clipped_counted_and_reported(tmp_path):
     )
     connection.execute("UPDATE nodes SET elevation_m = (node_id - 1) * 30")
     connection.execute("COPY nodes TO ? (FORMAT PARQUET)", [str(nodes_path)])
+    connection.execute(
+        "CREATE TABLE edges AS SELECT * FROM read_parquet(?)", [str(edges_path)]
+    )
+    connection.execute("UPDATE edges SET node_elevations_m = [0, 30, 60]")
+    connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
     energy = load_energy_config(ENERGY_PATH)
     network = load_network_config(NETWORK_PATH)
     output = tmp_path / "costs.parquet"
@@ -508,7 +548,9 @@ def test_clipped_report_lists_only_the_twenty_longest_edges(tmp_path):
     connection.execute("""
         CREATE TABLE edges AS
         SELECT 'walk:' || i AS edge_key, 10 AS way_id, 'foot' AS mode,
-               [1, 2, 3]::BIGINT[] AS node_ids, 100.0 + i AS length_m,
+               [1, 2, 3]::BIGINT[] AS node_ids,
+               [0, 30, 60]::DOUBLE[] AS node_elevations_m,
+               100.0 + i AS length_m,
                'residential' AS highway, NULL::VARCHAR AS bike_infra,
                NULL::VARCHAR AS surface, NULL::VARCHAR AS tracktype,
                0 AS signal_count, 0 AS stop_count, 0 AS give_way_count,

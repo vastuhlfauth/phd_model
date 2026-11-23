@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6b: keep terrain samples on nodes and store bridge/tunnel
+  interpolation per way and node sequence, with directed copies on edges.
+  Active costs require those profiles. Report complete treated way lengths
+  once per structure type, independent of mode and direction.
 - 2026-11-23, step 6b: clip non-stair walking and bike grades to their
   respective configured ranges in active costs, preserving physical climb.
   Report directed segment counts and lengths by mode and OSM highway class;

@@ -22,7 +22,8 @@
   DuckDB's spheroid function uses WGS84 parameters, numerically equivalent to
   GRS80 at sub-millimetre precision for road-edge lengths. The edge-build step
   itself does not populate elevation or travel times; the elevation stage adds
-  sampled elevations to nodes and directional profiles to `edges.parquet`.
+  sampled elevations to nodes, per-way profiles to `way_elevations.parquet`,
+  and directional profiles to `edges.parquet`.
   Car costs are stored in the one-to-one `car_costs.parquet` keyed by
   `edge_key`.
 
@@ -42,6 +43,7 @@
 | `oneway` | string, nullable | Raw OSM oneway tag, used to identify explicitly one-way carriageways |
 | `speed_context` | string, nullable | Context parsed from `zone:traffic`, `source:maxspeed`, `maxspeed:type` or `zone:maxspeed` (`urban`, `rural`, `zone30`, `motorway`); retained independently of numeric maxspeed |
 | `elevation_from_m`, `elevation_to_m` | float64, nullable | Elevation at the directed endpoints, sampled from BD ALTI |
+| `node_elevations_m` | list[float64] | Way-specific elevations in directed `node_ids` order, nullable per node |
 | `climb_m`, `descent_m` | float64, nullable | Sum of positive and negative height changes along ordered OSM nodes |
 | `mean_grade` | float64, nullable | Endpoint elevation change divided by horizontal edge length; dimensionless |
 | `motorroad` | bool | `motorroad=yes` (also accepts `true` and `1`) |
@@ -66,6 +68,12 @@ The extracted way tag maps also retain `zone:traffic`, `source:maxspeed`,
 downstream speed and surface processing. The edge-build report joins those
 extracted ways to car edges to identify the access tag and value for each
 car-accessible non-road class.
+Extracted tags also retain `bridge`, `tunnel` and `layer`. Bridge and tunnel
+ways whose tag is present and not `no` use a linear profile by distance between
+their first and last nodes; the sampled terrain remains unchanged in the node
+table. If an endpoint lacks elevation, interpolated interior values are null.
+The elevation report gives the length of complete treated ways by structure
+type, counted once per way, not once per directed mode edge.
 Segments are assigned an index by the cumulative graph-node count along each way;
 interior graph nodes also serve as the preceding segment's endpoint. This
 avoids joining every way point against sequence ranges.
@@ -76,7 +84,7 @@ graph node can change subsequent segment indexes and keys.
 
 The step 6b active-cost function writes `active_costs.parquet`, one row per
 directed foot or bike `edge_key`. Inapplicable mode-specific cost columns are
-null. It uses ordered node elevations for segment grades and leaves costs null
+null. It uses way-specific ordered edge elevations for segment grades and leaves costs null
 for incomplete profiles, which are counted in its summary.
 Non-stair walking grades are clipped to the configured Minetti range and
 bike grades to the configured speed-table grid for both time and energy.

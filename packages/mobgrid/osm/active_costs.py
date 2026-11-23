@@ -71,10 +71,14 @@ def _active_edge_batch(
                        e.tracktype, e.length_m, e.signal_count, e.stop_count,
                        e.give_way_count, e.crossing_count, e.to_degree,
                        e.to_highway, e.to_crossing, e.node_ids,
-                       edge_node.node_sequence, n.x, n.y, n.elevation_m,
+                       edge_node.node_sequence, n.x, n.y,
+                       list_extract(e.node_elevations_m, edge_node.node_sequence)
+                           AS elevation_m,
                        lag(n.x) OVER edge_order AS previous_x,
                        lag(n.y) OVER edge_order AS previous_y,
-                       lag(n.elevation_m) OVER edge_order AS previous_elevation_m
+                       lag(list_extract(
+                           e.node_elevations_m, edge_node.node_sequence
+                       )) OVER edge_order AS previous_elevation_m
                 FROM _active_edge_batch e
                 CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
                     AS edge_node(node_id, node_sequence)
@@ -446,7 +450,7 @@ def enrich_active_edge_costs(
 ) -> ActiveCostSummary:
     """Write section 9.3/9.7 costs for directed foot and bike edges.
 
-    Node elevations are metres, coordinates and lengths are metres, grades
+    Way-specific edge elevations are metres, coordinates and lengths are metres, grades
     are dimensionless, times are seconds, and energies are kJ. Inputs are
     existing OSM edge and node Parquet tables; this function is intended to
     be called by the later B2 stage, not as a standalone command.
@@ -477,12 +481,9 @@ def enrich_active_edge_costs(
             f"node table is missing required columns: "
             f"{sorted(missing_node_columns)}"
         )
-    if "elevation_m" not in node_columns:
-        raise ValueError(
-            "node table has no elevation_m; run edge elevation enrichment first"
-        )
     required_edges = {
-        "edge_key", "way_id", "mode", "node_ids", "length_m", "highway", "bike_infra",
+        "edge_key", "way_id", "mode", "node_ids", "node_elevations_m",
+        "length_m", "highway", "bike_infra",
         "surface", "tracktype", "signal_count", "stop_count", "give_way_count",
         "crossing_count", "to_degree", "to_node_id",
     }
@@ -496,6 +497,14 @@ def enrich_active_edge_costs(
         raise ValueError(
             f"edge table is missing required columns: {sorted(missing_columns)}"
         )
+    invalid_profiles = connection.execute(f"""
+        SELECT count(*) FROM read_parquet('{edge_source}')
+        WHERE mode IN ('foot', 'bike')
+          AND (node_elevations_m IS NULL
+               OR len(node_elevations_m) <> len(node_ids))
+    """).fetchone()[0]
+    if invalid_profiles:
+        raise ValueError(f"{invalid_profiles} edges have misaligned elevation profiles")
 
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(output.stem + ".tmp.parquet")
@@ -527,7 +536,8 @@ def enrich_active_edge_costs(
     incomplete_count = 0
     try:
         edge_reader = connection.execute(f"""
-            SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.length_m, e.highway,
+            SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.node_elevations_m,
+                   e.length_m, e.highway,
                    e.bike_infra, e.surface, e.tracktype, e.signal_count,
                    e.stop_count, e.give_way_count, e.crossing_count,
                    e.to_degree, e.to_node_id,

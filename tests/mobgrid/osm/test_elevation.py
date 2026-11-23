@@ -75,6 +75,7 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
     _grid(grid, 700000, [[10, 15, 12], [10, 15, 12]], y_corner=6600000)
     edges = tmp_path / "edges.parquet"
     nodes = tmp_path / "nodes.parquet"
+    ways = tmp_path / "ways.parquet"
     connection = duckdb.connect()
     connection.execute("LOAD spatial")
     connection.register(
@@ -98,7 +99,9 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
     pq.write_table(
         pa.table(
             {
-                "edge_key": ["forward", "reverse", "missing"],
+                "edge_key": ["10:0:foot:f", "10:0:foot:r", "11:0:foot:f"],
+                "way_id": [10, 10, 11],
+                "is_forward": [True, False, True],
                 "node_ids": pa.array(
                     [[1, 2, 3], [3, 2, 1], [3, 4]],
                     type=pa.list_(pa.int64()),
@@ -114,14 +117,21 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
                 "node_id": [1, 2, 3, 4],
                 "x": [row[0] for row in coordinates],
                 "y": [row[1] for row in coordinates],
+                "graph_node": [True, False, True, True],
             }
         ),
         nodes,
     )
+    pq.write_table(pa.table({
+        "way_id": [10, 11],
+        "refs": [[1, 2, 3], [3, 4]],
+        "tags": pa.array([{}, {}], type=pa.map_(pa.string(), pa.string())),
+    }), ways)
 
     try:
         summary = enrich_edges_with_elevation(
-            connection, edges, nodes, [grid]
+            connection, edges, nodes, [grid], ways_path=ways,
+            way_elevations_path=tmp_path / "way_elevations.parquet",
         )
         profiles = {
             row[0]: row[1:]
@@ -137,11 +147,11 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
     finally:
         connection.close()
 
-    assert profiles["forward"][:2] == pytest.approx((5.0, 3.0))
-    assert profiles["forward"][2] == pytest.approx(0.04, abs=1e-4)
-    assert profiles["reverse"][:2] == pytest.approx((3.0, 5.0))
-    assert profiles["reverse"][2] == pytest.approx(-0.04, abs=1e-4)
-    assert profiles["missing"] == (None, None, None)
+    assert profiles["10:0:foot:f"][:2] == pytest.approx((5.0, 3.0))
+    assert profiles["10:0:foot:f"][2] == pytest.approx(0.04, abs=1e-4)
+    assert profiles["10:0:foot:r"][:2] == pytest.approx((3.0, 5.0))
+    assert profiles["10:0:foot:r"][2] == pytest.approx(-0.04, abs=1e-4)
+    assert profiles["11:0:foot:f"] == (None, None, None)
     assert summary.nodes_without_elevation == 1
     assert summary.nodes_without_tile == 1
     assert [row[1] for row in node_elevations[:3]] == pytest.approx(
@@ -166,3 +176,73 @@ def test_elevation_report_distinguishes_uncovered_nodes_from_missing_samples(
     contents = report.read_text(encoding="utf-8")
     assert "Nodes with no covering tile: 1" in contents
     assert "Nodes with no valid elevation sample: 2" in contents
+
+
+@pytest.mark.parametrize("structure", ["bridge", "tunnel"])
+def test_structure_profile_interpolates_between_portals_per_way(tmp_path, structure):
+    import duckdb
+
+    grid = tmp_path / "tile.asc"
+    _grid(grid, 700000, [[10, -20, 12], [10, -20, 12]], y_corner=6600000)
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    coordinates = connection.execute("""
+        SELECT ST_X(p), ST_Y(p)
+        FROM (
+            SELECT ST_Transform(
+                ST_Point(x, 6600012.5), 'EPSG:2154', 'EPSG:3035', true
+            ) AS p
+            FROM unnest([700012.5, 700037.5, 700062.5]) AS points(x)
+        )
+    """).fetchall()
+    nodes = tmp_path / "nodes.parquet"
+    ways = tmp_path / "ways.parquet"
+    edges = tmp_path / "edges.parquet"
+    profiles = tmp_path / "way_elevations.parquet"
+    pq.write_table(pa.table({
+        "node_id": [1, 2, 3],
+        "x": [point[0] for point in coordinates],
+        "y": [point[1] for point in coordinates],
+        "graph_node": [True, True, True],
+    }), nodes)
+    pq.write_table(pa.table({
+        "way_id": [10, 11],
+        "refs": [[1, 2, 3], [1, 2, 3]],
+        "tags": pa.array(
+            [{structure: "yes"}, {structure: "no"}],
+            type=pa.map_(pa.string(), pa.string()),
+        ),
+    }), ways)
+    pq.write_table(pa.table({
+        "edge_key": [
+            "10:0:foot:f", "10:0:foot:r", "10:1:foot:f", "11:0:foot:f"
+        ],
+        "way_id": [10, 10, 10, 11],
+        "is_forward": [True, False, True, True],
+        "node_ids": [[1, 2], [2, 1], [2, 3], [1, 2]],
+        "length_m": [25.0, 25.0, 25.0, 25.0],
+    }), edges)
+    try:
+        summary = enrich_edges_with_elevation(
+            connection, edges, nodes, [grid], ways_path=ways,
+            way_elevations_path=profiles,
+        )
+        values = connection.execute(
+            "SELECT way_id, node_id, elevation_m FROM read_parquet(?) "
+            "ORDER BY way_id, node_sequence", [str(profiles)]
+        ).fetchall()
+        edge_profiles = connection.execute(
+            "SELECT edge_key, node_elevations_m FROM read_parquet(?) "
+            "ORDER BY edge_key", [str(edges)]
+        ).fetchall()
+    finally:
+        connection.close()
+
+    assert [row[2] for row in values[:3]] == pytest.approx([10, 11, 12], abs=1e-3)
+    assert values[4][2] == pytest.approx(-20, abs=1e-3)
+    assert edge_profiles[0][1] == pytest.approx([10, 11], abs=1e-3)
+    assert edge_profiles[1][1] == pytest.approx([11, 10], abs=1e-3)
+    assert edge_profiles[3][1] == pytest.approx([10, -20], abs=1e-3)
+    assert getattr(summary, f"{structure}_length_m") == pytest.approx(50, abs=0.1)
+    other = "tunnel" if structure == "bridge" else "bridge"
+    assert getattr(summary, f"{other}_length_m") == 0
