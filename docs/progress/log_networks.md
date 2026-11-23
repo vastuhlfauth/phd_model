@@ -17,11 +17,13 @@ Newest entry first. Add yours at the top.
   and ranks the 20 longest affected edges, retaining their original grades.
 - The elevation report also provides these clipping diagnostics before the
   cost stage; synthetic tests compare both reports' counts.
+- The elevation CLI checkpoints sampling and completed outputs in interim
+  storage and writes dated logs and run summaries.
 - Count only the additional braking and acceleration time beyond the
   cruising time already included in the edge ride, plus the signal wait.
 - Stop energy is unchanged. The user confirmed this reading of section 9.7;
   the spec wording will be aligned separately.
-- Synthetic tests: 25 passed, 1 pilot deselected; Ruff clean. No pilot ran.
+- Synthetic tests: 27 passed, 1 pilot deselected; Ruff clean. No pilot ran.
 
 ### Step 6b: active-mode edge costs (2026-11-23)
 

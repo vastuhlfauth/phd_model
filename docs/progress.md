@@ -103,6 +103,8 @@ Each item stays open until a value is decided; the value goes into `config/`.
 
 - [ ] Step 6b: validate the provisional 50 m elevation smoothing window
   against the pilot's before/after climb report.
+- [ ] Step 6b: rerun the pilot extraction, edge build and elevation; inspect
+  treated structure lengths, climb changes and clipped-edge diagnostics.
 - [ ] Step 6: verify the version 7 pilot edge-build time is under five minutes.
   DuckDB memory limit and threads are not exposed by the loaded base, pilot or
   network configs; the existing connection setup remains in use.

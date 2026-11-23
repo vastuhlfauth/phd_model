@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import sys
 import time
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Sequence
 
@@ -13,6 +16,7 @@ import duckdb
 import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
+import pyarrow.parquet as pq
 from common.config import load_pilot_config
 from common.duckdb_io import open_connection, write_parquet
 from numba import njit
@@ -254,6 +258,80 @@ def nodes_without_tile(
             & (y < grid.y_center + (grid.rows - 0.5) * grid.cellsize)
         )
     return int(np.count_nonzero(~covered))
+
+
+def _file_signature(path: Path) -> dict[str, int | str]:
+    stat = path.stat()
+    return {
+        "path": str(path.resolve()), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns
+    }
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    temporary = path.with_suffix(".tmp.json")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    temporary.replace(path)
+
+
+def _sample_nodes_with_checkpoint(
+    nodes: Path,
+    grids: Sequence[Path],
+    node_ids: npt.NDArray[np.int64],
+    x: FloatArray,
+    y: FloatArray,
+    cache_directory: Path | None,
+) -> tuple[FloatArray, int]:
+    """Sample nodes, reusing a complete raster checkpoint when inputs match."""
+    signature = {
+        "nodes": _file_signature(nodes),
+        "grids": [_file_signature(path) for path in grids],
+    }
+    if cache_directory is not None:
+        cache_directory.mkdir(parents=True, exist_ok=True)
+        data_path = cache_directory / "sampled_nodes.parquet"
+        metadata_path = cache_directory / "sampled_nodes.json"
+        if data_path.is_file() and metadata_path.is_file():
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if (
+                metadata["signature"] == signature
+                and metadata["output"] == _file_signature(data_path)
+            ):
+                table = pq.read_table(data_path)
+                cached_ids = table["node_id"].to_numpy(zero_copy_only=False)
+                if not np.array_equal(cached_ids, node_ids):
+                    raise ValueError(
+                        "elevation sample checkpoint node ids do not match"
+                    )
+                logger.info("reusing node elevation checkpoint %s", data_path)
+                return (
+                    np.asarray(
+                        table["elevation_m"].to_numpy(zero_copy_only=False),
+                        dtype=np.float64,
+                    ),
+                    int(metadata["nodes_without_tile"]),
+                )
+    elevations = sample_elevations(grids, x, y)
+    uncovered = nodes_without_tile(grids, x, y)
+    if cache_directory is not None:
+        temporary = data_path.with_name(data_path.stem + ".tmp.parquet")
+        try:
+            pq.write_table(pa.table({
+                "node_id": pa.array(node_ids, type=pa.int64()),
+                "elevation_m": pa.array(
+                    elevations, mask=~np.isfinite(elevations), type=pa.float64()
+                ),
+            }), temporary)
+            temporary.replace(data_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        _write_json(metadata_path, {
+            "signature": signature,
+            "output": _file_signature(data_path),
+            "nodes_without_tile": uncovered,
+        })
+    return elevations, uncovered
 
 
 def _read_grid_samples(
@@ -509,6 +587,7 @@ def enrich_edges_with_elevation(
     way_elevations_path: str | Path,
     network: NetworkConfig,
     energy: EnergyConfig,
+    cache_directory: Path | None = None,
 ) -> ElevationSummary:
     """Add directional profiles to the edge table in EPSG:3035 metres (8.1)."""
     edges = Path(edges_path)
@@ -548,8 +627,9 @@ def enrich_edges_with_elevation(
     node_ids = node_table.column("node_id").to_numpy(zero_copy_only=False)
     x = node_table.column("x").to_numpy(zero_copy_only=False)
     y = node_table.column("y").to_numpy(zero_copy_only=False)
-    elevations = sample_elevations(grids, x, y)
-    uncovered_nodes = nodes_without_tile(grids, x, y)
+    elevations, uncovered_nodes = _sample_nodes_with_checkpoint(
+        nodes, grids, node_ids, x, y, cache_directory
+    )
     sampled_nodes = pa.table(
         {
             "node_id": pa.array(node_ids, type=pa.int64()),
@@ -767,6 +847,11 @@ def enrich_edges_with_elevation(
         temporary_ways.replace(way_elevations)
         temporary_nodes.replace(nodes)
         temporary.replace(edges)
+        if cache_directory is not None:
+            sample_metadata = cache_directory / "sampled_nodes.json"
+            metadata = json.loads(sample_metadata.read_text(encoding="utf-8"))
+            metadata["signature"]["nodes"] = _file_signature(nodes)
+            _write_json(sample_metadata, metadata)
         edge_count, missing_profiles = connection.execute(
             f"""
             SELECT count(*),
@@ -850,7 +935,38 @@ def _parser() -> argparse.ArgumentParser:
         "--energy-config", type=Path, default=Path("config/energy.yaml")
     )
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--log", type=Path)
+    parser.add_argument("--summary", type=Path)
     return parser
+
+
+def _completion_signature(
+    ways: Path,
+    grids: Sequence[Path],
+    edges: Path,
+    nodes: Path,
+    way_elevations: Path,
+    report: Path,
+    network: NetworkConfig,
+    energy: EnergyConfig,
+) -> dict[str, object]:
+    """Fingerprint completed outputs, source files and relevant settings."""
+    return {
+        "version": 1,
+        "ways": _file_signature(ways),
+        "grids": [_file_signature(path) for path in grids],
+        "edges": _file_signature(edges),
+        "nodes": _file_signature(nodes),
+        "way_elevations": _file_signature(way_elevations),
+        "report": _file_signature(report),
+        "window_m": network.elevation_smoothing_window_m,
+        "walking_range": list(energy.walking.gradient_valid_range),
+        "bike_range": [
+            network.bike_speed_table.grade_min,
+            network.bike_speed_table.grade_max,
+        ],
+        "report_limit": network.bike_speed_table.clipped_grade_report_limit,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -880,34 +996,77 @@ def main(argv: list[str] | None = None) -> int:
     report_path = args.report or Path(
         f"docs/data/step06_elevation_{args.area}_{args.state}.md"
     )
+    way_elevations = nodes_path.with_name("way_elevations.parquet")
+    cache_directory = ways_path.parent / "elevation"
+    checkpoint = cache_directory / "completed.json"
+    task = f"osm_elevation_{args.state}_{args.area}"
+    log_path = args.log or root / "logs" / f"{date.today().isoformat()}_{task}.log"
+    summary_path = (
+        args.summary or root / "logs" / f"{date.today().isoformat()}_{task}_summary.md"
+    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
     started = time.perf_counter()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    connection = open_connection()
     try:
-        summary = enrich_edges_with_elevation(
-            connection, edges_path, nodes_path, elevation_paths,
-            ways_path=ways_path,
-            way_elevations_path=nodes_path.with_name("way_elevations.parquet"),
-            network=network,
-            energy=energy,
+        required = (ways_path, edges_path, nodes_path, way_elevations, report_path)
+        reused = False
+        if checkpoint.is_file() and all(path.is_file() for path in required):
+            previous = json.loads(checkpoint.read_text(encoding="utf-8"))
+            reused = previous == _completion_signature(
+                ways_path, elevation_paths, edges_path, nodes_path, way_elevations,
+                report_path, network, energy,
+            )
+        if reused:
+            logger.info("reusing completed elevation outputs")
+        else:
+            connection = open_connection()
+            try:
+                summary = enrich_edges_with_elevation(
+                    connection, edges_path, nodes_path, elevation_paths,
+                    ways_path=ways_path,
+                    way_elevations_path=way_elevations,
+                    network=network,
+                    energy=energy,
+                    cache_directory=cache_directory,
+                )
+            finally:
+                connection.close()
+            write_elevation_report(
+                summary, report_path, state=args.state, area=args.area,
+                tile_count=len(elevation_paths),
+            )
+            cache_directory.mkdir(parents=True, exist_ok=True)
+            _write_json(
+                checkpoint,
+                _completion_signature(
+                    ways_path, elevation_paths, edges_path, nodes_path,
+                    way_elevations, report_path, network, energy,
+                ),
+            )
+        elapsed = time.perf_counter() - started
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            f"# OSM elevation run summary\n\n"
+            f"- Inputs: `{ways_path}`, `{nodes_path}`, `{edges_path}`, "
+            f"{len(elevation_paths):,} tiles under `{tile_directory}`\n"
+            f"- Outputs: `{edges_path}`, `{nodes_path}`, `{way_elevations}`, "
+            f"`{report_path}`\n"
+            f"- Status: {'reused completed outputs' if reused else 'completed'}\n"
+            f"- Elapsed: {elapsed:.1f} seconds\n"
+            f"- Warnings and counts: see coverage and profile counts below.\n\n"
+            + report_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
         )
+        logger.info("wrote elevation summary %s in %.1f seconds", summary_path, elapsed)
+        return 0
     finally:
-        connection.close()
-    write_elevation_report(
-        summary,
-        report_path,
-        state=args.state,
-        area=args.area,
-        tile_count=len(elevation_paths),
-    )
-    logger.info(
-        "wrote %s edge elevation profiles; %s nodes lack tile coverage "
-        "(%.1f seconds)",
-        summary.edge_count,
-        summary.nodes_without_elevation,
-        time.perf_counter() - started,
-    )
-    return 0
+        if sys.exc_info()[0] is not None:
+            logger.error("elevation job failed", exc_info=True)
+        logger.removeHandler(handler)
+        handler.close()
 
 
 if __name__ == "__main__":

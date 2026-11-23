@@ -94,6 +94,85 @@ def test_smoothing_does_not_fill_missing_elevations():
     assert actual[[0, 1, 3, 4]] == pytest.approx([0.0, 1.0, 3.0, 4.0])
 
 
+def test_elevation_sampling_checkpoint_reuses_and_invalidates(tmp_path, monkeypatch):
+    import mobgrid.osm.elevation as elevation
+
+    nodes = tmp_path / "nodes.parquet"
+    grid = tmp_path / "tile.asc"
+    nodes.write_bytes(b"nodes")
+    grid.write_bytes(b"raster")
+    calls = []
+
+    def sample(paths, x, y):
+        calls.append(tuple(paths))
+        return np.array([10.0, 20.0])
+
+    monkeypatch.setattr(elevation, "sample_elevations", sample)
+    monkeypatch.setattr(elevation, "nodes_without_tile", lambda paths, x, y: 1)
+    args = (
+        nodes, [grid], np.array([1, 2]), np.array([0.0, 1.0]),
+        np.array([0.0, 1.0]), tmp_path / "cache",
+    )
+    first, uncovered = elevation._sample_nodes_with_checkpoint(*args)
+    second, second_uncovered = elevation._sample_nodes_with_checkpoint(*args)
+    assert first == pytest.approx([10, 20])
+    assert second == pytest.approx(first)
+    assert (uncovered, second_uncovered, len(calls)) == (1, 1, 1)
+    grid.write_bytes(b"changed raster")
+    elevation._sample_nodes_with_checkpoint(*args)
+    assert len(calls) == 2
+
+
+def test_elevation_command_resumes_completed_outputs(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import mobgrid.osm.elevation as elevation
+
+    pilot_config = tmp_path / "config" / "pilot.yaml"
+    pilot_config.parent.mkdir()
+    pilot_config.write_text("test", encoding="utf-8")
+    network_dir = tmp_path / "data" / "base" / "network" / "2021" / "pilot"
+    cache_dir = tmp_path / "data" / "interim" / "osm" / "2021" / "pilot"
+    raster_dir = tmp_path / "data" / "interim" / "bdalti"
+    for folder in (network_dir, cache_dir, raster_dir):
+        folder.mkdir(parents=True)
+    for path in (
+        network_dir / "edges.parquet", network_dir / "nodes.parquet",
+        cache_dir / "ways.parquet", raster_dir / "tile.asc",
+    ):
+        path.write_bytes(b"synthetic")
+    pilot = SimpleNamespace(paths={"base": "data/base", "interim": "data/interim"})
+    monkeypatch.setattr(elevation, "load_pilot_config", lambda path: pilot)
+    monkeypatch.setattr(elevation, "load_network_config", lambda path: NETWORK)
+    monkeypatch.setattr(elevation, "load_energy_config", lambda path: ENERGY)
+    monkeypatch.setattr(elevation, "open_connection", lambda: SimpleNamespace(
+        close=lambda: None
+    ))
+    calls = []
+
+    def enrich(connection, edges, nodes, grids, **kwargs):
+        calls.append(1)
+        kwargs["way_elevations_path"].write_bytes(b"profiles")
+        return ElevationSummary(1, 0, 0, 0)
+
+    monkeypatch.setattr(elevation, "enrich_edges_with_elevation", enrich)
+    args = [
+        "--state", "2021", "--area", "pilot",
+        "--pilot-config", str(pilot_config),
+        "--report", str(tmp_path / "report.md"),
+        "--log", str(tmp_path / "run.log"),
+        "--summary", str(tmp_path / "summary.md"),
+    ]
+    assert elevation.main(args) == 0
+    assert elevation.main(args) == 0
+    assert len(calls) == 1
+    assert "reused" in (tmp_path / "summary.md").read_text(encoding="utf-8").lower()
+    (raster_dir / "tile.asc").write_bytes(b"changed")
+    assert elevation.main(args) == 0
+    assert len(calls) == 2
+    assert (tmp_path / "run.log").is_file()
+
+
 def test_unaligned_grids_are_rejected(tmp_path):
     west = tmp_path / "west.asc"
     east = tmp_path / "east.asc"
@@ -104,9 +183,10 @@ def test_unaligned_grids_are_rejected(tmp_path):
 
 
 def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
-    tmp_path,
+    tmp_path, monkeypatch,
 ):
     import duckdb
+    import mobgrid.osm.elevation as elevation
 
     grid = tmp_path / "tile.asc"
     _grid(grid, 700000, [[10, 15, 12], [10, 15, 12]], y_corner=6600000)
@@ -175,7 +255,22 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
                 update={"elevation_smoothing_window_m": 0.00001}
             ),
             energy=ENERGY,
+            cache_directory=tmp_path / "cache",
         )
+        def unexpected_resample(*args):
+            pytest.fail("completed node sampling should be reused")
+
+        monkeypatch.setattr(elevation, "sample_elevations", unexpected_resample)
+        repeated = enrich_edges_with_elevation(
+            connection, edges, nodes, [grid], ways_path=ways,
+            way_elevations_path=tmp_path / "way_elevations.parquet",
+            network=NETWORK.model_copy(
+                update={"elevation_smoothing_window_m": 0.00001}
+            ),
+            energy=ENERGY,
+            cache_directory=tmp_path / "cache",
+        )
+        assert repeated == summary
         profiles = {
             row[0]: row[1:]
             for row in connection.execute(

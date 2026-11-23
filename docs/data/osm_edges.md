@@ -102,6 +102,11 @@ edges with their most extreme original signed grade.
 The elevation-stage report contains the same diagnostics before active costs
 are built, using the smoothed profiles and configured grade ranges.
 
+The elevation CLI checkpoints sampled nodes and completed output signatures
+under `data/interim/osm/{state}/{area}/elevation/`. Matching reruns reuse
+completed outputs; changed inputs or settings trigger recomputation. Its
+dated log and run summary are written under `logs/`.
+
 | Column | Type | Unit | Meaning |
 |---|---|---|---|
 | `edge_key` | string | none | Directed foot or bike edge key |
