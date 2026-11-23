@@ -3,13 +3,16 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
-### Step 6b: bike stop delay (2026-11-23)
+### Step 6b: grade clipping and bike stop delay (2026-11-23)
 
+- Active costs clip walking and bike grades to their respective configured
+  ranges; a grade report counts affected directed segments by mode/highway
+  and ranks the 20 longest affected edges, retaining their original grades.
 - Count only the additional braking and acceleration time beyond the
   cruising time already included in the edge ride, plus the signal wait.
 - Stop energy is unchanged. The user confirmed this reading of section 9.7;
   the spec wording will be aligned separately.
-- Synthetic active-cost tests and Ruff validate the correction; no pilot ran.
+- Synthetic active-cost tests and Ruff validate these changes; no pilot ran.
 
 ### Step 6b: active-mode edge costs (2026-11-23)
 

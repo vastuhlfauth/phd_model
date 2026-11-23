@@ -1,5 +1,10 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6b: clip non-stair walking and bike grades to their
+  respective configured ranges in active costs, preserving physical climb.
+  Report directed segment counts and lengths by mode and OSM highway class;
+  rank affected edges by full directed-edge length and show the signed grade
+  with greatest magnitude. The report limit is configured.
 - 2026-11-23, step 6b: section 9.7 stop time means additional time beyond
   the cruising time already included in the ride: v/(2*a_dec) +
   v/(2*a_acc), plus expected wait. Stop energy stays unchanged; the user

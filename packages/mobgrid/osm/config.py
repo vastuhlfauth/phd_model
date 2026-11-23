@@ -100,6 +100,7 @@ class BikeSpeedTableConfig(BaseModel):
     grade_min: float
     grade_max: float
     grade_step: float = Field(gt=0, allow_inf_nan=False)
+    clipped_grade_report_limit: int = Field(gt=0)
     speed_tolerance_kmh: float = Field(gt=0, allow_inf_nan=False)
     energy_relative_tolerance: float = Field(gt=0, allow_inf_nan=False)
     class_cap_kmh: dict[str, PositiveSpeed]

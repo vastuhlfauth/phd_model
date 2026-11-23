@@ -35,6 +35,8 @@ class ActiveCostSummary:
     incomplete_profile_count: int
     unknown_surface_count: int
     unknown_surface_values: dict[str, int]
+    clipped_segments_by_class: dict[tuple[str, str], tuple[int, float]]
+    longest_clipped_edges: tuple[tuple[str, int, str, str, float, float], ...]
 
 
 def _sql_path(path: str | Path) -> str:
@@ -95,7 +97,7 @@ def _calculate_batch(
     energy: EnergyConfig,
     network: NetworkConfig,
     speed_tables: dict[tuple[str, float], BikeSpeedTable],
-) -> tuple[pa.Table, int, Counter[str], int]:
+) -> tuple[pa.Table, int, Counter[str], int, pa.Table]:
     batch_keys = np.asarray(
         edge_batch.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
     )
@@ -110,8 +112,6 @@ def _calculate_batch(
     metadata_indices = np.searchsorted(batch_keys, unique_keys)
     if not np.array_equal(batch_keys[metadata_indices], unique_keys):
         raise ValueError("edge and segment rows do not align by edge_key")
-    counts = np.bincount(groups, minlength=group_count)
-    starts = np.cumsum(np.r_[0, counts[:-1]])
     edge_modes = _text_column(edge_batch, "mode")[metadata_indices]
     highways = _text_column(edge_batch, "highway")[metadata_indices]
     bike_classes = _text_column(edge_batch, "bike_infra")[metadata_indices]
@@ -162,29 +162,36 @@ def _calculate_batch(
     c0 = energy.walking.c0_j_per_kg_m[energy.rate_set]
     walking_lowwater, walking_highwater = energy.walking.gradient_valid_range
     non_stair_walk = foot_edges & (highways != "steps")
-    edge_min_grade = np.minimum.reduceat(grades, starts)
-    edge_max_grade = np.maximum.reduceat(grades, starts)
-    invalid_walk = (
-        non_stair_walk & complete_edges
-        & (
-            (edge_min_grade < walking_lowwater)
-            | (edge_max_grade > walking_highwater)
-        )
+    walking_grades = np.clip(grades, walking_lowwater, walking_highwater)
+    bike_grades = np.clip(
+        grades, network.bike_speed_table.grade_min, network.bike_speed_table.grade_max
     )
-    if invalid_walk.any():
-        edge = unique_keys[int(np.flatnonzero(invalid_walk)[0])]
-        raise ValueError(
-            f"walking grade outside configured Minetti range on edge {edge}"
-        )
+    clipped = complete_edges[groups] & (
+        (non_stair_walk[groups] & (grades != walking_grades))
+        | (bike_edges[groups] & (grades != bike_grades))
+    )
+    clipped_groups = groups[clipped]
+    way_ids = np.asarray(
+        edge_batch.column("way_id").to_numpy(zero_copy_only=False), dtype=np.int64
+    )[metadata_indices]
+    diagnostics = pa.table({
+        "edge_key": pa.array(unique_keys[clipped_groups], type=pa.string()),
+        "way_id": pa.array(way_ids[clipped_groups], type=pa.int64()),
+        "mode": pa.array(edge_modes[clipped_groups], type=pa.string()),
+        "highway": pa.array(highways[clipped_groups], type=pa.string()),
+        "edge_length_m": pa.array(edge_lengths[clipped_groups], type=pa.float64()),
+        "segment_length_m": pa.array(segment_lengths[clipped], type=pa.float64()),
+        "grade": pa.array(grades[clipped], type=pa.float64()),
+    })
 
     walking_v0 = energy.walking.v0_kmh / 3.6
     walking_speed = walking_v0 * np.exp(
-        -3.5 * np.abs(grades + 0.05)
+        -3.5 * np.abs(walking_grades + 0.05)
     ) / math.exp(-0.175)
     coefficients = np.asarray(
         energy.walking.gradient_polynomial_j_per_kg_m, dtype=np.float64
     )
-    gradient_cost = np.polyval(coefficients, grades) / np.polyval(
+    gradient_cost = np.polyval(coefficients, walking_grades) / np.polyval(
         coefficients, 0.0
     )
     walk_time_segment = np.divide(
@@ -293,15 +300,15 @@ def _calculate_batch(
                     cap,
                 )
                 speed_tables[(surface, cap)] = table
-            group_speeds, group_powers = table.lookup(grades[selected])
+            group_speeds, group_powers = table.lookup(bike_grades[selected])
             speeds[selected] = group_speeds
             crr = energy.bike.surface_crr[surface]
-            angle_cosine = 1.0 / np.sqrt(1.0 + grades[selected] ** 2)
+            angle_cosine = 1.0 / np.sqrt(1.0 + bike_grades[selected] ** 2)
             rolling = GRAVITY_M_S2 * crr * angle_cosine * segment_lengths[selected]
             climbing = (
                 GRAVITY_M_S2
-                * grades[selected]
-                / np.sqrt(1.0 + grades[selected] ** 2)
+                * bike_grades[selected]
+                / np.sqrt(1.0 + bike_grades[selected] ** 2)
                 * segment_lengths[selected]
             )
             pedalled = group_powers > 0
@@ -425,7 +432,7 @@ def _calculate_batch(
             ),
         }
     )
-    return result, incomplete_count, unknown_surfaces, group_count
+    return result, incomplete_count, unknown_surfaces, group_count, diagnostics
 
 
 def enrich_active_edge_costs(
@@ -475,7 +482,7 @@ def enrich_active_edge_costs(
             "node table has no elevation_m; run edge elevation enrichment first"
         )
     required_edges = {
-        "edge_key", "mode", "node_ids", "length_m", "highway", "bike_infra",
+        "edge_key", "way_id", "mode", "node_ids", "length_m", "highway", "bike_infra",
         "surface", "tracktype", "signal_count", "stop_count", "give_way_count",
         "crossing_count", "to_degree", "to_node_id",
     }
@@ -508,13 +515,19 @@ def enrich_active_edge_costs(
             separated_length_m DOUBLE
         )
     """)
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _active_clipped_grades (
+            edge_key VARCHAR, way_id BIGINT, mode VARCHAR, highway VARCHAR,
+            edge_length_m DOUBLE, segment_length_m DOUBLE, grade DOUBLE
+        )
+    """)
     speed_tables: dict[tuple[str, float], BikeSpeedTable] = {}
     unknown_surfaces: Counter[str] = Counter()
     edge_count = 0
     incomplete_count = 0
     try:
         edge_reader = connection.execute(f"""
-            SELECT e.edge_key, e.mode, e.node_ids, e.length_m, e.highway,
+            SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.length_m, e.highway,
                    e.bike_infra, e.surface, e.tracktype, e.signal_count,
                    e.stop_count, e.give_way_count, e.crossing_count,
                    e.to_degree, e.to_node_id,
@@ -530,7 +543,7 @@ def enrich_active_edge_costs(
             segments = _active_edge_batch(
                 connection, node_source, edge_batch
             )
-            result, missing, batch_unknown, count = _calculate_batch(
+            result, missing, batch_unknown, count, diagnostics = _calculate_batch(
                 edge_batch, segments, energy, network, speed_tables
             )
             connection.register("_active_cost_batch", result)
@@ -541,18 +554,72 @@ def enrich_active_edge_costs(
                 )
             finally:
                 connection.unregister("_active_cost_batch")
+            connection.register("_active_clipped_batch", diagnostics)
+            try:
+                connection.execute(
+                    "INSERT INTO _active_clipped_grades "
+                    "SELECT * FROM _active_clipped_batch"
+                )
+            finally:
+                connection.unregister("_active_clipped_batch")
             edge_count += count
             incomplete_count += missing
             unknown_surfaces.update(batch_unknown)
 
+        clipped_by_class = {
+            (mode, highway): (int(count), float(length))
+            for mode, highway, count, length in connection.execute("""
+                SELECT mode, highway, count(*), sum(segment_length_m)
+                FROM _active_clipped_grades GROUP BY mode, highway
+                ORDER BY mode, highway
+            """).fetchall()
+        }
+        longest = tuple(connection.execute("""
+            SELECT edge_key, way_id, mode, highway, max(edge_length_m),
+                   arg_max(grade, abs(grade))
+            FROM _active_clipped_grades
+            GROUP BY edge_key, way_id, mode, highway
+            ORDER BY max(edge_length_m) DESC, edge_key
+            LIMIT ?
+        """, [network.bike_speed_table.clipped_grade_report_limit]).fetchall())
         write_parquet(connection, "SELECT * FROM _active_cost_result", temporary)
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
 
-    return ActiveCostSummary(
+    summary = ActiveCostSummary(
         edge_count=edge_count,
         incomplete_profile_count=incomplete_count,
         unknown_surface_count=sum(unknown_surfaces.values()),
         unknown_surface_values=dict(sorted(unknown_surfaces.items())),
+        clipped_segments_by_class=clipped_by_class,
+        longest_clipped_edges=longest,
     )
+    write_active_grade_report(summary, output.with_suffix(".grades.md"))
+    return summary
+
+
+def write_active_grade_report(summary: ActiveCostSummary, path: str | Path) -> None:
+    """Report clipped directed segments and longest affected edges (9.3, 9.7)."""
+    lines = [
+        "# Active-mode clipped grades",
+        "",
+        "Lengths are metres; grades are the original signed segment grades.",
+        "Classes are OSM highway classes, separated by directed travel mode.",
+        "",
+        "| Mode | Highway class | Segments | Length (m) |",
+        "|---|---|---:|---:|",
+    ]
+    for (mode, highway), (count, length) in summary.clipped_segments_by_class.items():
+        lines.append(f"| {mode} | {highway} | {count} | {length:.1f} |")
+    lines.extend([
+        "",
+        "| Edge key | Way id | Mode | Highway class | Edge length (m) | Grade |",
+        "|---|---:|---|---|---:|---:|",
+    ])
+    for edge_key, way_id, mode, highway, length, grade in summary.longest_clipped_edges:
+        lines.append(
+            f"| {edge_key} | {way_id} | {mode} | {highway} | "
+            f"{length:.1f} | {grade:.3f} |"
+        )
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")

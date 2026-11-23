@@ -45,6 +45,7 @@ def _write_tables(tmp_path: Path) -> tuple[Path, Path]:
     connection.execute("""
         CREATE TABLE edges (
             edge_key VARCHAR,
+            way_id BIGINT,
             mode VARCHAR,
             node_ids BIGINT[],
             length_m DOUBLE,
@@ -62,9 +63,9 @@ def _write_tables(tmp_path: Path) -> tuple[Path, Path]:
     """)
     connection.execute("""
         INSERT INTO edges VALUES
-            ('walk:f', 'foot', [1, 2, 3], 100, 'residential', NULL,
+            ('walk:f', 10, 'foot', [1, 2, 3], 100, 'residential', NULL,
              NULL, NULL, 0, 0, 0, 0, 2, 3),
-            ('bike:f', 'bike', [1, 2, 3], 100, 'residential',
+            ('bike:f', 10, 'bike', [1, 2, 3], 100, 'residential',
              'mixed_traffic', 'asphalt', NULL, 0, 0, 0, 0, 2, 3)
     """)
     connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
@@ -438,3 +439,95 @@ def test_bike_stop_adds_only_time_beyond_cruising_at_15_kmh(tmp_path, monkeypatc
         + speed / (2 * stops.acceleration_m_per_s2)
     )
     assert bike_time == pytest.approx(100 / speed + expected_loss + expected_wait)
+
+
+def test_extreme_grades_are_clipped_counted_and_reported(tmp_path):
+    edges_path, nodes_path = _write_tables(tmp_path)
+    connection = duckdb.connect()
+    connection.execute(
+        "CREATE TABLE nodes AS SELECT * FROM read_parquet(?)", [str(nodes_path)]
+    )
+    connection.execute("UPDATE nodes SET elevation_m = (node_id - 1) * 30")
+    connection.execute("COPY nodes TO ? (FORMAT PARQUET)", [str(nodes_path)])
+    energy = load_energy_config(ENERGY_PATH)
+    network = load_network_config(NETWORK_PATH)
+    output = tmp_path / "costs.parquet"
+    try:
+        summary = enrich_active_edge_costs(
+            connection, edges_path, nodes_path, output, energy=energy, network=network
+        )
+        walk_time = connection.execute(
+            "SELECT walk_time_s FROM read_parquet(?) WHERE edge_key = 'walk:f'",
+            [str(output)],
+        ).fetchone()[0]
+        bike_time = connection.execute(
+            "SELECT bike_time_s FROM read_parquet(?) WHERE edge_key = 'bike:f'",
+            [str(output)],
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    expected_time, _ = walking_time_and_energy(
+        [(50.0, 0.45), (50.0, 0.45)],
+        energy.reference_mass_kg,
+        energy.walking.v0_kmh,
+        energy.walking.c0_j_per_kg_m[energy.rate_set],
+        energy.walking.gradient_polynomial_j_per_kg_m,
+    )
+    assert walk_time == pytest.approx(expected_time)
+    bike = energy.bike
+    bike_speed, _ = ride_speed_and_power(
+        0.2,
+        bike.power.p0_w,
+        bike.power.k,
+        bike.power.p_max_w,
+        energy.reference_mass_kg + bike.bike_mass_kg,
+        bike.surface_crr["asphalt_concrete_paved_default"],
+        bike.cda_m2,
+        bike.rho_air_kg_per_m3,
+        bike.drivetrain_efficiency,
+        bike.power.v_max_descent_kmh / 3.6,
+        network.bike_speed_table.class_cap_kmh["mixed_traffic"] / 3.6,
+    )
+    assert bike_time == pytest.approx(100 / bike_speed)
+    assert summary.clipped_segments_by_class[("foot", "residential")] == (2, 100.0)
+    assert summary.clipped_segments_by_class[("bike", "residential")] == (2, 100.0)
+    report = output.with_suffix(".grades.md").read_text(encoding="utf-8")
+    assert "walk:f" in report and "bike:f" in report
+    assert "0.600" in report and "residential" in report
+
+
+def test_clipped_report_lists_only_the_twenty_longest_edges(tmp_path):
+    edges_path, nodes_path = _write_tables(tmp_path)
+    connection = duckdb.connect()
+    connection.execute(
+        "CREATE TABLE nodes AS SELECT * FROM read_parquet(?)", [str(nodes_path)]
+    )
+    connection.execute("UPDATE nodes SET elevation_m = (node_id - 1) * 30")
+    connection.execute("COPY nodes TO ? (FORMAT PARQUET)", [str(nodes_path)])
+    connection.execute("""
+        CREATE TABLE edges AS
+        SELECT 'walk:' || i AS edge_key, 10 AS way_id, 'foot' AS mode,
+               [1, 2, 3]::BIGINT[] AS node_ids, 100.0 + i AS length_m,
+               'residential' AS highway, NULL::VARCHAR AS bike_infra,
+               NULL::VARCHAR AS surface, NULL::VARCHAR AS tracktype,
+               0 AS signal_count, 0 AS stop_count, 0 AS give_way_count,
+               0 AS crossing_count, 2 AS to_degree, 3 AS to_node_id
+        FROM range(21) AS numbers(i)
+    """)
+    connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
+    try:
+        summary = enrich_active_edge_costs(
+            connection,
+            edges_path,
+            nodes_path,
+            tmp_path / "costs.parquet",
+            energy=load_energy_config(ENERGY_PATH),
+            network=load_network_config(NETWORK_PATH),
+        )
+    finally:
+        connection.close()
+
+    assert len(summary.longest_clipped_edges) == 20
+    assert summary.longest_clipped_edges[0][0] == "walk:20"
+    assert summary.longest_clipped_edges[-1][0] == "walk:1"

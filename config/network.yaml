@@ -322,6 +322,7 @@ bike_speed_table:
   grade_min: -0.20
   grade_max: 0.20
   grade_step: 0.005
+  clipped_grade_report_limit: 20
   speed_tolerance_kmh: 0.1
   energy_relative_tolerance: 0.01
   class_cap_kmh:

@@ -78,6 +78,12 @@ The step 6b active-cost function writes `active_costs.parquet`, one row per
 directed foot or bike `edge_key`. Inapplicable mode-specific cost columns are
 null. It uses ordered node elevations for segment grades and leaves costs null
 for incomplete profiles, which are counted in its summary.
+Non-stair walking grades are clipped to the configured Minetti range and
+bike grades to the configured speed-table grid for both time and energy.
+Physical climb remains based on the original elevation changes. The adjacent
+`.grades.md` report counts clipped directed segments and their lengths by
+mode and OSM highway class and lists the configured 20 longest affected
+edges with their most extreme original signed grade.
 
 | Column | Type | Unit | Meaning |
 |---|---|---|---|
