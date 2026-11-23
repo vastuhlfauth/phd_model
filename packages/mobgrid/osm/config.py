@@ -11,7 +11,6 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
-    model_validator,
 )
 
 Mode = Literal["car", "bike", "foot"]
@@ -50,15 +49,13 @@ class CarDelayConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    per_control_s: float = Field(gt=0)
+    signal_s: float = Field(ge=0)
+    stop_s: float = Field(ge=0)
+    give_way_s: float = Field(ge=0)
+    mini_roundabout_s: float = Field(ge=0)
+    crossing_s: float = Field(ge=0)
     at_to_node_s: float = Field(ge=0)
     degree_threshold: int = Field(gt=0)
-
-    @model_validator(mode="after")
-    def validate_junction_delay(self) -> CarDelayConfig:
-        if self.at_to_node_s >= self.per_control_s:
-            raise ValueError("to-node delay must be smaller than per-control delay")
-        return self
 
 
 class CarSpeedConfig(BaseModel):
@@ -70,6 +67,8 @@ class CarSpeedConfig(BaseModel):
     class_overrides_kmh_by_context: dict[
         SpeedContext, dict[str, PositiveSpeed]
     ]
+    default_caps_kmh_by_highway: dict[str, PositiveSpeed]
+    rural_oneway_speed_kmh_by_highway: dict[str, PositiveSpeed]
     realism_factor_by_highway: dict[str, PositiveSpeed]
     speed_limit_bucket_upper_bounds_kmh: tuple[PositiveSpeed, ...]
     urban_density: UrbanDensityConfig

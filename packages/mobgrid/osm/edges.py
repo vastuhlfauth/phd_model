@@ -36,6 +36,7 @@ EDGE_COLUMNS = {
     "length_m",
     "highway",
     "maxspeed_kmh",
+    "oneway",
     "speed_context",
     "motorroad",
     "lanes",
@@ -51,6 +52,7 @@ EDGE_COLUMNS = {
     "lanes_psv",
     "signal_count",
     "stop_count",
+    "give_way_count",
     "crossing_count",
     "mini_roundabout_count",
     "to_degree",
@@ -391,7 +393,7 @@ def _input_signature(
     return hashlib.sha256(
         json.dumps(
             {
-                "version": 5,
+                "version": 6,
                 "inputs": inputs,
                 "config": config.model_dump(
                     mode="json", exclude={"car_speed"}
@@ -533,17 +535,27 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
         control_counts AS (
             SELECT d.way_id, d.segment_index, d.is_forward,
                    sum(
-                       CASE WHEN lower(n.tags['highway']) = 'traffic_signals'
+                       CASE WHEN (lower(n.tags['highway']) = 'traffic_signals'
+                                  OR (lower(n.tags['highway']) = 'crossing'
+                                      AND lower(n.tags['crossing'])
+                                          = 'traffic_signals'))
                                  AND {signal_direction}
                             THEN 1 ELSE 0 END
                    )::TINYINT AS signal_count,
                    sum(
-                       CASE WHEN lower(n.tags['highway']) IN ('stop', 'give_way')
+                       CASE WHEN lower(n.tags['highway']) = 'stop'
                                  AND {node_direction}
                             THEN 1 ELSE 0 END
                    )::TINYINT AS stop_count,
                    sum(
+                       CASE WHEN lower(n.tags['highway']) = 'give_way'
+                                 AND {node_direction}
+                            THEN 1 ELSE 0 END
+                   )::TINYINT AS give_way_count,
+                   sum(
                        CASE WHEN lower(n.tags['highway']) = 'crossing'
+                                 AND coalesce(lower(n.tags['crossing']), '')
+                                     <> 'traffic_signals'
                                  AND {node_direction}
                             THEN 1 ELSE 0 END
                    )::TINYINT AS crossing_count,
@@ -563,6 +575,7 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
             SELECT d.*,
                    controls.signal_count,
                    controls.stop_count,
+                   controls.give_way_count,
                    controls.crossing_count,
                    controls.mini_roundabout_count,
                    {accesses["car"]} AS car_access,
@@ -577,6 +590,7 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                    )
                        AS motorroad,
                    d.way_tags['highway'] AS highway,
+                   d.way_tags['oneway'] AS oneway,
                    d.way_tags['lanes'] AS lanes,
                    d.way_tags['surface'] AS surface,
                    d.way_tags['tracktype'] AS tracktype,
@@ -631,12 +645,12 @@ def _build_edges_query(config: NetworkConfig, nodes_path: str) -> str:
                       e.mode, ':', CASE WHEN e.is_forward THEN 'f' ELSE 'r' END)
                    AS edge_key,
                e.way_id, e.from_node_id, e.to_node_id, e.is_forward,
-               e.mode, e.node_ids, e.length_m, e.highway, e.maxspeed_kmh,
+               e.mode, e.node_ids, e.length_m, e.highway, e.maxspeed_kmh, e.oneway,
                e.speed_context,
                e.motorroad, e.lanes, e.car_access, e.bike_access, e.foot_access,
                {bike_class} AS bike_infra,
                e.surface, e.tracktype, e.smoothness, e.busway, e.lanes_bus, e.lanes_psv,
-               e.signal_count, e.stop_count, e.crossing_count,
+               e.signal_count, e.stop_count, e.give_way_count, e.crossing_count,
                e.mini_roundabout_count, coalesce(d.to_degree, 0) AS to_degree,
                e.cell_1km_id, e.tile_id, ST_AsWKB(e.geom) AS geometry_wkb
         FROM allowed_edges e

@@ -38,6 +38,7 @@
 | `length_m` | float64 | Ellipsoidal length in metres from the ordered node latitude/longitude coordinates |
 | `highway` | string, nullable | OSM road class |
 | `maxspeed_kmh` | float64, nullable | Parsed maxspeed in km/h |
+| `oneway` | string, nullable | Raw OSM oneway tag, used to identify explicitly one-way carriageways |
 | `speed_context` | string, nullable | Context parsed from `zone:traffic`, `source:maxspeed`, `maxspeed:type` or `zone:maxspeed` (`urban`, `rural`, `zone30`, `motorway`); retained independently of numeric maxspeed |
 | `elevation_from_m`, `elevation_to_m` | float64, nullable | Elevation at the directed endpoints, sampled from BD ALTI |
 | `climb_m`, `descent_m` | float64, nullable | Sum of positive and negative height changes along ordered OSM nodes |
@@ -48,7 +49,7 @@
 | `bike_infra` | string, nullable | Direction-specific class from the table below |
 | `surface`, `tracktype`, `smoothness` | string, nullable | Raw OSM values |
 | `busway`, `lanes_bus`, `lanes_psv` | string, nullable | Raw bus-lane values |
-| `signal_count`, `stop_count`, `crossing_count`, `mini_roundabout_count` | int8 | Direction-filtered control-node counts along the edge, excluding its first node |
+| `signal_count`, `stop_count`, `give_way_count`, `crossing_count`, `mini_roundabout_count` | int8 | Direction-filtered control-node counts along the edge, excluding its first node; signalised crossings count only as signals |
 | `to_degree` | int64 | Distinct neighbouring graph nodes of `to_node_id` for this mode, considering incoming and outgoing edges |
 | `cell_1km_id` | int64 | 1 km cell id of the edge-geometry centroid |
 | `tile_id` | int64 | Configured tile id of the edge-geometry centroid |
@@ -80,6 +81,9 @@ the configured fallback only when both labels are not available. The report
 records the fitted agreement and urban directed-length share by road class.
 All defaults, realism factors, density parameters, delays, and bucket bounds
 are in `config/network.yaml` with `TODO(confirm)` markers.
+Default speeds are capped by class; rural trunk and primary roads use the
+configured dual-carriageway default only when explicitly tagged `oneway=yes`.
+Controls have separate configured delays by type.
 
 | Column | Type | Unit | Meaning |
 |---|---|---|---|
@@ -114,8 +118,10 @@ for foot access to platforms.
 Traffic-control tags are read for `highway=traffic_signals`, `stop`,
 `give_way`, `crossing` and `mini_roundabout`. Each directed edge counts its
 ordered OSM nodes except its first: signals contribute to `signal_count`,
-stops and give-ways to `stop_count`, crossings to `crossing_count`, and
-mini-roundabouts to `mini_roundabout_count`. `traffic_signals:direction`
+stops to `stop_count`, give-ways to `give_way_count`, unsignalled crossings to
+`crossing_count`, and mini-roundabouts to `mini_roundabout_count`. A crossing
+tagged `crossing=traffic_signals` contributes to `signal_count` instead.
+`traffic_signals:direction`
 overrides `direction` for signals; other controls use `direction`. Values
 `forward` and `backward` are relative to the stored way order and are compared
 with the edge's `is_forward` flag. `to_degree` counts distinct neighboring

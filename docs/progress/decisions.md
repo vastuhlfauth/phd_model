@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6b: per request, apply configured low-speed caps only
+  without maxspeed; treat rural trunk/primary as dual carriageways only for
+  explicit `oneway=yes`, and count signalised crossings only as signals.
+  The new speed caps and per-control delays remain `TODO(confirm)`.
 - 2026-11-23, step 6b: flatten BD ALTI raster tiles at department level,
   rejecting duplicate basenames before extraction. Native Windows tar lacks
   `-s`, so group listed tiles by nesting depth and use `--strip-components`

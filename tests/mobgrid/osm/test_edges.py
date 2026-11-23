@@ -142,7 +142,8 @@ def _raw_tables(tmp_path):
             else "map {'highway':'traffic_signals', "
             "'traffic_signals:direction':'forward'}"
             if node_id == 74
-            else "map {'highway':'crossing', 'direction':'both'}"
+            else "map {'highway':'crossing', 'crossing':'traffic_signals', "
+            "'direction':'both'}"
             if node_id == 77
             else "map {'highway':'give_way', 'direction':'backward'}"
             if node_id == 80
@@ -528,28 +529,32 @@ def test_directional_control_counts_and_to_degree(tmp_path) -> None:
         [result.edges_path],
     ).fetchall()
     assert signal_counts == [(True, 1), (False, 0)]
+    assert connection.execute(
+        "SELECT DISTINCT oneway FROM read_parquet(?) WHERE way_id = 1",
+        [result.edges_path],
+    ).fetchall() == [("yes",)]
 
     crossing_counts = connection.execute(
         """
-        SELECT is_forward, stop_count, crossing_count, mini_roundabout_count
+        SELECT is_forward, signal_count, stop_count, give_way_count, crossing_count
         FROM read_parquet(?)
         WHERE way_id = 38 AND mode = 'foot'
         ORDER BY is_forward DESC
         """,
         [result.edges_path],
     ).fetchall()
-    assert crossing_counts == [(True, 0, 1, 0), (False, 0, 1, 0)]
+    assert crossing_counts == [(True, 1, 0, 0, 0), (False, 1, 0, 0, 0)]
 
     stop_counts = connection.execute(
         """
-        SELECT is_forward, stop_count
+        SELECT is_forward, stop_count, give_way_count
         FROM read_parquet(?)
         WHERE way_id = 39 AND mode = 'foot'
         ORDER BY is_forward DESC
         """,
         [result.edges_path],
     ).fetchall()
-    assert stop_counts == [(True, 0), (False, 1)]
+    assert stop_counts == [(True, 0, 0), (False, 0, 1)]
 
     mini_roundabout_counts = connection.execute(
         """

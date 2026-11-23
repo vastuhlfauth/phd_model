@@ -28,10 +28,19 @@ def _write_edges(path, records):
                 "length_m": [record["length_m"] for record in records],
                 "geometry_wkb": geometry,
                 "highway": [record["highway"] for record in records],
+                "service": pa.array(
+                    [record.get("service") for record in records], type=pa.string()
+                ),
+                "oneway": pa.array(
+                    [record.get("oneway") for record in records], type=pa.string()
+                ),
                 "maxspeed_kmh": [record["maxspeed_kmh"] for record in records],
                 "speed_context": [record["speed_context"] for record in records],
                 "signal_count": [record.get("signal_count", 0) for record in records],
                 "stop_count": [record.get("stop_count", 0) for record in records],
+                "give_way_count": [
+                    record.get("give_way_count", 0) for record in records
+                ],
                 "crossing_count": [
                     record.get("crossing_count", 0) for record in records
                 ],
@@ -108,7 +117,7 @@ def test_class_context_default_is_used_only_when_maxspeed_is_null(tmp_path):
     assert rows["default"][1] is True
     assert rows["default"][2] == "residential"
     assert rows["default"][3]
-    assert rows["rural_default"][0] == pytest.approx(100 * 3.6 / 110)
+    assert rows["rural_default"][0] == pytest.approx(100 * 3.6 / 80)
     assert rows["rural_default"][2] == "trunk"
     assert rows["rural_default"][3]
     assert rows["tagged"][0] == pytest.approx(12.0)
@@ -130,6 +139,7 @@ def test_each_control_adds_one_delay_and_junction_delay_is_smaller(tmp_path):
                 "LINESTRING (10000 0, 10100 0)",
                 signal_count=1,
                 stop_count=1,
+                give_way_count=1,
                 crossing_count=1,
                 mini_roundabout_count=1,
             ),
@@ -154,16 +164,73 @@ def test_each_control_adds_one_delay_and_junction_delay_is_smaller(tmp_path):
 
     base = 100 * 3.6 / 50
     assert rows["controls"] - rows["none"] == pytest.approx(
-        4 * config.car_speed.delays.per_control_s
+        15 + 5 + 2 + 3
     )
     assert rows["junction"] - rows["none"] == pytest.approx(
         config.car_speed.delays.at_to_node_s
     )
-    assert (
-        config.car_speed.delays.at_to_node_s
-        < config.car_speed.delays.per_control_s
-    )
     assert rows["none"] == pytest.approx(base)
+
+
+def test_default_caps_and_directional_dual_carriageway(tmp_path):
+    edges = tmp_path / "edges.parquet"
+    costs = tmp_path / "car_costs.parquet"
+    records = [
+        _record("parking", "LINESTRING (0 0, 100 0)", highway="service",
+                service="parking_aisle"),
+        _record("trunk", "LINESTRING (10000 0, 10100 0)",
+                highway="trunk", speed_context="rural"),
+        _record("dual", "LINESTRING (20000 0, 20100 0)",
+                highway="primary", speed_context="rural", oneway="yes"),
+        _record("home", "LINESTRING (30000 0, 30100 0)",
+                speed_context="motorway"),
+        _record("explicit", "LINESTRING (40000 0, 40100 0)",
+                highway="service", maxspeed_kmh=40.0),
+        _record("crossing", "LINESTRING (50000 0, 50100 0)", crossing_count=1),
+        _record("signal", "LINESTRING (60000 0, 60100 0)", signal_count=1),
+    ]
+    _write_edges(edges, records)
+    connection = duckdb.connect()
+    try:
+        build_car_costs(connection, edges, costs, config=_config())
+        times = dict(connection.execute(
+            "SELECT edge_key, time_s FROM read_parquet(?)", [str(costs)]
+        ).fetchall())
+    finally:
+        connection.close()
+    assert times["parking"] == pytest.approx(100 * 3.6 / 20)
+    assert times["trunk"] == pytest.approx(100 * 3.6 / 80)
+    assert times["dual"] == pytest.approx(100 * 3.6 / 110)
+    assert times["home"] == pytest.approx(100 * 3.6 / 50)
+    assert times["explicit"] == pytest.approx(100 * 3.6 / 40)
+    assert times["crossing"] == pytest.approx(100 * 3.6 / 50)
+    assert times["signal"] == pytest.approx(100 * 3.6 / 50 + 15)
+
+
+@pytest.mark.parametrize(
+    ("highway", "expected_speed"),
+    [
+        ("living_street", 20), ("service", 20), ("track", 20),
+        ("residential", 50), ("footway", 20), ("path", 20),
+        ("cycleway", 20), ("pedestrian", 20), ("bridleway", 20),
+    ],
+)
+def test_default_caps_apply_in_all_contexts(tmp_path, highway, expected_speed):
+    edges = tmp_path / "edges.parquet"
+    costs = tmp_path / "costs.parquet"
+    _write_edges(edges, [
+        _record("edge", "LINESTRING (0 0, 100 0)", highway=highway,
+                speed_context="motorway")
+    ])
+    connection = duckdb.connect()
+    try:
+        build_car_costs(connection, edges, costs, config=_config())
+        time_s = connection.execute(
+            "SELECT time_s FROM read_parquet(?)", [str(costs)]
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert time_s == pytest.approx(360 / expected_speed)
 
 
 def test_class_realism_factor_scales_explicit_speed_limit(tmp_path):

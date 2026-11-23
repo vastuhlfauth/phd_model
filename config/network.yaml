@@ -216,10 +216,25 @@ car_speed:
     rural:
       motorway: 130
       motorway_link: 80
-      trunk: 110
+      trunk: 80
       trunk_link: 80
-      primary: 90
+      primary: 80
       primary_link: 80
+  # TODO(confirm): default-only caps for low-speed ways.
+  default_caps_kmh_by_highway:
+    living_street: 20
+    service: 20
+    track: 20
+    residential: 50
+    footway: 20
+    path: 20
+    cycleway: 20
+    pedestrian: 20
+    bridleway: 20
+  # TODO(confirm): rural trunk and primary with explicit oneway=yes.
+  rural_oneway_speed_kmh_by_highway:
+    trunk: 110
+    primary: 110
   # TODO(confirm): calibrate realism factors by class at R4.
   realism_factor_by_highway:
     motorway: 1.0
@@ -256,8 +271,12 @@ car_speed:
     # TODO(confirm): review the length-weighted agreement fitting rule.
     fit_strategy: max_length_weighted_agreement
   delays:
-    # TODO(confirm): calibrate fixed delay per directional control.
-    per_control_s: 5
+    # TODO(confirm): calibrate fixed delays per directional control.
+    signal_s: 15
+    stop_s: 5
+    give_way_s: 2
+    mini_roundabout_s: 3
+    crossing_s: 0
     # TODO(confirm): calibrate the smaller delay at complex to-nodes.
     at_to_node_s: 2
     # TODO(confirm): confirm the degree threshold for a complex to-node.

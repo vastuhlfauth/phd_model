@@ -3,6 +3,18 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: car defaults and controls (2026-11-23)
+
+- Added provisional default-only class speed caps, rural trunk/primary
+  `oneway=yes` dual-carriageway defaults, and typed control delays.
+- Edge-build version 6 retains raw `oneway`, separates stop and give-way,
+  and classifies signalised crossings as signals without double-counting.
+- Bike costs, the unified resumable cost stage and the Géovélo report remain:
+  the spec and configuration do not set class caps, stop probabilities,
+  surface fallbacks, interpolation tolerance or Géovélo family mappings.
+- Validation: 29 changed-module tests passed; Ruff and Pylance clean.
+- No pilot, national build, downloads or raw-data modification was run.
+
 ### Step 6b: Windows flat BD ALTI unpack (2026-11-23)
 
 - Fixed Windows path-length failures by extracting only listed `.asc` tiles

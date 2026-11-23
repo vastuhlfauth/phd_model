@@ -55,7 +55,24 @@ def _default_speed_expression(config: CarSpeedConfig) -> str:
             f"WHEN resolved_context = {_sql_text(context)} "
             f"THEN ({class_default})"
         )
-    return "CASE " + " ".join(context_cases) + " END"
+    base = "CASE " + " ".join(context_cases) + " END"
+    oneway_cases = " ".join(
+        f"WHEN {_sql_text(highway)} THEN {speed!r}"
+        for highway, speed in config.rural_oneway_speed_kmh_by_highway.items()
+    )
+    base = (
+        "CASE WHEN resolved_context = 'rural' AND lower(trim(oneway)) = 'yes' "
+        f"THEN coalesce(CASE lower(highway) {oneway_cases} END, ({base})) "
+        f"ELSE ({base}) END"
+    )
+    cap_cases = " ".join(
+        f"WHEN {_sql_text(highway)} THEN {speed!r}"
+        for highway, speed in config.default_caps_kmh_by_highway.items()
+    )
+    return (
+        f"least(({base}), coalesce(CASE lower(highway) {cap_cases} END, "
+        f"({base})))"
+    )
 
 
 def _realism_factor_expression(config: CarSpeedConfig) -> str:
@@ -223,8 +240,8 @@ def build_car_costs(
     connection.execute(f"""
         CREATE OR REPLACE TEMP TABLE _car_edges AS
         WITH geometries AS (
-            SELECT edge_key, highway, maxspeed_kmh, speed_context, length_m,
-                   signal_count, stop_count, crossing_count,
+            SELECT edge_key, highway, maxspeed_kmh, speed_context, length_m, oneway,
+                   signal_count, stop_count, give_way_count, crossing_count,
                    mini_roundabout_count, to_degree,
                    ST_GeomFromWKB(geometry_wkb) AS geom
             FROM read_parquet('{edge_source}')
@@ -288,12 +305,14 @@ def build_car_costs(
                    speed_limit_kmh * realism_factor AS effective_speed_kmh,
                    length_m * 3.6
                        / (speed_limit_kmh * realism_factor)
-                   + (
-                       coalesce(signal_count, 0)
-                       + coalesce(stop_count, 0)
-                       + coalesce(crossing_count, 0)
-                       + coalesce(mini_roundabout_count, 0)
-                   ) * {config.car_speed.delays.per_control_s!r}
+                   + coalesce(signal_count, 0) * {config.car_speed.delays.signal_s!r}
+                   + coalesce(stop_count, 0) * {config.car_speed.delays.stop_s!r}
+                   + coalesce(give_way_count, 0)
+                       * {config.car_speed.delays.give_way_s!r}
+                   + coalesce(crossing_count, 0)
+                       * {config.car_speed.delays.crossing_s!r}
+                   + coalesce(mini_roundabout_count, 0)
+                       * {config.car_speed.delays.mini_roundabout_s!r}
                    + CASE
                        WHEN to_degree >=
                             {config.car_speed.delays.degree_threshold}

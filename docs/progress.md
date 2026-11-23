@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Step 6b BD ALTI unpack/elevation and provisional car free-flow costs complete; Windows unpack uses flat tiles and long-path-safe cleanup; bike costs remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Step 6b car defaults and typed control delays updated; active-mode costs, unified stage and Géovélo check remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -66,7 +66,9 @@ Status values: not started, in progress, review, merged.
   overrides for trunk/primary roads; all realism factors are 1.0 until R4.
   Untagged context uses car-edge length within a 500 m centroid radius and
   a fitted length-weighted urban/rural separator (1 km fallback). Control
-  delays are 5 s per control and 2 s at to-nodes of degree 3+, with
+  delays are 15 s per signal, 5 s per stop, 2 s per give-way,
+  3 s per mini-roundabout, 0 s per unsignalled crossing and 2 s at
+  to-nodes of degree 3+, with
   30/50/80/110 km/h speed-limit bucket bounds. Confirm defaults, class
   overrides, factors, density rule, delays and buckets against the pilot/R4.
 - 2026-10-09, bootstrap, the initial base configuration contains the EPSG:3035 coordinate system and 200 m/1 km resolutions; `config/base.yaml`.
@@ -95,6 +97,11 @@ Each item stays open until a value is decided; the value goes into `config/`.
   overrides, realism factors, urban-density radius/fallback/fitting rule,
   control and junction delays, and speed-limit buckets; provisional values
   are marked `TODO(confirm)` in `config/network.yaml`.
+- [ ] Step 6b (sections 8.3 and 9.7): choose provisional bike class speed
+  caps and stop probabilities, tracktype/class surface defaults, and the
+  interpolation grid and tolerance; these are not specified or configured.
+- [ ] Step 6b (section 8.1): define Géovélo left/right facility counting and
+  class-family mappings before comparing lengths to OSM.
 - [ ] Step 6b: user rerun of BD ALTI unpack after the Windows path-length
   fix; move aside old nested/stale department outputs first. Real archive
   extraction was not run during validation; no new parameter assumptions.
