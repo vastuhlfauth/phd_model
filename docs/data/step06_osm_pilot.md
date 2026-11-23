@@ -8,94 +8,132 @@ lengths are ellipsoidal metres computed from ordered OSM node latitude/longitude
 | Mode | Highway class | Directed edges | Length (m) |
 |---|---|---:|---:|
 | bike | bridleway | 578 | 130,091.2 |
-| bike | bus_stop | 8 | 106.7 |
 | bike | corridor | 19 | 321.1 |
-| bike | cycleway | 28,187 | 3,742,288.2 |
-| bike | footway | 9,368 | 559,938.6 |
-| bike | living_street | 6,697 | 388,160.5 |
-| bike | passing_place | 8 | 980.0 |
+| bike | cycleway | 28,176 | 3,742,288.2 |
+| bike | footway | 9,362 | 559,938.6 |
+| bike | living_street | 6,691 | 388,160.5 |
 | bike | path | 68,164 | 11,922,127.0 |
-| bike | pedestrian | 11,532 | 438,720.3 |
+| bike | pedestrian | 11,528 | 438,720.3 |
 | bike | platform | 2 | 20.7 |
-| bike | primary | 39,091 | 5,432,595.9 |
+| bike | primary | 39,062 | 5,432,595.9 |
 | bike | primary_link | 677 | 58,398.1 |
-| bike | residential | 291,107 | 23,437,090.8 |
-| bike | rest_area | 114 | 59,805.8 |
+| bike | residential | 291,019 | 23,437,090.8 |
 | bike | road | 110 | 18,043.5 |
-| bike | secondary | 88,449 | 12,678,020.7 |
+| bike | secondary | 88,431 | 12,678,020.7 |
 | bike | secondary_link | 448 | 19,145.8 |
-| bike | ser | 6 | 298.7 |
-| bike | service | 328,202 | 24,519,042.7 |
-| bike | services | 70 | 57,059.0 |
+| bike | service | 328,183 | 24,519,042.7 |
 | bike | steps | 56 | 688.0 |
-| bike | tertiary | 144,572 | 24,887,094.6 |
+| bike | tertiary | 144,541 | 24,887,094.6 |
 | bike | tertiary_link | 377 | 18,734.0 |
-| bike | track | 272,546 | 82,546,931.1 |
-| bike | trunk | 286 | 107,953.8 |
+| bike | track | 272,514 | 82,546,931.1 |
+| bike | trunk | 283 | 107,953.8 |
 | bike | trunk_link | 480 | 80,886.2 |
-| bike | unclassified | 261,713 | 59,530,550.6 |
+| bike | unclassified | 261,668 | 59,530,550.6 |
 | car | bridleway | 10 | 10,575.4 |
 | car | cycleway | 192 | 107,166.0 |
 | car | footway | 162 | 8,062.5 |
-| car | living_street | 5,751 | 342,065.1 |
-| car | motorway | 1,219 | 1,316,225.0 |
-| car | motorway_link | 1,063 | 210,199.4 |
-| car | passing_place | 8 | 980.0 |
+| car | living_street | 5,745 | 342,065.1 |
+| car | motorway | 1,213 | 1,316,225.0 |
+| car | motorway_link | 1,061 | 210,199.4 |
 | car | path | 147 | 29,242.6 |
 | car | pedestrian | 338 | 15,283.8 |
-| car | primary | 39,254 | 5,469,050.2 |
+| car | primary | 39,224 | 5,469,050.2 |
 | car | primary_link | 684 | 58,916.7 |
-| car | residential | 287,824 | 23,215,833.5 |
-| car | rest_area | 114 | 59,805.8 |
+| car | residential | 287,737 | 23,215,833.5 |
 | car | road | 110 | 18,043.5 |
-| car | secondary | 88,493 | 12,686,678.0 |
+| car | secondary | 88,475 | 12,686,678.0 |
 | car | secondary_link | 447 | 19,130.7 |
-| car | ser | 6 | 298.7 |
-| car | service | 327,479 | 24,475,039.6 |
-| car | services | 70 | 57,059.0 |
-| car | tertiary | 144,309 | 24,873,919.8 |
+| car | service | 327,460 | 24,475,039.6 |
+| car | tertiary | 144,278 | 24,873,919.8 |
 | car | tertiary_link | 374 | 18,765.2 |
 | car | track | 1,224 | 265,635.7 |
-| car | trunk | 821 | 502,636.9 |
+| car | trunk | 814 | 502,636.9 |
 | car | trunk_link | 516 | 89,289.2 |
-| car | unclassified | 261,479 | 59,483,815.7 |
+| car | unclassified | 261,434 | 59,483,815.7 |
 | foot | (no highway) | 1,262 | 136,968.2 |
 | foot | bridleway | 584 | 130,465.6 |
-| foot | bus_stop | 8 | 106.7 |
 | foot | corridor | 20 | 329.6 |
-| foot | crossing | 2 | 11.6 |
-| foot | cycleway | 31,312 | 3,923,856.1 |
-| foot | footway | 116,942 | 5,008,387.0 |
-| foot | living_street | 7,394 | 418,251.6 |
-| foot | passing_place | 8 | 980.0 |
+| foot | cycleway | 31,298 | 3,923,856.1 |
+| foot | footway | 116,928 | 5,008,387.0 |
+| foot | living_street | 7,388 | 418,251.6 |
 | foot | path | 68,904 | 11,999,605.0 |
-| foot | pedestrian | 12,040 | 460,478.1 |
+| foot | pedestrian | 12,036 | 460,478.1 |
 | foot | platform | 2 | 20.7 |
-| foot | primary | 48,762 | 5,936,864.3 |
+| foot | primary | 48,726 | 5,936,864.3 |
 | foot | primary_link | 1,264 | 109,669.2 |
-| foot | residential | 310,690 | 24,401,483.6 |
-| foot | rest_area | 114 | 59,805.8 |
+| foot | residential | 310,596 | 24,401,483.6 |
 | foot | road | 110 | 18,043.5 |
-| foot | secondary | 102,364 | 13,137,488.0 |
+| foot | secondary | 102,342 | 13,137,488.0 |
 | foot | secondary_link | 786 | 32,705.1 |
-| foot | ser | 6 | 298.7 |
-| foot | service | 343,968 | 25,187,823.3 |
-| foot | services | 70 | 57,059.0 |
+| foot | service | 343,946 | 25,187,823.3 |
 | foot | steps | 4,500 | 54,680.4 |
-| foot | tertiary | 154,932 | 25,216,903.0 |
+| foot | tertiary | 154,898 | 25,216,903.0 |
 | foot | tertiary_link | 646 | 31,014.3 |
-| foot | track | 272,690 | 82,577,838.7 |
-| foot | trunk | 666 | 338,420.2 |
+| foot | track | 272,658 | 82,577,838.7 |
+| foot | trunk | 660 | 338,420.2 |
 | foot | trunk_link | 938 | 160,687.7 |
-| foot | unclassified | 266,726 | 59,783,930.6 |
+| foot | unclassified | 266,678 | 59,783,930.6 |
+
+## Dropped highway values
+
+| Highway value | Ways |
+|---|---:|
+| bus_guideway | 2 |
+| bus_stop | 4 |
+| construction | 163 |
+| crossing | 1 |
+| elevator | 3 |
+| passing_place | 3 |
+| proposed | 88 |
+| raceway | 138 |
+| rest_area | 43 |
+| ser | 3 |
+| services | 30 |
+
+## Car access on non-road classes
+
+| Highway class | Access tag | Value | Directed edges | Length (m) |
+|---|---|---|---:|---:|
+| bridleway | motor_vehicle | yes | 10 | 10,575.4 |
+| cycleway | motor_vehicle | designated | 4 | 446.1 |
+| cycleway | motor_vehicle | destination | 8 | 1,088.4 |
+| cycleway | motor_vehicle | yes | 170 | 103,963.4 |
+| cycleway | motorcar | yes | 10 | 1,668.1 |
+| footway | motor_vehicle | destination | 112 | 2,195.0 |
+| footway | motor_vehicle | permissive | 14 | 817.8 |
+| footway | motor_vehicle | yes | 36 | 5,049.7 |
+| path | motor_vehicle | destination | 2 | 65.4 |
+| path | motor_vehicle | permissive | 18 | 5,678.2 |
+| path | motor_vehicle | yes | 98 | 18,229.0 |
+| path | motorcar | destination | 4 | 1,787.0 |
+| path | motorcar | permissive | 2 | 1,843.3 |
+| path | motorcar | yes | 23 | 1,639.8 |
+| pedestrian | motor_vehicle | designated | 32 | 1,287.7 |
+| pedestrian | motor_vehicle | destination | 261 | 10,463.2 |
+| pedestrian | motor_vehicle | permissive | 8 | 242.5 |
+| pedestrian | motor_vehicle | yes | 37 | 3,290.3 |
+| track | access | customers | 312 | 20,041.2 |
+| track | access | destination | 106 | 14,544.7 |
+| track | access | permissive | 82 | 20,777.5 |
+| track | access | restricted | 2 | 46.6 |
+| track | access | yes | 80 | 12,852.3 |
+| track | motor_vehicle | designated | 14 | 1,233.6 |
+| track | motor_vehicle | destination | 10 | 7,035.3 |
+| track | motor_vehicle | permissive | 192 | 61,683.3 |
+| track | motor_vehicle | permit | 3 | 973.4 |
+| track | motor_vehicle | yes | 393 | 116,138.1 |
+| track | motorcar | designated | 8 | 4,753.0 |
+| track | motorcar | destination | 12 | 1,908.2 |
+| track | motorcar | official | 4 | 448.6 |
+| track | motorcar | yes | 6 | 3,199.8 |
 
 ## Largest strongly connected component
 
 | Mode | Graph nodes | Nodes in largest SCC | Node share | Directed length share |
 |---|---:|---:|---:|---:|
-| car | 528,792 | 523,685 | 99.0% | 99.4% |
-| bike | 648,179 | 639,795 | 98.7% | 99.5% |
-| foot | 678,670 | 658,590 | 97.0% | 98.4% |
+| car | 528,562 | 523,531 | 99.0% | 99.5% |
+| bike | 647,931 | 639,624 | 98.7% | 99.5% |
+| foot | 678,422 | 658,414 | 97.1% | 98.4% |
 
 ## Length checks
 
@@ -107,93 +145,78 @@ lengths are ellipsoidal metres computed from ordered OSM node latitude/longitude
 | Mode | Highway class | Directed edges | With maxspeed | Edge coverage | Length coverage |
 |---|---|---:|---:|---:|---:|
 | bike | bridleway | 578 | 0 | 0.0% | 0.0% |
-| bike | bus_stop | 8 | 0 | 0.0% | 0.0% |
 | bike | corridor | 19 | 0 | 0.0% | 0.0% |
-| bike | cycleway | 28,187 | 100 | 0.4% | 0.3% |
-| bike | footway | 9,368 | 26 | 0.3% | 0.1% |
-| bike | living_street | 6,697 | 3,163 | 47.2% | 43.1% |
-| bike | passing_place | 8 | 0 | 0.0% | 0.0% |
+| bike | cycleway | 28,176 | 100 | 0.4% | 0.3% |
+| bike | footway | 9,362 | 26 | 0.3% | 0.1% |
+| bike | living_street | 6,691 | 3,159 | 47.2% | 43.1% |
 | bike | path | 68,164 | 168 | 0.2% | 0.4% |
-| bike | pedestrian | 11,532 | 212 | 1.8% | 1.5% |
+| bike | pedestrian | 11,528 | 212 | 1.8% | 1.5% |
 | bike | platform | 2 | 0 | 0.0% | 0.0% |
-| bike | primary | 39,091 | 20,029 | 51.2% | 49.1% |
+| bike | primary | 39,062 | 20,011 | 51.2% | 49.1% |
 | bike | primary_link | 677 | 207 | 30.6% | 39.0% |
-| bike | residential | 291,107 | 82,740 | 28.4% | 22.3% |
-| bike | rest_area | 114 | 0 | 0.0% | 0.0% |
+| bike | residential | 291,019 | 82,699 | 28.4% | 22.3% |
 | bike | road | 110 | 0 | 0.0% | 0.0% |
-| bike | secondary | 88,449 | 31,851 | 36.0% | 25.4% |
+| bike | secondary | 88,431 | 31,842 | 36.0% | 25.4% |
 | bike | secondary_link | 448 | 117 | 26.1% | 32.2% |
-| bike | ser | 6 | 0 | 0.0% | 0.0% |
-| bike | service | 328,202 | 6,900 | 2.1% | 1.5% |
-| bike | services | 70 | 0 | 0.0% | 0.0% |
+| bike | service | 328,183 | 6,900 | 2.1% | 1.5% |
 | bike | steps | 56 | 0 | 0.0% | 0.0% |
-| bike | tertiary | 144,572 | 36,956 | 25.6% | 15.0% |
+| bike | tertiary | 144,541 | 36,946 | 25.6% | 15.0% |
 | bike | tertiary_link | 377 | 55 | 14.6% | 15.6% |
-| bike | track | 272,546 | 229 | 0.1% | 0.0% |
-| bike | trunk | 286 | 232 | 81.1% | 96.7% |
+| bike | track | 272,514 | 229 | 0.1% | 0.0% |
+| bike | trunk | 283 | 229 | 80.9% | 96.7% |
 | bike | trunk_link | 480 | 126 | 26.2% | 22.7% |
-| bike | unclassified | 261,713 | 16,432 | 6.3% | 4.3% |
+| bike | unclassified | 261,668 | 16,423 | 6.3% | 4.3% |
 | car | bridleway | 10 | 0 | 0.0% | 0.0% |
 | car | cycleway | 192 | 0 | 0.0% | 0.0% |
 | car | footway | 162 | 0 | 0.0% | 0.0% |
-| car | living_street | 5,751 | 2,599 | 45.2% | 41.2% |
-| car | motorway | 1,219 | 1,210 | 99.3% | 99.8% |
-| car | motorway_link | 1,063 | 403 | 37.9% | 34.7% |
-| car | passing_place | 8 | 0 | 0.0% | 0.0% |
+| car | living_street | 5,745 | 2,595 | 45.2% | 41.2% |
+| car | motorway | 1,213 | 1,204 | 99.3% | 99.8% |
+| car | motorway_link | 1,061 | 403 | 38.0% | 34.7% |
 | car | path | 147 | 0 | 0.0% | 0.0% |
 | car | pedestrian | 338 | 30 | 8.9% | 6.1% |
-| car | primary | 39,254 | 20,132 | 51.3% | 49.0% |
+| car | primary | 39,224 | 20,113 | 51.3% | 49.0% |
 | car | primary_link | 684 | 209 | 30.6% | 39.0% |
-| car | residential | 287,824 | 80,572 | 28.0% | 21.9% |
-| car | rest_area | 114 | 0 | 0.0% | 0.0% |
+| car | residential | 287,737 | 80,532 | 28.0% | 21.9% |
 | car | road | 110 | 0 | 0.0% | 0.0% |
-| car | secondary | 88,493 | 31,900 | 36.0% | 25.4% |
+| car | secondary | 88,475 | 31,891 | 36.0% | 25.4% |
 | car | secondary_link | 447 | 117 | 26.2% | 32.2% |
-| car | ser | 6 | 0 | 0.0% | 0.0% |
-| car | service | 327,479 | 6,945 | 2.1% | 1.5% |
-| car | services | 70 | 0 | 0.0% | 0.0% |
-| car | tertiary | 144,309 | 36,775 | 25.5% | 15.0% |
+| car | service | 327,460 | 6,945 | 2.1% | 1.5% |
+| car | tertiary | 144,278 | 36,765 | 25.5% | 15.0% |
 | car | tertiary_link | 374 | 55 | 14.7% | 15.5% |
 | car | track | 1,224 | 16 | 1.3% | 0.7% |
-| car | trunk | 821 | 763 | 92.9% | 99.3% |
+| car | trunk | 814 | 756 | 92.9% | 99.3% |
 | car | trunk_link | 516 | 143 | 27.7% | 23.6% |
-| car | unclassified | 261,479 | 16,397 | 6.3% | 4.3% |
+| car | unclassified | 261,434 | 16,388 | 6.3% | 4.3% |
 | foot | (no highway) | 1,262 | 0 | 0.0% | 0.0% |
 | foot | bridleway | 584 | 0 | 0.0% | 0.0% |
-| foot | bus_stop | 8 | 0 | 0.0% | 0.0% |
 | foot | corridor | 20 | 0 | 0.0% | 0.0% |
-| foot | crossing | 2 | 0 | 0.0% | 0.0% |
-| foot | cycleway | 31,312 | 116 | 0.4% | 0.3% |
-| foot | footway | 116,942 | 164 | 0.1% | 0.1% |
-| foot | living_street | 7,394 | 3,624 | 49.0% | 44.4% |
-| foot | passing_place | 8 | 0 | 0.0% | 0.0% |
+| foot | cycleway | 31,298 | 116 | 0.4% | 0.3% |
+| foot | footway | 116,928 | 164 | 0.1% | 0.1% |
+| foot | living_street | 7,388 | 3,620 | 49.0% | 44.4% |
 | foot | path | 68,904 | 206 | 0.3% | 0.4% |
-| foot | pedestrian | 12,040 | 240 | 2.0% | 1.6% |
+| foot | pedestrian | 12,036 | 240 | 2.0% | 1.6% |
 | foot | platform | 2 | 0 | 0.0% | 0.0% |
-| foot | primary | 48,762 | 25,158 | 51.6% | 50.2% |
+| foot | primary | 48,726 | 25,134 | 51.6% | 50.2% |
 | foot | primary_link | 1,264 | 390 | 30.9% | 39.1% |
-| foot | residential | 310,690 | 89,692 | 28.9% | 22.8% |
-| foot | rest_area | 114 | 0 | 0.0% | 0.0% |
+| foot | residential | 310,596 | 89,650 | 28.9% | 22.8% |
 | foot | road | 110 | 0 | 0.0% | 0.0% |
-| foot | secondary | 102,364 | 38,202 | 37.3% | 26.3% |
+| foot | secondary | 102,342 | 38,190 | 37.3% | 26.3% |
 | foot | secondary_link | 786 | 196 | 24.9% | 29.3% |
-| foot | ser | 6 | 0 | 0.0% | 0.0% |
-| foot | service | 343,968 | 8,008 | 2.3% | 1.7% |
-| foot | services | 70 | 0 | 0.0% | 0.0% |
+| foot | service | 343,946 | 8,008 | 2.3% | 1.7% |
 | foot | steps | 4,500 | 14 | 0.3% | 0.5% |
-| foot | tertiary | 154,932 | 40,936 | 26.4% | 15.3% |
+| foot | tertiary | 154,898 | 40,926 | 26.4% | 15.3% |
 | foot | tertiary_link | 646 | 100 | 15.5% | 17.7% |
-| foot | track | 272,690 | 234 | 0.1% | 0.0% |
-| foot | trunk | 666 | 556 | 83.5% | 97.9% |
+| foot | track | 272,658 | 234 | 0.1% | 0.0% |
+| foot | trunk | 660 | 550 | 83.3% | 97.9% |
 | foot | trunk_link | 938 | 252 | 26.9% | 22.9% |
-| foot | unclassified | 266,726 | 17,326 | 6.5% | 4.4% |
+| foot | unclassified | 266,678 | 17,316 | 6.5% | 4.4% |
 
 ## Bike infrastructure length
 
 | Bike class | Directed bike edges | Length (m) |
 |---|---:|---:|
-| bus_lane | 1,421 | 63,703.5 |
-| low_speed | 61,519 | 3,536,338.4 |
-| mixed_traffic | 1,445,235 | 242,102,701.4 |
-| painted_lane | 11,367 | 660,079.5 |
-| separated_track_path | 33,325 | 4,272,270.8 |
+| bus_lane | 1,419 | 63,703.5 |
+| low_speed | 61,487 | 3,536,338.4 |
+| mixed_traffic | 1,444,784 | 241,984,451.2 |
+| painted_lane | 11,365 | 660,079.5 |
+| separated_track_path | 33,314 | 4,272,270.8 |
