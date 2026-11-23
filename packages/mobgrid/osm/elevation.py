@@ -17,7 +17,9 @@ from common.config import load_pilot_config
 from common.duckdb_io import open_connection, write_parquet
 from numba import njit
 
-from mobgrid.osm.config import load_network_config
+from mobgrid.energy.rates import EnergyConfig, load_energy_config
+from mobgrid.osm.active_costs import _grade_report_lines, _summarize_clipped_grades
+from mobgrid.osm.config import NetworkConfig, load_network_config
 
 FloatArray = npt.NDArray[np.float64]
 logger = logging.getLogger(__name__)
@@ -314,6 +316,10 @@ class ElevationSummary:
     tunnel_length_m: float = 0.0
     climb_by_mode: dict[str, tuple[float, float]] = field(default_factory=dict)
     incomplete_by_mode: dict[str, int] = field(default_factory=dict)
+    clipped_segments_by_class: dict[tuple[str, str], tuple[int, float]] = field(
+        default_factory=dict
+    )
+    longest_clipped_edges: tuple[tuple[str, int, str, str, float, float], ...] = ()
 
 
 def _smooth_way_elevations(
@@ -501,13 +507,15 @@ def enrich_edges_with_elevation(
     *,
     ways_path: str | Path,
     way_elevations_path: str | Path,
-    smoothing_window_m: float,
+    network: NetworkConfig,
+    energy: EnergyConfig,
 ) -> ElevationSummary:
     """Add directional profiles to the edge table in EPSG:3035 metres (8.1)."""
     edges = Path(edges_path)
     nodes = Path(nodes_path)
     ways = Path(ways_path)
     way_elevations = Path(way_elevations_path)
+    smoothing_window_m = network.elevation_smoothing_window_m
     if not np.isfinite(smoothing_window_m) or smoothing_window_m <= 0:
         raise ValueError("elevation smoothing window must be positive")
     if way_elevations.resolve() in (edges.resolve(), nodes.resolve(), ways.resolve()):
@@ -689,6 +697,53 @@ def enrich_edges_with_elevation(
         incomplete_by_mode = {
             mode: int(incomplete) for mode, _, _, incomplete in climb_rows
         }
+        connection.execute(f"""
+            CREATE OR REPLACE TEMP TABLE _osm_clipped_grades AS
+            WITH points AS (
+                SELECT e.edge_key, e.way_id, e.mode,
+                       lower(trim(coalesce(e.highway, ''))) AS highway,
+                       e.length_m AS edge_length_m, ref.node_sequence,
+                       n.x, n.y,
+                       list_extract(p.node_elevations_m, ref.node_sequence) AS z,
+                       lag(n.x) OVER edge_order AS previous_x,
+                       lag(n.y) OVER edge_order AS previous_y,
+                       lag(list_extract(
+                           p.node_elevations_m, ref.node_sequence
+                       )) OVER edge_order AS previous_z
+                FROM read_parquet('{edge_source}') e
+                JOIN _osm_edge_elevation_profiles p USING (edge_key)
+                CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
+                    AS ref(node_id, node_sequence)
+                JOIN read_parquet('{node_source}') n USING (node_id)
+                WHERE e.mode IN ('foot', 'bike') AND p.climb_m IS NOT NULL
+                WINDOW edge_order AS (
+                    PARTITION BY e.edge_key ORDER BY ref.node_sequence
+                )
+            ), segments AS (
+                SELECT *, sqrt(pow(x - previous_x, 2) + pow(y - previous_y, 2))
+                    AS horizontal
+                FROM points WHERE node_sequence > 1
+            ), graded AS (
+                SELECT *, (z - previous_z) / nullif(horizontal, 0) AS grade,
+                       horizontal * edge_length_m / nullif(
+                           sum(horizontal) OVER (PARTITION BY edge_key), 0
+                       ) AS segment_length_m
+                FROM segments
+            )
+            SELECT edge_key, way_id, mode, highway, edge_length_m,
+                   segment_length_m, grade
+            FROM graded
+            WHERE (mode = 'foot' AND highway <> 'steps' AND (grade < ? OR grade > ?))
+               OR (mode = 'bike' AND (grade < ? OR grade > ?))
+        """, [
+            *energy.walking.gradient_valid_range,
+            network.bike_speed_table.grade_min,
+            network.bike_speed_table.grade_max,
+        ])
+        clipped_by_class, longest_clipped = _summarize_clipped_grades(
+            connection, "_osm_clipped_grades",
+            network.bike_speed_table.clipped_grade_report_limit,
+        )
         columns = [
             row[0]
             for row in connection.execute(
@@ -735,6 +790,8 @@ def enrich_edges_with_elevation(
         tunnel_length,
         climb_by_mode,
         incomplete_by_mode,
+        clipped_by_class,
+        longest_clipped,
     )
 
 
@@ -754,6 +811,9 @@ def write_elevation_report(
         f"incomplete: {summary.incomplete_by_mode[mode]:,}"
         for mode, values in summary.climb_by_mode.items()
     )
+    grade_lines = "\n".join(_grade_report_lines(
+        summary.clipped_segments_by_class, summary.longest_clipped_edges
+    ))
     destination.write_text(
         f"""# OSM elevation profiles ({state}, {area})
 
@@ -767,6 +827,10 @@ def write_elevation_report(
 - Directed climb by mode, before / after smoothing (m):
 {climb_lines}
 - Units: metres; mean grade is dimensionless.
+
+## Grades to clip in active costs
+
+{grade_lines}
 """,
         encoding="utf-8",
     )
@@ -782,6 +846,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pilot-config", type=Path, default=Path("config/pilot.yaml")
     )
+    parser.add_argument(
+        "--energy-config", type=Path, default=Path("config/energy.yaml")
+    )
     parser.add_argument("--report", type=Path)
     return parser
 
@@ -790,6 +857,7 @@ def main(argv: list[str] | None = None) -> int:
     """Sample BD ALTI and add elevation fields to the configured edge table."""
     args = _parser().parse_args(argv)
     network = load_network_config(args.network_config)
+    energy = load_energy_config(args.energy_config)
     pilot = load_pilot_config(args.pilot_config)
     if args.state not in network.states:
         raise ValueError(f"unsupported state {args.state}")
@@ -820,7 +888,8 @@ def main(argv: list[str] | None = None) -> int:
             connection, edges_path, nodes_path, elevation_paths,
             ways_path=ways_path,
             way_elevations_path=nodes_path.with_name("way_elevations.parquet"),
-            smoothing_window_m=network.elevation_smoothing_window_m,
+            network=network,
+            energy=energy,
         )
     finally:
         connection.close()

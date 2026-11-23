@@ -39,6 +39,56 @@ class ActiveCostSummary:
     longest_clipped_edges: tuple[tuple[str, int, str, str, float, float], ...]
 
 
+def _summarize_clipped_grades(
+    connection: duckdb.DuckDBPyConnection, table: str, limit: int
+) -> tuple[
+    dict[tuple[str, str], tuple[int, float]],
+    tuple[tuple[str, int, str, str, float, float], ...],
+]:
+    name = '"' + table.replace('"', '""') + '"'
+    by_class = {
+        (mode, highway): (int(count), float(length))
+        for mode, highway, count, length in connection.execute(f"""
+            SELECT mode, highway, count(*), sum(segment_length_m)
+            FROM {name} GROUP BY mode, highway ORDER BY mode, highway
+        """).fetchall()
+    }
+    longest = tuple(connection.execute(f"""
+        SELECT edge_key, way_id, mode, highway, max(edge_length_m),
+               arg_max(grade, abs(grade))
+        FROM {name}
+        GROUP BY edge_key, way_id, mode, highway
+        ORDER BY max(edge_length_m) DESC, edge_key LIMIT ?
+    """, [limit]).fetchall())
+    return by_class, longest
+
+
+def _grade_report_lines(
+    by_class: dict[tuple[str, str], tuple[int, float]],
+    longest: tuple[tuple[str, int, str, str, float, float], ...],
+) -> list[str]:
+    lines = [
+        "Lengths are metres; grades are the original signed segment grades.",
+        "Classes are OSM highway classes, separated by directed travel mode.",
+        "",
+        "| Mode | Highway class | Segments | Length (m) |",
+        "|---|---|---:|---:|",
+    ]
+    for (mode, highway), (count, length) in by_class.items():
+        lines.append(f"| {mode} | {highway} | {count} | {length:.1f} |")
+    lines.extend([
+        "",
+        "| Edge key | Way id | Mode | Highway class | Edge length (m) | Grade |",
+        "|---|---:|---|---|---:|---:|",
+    ])
+    for edge_key, way_id, mode, highway, length, grade in longest:
+        lines.append(
+            f"| {edge_key} | {way_id} | {mode} | {highway} | "
+            f"{length:.1f} | {grade:.3f} |"
+        )
+    return lines
+
+
 def _sql_path(path: str | Path) -> str:
     return str(Path(path).resolve()).replace("\\", "/").replace("'", "''")
 
@@ -577,22 +627,10 @@ def enrich_active_edge_costs(
             incomplete_count += missing
             unknown_surfaces.update(batch_unknown)
 
-        clipped_by_class = {
-            (mode, highway): (int(count), float(length))
-            for mode, highway, count, length in connection.execute("""
-                SELECT mode, highway, count(*), sum(segment_length_m)
-                FROM _active_clipped_grades GROUP BY mode, highway
-                ORDER BY mode, highway
-            """).fetchall()
-        }
-        longest = tuple(connection.execute("""
-            SELECT edge_key, way_id, mode, highway, max(edge_length_m),
-                   arg_max(grade, abs(grade))
-            FROM _active_clipped_grades
-            GROUP BY edge_key, way_id, mode, highway
-            ORDER BY max(edge_length_m) DESC, edge_key
-            LIMIT ?
-        """, [network.bike_speed_table.clipped_grade_report_limit]).fetchall())
+        clipped_by_class, longest = _summarize_clipped_grades(
+            connection, "_active_clipped_grades",
+            network.bike_speed_table.clipped_grade_report_limit,
+        )
         write_parquet(connection, "SELECT * FROM _active_cost_result", temporary)
         temporary.replace(output)
     finally:
@@ -613,25 +651,8 @@ def enrich_active_edge_costs(
 
 def write_active_grade_report(summary: ActiveCostSummary, path: str | Path) -> None:
     """Report clipped directed segments and longest affected edges (9.3, 9.7)."""
-    lines = [
-        "# Active-mode clipped grades",
-        "",
-        "Lengths are metres; grades are the original signed segment grades.",
-        "Classes are OSM highway classes, separated by directed travel mode.",
-        "",
-        "| Mode | Highway class | Segments | Length (m) |",
-        "|---|---|---:|---:|",
-    ]
-    for (mode, highway), (count, length) in summary.clipped_segments_by_class.items():
-        lines.append(f"| {mode} | {highway} | {count} | {length:.1f} |")
-    lines.extend([
-        "",
-        "| Edge key | Way id | Mode | Highway class | Edge length (m) | Grade |",
-        "|---|---:|---|---|---:|---:|",
-    ])
-    for edge_key, way_id, mode, highway, length, grade in summary.longest_clipped_edges:
-        lines.append(
-            f"| {edge_key} | {way_id} | {mode} | {highway} | "
-            f"{length:.1f} | {grade:.3f} |"
-        )
+    lines = ["# Active-mode clipped grades", ""]
+    lines.extend(_grade_report_lines(
+        summary.clipped_segments_by_class, summary.longest_clipped_edges
+    ))
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")

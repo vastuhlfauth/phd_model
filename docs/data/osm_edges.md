@@ -99,6 +99,8 @@ Physical climb remains based on the original elevation changes. The adjacent
 `.grades.md` report counts clipped directed segments and their lengths by
 mode and OSM highway class and lists the configured 20 longest affected
 edges with their most extreme original signed grade.
+The elevation-stage report contains the same diagnostics before active costs
+are built, using the smoothed profiles and configured grade ranges.
 
 | Column | Type | Unit | Meaning |
 |---|---|---|---|

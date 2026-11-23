@@ -2,6 +2,9 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from mobgrid.energy.rates import load_energy_config
+from mobgrid.osm.active_costs import enrich_active_edge_costs
+from mobgrid.osm.config import load_network_config
 from mobgrid.osm.elevation import (
     ElevationSummary,
     edge_elevation_profile,
@@ -10,6 +13,9 @@ from mobgrid.osm.elevation import (
     smooth_elevation_profile,
     write_elevation_report,
 )
+
+ENERGY = load_energy_config("config/energy.yaml")
+NETWORK = load_network_config("config/network.yaml")
 
 
 def _grid(path, x_corner, rows, y_corner=0):
@@ -133,6 +139,7 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
                 "edge_key": ["10:0:foot:f", "10:0:foot:r", "11:0:foot:f"],
                 "way_id": [10, 10, 11],
                 "mode": ["foot", "foot", "bike"],
+                "highway": ["residential"] * 3,
                 "is_forward": [True, False, True],
                 "node_ids": pa.array(
                     [[1, 2, 3], [3, 2, 1], [3, 4]],
@@ -164,7 +171,10 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
         summary = enrich_edges_with_elevation(
             connection, edges, nodes, [grid], ways_path=ways,
             way_elevations_path=tmp_path / "way_elevations.parquet",
-            smoothing_window_m=0.00001,
+            network=NETWORK.model_copy(
+                update={"elevation_smoothing_window_m": 0.00001}
+            ),
+            energy=ENERGY,
         )
         profiles = {
             row[0]: row[1:]
@@ -250,6 +260,7 @@ def test_structure_profile_interpolates_between_portals_per_way(
         "x": [point[0] for point in coordinates],
         "y": [point[1] for point in coordinates],
         "graph_node": [True, True, True],
+        "tags": pa.array([{}, {}, {}], type=pa.map_(pa.string(), pa.string())),
     }), nodes)
     pq.write_table(pa.table({
         "way_id": [10, 11],
@@ -266,15 +277,26 @@ def test_structure_profile_interpolates_between_portals_per_way(
         ],
         "way_id": [10, 10, 10, 11, 11, 11],
         "mode": ["foot", "foot", "foot", "car", "bike", "foot"],
+        "highway": ["residential"] * 6,
         "is_forward": [True, False, True, False, False, False],
         "node_ids": [[1, 2], [2, 1], [2, 3], [2, 1], [2, 1], [2, 1]],
         "length_m": [25.0] * 6,
+        "bike_infra": [None, None, None, None, "mixed_traffic", None],
+        "surface": pa.array([None] * 6, type=pa.string()),
+        "tracktype": pa.array([None] * 6, type=pa.string()),
+        "signal_count": [0] * 6,
+        "stop_count": [0] * 6,
+        "give_way_count": [0] * 6,
+        "crossing_count": [0] * 6,
+        "to_degree": [2] * 6,
+        "to_node_id": [2, 1, 3, 1, 1, 1],
     }), edges)
     try:
         summary = enrich_edges_with_elevation(
             connection, edges, nodes, [grid], ways_path=ways,
             way_elevations_path=profiles,
-            smoothing_window_m=50,
+            network=NETWORK,
+            energy=ENERGY,
         )
         values = connection.execute(
             "SELECT way_id, node_id, elevation_m, raw_elevation_m "
@@ -285,6 +307,10 @@ def test_structure_profile_interpolates_between_portals_per_way(
             "SELECT edge_key, node_elevations_m FROM read_parquet(?) "
             "ORDER BY edge_key", [str(edges)]
         ).fetchall()
+        active_summary = enrich_active_edge_costs(
+            connection, edges, nodes, tmp_path / "costs.parquet",
+            energy=ENERGY, network=NETWORK,
+        )
     finally:
         connection.close()
 
@@ -296,6 +322,18 @@ def test_structure_profile_interpolates_between_portals_per_way(
     assert summary.climb_by_mode["car"][0] == pytest.approx(30, abs=1e-3)
     assert summary.climb_by_mode["bike"] == pytest.approx(summary.climb_by_mode["car"])
     assert summary.climb_by_mode["car"][1] < summary.climb_by_mode["car"][0]
+    assert summary.clipped_segments_by_class[("bike", "residential")][0] == 1
+    assert summary.clipped_segments_by_class[("foot", "residential")][0] == 1
+    for key, counts in summary.clipped_segments_by_class.items():
+        assert counts == pytest.approx(active_summary.clipped_segments_by_class[key])
+    assert [row[0] for row in summary.longest_clipped_edges] == [
+        row[0] for row in active_summary.longest_clipped_edges
+    ]
+    report = tmp_path / "report.md"
+    write_elevation_report(summary, report, state=2021, area="pilot", tile_count=1)
+    contents = report.read_text(encoding="utf-8")
+    assert "11:0:bike:r" in contents
+    assert "| 11 | bike | residential |" in contents
     assert getattr(summary, f"{structure}_length_m") == pytest.approx(50, abs=0.1)
     other = "tunnel" if structure == "bridge" else "bridge"
     assert getattr(summary, f"{other}_length_m") == 0

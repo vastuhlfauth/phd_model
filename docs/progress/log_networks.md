@@ -15,6 +15,8 @@ Newest entry first. Add yours at the top.
 - Active costs clip walking and bike grades to their respective configured
   ranges; a grade report counts affected directed segments by mode/highway
   and ranks the 20 longest affected edges, retaining their original grades.
+- The elevation report also provides these clipping diagnostics before the
+  cost stage; synthetic tests compare both reports' counts.
 - Count only the additional braking and acceleration time beyond the
   cruising time already included in the edge ride, plus the signal wait.
 - Stop energy is unchanged. The user confirmed this reading of section 9.7;
