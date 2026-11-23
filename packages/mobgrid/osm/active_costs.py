@@ -534,8 +534,9 @@ def enrich_active_edge_costs(
     unknown_surfaces: Counter[str] = Counter()
     edge_count = 0
     incomplete_count = 0
+    reader_connection = connection.cursor()
     try:
-        edge_reader = connection.execute(f"""
+        edge_reader = reader_connection.execute(f"""
             SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.node_elevations_m,
                    e.length_m, e.highway,
                    e.bike_infra, e.surface, e.tracktype, e.signal_count,
@@ -595,6 +596,7 @@ def enrich_active_edge_costs(
         write_parquet(connection, "SELECT * FROM _active_cost_result", temporary)
         temporary.replace(output)
     finally:
+        reader_connection.close()
         temporary.unlink(missing_ok=True)
 
     summary = ActiveCostSummary(

@@ -4,6 +4,8 @@ states:
 contour_source_id: contours-2021
 # TODO(confirm): choose the study-area polygon simplification tolerance.
 area_simplify_tolerance_m: 10
+# TODO(confirm): validate the elevation profile smoothing window.
+elevation_smoothing_window_m: 50
 kept_tags:
   - highway
   - railway

@@ -373,7 +373,10 @@ def _input_signature(
                 "version": 7,
                 "inputs": inputs,
                 "config": config.model_dump(
-                    mode="json", exclude={"car_speed", "bike_speed_table"}
+                    mode="json",
+                    exclude={
+                        "car_speed", "bike_speed_table", "elevation_smoothing_window_m"
+                    },
                 ),
             },
             sort_keys=True,

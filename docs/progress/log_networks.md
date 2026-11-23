@@ -8,6 +8,10 @@ Newest entry first. Add yours at the top.
 - Extract bridge, tunnel and layer tags; interpolate complete bridge/tunnel
   ways between endpoints by distance and store per-way and directed profiles.
 - Report treated bridge/tunnel length once per way; preserve raw node samples.
+- Smooth complete way-profile runs with a distance-weighted 50 m window;
+  report directed mode climb before/after and incomplete counts.
+- Separate read and write cursors prevent Arrow batch readers being truncated
+  during smoothing and active-cost processing.
 - Active costs clip walking and bike grades to their respective configured
   ranges; a grade report counts affected directed segments by mode/highway
   and ranks the 20 longest affected edges, retaining their original grades.
@@ -15,7 +19,7 @@ Newest entry first. Add yours at the top.
   cruising time already included in the edge ride, plus the signal wait.
 - Stop energy is unchanged. The user confirmed this reading of section 9.7;
   the spec wording will be aligned separately.
-- Synthetic active-cost tests and Ruff validate these changes; no pilot ran.
+- Synthetic tests: 25 passed, 1 pilot deselected; Ruff clean. No pilot ran.
 
 ### Step 6b: active-mode edge costs (2026-11-23)
 

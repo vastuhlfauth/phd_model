@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6b: smooth each way's interpolated profile by the
+  distance integral of its piecewise-linear elevation over a centred window.
+  Extend endpoint slopes to preserve uniform grades; do not bridge missing
+  samples. The configured 50 m window remains `TODO(confirm)`.
 - 2026-11-23, step 6b: keep terrain samples on nodes and store bridge/tunnel
   interpolation per way and node sequence, with directed copies on edges.
   Active costs require those profiles. Report complete treated way lengths

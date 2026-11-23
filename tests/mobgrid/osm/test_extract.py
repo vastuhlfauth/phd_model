@@ -4,6 +4,7 @@ from pathlib import Path
 import duckdb
 import pytest
 from mobgrid.osm.config import load_network_config
+from mobgrid.osm.edges import _input_signature
 from mobgrid.osm.extract import (
     AreaGeometry,
     _build_kept_nodes_query,
@@ -75,6 +76,13 @@ def test_cost_parameters_do_not_invalidate_extraction_cache(tmp_path) -> None:
     tags_changed = config.model_copy(update={"kept_tags": config.kept_tags[:-1]})
     assert _extraction_signature(pbf, area, config) != _extraction_signature(
         pbf, area, tags_changed
+    )
+    smoothing_changed = config.model_copy(update={"elevation_smoothing_window_m": 75})
+    assert _extraction_signature(pbf, area, config) == _extraction_signature(
+        pbf, area, smoothing_changed
+    )
+    assert _input_signature(pbf, pbf, config) == _input_signature(
+        pbf, pbf, smoothing_changed
     )
 
 

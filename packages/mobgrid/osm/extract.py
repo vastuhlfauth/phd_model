@@ -420,7 +420,8 @@ def _extraction_signature(
         "area_wkb": hashlib.sha256(area.geometry_wkb).hexdigest(),
         "area_bounds": [area.west, area.south, area.east, area.north],
         "config": config.model_dump(
-            mode="json", exclude={"car_speed", "bike_speed_table"}
+            mode="json",
+            exclude={"car_speed", "bike_speed_table", "elevation_smoothing_window_m"},
         ),
     }
     return hashlib.sha256(

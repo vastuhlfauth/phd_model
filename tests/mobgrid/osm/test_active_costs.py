@@ -537,7 +537,10 @@ def test_extreme_grades_are_clipped_counted_and_reported(tmp_path):
     assert "0.600" in report and "residential" in report
 
 
-def test_clipped_report_lists_only_the_twenty_longest_edges(tmp_path):
+def test_clipped_report_lists_only_the_twenty_longest_edges(tmp_path, monkeypatch):
+    import mobgrid.osm.active_costs as active_costs
+
+    monkeypatch.setattr(active_costs, "_EDGE_BATCH_SIZE", 3)
     edges_path, nodes_path = _write_tables(tmp_path)
     connection = duckdb.connect()
     connection.execute(

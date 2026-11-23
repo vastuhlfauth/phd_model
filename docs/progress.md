@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Bridge/tunnel profiles and active-cost grade clipping/stop delay implemented; smoothing, pilot timing, unified stage and Géovélo check remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Bridge/tunnel profiles, smoothing and active-cost grade clipping/stop delay implemented; pilot timing, unified stage and Géovélo check remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -55,6 +55,9 @@ Status values: not started, in progress, review, merged.
 
 ## Assumptions to check
 
+- 2026-11-23, step 6b: the 50 m elevation smoothing window in
+  `config/network.yaml` is provisional (`TODO(confirm)`); review pilot
+  directed-climb totals before adopting it nationally.
 - 2026-10-19, step 7, the headway random-arrivals/planned-arrival regime
   boundary (section 9.4: "headways up to about 10-12 min") is set to its
   upper end, 12 min, in `config/energy.yaml`
@@ -98,6 +101,8 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
+- [ ] Step 6b: validate the provisional 50 m elevation smoothing window
+  against the pilot's before/after climb report.
 - [ ] Step 6: verify the version 7 pilot edge-build time is under five minutes.
   DuckDB memory limit and threads are not exposed by the loaded base, pilot or
   network configs; the existing connection setup remains in use.

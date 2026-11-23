@@ -74,6 +74,13 @@ their first and last nodes; the sampled terrain remains unchanged in the node
 table. If an endpoint lacks elevation, interpolated interior values are null.
 The elevation report gives the length of complete treated ways by structure
 type, counted once per way, not once per directed mode edge.
+Each way profile is then averaged over the configured 50 m window by
+integrating the piecewise-linear profile over distance. At the ends of each
+complete run, the endpoint slope is extended to fill the window; missing
+samples remain missing. `way_elevations.parquet` stores both the interpolated
+pre-smoothing and smoothed values. The elevation report gives total directed
+climb before and after smoothing by mode, with incomplete edges counted
+separately. The window is a provisional `TODO(confirm)` value.
 Segments are assigned an index by the cumulative graph-node count along each way;
 interior graph nodes also serve as the preceding segment's endpoint. This
 avoids joining every way point against sequence ranges.

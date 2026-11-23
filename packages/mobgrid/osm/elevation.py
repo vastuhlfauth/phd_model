@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
@@ -15,6 +15,7 @@ import numpy.typing as npt
 import pyarrow as pa
 from common.config import load_pilot_config
 from common.duckdb_io import open_connection, write_parquet
+from numba import njit
 
 from mobgrid.osm.config import load_network_config
 
@@ -29,6 +30,99 @@ _PROFILE_COLUMNS = (
     "descent_m",
     "mean_grade",
 )
+_WAY_BATCH_SIZE = 25_000
+
+
+@njit(cache=True)
+def _profile_integral(
+    positions: FloatArray, heights: FloatArray, areas: FloatArray, at: float
+) -> float:
+    if at <= positions[0]:
+        next_index = 1
+        while next_index < len(positions) and positions[next_index] == positions[0]:
+            next_index += 1
+        slope = (heights[next_index] - heights[0]) / (
+            positions[next_index] - positions[0]
+        )
+        delta = at - positions[0]
+        return heights[0] * delta + slope * delta * delta / 2
+    if at >= positions[-1]:
+        previous = len(positions) - 2
+        while previous >= 0 and positions[previous] == positions[-1]:
+            previous -= 1
+        slope = (heights[-1] - heights[previous]) / (
+            positions[-1] - positions[previous]
+        )
+        delta = at - positions[-1]
+        return areas[-1] + heights[-1] * delta + slope * delta * delta / 2
+    index = np.searchsorted(positions, at, side="right") - 1
+    delta = at - positions[index]
+    slope = (heights[index + 1] - heights[index]) / (
+        positions[index + 1] - positions[index]
+    )
+    return areas[index] + heights[index] * delta + slope * delta * delta / 2
+
+
+@njit(cache=True)
+def _smooth_ways(
+    way_ids: npt.NDArray[np.int64],
+    positions: FloatArray,
+    heights: FloatArray,
+    window_m: float,
+) -> FloatArray:
+    result = heights.copy()
+    start = 0
+    while start < len(heights):
+        if not np.isfinite(heights[start]):
+            start += 1
+            continue
+        end = start + 1
+        while (
+            end < len(heights)
+            and way_ids[end] == way_ids[start]
+            and np.isfinite(heights[end])
+        ):
+            end += 1
+        x = positions[start:end]
+        z = heights[start:end]
+        if len(x) > 1 and x[-1] > x[0]:
+            area = np.zeros(len(x), dtype=np.float64)
+            for index in range(1, len(x)):
+                area[index] = area[index - 1] + (
+                    (z[index - 1] + z[index]) * (x[index] - x[index - 1]) / 2
+                )
+            for index in range(len(x)):
+                left = x[index] - window_m / 2
+                right = x[index] + window_m / 2
+                result[start + index] = (
+                    _profile_integral(x, z, area, right)
+                    - _profile_integral(x, z, area, left)
+                ) / window_m
+        start = end
+    return result
+
+
+def smooth_elevation_profile(
+    distances_m: FloatArray, elevations_m: FloatArray, window_m: float
+) -> FloatArray:
+    """Average a piecewise-linear elevation profile over a distance window (8.1).
+
+    Positions and elevations are metres. Endpoint slopes extend beyond each
+    complete run so the averaging window preserves a uniform slope.
+    """
+    distances = np.asarray(distances_m, dtype=np.float64)
+    elevations = np.asarray(elevations_m, dtype=np.float64)
+    if (
+        distances.ndim != 1 or elevations.ndim != 1
+        or distances.shape != elevations.shape
+        or not np.isfinite(distances).all()
+        or np.any(np.diff(distances) < 0)
+        or not np.isfinite(window_m) or window_m <= 0
+    ):
+        raise ValueError("profile needs ordered distances and a positive window")
+    return _smooth_ways(
+        np.zeros(len(distances), dtype=np.int64), distances, elevations, window_m
+    )
 
 
 @dataclass(frozen=True)
@@ -218,6 +312,76 @@ class ElevationSummary:
     edges_without_profile: int
     bridge_length_m: float = 0.0
     tunnel_length_m: float = 0.0
+    climb_by_mode: dict[str, tuple[float, float]] = field(default_factory=dict)
+    incomplete_by_mode: dict[str, int] = field(default_factory=dict)
+
+
+def _smooth_way_elevations(
+    connection: duckdb.DuckDBPyConnection, window_m: float, temporary_source: Path
+) -> None:
+    """Smooth complete runs in bounded batches, in metres (8.1)."""
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _osm_smoothed_elevations (
+            way_id BIGINT, node_sequence BIGINT, elevation_m DOUBLE
+        )
+    """)
+    write_parquet(connection, """
+        SELECT way_id, node_sequence, distance_m, elevation_m
+        FROM _osm_way_elevations ORDER BY way_id, node_sequence
+    """, temporary_source)
+    reader_connection = connection.cursor()
+    reader = reader_connection.execute(
+        f"SELECT * FROM read_parquet('{_sql_path(temporary_source)}') "
+        "ORDER BY way_id, node_sequence"
+    ).to_arrow_reader(batch_size=_WAY_BATCH_SIZE)
+    pending: pa.Table | None = None
+
+    def insert_batch(table: pa.Table) -> None:
+        ids = np.asarray(table["way_id"].to_numpy(zero_copy_only=False), dtype=np.int64)
+        positions = np.asarray(
+            table["distance_m"].to_numpy(zero_copy_only=False), dtype=np.float64
+        )
+        heights = np.asarray(
+            table["elevation_m"].to_numpy(zero_copy_only=False), dtype=np.float64
+        )
+        smoothed = _smooth_ways(ids, positions, heights, window_m)
+        result = pa.table({
+            "way_id": table["way_id"],
+            "node_sequence": table["node_sequence"],
+            "elevation_m": pa.array(smoothed, mask=~np.isfinite(smoothed)),
+        })
+        connection.register("_osm_smoothing_batch", result)
+        try:
+            connection.execute(
+                "INSERT INTO _osm_smoothed_elevations "
+                "SELECT * FROM _osm_smoothing_batch"
+            )
+        finally:
+            connection.unregister("_osm_smoothing_batch")
+
+    try:
+        for batch in reader:
+            table = pa.Table.from_batches([batch])
+            if pending is not None:
+                table = pa.concat_tables([pending, table])
+            ids = np.asarray(
+                table["way_id"].to_numpy(zero_copy_only=False), dtype=np.int64
+            )
+            split = int(np.searchsorted(ids, ids[-1], side="left"))
+            if split:
+                insert_batch(table.slice(0, split))
+            pending = table.slice(split)
+        if pending is not None and pending.num_rows:
+            insert_batch(pending)
+    finally:
+        reader_connection.close()
+        temporary_source.unlink(missing_ok=True)
+    connection.execute("""
+        ALTER TABLE _osm_way_elevations ADD COLUMN smoothed_elevation_m DOUBLE;
+        UPDATE _osm_way_elevations AS w SET smoothed_elevation_m = s.elevation_m
+        FROM _osm_smoothed_elevations s
+        WHERE w.way_id = s.way_id AND w.node_sequence = s.node_sequence
+    """)
 
 
 def _prepare_way_elevations(
@@ -225,6 +389,8 @@ def _prepare_way_elevations(
     ways: Path,
     nodes: Path,
     edges: Path,
+    smoothing_window_m: float,
+    smoothing_source: Path,
 ) -> tuple[float, float]:
     """Interpolate bridge and tunnel profiles along full OSM ways (8.1)."""
     connection.execute(f"""
@@ -292,6 +458,7 @@ def _prepare_way_elevations(
         )
         WHERE complete AND length_m > 0
     """).fetchone()
+    _smooth_way_elevations(connection, smoothing_window_m, smoothing_source)
     connection.execute("""
         CREATE OR REPLACE TEMP TABLE _osm_way_segment_elevations AS
         WITH numbered AS (
@@ -334,12 +501,15 @@ def enrich_edges_with_elevation(
     *,
     ways_path: str | Path,
     way_elevations_path: str | Path,
+    smoothing_window_m: float,
 ) -> ElevationSummary:
     """Add directional profiles to the edge table in EPSG:3035 metres (8.1)."""
     edges = Path(edges_path)
     nodes = Path(nodes_path)
     ways = Path(ways_path)
     way_elevations = Path(way_elevations_path)
+    if not np.isfinite(smoothing_window_m) or smoothing_window_m <= 0:
+        raise ValueError("elevation smoothing window must be positive")
     if way_elevations.resolve() in (edges.resolve(), nodes.resolve(), ways.resolve()):
         raise ValueError("way elevation output must be separate from input tables")
     if not edges.is_file():
@@ -388,11 +558,15 @@ def enrich_edges_with_elevation(
     temporary_ways = way_elevations.with_name(
         way_elevations.stem + ".elevation.tmp.parquet"
     )
+    smoothing_source = way_elevations.with_name(
+        way_elevations.stem + ".smoothing.tmp.parquet"
+    )
+    way_elevations.parent.mkdir(parents=True, exist_ok=True)
     try:
         edge_source = _sql_path(edges)
         node_source = _sql_path(nodes)
         bridge_length, tunnel_length = _prepare_way_elevations(
-            connection, ways, nodes, edges
+            connection, ways, nodes, edges, smoothing_window_m, smoothing_source
         )
         mismatch = connection.execute(f"""
             SELECT count(*)
@@ -408,10 +582,10 @@ def enrich_edges_with_elevation(
         """).fetchone()[0]
         if mismatch:
             raise ValueError(f"{mismatch} edge nodes do not match their way profiles")
-        way_elevations.parent.mkdir(parents=True, exist_ok=True)
         write_parquet(
             connection,
-            "SELECT way_id, node_sequence, node_id, distance_m, elevation_m "
+            "SELECT way_id, node_sequence, node_id, distance_m, "
+            "elevation_m AS raw_elevation_m, smoothed_elevation_m AS elevation_m "
             "FROM _osm_way_elevations ORDER BY way_id, node_sequence",
             temporary_ways,
         )
@@ -438,11 +612,14 @@ def enrich_edges_with_elevation(
             CREATE OR REPLACE TEMP TABLE _osm_edge_elevation_profiles AS
             WITH ordered_nodes AS (
                 SELECT e.edge_key, edge_node.node_sequence,
-                       n.x, n.y, p.elevation_m,
+                       n.x, n.y, p.smoothed_elevation_m AS elevation_m,
+                       p.elevation_m AS raw_elevation_m,
                        lag(n.x) OVER edge_order AS previous_x,
                        lag(n.y) OVER edge_order AS previous_y,
+                       lag(p.smoothed_elevation_m) OVER edge_order
+                           AS previous_elevation_m,
                        lag(p.elevation_m) OVER edge_order
-                           AS previous_elevation_m
+                           AS previous_raw_elevation_m
                 FROM read_parquet('{edge_source}') e
                 CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
                     AS edge_node(node_id, node_sequence)
@@ -477,6 +654,9 @@ def enrich_edges_with_elevation(
                        ) AS horizontal_length_m,
                        sum(greatest(elevation_m - previous_elevation_m, 0))
                            AS climb_m,
+                       sum(greatest(
+                           raw_elevation_m - previous_raw_elevation_m, 0
+                       )) AS raw_climb_m,
                        sum(greatest(previous_elevation_m - elevation_m, 0))
                            AS descent_m
                 FROM ordered_nodes
@@ -484,6 +664,7 @@ def enrich_edges_with_elevation(
             )
             SELECT edge_key, node_elevations_m, elevation_from_m, elevation_to_m,
                    CASE WHEN has_complete_profile THEN climb_m END AS climb_m,
+                   CASE WHEN has_complete_profile THEN raw_climb_m END AS raw_climb_m,
                    CASE WHEN has_complete_profile THEN descent_m END
                        AS descent_m,
                    CASE
@@ -493,6 +674,21 @@ def enrich_edges_with_elevation(
                    END AS mean_grade
             FROM edge_stats
         """)
+        climb_rows = connection.execute(f"""
+                SELECT e.mode, coalesce(sum(p.raw_climb_m), 0),
+                       coalesce(sum(p.climb_m), 0),
+                       count(*) FILTER (WHERE p.climb_m IS NULL)
+                FROM read_parquet('{edge_source}') e
+                LEFT JOIN _osm_edge_elevation_profiles p USING (edge_key)
+                GROUP BY e.mode ORDER BY e.mode
+            """).fetchall()
+        climb_by_mode = {
+            mode: (float(before), float(after))
+            for mode, before, after, _ in climb_rows
+        }
+        incomplete_by_mode = {
+            mode: int(incomplete) for mode, _, _, incomplete in climb_rows
+        }
         columns = [
             row[0]
             for row in connection.execute(
@@ -528,6 +724,7 @@ def enrich_edges_with_elevation(
         temporary.unlink(missing_ok=True)
         temporary_nodes.unlink(missing_ok=True)
         temporary_ways.unlink(missing_ok=True)
+        smoothing_source.unlink(missing_ok=True)
 
     return ElevationSummary(
         int(edge_count),
@@ -536,6 +733,8 @@ def enrich_edges_with_elevation(
         int(missing_profiles),
         bridge_length,
         tunnel_length,
+        climb_by_mode,
+        incomplete_by_mode,
     )
 
 
@@ -550,6 +749,11 @@ def write_elevation_report(
     """Write the directed-edge elevation and no-coverage counts (8.1)."""
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    climb_lines = "\n".join(
+        f"  - {mode}: {values[0]:,.1f} / {values[1]:,.1f}; "
+        f"incomplete: {summary.incomplete_by_mode[mode]:,}"
+        for mode, values in summary.climb_by_mode.items()
+    )
     destination.write_text(
         f"""# OSM elevation profiles ({state}, {area})
 
@@ -560,6 +764,8 @@ def write_elevation_report(
 - Edges with incomplete elevation profiles: {summary.edges_without_profile:,}
 - Bridge length interpolated: {summary.bridge_length_m:,.1f} m
 - Tunnel length interpolated: {summary.tunnel_length_m:,.1f} m
+- Directed climb by mode, before / after smoothing (m):
+{climb_lines}
 - Units: metres; mean grade is dimensionless.
 """,
         encoding="utf-8",
@@ -614,6 +820,7 @@ def main(argv: list[str] | None = None) -> int:
             connection, edges_path, nodes_path, elevation_paths,
             ways_path=ways_path,
             way_elevations_path=nodes_path.with_name("way_elevations.parquet"),
+            smoothing_window_m=network.elevation_smoothing_window_m,
         )
     finally:
         connection.close()

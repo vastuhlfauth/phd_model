@@ -7,6 +7,7 @@ from mobgrid.osm.elevation import (
     edge_elevation_profile,
     enrich_edges_with_elevation,
     sample_elevations,
+    smooth_elevation_profile,
     write_elevation_report,
 )
 
@@ -57,6 +58,36 @@ def test_directional_elevation_profile_and_missing_nodes():
     assert missing.mean_grade is None
 
 
+def test_distance_weighted_smoothing_preserves_slopes_and_reduces_zigzag():
+    distances = np.array([0.0, 10.0, 20.0, 30.0, 40.0, 50.0])
+    slope = distances * 0.1 + 10
+    zigzag = np.array([0.0, 2.0, 0.0, 2.0, 0.0, 2.0])
+    smoothed_slope = smooth_elevation_profile(distances, slope, 50.0)
+    smoothed_zigzag = smooth_elevation_profile(distances, zigzag, 50.0)
+    assert smoothed_slope == pytest.approx(slope)
+    assert np.maximum(np.diff(smoothed_zigzag), 0).sum() < (
+        np.maximum(np.diff(zigzag), 0).sum()
+    )
+
+
+def test_smoothing_weights_by_distance_not_node_density():
+    sparse_distances = np.array([0.0, 20.0, 40.0])
+    sparse_heights = np.array([0.0, 10.0, 0.0])
+    dense_distances = np.array([0.0, 5.0, 10.0, 15.0, 20.0, 40.0])
+    dense_heights = np.array([0.0, 2.5, 5.0, 7.5, 10.0, 0.0])
+    sparse = smooth_elevation_profile(sparse_distances, sparse_heights, 20.0)
+    dense = smooth_elevation_profile(dense_distances, dense_heights, 20.0)
+    assert dense[[0, 4, 5]] == pytest.approx(sparse)
+
+
+def test_smoothing_does_not_fill_missing_elevations():
+    distances = np.array([0.0, 10.0, 20.0, 30.0, 40.0])
+    heights = np.array([0.0, 1.0, np.nan, 3.0, 4.0])
+    actual = smooth_elevation_profile(distances, heights, 50.0)
+    assert np.isnan(actual[2])
+    assert actual[[0, 1, 3, 4]] == pytest.approx([0.0, 1.0, 3.0, 4.0])
+
+
 def test_unaligned_grids_are_rejected(tmp_path):
     west = tmp_path / "west.asc"
     east = tmp_path / "east.asc"
@@ -101,6 +132,7 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
             {
                 "edge_key": ["10:0:foot:f", "10:0:foot:r", "11:0:foot:f"],
                 "way_id": [10, 10, 11],
+                "mode": ["foot", "foot", "bike"],
                 "is_forward": [True, False, True],
                 "node_ids": pa.array(
                     [[1, 2, 3], [3, 2, 1], [3, 4]],
@@ -132,6 +164,7 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
         summary = enrich_edges_with_elevation(
             connection, edges, nodes, [grid], ways_path=ways,
             way_elevations_path=tmp_path / "way_elevations.parquet",
+            smoothing_window_m=0.00001,
         )
         profiles = {
             row[0]: row[1:]
@@ -166,7 +199,12 @@ def test_elevation_report_distinguishes_uncovered_nodes_from_missing_samples(
     report = tmp_path / "elevation.md"
 
     write_elevation_report(
-        ElevationSummary(3, 2, 1, 1),
+        ElevationSummary(
+            3, 2, 1, 1,
+            climb_by_mode={"bike": (100.0, 60.0), "car": (200.0, 120.0),
+                           "foot": (300.0, 180.0)},
+            incomplete_by_mode={"bike": 1, "car": 0, "foot": 0},
+        ),
         report,
         state=2021,
         area="pilot",
@@ -176,11 +214,19 @@ def test_elevation_report_distinguishes_uncovered_nodes_from_missing_samples(
     contents = report.read_text(encoding="utf-8")
     assert "Nodes with no covering tile: 1" in contents
     assert "Nodes with no valid elevation sample: 2" in contents
+    assert "bike: 100.0 / 60.0; incomplete: 1" in contents
+    assert "car: 200.0 / 120.0; incomplete: 0" in contents
+    assert "foot: 300.0 / 180.0; incomplete: 0" in contents
 
 
 @pytest.mark.parametrize("structure", ["bridge", "tunnel"])
-def test_structure_profile_interpolates_between_portals_per_way(tmp_path, structure):
+def test_structure_profile_interpolates_between_portals_per_way(
+    tmp_path, structure, monkeypatch
+):
     import duckdb
+    import mobgrid.osm.elevation as elevation
+
+    monkeypatch.setattr(elevation, "_WAY_BATCH_SIZE", 2)
 
     grid = tmp_path / "tile.asc"
     _grid(grid, 700000, [[10, -20, 12], [10, -20, 12]], y_corner=6600000)
@@ -215,20 +261,24 @@ def test_structure_profile_interpolates_between_portals_per_way(tmp_path, struct
     }), ways)
     pq.write_table(pa.table({
         "edge_key": [
-            "10:0:foot:f", "10:0:foot:r", "10:1:foot:f", "11:0:foot:f"
+            "10:0:foot:f", "10:0:foot:r", "10:1:foot:f",
+            "11:0:car:r", "11:0:bike:r", "11:0:foot:r",
         ],
-        "way_id": [10, 10, 10, 11],
-        "is_forward": [True, False, True, True],
-        "node_ids": [[1, 2], [2, 1], [2, 3], [1, 2]],
-        "length_m": [25.0, 25.0, 25.0, 25.0],
+        "way_id": [10, 10, 10, 11, 11, 11],
+        "mode": ["foot", "foot", "foot", "car", "bike", "foot"],
+        "is_forward": [True, False, True, False, False, False],
+        "node_ids": [[1, 2], [2, 1], [2, 3], [2, 1], [2, 1], [2, 1]],
+        "length_m": [25.0] * 6,
     }), edges)
     try:
         summary = enrich_edges_with_elevation(
             connection, edges, nodes, [grid], ways_path=ways,
             way_elevations_path=profiles,
+            smoothing_window_m=50,
         )
         values = connection.execute(
-            "SELECT way_id, node_id, elevation_m FROM read_parquet(?) "
+            "SELECT way_id, node_id, elevation_m, raw_elevation_m "
+            "FROM read_parquet(?) "
             "ORDER BY way_id, node_sequence", [str(profiles)]
         ).fetchall()
         edge_profiles = connection.execute(
@@ -239,10 +289,13 @@ def test_structure_profile_interpolates_between_portals_per_way(tmp_path, struct
         connection.close()
 
     assert [row[2] for row in values[:3]] == pytest.approx([10, 11, 12], abs=1e-3)
-    assert values[4][2] == pytest.approx(-20, abs=1e-3)
+    assert values[4][3] == pytest.approx(-20, abs=1e-3)
     assert edge_profiles[0][1] == pytest.approx([10, 11], abs=1e-3)
     assert edge_profiles[1][1] == pytest.approx([11, 10], abs=1e-3)
-    assert edge_profiles[3][1] == pytest.approx([10, -20], abs=1e-3)
+    assert edge_profiles[3][1] == pytest.approx([values[4][2], values[3][2]])
+    assert summary.climb_by_mode["car"][0] == pytest.approx(30, abs=1e-3)
+    assert summary.climb_by_mode["bike"] == pytest.approx(summary.climb_by_mode["car"])
+    assert summary.climb_by_mode["car"][1] < summary.climb_by_mode["car"][0]
     assert getattr(summary, f"{structure}_length_m") == pytest.approx(50, abs=0.1)
     other = "tunnel" if structure == "bridge" else "bridge"
     assert getattr(summary, f"{other}_length_m") == 0
