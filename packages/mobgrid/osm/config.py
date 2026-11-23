@@ -84,6 +84,20 @@ class CarSpeedConfig(BaseModel):
         return value
 
 
+class BikeSpeedTableConfig(BaseModel):
+    """Provisional interpolation grid, tolerances and bike speed caps (9.7)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    grade_min: float
+    grade_max: float
+    grade_step: float = Field(gt=0, allow_inf_nan=False)
+    speed_tolerance_kmh: float = Field(gt=0, allow_inf_nan=False)
+    energy_relative_tolerance: float = Field(gt=0, allow_inf_nan=False)
+    class_cap_kmh: dict[str, PositiveSpeed]
+    highway_cap_kmh: dict[str, PositiveSpeed]
+
+
 class NetworkConfig(BaseModel):
     """Validated OSM extraction and tiling parameters."""
 
@@ -118,6 +132,7 @@ class NetworkConfig(BaseModel):
         ],
         tuple[str, ...],
     ]
+    bike_speed_table: BikeSpeedTableConfig
     tile_size_m: int = Field(gt=0)
 
 

@@ -3,6 +3,22 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: bike speed-table groundwork (2026-11-23)
+
+- Added the provisional grade grid, tolerances, class and highway speed caps.
+- Coarse linear interpolation alone misses the requested 0.1 km/h tolerance
+  near coasting and speed-cap transitions. Vectorised bracketed force balance
+  refines the interpolated result; no scalar solver is called per segment.
+- Tested speed and per-km energy against the energy package over all eight
+  surfaces and the four requested caps, including grades beyond the grid.
+- Speed-table and car-speed tuning no longer invalidate extraction or edge
+  signatures. Existing extraction signatures change once on the next run.
+- This is groundwork, not a cost stage: walk/bike edge aggregation, stops,
+  surface fallbacks, cache orchestration and the Géovélo report remain.
+- Validation: 54 changed-module tests passed, 1 pilot deselected; Ruff and
+  Pylance clean.
+- No pilot, national build, downloads or raw-data modification was run.
+
 ### Step 6b: car defaults and controls (2026-11-23)
 
 - Added provisional default-only class speed caps, rural trunk/primary

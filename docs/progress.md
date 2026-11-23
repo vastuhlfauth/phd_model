@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Step 6b car defaults and typed control delays updated; active-mode costs, unified stage and Géovélo check remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Step 6b car defaults and typed control delays updated; bike speed-table groundwork tested but not integrated; active-mode costs, unified stage and Géovélo check remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -97,11 +97,13 @@ Each item stays open until a value is decided; the value goes into `config/`.
   overrides, realism factors, urban-density radius/fallback/fitting rule,
   control and junction delays, and speed-limit buckets; provisional values
   are marked `TODO(confirm)` in `config/network.yaml`.
-- [ ] Step 6b (sections 8.3 and 9.7): choose provisional bike class speed
-  caps and stop probabilities, tracktype/class surface defaults, and the
-  interpolation grid and tolerance; these are not specified or configured.
-- [ ] Step 6b (section 8.1): define Géovélo left/right facility counting and
-  class-family mappings before comparing lengths to OSM.
+- [ ] Step 6b (sections 8.3 and 9.7): confirm the provisional bike class
+  and highway speed caps, grade grid and tolerances in `config/network.yaml`.
+  The user supplied provisional stop probabilities and surface fallbacks;
+  they still need configuration and implementation.
+- [ ] Step 6b (section 8.1): configure and implement the user-supplied
+  provisional Géovélo family mappings, side counts and 15 m matching rule;
+  list distinct facility values before mapping.
 - [ ] Step 6b: user rerun of BD ALTI unpack after the Windows path-length
   fix; move aside old nested/stale department outputs first. Real archive
   extraction was not run during validation; no new parameter assumptions.

@@ -317,4 +317,21 @@ bike_classes:
     - bicycle_road=yes
   mixed_traffic:
     - other_bike_accessible_roads
+# TODO(confirm): validate bike class/highway caps and interpolation accuracy.
+bike_speed_table:
+  grade_min: -0.20
+  grade_max: 0.20
+  grade_step: 0.005
+  speed_tolerance_kmh: 0.1
+  energy_relative_tolerance: 0.01
+  class_cap_kmh:
+    separated_track_path: 25
+    low_speed: 25
+    painted_lane: 30
+    bus_lane: 30
+    mixed_traffic: 30
+  highway_cap_kmh:
+    living_street: 20
+    footway: 10
+    pedestrian: 10
 tile_size_m: 50000

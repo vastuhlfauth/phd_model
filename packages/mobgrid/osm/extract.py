@@ -411,6 +411,23 @@ def _build_kept_nodes_query(
     """
 
 
+def _extraction_signature(
+    pbf: Path, area: AreaGeometry, config: NetworkConfig
+) -> str:
+    payload = {
+        "version": 3,
+        "pbf": _file_signature(pbf),
+        "area_wkb": hashlib.sha256(area.geometry_wkb).hexdigest(),
+        "area_bounds": [area.west, area.south, area.east, area.north],
+        "config": config.model_dump(
+            mode="json", exclude={"car_speed", "bike_speed_table"}
+        ),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
 def extract_osm_pbf(
     connection: duckdb.DuckDBPyConnection,
     pbf_path: str | Path,
@@ -435,16 +452,7 @@ def extract_osm_pbf(
     stages.mkdir(parents=True, exist_ok=True)
     connection.execute("LOAD spatial")
 
-    signature_payload = {
-        "version": 3,
-        "pbf": _file_signature(pbf),
-        "area_wkb": hashlib.sha256(area.geometry_wkb).hexdigest(),
-        "area_bounds": [area.west, area.south, area.east, area.north],
-        "config": config.model_dump(mode="json"),
-    }
-    signature = hashlib.sha256(
-        json.dumps(signature_payload, sort_keys=True).encode("utf-8")
-    ).hexdigest()
+    signature = _extraction_signature(pbf, area, config)
     _invalidate_stale_stages(connection, cache, signature)
 
     pbf_sql = _sql_path(pbf)

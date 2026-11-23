@@ -190,10 +190,18 @@ def test_car_speed_parameter_changes_do_not_invalidate_edge_build_cache(
         update={"urban_density": changed_density}
     )
     changed_config = config.model_copy(update={"car_speed": changed_car_speed})
+    changed_bike_config = config.model_copy(update={
+        "bike_speed_table": config.bike_speed_table.model_copy(update={
+            "speed_tolerance_kmh": config.bike_speed_table.speed_tolerance_kmh / 2
+        })
+    })
 
     try:
         assert _input_signature(ways_path, nodes_path, config) == _input_signature(
             ways_path, nodes_path, changed_config
+        )
+        assert _input_signature(ways_path, nodes_path, config) == _input_signature(
+            ways_path, nodes_path, changed_bike_config
         )
     finally:
         connection.close()

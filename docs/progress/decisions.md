@@ -1,5 +1,11 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6b: retain the requested 0.5%-grade bike speed grid
+  and refine interpolated speeds with vectorised force balance: plain linear
+  interpolation exceeds the requested tolerance at cap/coasting transitions.
+  The user-supplied caps and tolerances are provisional `TODO(confirm)` values.
+- 2026-11-23, step 6b: exclude cost-only speed settings from extraction as
+  well as edge-build signatures; this changes old extraction signatures once.
 - 2026-11-23, step 6b: per request, apply configured low-speed caps only
   without maxspeed; treat rural trunk/primary as dual carriageways only for
   explicit `oneway=yes`, and count signalised crossings only as signals.

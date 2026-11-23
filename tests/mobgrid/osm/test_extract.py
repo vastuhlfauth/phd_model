@@ -9,6 +9,7 @@ from mobgrid.osm.extract import (
     _build_kept_nodes_query,
     _build_nodes_outside_bbox_query,
     _build_ways_candidates_query,
+    _extraction_signature,
     _prepare_area_polygon,
     build_area,
     extract_osm_pbf,
@@ -51,6 +52,27 @@ def test_network_config_loads_state_sources_and_tile_size() -> None:
         "service",
         "area",
     } <= set(config.kept_tags)
+
+
+def test_cost_parameters_do_not_invalidate_extraction_cache(tmp_path) -> None:
+    pbf = tmp_path / "input.pbf"
+    pbf.write_bytes(b"synthetic")
+    area = AreaGeometry(b"area", 0, 0, 1, 1)
+    config = load_network_config("config/network.yaml")
+    speed = config.car_speed.model_copy(update={
+        "defaults_kmh_by_context": {
+            **config.car_speed.defaults_kmh_by_context, "urban": 40
+        }
+    })
+    table = config.bike_speed_table.model_copy(update={"grade_step": 0.01})
+    changed = config.model_copy(update={"car_speed": speed, "bike_speed_table": table})
+    assert _extraction_signature(pbf, area, config) == _extraction_signature(
+        pbf, area, changed
+    )
+    tags_changed = config.model_copy(update={"kept_tags": config.kept_tags[:-1]})
+    assert _extraction_signature(pbf, area, config) != _extraction_signature(
+        pbf, area, tags_changed
+    )
 
 
 def test_point_in_area_uses_configured_simplified_polygon() -> None:
