@@ -93,7 +93,9 @@ for incomplete profiles, which are counted in its summary.
 Bike total energy equals the per-kg component times configured rider-plus-bike
 mass, plus drag and unloaded-pedalling energy. Unknown non-empty `surface`
 values use the highway-class default and are reported by value in the function
-summary. Provisional stop probabilities and surface defaults are
+summary. Stop time adds only the deceleration and acceleration delay beyond
+the cruising time already counted, plus expected signal wait; stop energy is
+unchanged. Provisional stop probabilities and surface defaults are
 `TODO(confirm)` values in `config/network.yaml`; signal timing is configured in
 `config/energy.yaml`.
 

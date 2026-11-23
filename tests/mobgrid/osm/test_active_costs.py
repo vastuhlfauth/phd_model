@@ -14,6 +14,7 @@ from mobgrid.energy.bike import (
 from mobgrid.energy.rates import load_energy_config
 from mobgrid.energy.walk import walking_time_and_energy
 from mobgrid.osm.active_costs import enrich_active_edge_costs
+from mobgrid.osm.bike_speed_table import BikeSpeedTable
 from mobgrid.osm.config import load_network_config
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -367,8 +368,8 @@ def test_bike_stops_use_configured_probabilities_and_unknown_surfaces_fallback(
     )
     signal_wait = stops.red_time_s**2 / (2 * stops.signal_cycle_s)
     expected_stop_time = (
-        (mean_speed / stops.deceleration_m_per_s2
-         + mean_speed / stops.acceleration_m_per_s2)
+        (mean_speed / (2 * stops.deceleration_m_per_s2)
+         + mean_speed / (2 * stops.acceleration_m_per_s2))
         * expected_stops + signal_wait
     )
     stop_work = expected_stops * 0.5 * mean_speed**2
@@ -389,3 +390,51 @@ def test_bike_stops_use_configured_probabilities_and_unknown_surfaces_fallback(
     assert separated_length == pytest.approx(100.0)
     assert summary.unknown_surface_count == 1
     assert summary.unknown_surface_values == {"mystery_road": 1}
+
+
+def test_bike_stop_adds_only_time_beyond_cruising_at_15_kmh(tmp_path, monkeypatch):
+    import numpy as np
+
+    edges_path, nodes_path = _write_tables(tmp_path)
+    connection = duckdb.connect()
+    connection.execute(
+        "CREATE TABLE edges AS SELECT * FROM read_parquet(?)", [str(edges_path)]
+    )
+    connection.execute("UPDATE edges SET signal_count = 1 WHERE mode = 'bike'")
+    connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
+    energy = load_energy_config(ENERGY_PATH)
+    stops = energy.bike.stops.model_copy(
+        update={"red_time_s": energy.bike.stops.signal_cycle_s}
+    )
+    energy = energy.model_copy(
+        update={"bike": energy.bike.model_copy(update={"stops": stops})}
+    )
+    speed = 15.0 / 3.6
+    monkeypatch.setattr(
+        BikeSpeedTable,
+        "lookup",
+        lambda self, grades: (np.full_like(grades, speed), np.ones_like(grades)),
+    )
+    costs_path = tmp_path / "costs.parquet"
+    try:
+        enrich_active_edge_costs(
+            connection,
+            edges_path,
+            nodes_path,
+            costs_path,
+            energy=energy,
+            network=load_network_config(NETWORK_PATH),
+        )
+        bike_time = connection.execute(
+            "SELECT bike_time_s FROM read_parquet(?) WHERE edge_key = 'bike:f'",
+            [str(costs_path)],
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    expected_wait = stops.red_time_s**2 / (2 * stops.signal_cycle_s)
+    expected_loss = (
+        speed / (2 * stops.deceleration_m_per_s2)
+        + speed / (2 * stops.acceleration_m_per_s2)
+    )
+    assert bike_time == pytest.approx(100 / speed + expected_loss + expected_wait)

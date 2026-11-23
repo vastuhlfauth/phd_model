@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6b: section 9.7 stop time means additional time beyond
+  the cruising time already included in the ride: v/(2*a_dec) +
+  v/(2*a_acc), plus expected wait. Stop energy stays unchanged; the user
+  will align the spec wording separately.
 - 2026-11-23, step 6b: keep sampled node elevations on `nodes.parquet` so
   active-mode costs can use every ordered segment's grade. Write walk/bike
   costs separately by directed `edge_key`; keep incomplete profiles null and

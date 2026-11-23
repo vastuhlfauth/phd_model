@@ -381,8 +381,8 @@ def _calculate_batch(
         + crossing_counts * crossing_probability
     )
     bike_stop_time = (
-        edge_average_speed / stops.deceleration_m_per_s2
-        + edge_average_speed / stops.acceleration_m_per_s2
+        edge_average_speed / (2 * stops.deceleration_m_per_s2)
+        + edge_average_speed / (2 * stops.acceleration_m_per_s2)
     ) * expected_stops + signal_counts * expected_signal_wait
     separated_edges = bike_edges & (bike_classes == "separated_track_path")
     bike_stop_work_per_kg = (
