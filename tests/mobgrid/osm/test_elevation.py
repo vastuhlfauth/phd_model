@@ -130,6 +130,10 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
                 f"FROM read_parquet('{edges.as_posix()}')"
             ).fetchall()
         }
+        node_elevations = connection.execute(
+            f"SELECT node_id, elevation_m FROM read_parquet('{nodes.as_posix()}') "
+            "ORDER BY node_id"
+        ).fetchall()
     finally:
         connection.close()
 
@@ -140,6 +144,10 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
     assert profiles["missing"] == (None, None, None)
     assert summary.nodes_without_elevation == 1
     assert summary.nodes_without_tile == 1
+    assert [row[1] for row in node_elevations[:3]] == pytest.approx(
+        [10.0, 15.0, 12.0]
+    )
+    assert node_elevations[3][1] is None
 
 
 def test_elevation_report_distinguishes_uncovered_nodes_from_missing_samples(

@@ -334,4 +334,69 @@ bike_speed_table:
     living_street: 20
     footway: 10
     pedestrian: 10
+# TODO(confirm): validate bike stop probabilities and OSM surface defaults.
+bike_edge_costs:
+  stop_sign_probability: 1.0
+  give_way_probability: 0.5
+  uncontrolled_junction_probability_by_class:
+    separated_track_path: 0.3
+    low_speed: 0.1
+    painted_lane: 0.1
+    bus_lane: 0.1
+    mixed_traffic: 0.1
+  crossing_probability_by_class:
+    separated_track_path: 0.5
+    low_speed: 0.0
+    painted_lane: 0.0
+    bus_lane: 0.0
+    mixed_traffic: 0.0
+  surface_aliases:
+    asphalt: asphalt_concrete_paved_default
+    concrete: asphalt_concrete_paved_default
+    paved: asphalt_concrete_paved_default
+    concrete:plates: concrete_plates_lanes
+    concrete:lanes: concrete_plates_lanes
+    paving_stones: paving_stones
+    compacted: compacted
+    fine_gravel: fine_gravel
+    sett: sett_cobblestone
+    cobblestone: sett_cobblestone
+    unhewn_cobblestone: sett_cobblestone
+    gravel: gravel_unpaved_ground_dirt_earth
+    pebblestone: gravel_unpaved_ground_dirt_earth
+    unpaved: gravel_unpaved_ground_dirt_earth
+    ground: gravel_unpaved_ground_dirt_earth
+    dirt: gravel_unpaved_ground_dirt_earth
+    earth: gravel_unpaved_ground_dirt_earth
+    grass: grass_sand
+    sand: grass_sand
+  surface_by_tracktype:
+    grade1: compacted
+    grade2: fine_gravel
+    grade3: gravel_unpaved_ground_dirt_earth
+    grade4: gravel_unpaved_ground_dirt_earth
+    grade5: grass_sand
+  surface_default_by_highway:
+    motorway: asphalt_concrete_paved_default
+    motorway_link: asphalt_concrete_paved_default
+    trunk: asphalt_concrete_paved_default
+    trunk_link: asphalt_concrete_paved_default
+    primary: asphalt_concrete_paved_default
+    primary_link: asphalt_concrete_paved_default
+    secondary: asphalt_concrete_paved_default
+    secondary_link: asphalt_concrete_paved_default
+    tertiary: asphalt_concrete_paved_default
+    tertiary_link: asphalt_concrete_paved_default
+    unclassified: asphalt_concrete_paved_default
+    residential: asphalt_concrete_paved_default
+    living_street: asphalt_concrete_paved_default
+    service: asphalt_concrete_paved_default
+    road: asphalt_concrete_paved_default
+    cycleway: asphalt_concrete_paved_default
+    busway: asphalt_concrete_paved_default
+    pedestrian: paving_stones
+    footway: asphalt_concrete_paved_default
+    path: compacted
+    track: gravel_unpaved_ground_dirt_earth
+    bridleway: gravel_unpaved_ground_dirt_earth
 tile_size_m: 50000

@@ -274,9 +274,29 @@ def enrich_edges_with_elevation(
     )
     connection.register("_osm_sampled_node_elevations", sampled_nodes)
     temporary = edges.with_name(edges.stem + ".elevation.tmp.parquet")
+    temporary_nodes = nodes.with_name(nodes.stem + ".elevation.tmp.parquet")
     try:
         edge_source = _sql_path(edges)
         node_source = _sql_path(nodes)
+        node_columns = [
+            row[0]
+            for row in connection.execute(
+                f"DESCRIBE SELECT * FROM read_parquet('{node_source}')"
+            ).fetchall()
+            if row[0] != "elevation_m"
+        ]
+        node_projection = ", ".join(
+            f"n.{_sql_identifier(column)}" for column in node_columns
+        )
+        write_parquet(
+            connection,
+            f"""
+            SELECT {node_projection}, sampled.elevation_m
+            FROM read_parquet('{node_source}') n
+            LEFT JOIN _osm_sampled_node_elevations sampled USING (node_id)
+            """,
+            temporary_nodes,
+        )
         connection.execute(f"""
             CREATE OR REPLACE TEMP TABLE _osm_edge_elevation_profiles AS
             WITH ordered_nodes AS (
@@ -348,6 +368,7 @@ def enrich_edges_with_elevation(
             """,
             temporary,
         )
+        temporary_nodes.replace(nodes)
         temporary.replace(edges)
         edge_count, missing_profiles = connection.execute(
             f"""
@@ -359,6 +380,7 @@ def enrich_edges_with_elevation(
     finally:
         connection.unregister("_osm_sampled_node_elevations")
         temporary.unlink(missing_ok=True)
+        temporary_nodes.unlink(missing_ok=True)
 
     return ElevationSummary(
         int(edge_count),

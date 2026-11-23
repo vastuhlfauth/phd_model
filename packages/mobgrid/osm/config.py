@@ -16,6 +16,14 @@ from pydantic import (
 Mode = Literal["car", "bike", "foot"]
 SpeedContext = Literal["urban", "rural", "zone30", "motorway"]
 PositiveSpeed = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+Probability = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
+BikeClass = Literal[
+    "separated_track_path",
+    "painted_lane",
+    "bus_lane",
+    "low_speed",
+    "mixed_traffic",
+]
 
 
 class AccessRule(BaseModel):
@@ -98,6 +106,20 @@ class BikeSpeedTableConfig(BaseModel):
     highway_cap_kmh: dict[str, PositiveSpeed]
 
 
+class BikeEdgeCostConfig(BaseModel):
+    """Provisional bicycle stop probabilities and OSM surface mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stop_sign_probability: float = Field(ge=0, le=1)
+    give_way_probability: float = Field(ge=0, le=1)
+    uncontrolled_junction_probability_by_class: dict[BikeClass, Probability]
+    crossing_probability_by_class: dict[BikeClass, Probability]
+    surface_aliases: dict[str, str]
+    surface_by_tracktype: dict[str, str]
+    surface_default_by_highway: dict[str, str]
+
+
 class NetworkConfig(BaseModel):
     """Validated OSM extraction and tiling parameters."""
 
@@ -122,17 +144,9 @@ class NetworkConfig(BaseModel):
     car_speed: CarSpeedConfig
     mph_to_kmh: float = Field(gt=0)
     busway_values: tuple[str, ...]
-    bike_classes: dict[
-        Literal[
-            "separated_track_path",
-            "painted_lane",
-            "bus_lane",
-            "low_speed",
-            "mixed_traffic",
-        ],
-        tuple[str, ...],
-    ]
+    bike_classes: dict[BikeClass, tuple[str, ...]]
     bike_speed_table: BikeSpeedTableConfig
+    bike_edge_costs: BikeEdgeCostConfig
     tile_size_m: int = Field(gt=0)
 
 

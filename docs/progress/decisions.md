@@ -1,5 +1,11 @@
 ## Decisions taken while coding
 
+- 2026-11-23, step 6b: keep sampled node elevations on `nodes.parquet` so
+  active-mode costs can use every ordered segment's grade. Write walk/bike
+  costs separately by directed `edge_key`; keep incomplete profiles null and
+  count them rather than substituting an edge-average grade. Store cycling
+  energy as per-kg work, drag and unloaded pedalling components so each term
+  follows section 9.7's mass dependence.
 - 2026-11-23, step 6: retain ellipsoidal ordered-line segment lengths;
   pairwise lag was slower on replicated Monaco data. Materialize narrow
   per-way/segment intermediates without changing the edge schema.

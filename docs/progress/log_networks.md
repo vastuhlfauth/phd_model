@@ -3,6 +3,24 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: active-mode edge costs (2026-11-23)
+
+- Added directed walk and bike costs from ordered node elevations, summing
+  segment-by-segment grades; steps use the configured stair formula.
+- The bike cost function reuses the grade speed table, applies provisional
+  control probabilities and signal wait, and resolves surface/tracktype
+  fallbacks. Unknown surface values fall back by highway and are counted.
+- Elevation enrichment now stores nullable `elevation_m` on nodes for this
+  later cost function. Incomplete profiles stay null and are counted.
+- Bike energy stores its per-kg and drag parts separately, plus unloaded
+  pedalling energy; separated length and positive climb are retained.
+- Provisional caps, stop probabilities and surface maps are
+  `TODO(confirm)` in `config/network.yaml`; signal timing remains in
+  `config/energy.yaml`.
+- Synthetic active-cost and elevation tests: 10 passed; Ruff and Pylance clean.
+  No pilot, national build, download or raw-data modification was run.
+- B2 stage orchestration and the Géovélo check remain.
+
 ### Step 6: edge-build performance (2026-11-23)
 
 - Bumped edge-build cache version to 7; narrowed point and segment rows,

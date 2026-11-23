@@ -22,8 +22,9 @@
   DuckDB's spheroid function uses WGS84 parameters, numerically equivalent to
   GRS80 at sub-millimetre precision for road-edge lengths. The edge-build step
   itself does not populate elevation or travel times; the elevation stage adds
-  directional profiles to `edges.parquet`, and car costs are stored in the
-  one-to-one `car_costs.parquet` keyed by `edge_key`.
+  sampled elevations to nodes and directional profiles to `edges.parquet`.
+  Car costs are stored in the one-to-one `car_costs.parquet` keyed by
+  `edge_key`.
 
 ## Edge columns
 
@@ -56,9 +57,10 @@
 | `geometry_wkb` | binary | Directed EPSG:3035 line geometry |
 
 `nodes.parquet` has `node_id` (int64), `x` and `y` (float64 metres in
-EPSG:3035), `tags` (OSM tag map), and `graph_node` (bool). Graph nodes are way
-ends and nodes shared by at least two kept ways. Other retained way nodes and
-area traffic-control nodes are also present with `graph_node=false`.
+EPSG:3035), `tags` (OSM tag map), `graph_node` (bool), and nullable
+`elevation_m` (float64) after elevation enrichment. Graph nodes are way ends
+and nodes shared by at least two kept ways. Other retained way nodes and area
+traffic-control nodes are also present with `graph_node=false`.
 The extracted way tag maps also retain `zone:traffic`, `source:maxspeed`,
 `maxspeed:type`, `zone:maxspeed`, `tracktype`, `service` and `area` for
 downstream speed and surface processing. The edge-build report joins those
@@ -69,6 +71,31 @@ interior graph nodes also serve as the preceding segment's endpoint. This
 avoids joining every way point against sequence ranges.
 The key is stable for unchanged way segmentation; splitting a way at a new
 graph node can change subsequent segment indexes and keys.
+
+## Active-mode edge costs
+
+The step 6b active-cost function writes `active_costs.parquet`, one row per
+directed foot or bike `edge_key`. Inapplicable mode-specific cost columns are
+null. It uses ordered node elevations for segment grades and leaves costs null
+for incomplete profiles, which are counted in its summary.
+
+| Column | Type | Unit | Meaning |
+|---|---|---|---|
+| `edge_key` | string | none | Directed foot or bike edge key |
+| `walk_time_s`, `walk_energy_kj` | float64, nullable | seconds, kJ | Summed segment walk cost; steps use the stair formula |
+| `bike_time_s`, `bike_energy_kj` | float64, nullable | seconds, kJ | Ride plus expected stop time; total riding energy |
+| `bike_energy_per_kg_kj_per_kg` | float64, nullable | kJ/kg | Rolling, signed climb, and stop energy per total bike+rider kg |
+| `bike_energy_drag_kj` | float64, nullable | kJ | Drag energy |
+| `bike_pedalling_energy_kj` | float64, nullable | kJ | Unloaded pedalling energy, based on reference body mass |
+| `climb_m` | float64, nullable | metres | Sum of positive segment elevation changes |
+| `separated_length_m` | float64 | metres | Bike-edge length on separated infrastructure, otherwise zero |
+
+Bike total energy equals the per-kg component times configured rider-plus-bike
+mass, plus drag and unloaded-pedalling energy. Unknown non-empty `surface`
+values use the highway-class default and are reported by value in the function
+summary. Provisional stop probabilities and surface defaults are
+`TODO(confirm)` values in `config/network.yaml`; signal timing is configured in
+`config/energy.yaml`.
 
 ## Car free-flow costs
 

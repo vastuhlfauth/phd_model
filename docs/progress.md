@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Edge build optimized and Monaco output verified; pilot timing and configured DuckDB memory/threads remain open; active-mode costs, unified stage and Géovélo check remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Edge build optimized and Monaco output verified; active-mode costs implemented; pilot timing, unified stage and Géovélo check remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -51,7 +51,7 @@ Status values: not started, in progress, review, merged.
 - [ENTD 2008 public tables](data/entd2008.md) (step 11, section 9.9's 2008-2019 comparison)
 - [Commune contours](data/commune_contours.md) (step 6)
 - [BD ALTI 25 m elevation grids](data/bdalti.md) (step 6)
-- [OSM directed edges and car costs](data/osm_edges.md) (step 6)
+- [OSM directed edges, elevation and active costs](data/osm_edges.md) (step 6)
 
 ## Assumptions to check
 
@@ -71,6 +71,11 @@ Status values: not started, in progress, review, merged.
   to-nodes of degree 3+, with
   30/50/80/110 km/h speed-limit bucket bounds. Confirm defaults, class
   overrides, factors, density rule, delays and buckets against the pilot/R4.
+- 2026-11-23, step 6b: provisional bike infrastructure caps, stop
+  probabilities, signal timing and surface fallbacks are configured with
+  `TODO(confirm)` markers in `config/network.yaml` and `config/energy.yaml`.
+  Confirm them against observed speeds, junctions and mapped surfaces before
+  interpreting costs as calibrated.
 - 2026-10-09, bootstrap, the initial base configuration contains the EPSG:3035 coordinate system and 200 m/1 km resolutions; `config/base.yaml`.
 - 2026-10-12, step 0, a pattern's expected outcome defaults to "kept" at
   both state dates unless it is one of section 5.6's listed known
@@ -102,8 +107,8 @@ Each item stays open until a value is decided; the value goes into `config/`.
   are marked `TODO(confirm)` in `config/network.yaml`.
 - [ ] Step 6b (sections 8.3 and 9.7): confirm the provisional bike class
   and highway speed caps, grade grid and tolerances in `config/network.yaml`.
-  The user supplied provisional stop probabilities and surface fallbacks;
-  they still need configuration and implementation.
+  Active-mode cost functions now use these plus the user-supplied provisional
+  stop probabilities and surface fallbacks; all remain unconfirmed.
 - [ ] Step 6b (section 8.1): configure and implement the user-supplied
   provisional Géovélo family mappings, side counts and 15 m matching rule;
   list distinct facility values before mapping.
