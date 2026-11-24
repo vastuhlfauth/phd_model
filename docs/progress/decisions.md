@@ -1,5 +1,7 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 8: select Dial in `config/search.yaml`; the 1,000-origin
+  pilot benchmark found it faster in car, bike and foot. Heap remains available.
 - 2026-11-24, step 8: graph version 2 keeps class and speed-bucket changes
   as contraction boundaries and stores ordered zero-based directed-edge row
   positions from the exact source Parquet; replacing that file requires a rebuild.

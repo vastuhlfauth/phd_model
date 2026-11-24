@@ -1,7 +1,7 @@
 """Validated search-product settings for sections 10.2 and 14.7."""
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -14,6 +14,7 @@ class SearchConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    queue: Literal["heap", "dial"]
     dial_resolution_s: float = Field(gt=0, allow_inf_nan=False)
     time_bin_s: float = Field(gt=0, allow_inf_nan=False)
     distance_bin_m: float = Field(gt=0, allow_inf_nan=False)

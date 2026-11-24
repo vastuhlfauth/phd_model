@@ -39,7 +39,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Standalone department-only Géovélo report with 5 m nearest-line matching; pilot performance not rerun |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
-| 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Compact CSR, bounded heap/Dial searches and three products tested synthetically; pilot benchmarks pending |
+| 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Compact CSR, bounded heap/Dial searches and three products tested synthetically; pilot benchmark favours Dial for all modes |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
 | 10 | `mobgrid/od` | not started | | |
 | 11 | `mobgrid/budget` | review | `step/mobgrid-budget-entd2008` | Notes moved to `docs/progress/log_time_budget.md` (Step 11: notes from the steps table) |
@@ -119,9 +119,8 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [ ] Step 8: rebuild version 2 graphs on the 2021 pilot and inspect per-mode
   counts, memory and timings; compare car memory with the prior 248 MiB for
   976k arcs. The pilot was not run during coding.
-- [ ] Step 8: supply car, bike and foot search cutoffs in `config/search.yaml`;
-  none were configured in the repository. Run the synthetic microbenchmark and
-  1,000-origin pilot benchmark and select Dial only when it is faster.
+- [ ] Step 8: rerun the corrected million-settled-node synthetic
+  microbenchmark; the 1,000-origin pilot benchmark favours Dial in all modes.
 - [ ] Step 6b: validate the provisional 50 m elevation smoothing window
   against the pilot's before/after climb report.
 - [ ] Step 6b: run the elevation sensitivity report, select the flat and

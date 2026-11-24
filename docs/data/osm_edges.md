@@ -79,7 +79,9 @@ arcs, and can fill the three section 10.2 products at settlement. Road-class
 and speed-bucket times are optional post-search path splits. Search resolution
 and product bin widths are configured in `config/search.yaml`. Dial rounds
 edge and source times to the configured resolution; the heap retains float
-times. Use Dial for production only when a representative benchmark is faster.
+times. The configured queue is Dial, faster for all three pilot modes; heap
+remains selectable. Low-level callers must pass the configured queue and Dial
+resolution explicitly.
 The benchmark needs all three mode cutoffs filled in that configuration; it
 checkpoints under the pilot interim directory and writes a dated log and
 summary under the configured log directory.

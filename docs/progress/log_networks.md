@@ -3,6 +3,15 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 8: benchmark cutoff and queue (2026-11-24)
+
+- The million-node synthetic chain now settles all one million nodes; previously
+  the 12,000 s cutoff stopped it after 12,001 nodes.
+- Select Dial in search configuration after the pilot benchmark found it faster
+  in every mode; heap remains available. Low-level callers pass the choice.
+- Synthetic graph tests: 13 passed; Ruff clean. The corrected synthetic
+  benchmark is pilot-marked and was not run.
+
 ### Step 8: graph storage, search and products (2026-11-24)
 
 - Graph archives version 2 store compact class and bucket ids, reverse arc

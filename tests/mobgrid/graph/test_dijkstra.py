@@ -155,6 +155,17 @@ def test_search_configuration_rejects_invalid_cutoffs_and_resolution():
         type(config).model_validate(values)
 
 
+def test_search_configuration_selects_dial_and_accepts_heap():
+    config = load_search_config(
+        Path(__file__).resolve().parents[3] / "config" / "search.yaml"
+    )
+    assert config.queue == "dial"
+    heap = type(config).model_validate({**config.model_dump(), "queue": "heap"})
+    assert heap.queue == "heap"
+    with pytest.raises(ValidationError):
+        type(config).model_validate({**config.model_dump(), "queue": "invalid"})
+
+
 def test_reused_workspace_masks_unreached_labels():
     graph = _random_graph(99)
     workspace = SearchWorkspace(graph, ("distance_m",))
@@ -297,7 +308,7 @@ def test_synthetic_million_node_benchmark():
     resolution = load_search_config(
         Path(__file__).resolve().parents[3] / "config" / "search.yaml"
     ).dial_resolution_s
-    cutoff = 12_000.0
+    cutoff = float(n - 1)
     workspace = SearchWorkspace(graph, (), max_dial_ticks=int(cutoff / resolution))
     origin, offset = np.array([0]), np.array([0.0])
     timings = {}
@@ -322,6 +333,7 @@ def test_synthetic_million_node_benchmark():
             resolution_s=resolution,
         )
         elapsed = time.perf_counter() - started
+        assert result.count == n
         timings[queue] = elapsed
         print(
             f"{queue}: {result.count / elapsed:,.0f} settled nodes/s "
