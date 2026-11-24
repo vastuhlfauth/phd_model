@@ -923,6 +923,18 @@ Unmapped non-empty values and values mapped to `null` in `config/network.yaml` a
 
 ## Graph build
 
-Not run during coding. Run `python -m mobgrid.graph.build --state 2021 --area pilot`
-to write per-mode graphs under `data/base/network/2021/pilot/graph/` and replace
-this note with SCC/contracted counts, array memory and stage timings.
+- State / area: 2021 / pilot
+- One-to-one edge-cost validation: 0.93 s
+- Memory counts include forward and transposed CSR arrays.
+
+| Mode | Nodes before contraction | Edges before contraction | Nodes after contraction | Edges after contraction | Memory before (MiB) | Memory after (MiB) |
+|---|---:|---:|---:|---:|---:|---:|
+| car | 523,531 | 1,154,318 | 428,225 | 976,413 | 293.8 | 248.2 |
+| bike | 639,624 | 1,539,047 | 599,667 | 1,467,556 | 132.1 | 125.7 |
+| foot | 658,414 | 1,701,166 | 640,721 | 1,665,780 | 92.9 | 90.9 |
+
+| Mode | Join and CSR (s) | Largest SCC (s) | Kept-node flags (s) | Contraction (s) | Write (s) |
+|---|---:|---:|---:|---:|---:|
+| car | 3.01 | 1.52 | 3.12 | 3.78 | 3.17 |
+| bike | 4.09 | 1.15 | 4.30 | 3.86 | 1.67 |
+| foot | 3.84 | 1.06 | 4.24 | 4.35 | 1.38 |
