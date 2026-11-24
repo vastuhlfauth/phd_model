@@ -3,6 +3,17 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6: optional calibration and stalled fits (2026-11-24)
+
+- The user-run OSRM fit stalled before convergence; the optimiser is unchanged.
+- `calibration.reference` selects none, OSRM or Google; none is the default
+  and the report explains the skipped calibration. Google needs a configured
+  pair-id-keyed Parquet reference.
+- Stalled or iteration-limited fits report last values and bound flags without
+  claiming convergence or holdout metrics; converged bound values are flagged.
+- Synthetic tests: 20 passed; Ruff clean. No real-data report or calibration
+  run was started during this fix.
+
 ### Step 6: calibration cutoff and references (2026-11-24)
 
 - The user-run report processed 2,500 pairs; calibration stopped at the

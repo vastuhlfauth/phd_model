@@ -343,22 +343,16 @@ def render_calibration(
     if settings.calibration is None or settings.metric_tolerances_min is None:
         raise ValueError("calibration settings and metric tolerances are required")
     config = settings.calibration
-    holdout = result["holdout"]
+    first_fit = result["first_fit"]
+    refit = result["refit"]
+    completed = refit is not None and refit.status == "converged"
+    reference_name = {"osrm": "OSRM", "google": "Google Routes"}[config.reference]
     lines = [
         "## Car calibration",
         "",
-        f"Calibration reference: {config.reference.name}.",
+        f"Calibration reference: {reference_name}.",
         f"Provisional cutoff exclusions: {provisional_cutoff}; "
         f"pairs missing reference: {missing_reference}.",
-        f"Training pairs: {result['training_count']}; holdout pairs: {len(holdout)}.",
-        f"Fitted cutoff exclusions: {result['fitted_cutoff_training']} training, "
-        f"{result['fitted_cutoff_holdout']} holdout; refit training pairs: "
-        f"{result['refit_training_count']}. Holdout metrics use the same pairs "
-        "at all stages.",
-        "Changed paths among pairs reached after first fit: "
-        f"{result['changed_share']:.1%}.",
-        "The first fit uses provisional paths. Both sets are rerouted once, then "
-        "refit paths remain fixed for the final holdout metrics.",
         "The fit uses unrounded arc components; reported path times use Dial rounding.",
         "No network configuration was modified; fitted values require approval.",
         "Standard errors and correlations use the linearized log-ratio least-squares "
@@ -368,8 +362,37 @@ def render_calibration(
         "at their provisional value.",
         f"Unfitted road classes (factor 1): {', '.join(config.fixed_highways)}.",
     ]
+    if completed:
+        holdout = result["holdout"]
+        lines.extend(
+            [
+                f"Training pairs: {result['training_count']}; "
+                f"holdout pairs: {len(holdout)}.",
+                f"Fitted cutoff exclusions: {result['fitted_cutoff_training']} "
+                "training, "
+                f"{result['fitted_cutoff_holdout']} holdout; refit training pairs: "
+                f"{result['refit_training_count']}. Holdout metrics use the same pairs "
+                "at all stages.",
+                "Changed paths among pairs reached after first fit: "
+                f"{result['changed_share']:.1%}.",
+                "The first fit uses provisional paths. Both sets are rerouted once, "
+                "then refit paths remain fixed for the final holdout metrics.",
+            ]
+        )
+    else:
+        stage = "first fit" if first_fit.status != "converged" else "refit"
+        status = first_fit.status if stage == "first fit" else refit.status
+        lines.extend(
+            [
+                f"Calibration {stage} {status} before convergence. "
+                "The last parameter values are diagnostic, not fitted estimates.",
+                "Holdout metrics and subsequent stages are omitted.",
+            ]
+        )
     for label, key in (("First fit", "first_fit"), ("Refit", "refit")):
         fit = result[key]
+        if fit is None:
+            continue
         lines.extend(
             [
                 "",
@@ -390,9 +413,22 @@ def render_calibration(
                 error = "—"
             else:
                 status = "fitted"
-                error = f"{fit.standard_errors[index]:.4g}"
+                error = (
+                    f"{fit.standard_errors[index]:.4g}"
+                    if np.isfinite(fit.standard_errors[index])
+                    else "—"
+                )
+                if fit.status != "converged":
+                    status = "not converged"
+            tolerance = np.finfo(float).eps * max(
+                1.0, abs(lower[index]), abs(upper[index])
+            )
+            if abs(fit.values[index] - lower[index]) <= tolerance:
+                status += "; lower bound"
+            if abs(fit.values[index] - upper[index]) <= tolerance:
+                status += "; upper bound"
             lines.append(
-                f"| {name} | {fit.values[index]:.4g} | {error} | "
+                f"| {name} | {fit.values[index]:.17g} | {error} | "
                 f"{lower[index]:g}–{upper[index]:g} | {status} |"
             )
         lines.extend(
@@ -410,6 +446,8 @@ def render_calibration(
                 for value in fit.correlations[index]
             ]
             lines.append(f"| {name} | " + " | ".join(values) + " |")
+    if not completed:
+        return "\n".join(lines)
     by_id = {row["pair_id"]: row for row in rows}
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for route in holdout:
@@ -499,14 +537,14 @@ def _calibration_references(
     if settings.calibration is None:
         raise ValueError("calibration settings are required")
     reference = settings.calibration.reference
-    if reference.type == "osrm":
+    if reference == "osrm":
         return {
             row["pair_id"]: (row["reference_time_s"], row["reference_distance_m"])
             for row in rows
             if row["eligible"]
         }
-    if reference.path is None:
-        raise ValueError("parquet calibration reference path is required")
+    if reference != "google" or settings.calibration.google_reference_path is None:
+        raise ValueError("Google calibration reference path is required")
     with duckdb.connect() as connection:
         connection.register(
             "_reference_pairs", pa.table({"pair_id": [row["pair_id"] for row in rows]})
@@ -517,7 +555,7 @@ def _calibration_references(
             FROM read_parquet(?) r
             SEMI JOIN _reference_pairs p ON r.pair_id = p.pair_id
             """,
-            [str(reference.path)],
+            [str(settings.calibration.google_reference_path)],
         ).fetchall()
     result: dict[str, tuple[float, float]] = {}
     for pair_id, duration, distance in values:
@@ -535,7 +573,7 @@ def _calibration_references(
     return result
 
 
-def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
+def _car_calibration(rows: list[dict], settings: QuerySettings) -> tuple[str, str]:
     from mobgrid.validation.osrm_calibration import arc_features, calibrate_car
 
     if (
@@ -553,7 +591,7 @@ def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
         row
         for row in rows
         if row["mode"] == "car"
-        and (settings.calibration.reference.type != "osrm" or row["eligible"])
+        and (settings.calibration.reference != "osrm" or row["eligible"])
     ]
     references = _calibration_references(candidates, settings)
     missing_reference = sum(row["pair_id"] not in references for row in candidates)
@@ -593,7 +631,12 @@ def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
             [row["pair_id"] for row in car_rows],
         ),
     )
-    return render_calibration(
+    warning = ""
+    for label, key in (("first fit", "first_fit"), ("refit", "refit")):
+        fit = result[key]
+        if fit is not None and fit.status != "converged":
+            warning = f"calibration {label} {fit.status} before convergence"
+    text = render_calibration(
         result,
         names,
         lower,
@@ -603,6 +646,7 @@ def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
         provisional_cutoff,
         missing_reference,
     )
+    return text, warning
 
 
 def _write_report(path: Path, text: str) -> None:
@@ -632,6 +676,7 @@ def generate_report(settings: QuerySettings, date: str) -> None:
     summary_path = settings.log_directory / f"{date}_osrm_report_summary.md"
     started = time.perf_counter()
     error = ""
+    warning = ""
     rows: list[dict] = []
     try:
         pairs = pq.read_table(settings.sample_path).to_pylist()
@@ -703,9 +748,17 @@ def generate_report(settings: QuerySettings, date: str) -> None:
                     }
                 )
         calibration_section = None
-        if settings.calibration is not None:
+        if (
+            settings.calibration is not None
+            and settings.calibration.reference == "none"
+        ):
+            calibration_section = (
+                "## Car calibration\n\nCalibration skipped: reference is none "
+                "(OSRM is a network check, not a speed reference)."
+            )
+        elif settings.calibration is not None:
             try:
-                calibration_section = _car_calibration(rows, settings)
+                calibration_section, warning = _car_calibration(rows, settings)
             except (
                 ValueError,
                 OSError,
@@ -742,7 +795,7 @@ def generate_report(settings: QuerySettings, date: str) -> None:
             f"- Outside cutoff: {sum(row['model_time_s'] is None for row in rows)}",
             f"- NoRoute/NoSegment: {sum(row['outcome'] != 'Ok' for row in rows)}",
             f"- Over snap limit: {sum(row['over_snap'] for row in rows)}",
-            f"- Warnings/errors: {error or 'none'}",
+            f"- Warnings/errors: {error or warning or 'none'}",
         ]
         summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         with log_path.open("a", encoding="utf-8") as log:

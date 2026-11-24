@@ -38,27 +38,13 @@ class RoadGroup(BaseModel):
     bounds: tuple[float, float]
 
 
-class CalibrationReference(BaseModel):
-    """Source of pair-id keyed durations in seconds and distances in metres."""
-
-    model_config = ConfigDict(extra="forbid")
-    type: Literal["osrm", "parquet"]
-    name: str = Field(min_length=1)
-    path: Path | None = None
-
-    @model_validator(mode="after")
-    def check_path(self) -> CalibrationReference:
-        if (self.type == "parquet") != (self.path is not None):
-            raise ValueError("a reference path is required only for parquet")
-        return self
-
-
 class CalibrationSettings(BaseModel):
     """Car fit bounds and numerical controls, in seconds where applicable."""
 
     model_config = ConfigDict(extra="forbid")
     network_config: Path
-    reference: CalibrationReference
+    reference: Literal["none", "osrm", "google"]
+    google_reference_path: Path | None = None
     seed: int = Field(ge=0)
     training_fraction: float = Field(gt=0, lt=1)
     uncertainty_fraction: float = Field(gt=0, le=1)
@@ -72,6 +58,8 @@ class CalibrationSettings(BaseModel):
 
     @model_validator(mode="after")
     def check_bounds(self) -> CalibrationSettings:
+        if self.reference == "google" and self.google_reference_path is None:
+            raise ValueError("google_reference_path is required for Google calibration")
         if not self.road_groups or set(self.control_bounds_s) != set(CONTROL_NAMES):
             raise ValueError("car road groups and all control bounds are required")
         classes = list(self.fixed_highways)
@@ -102,6 +90,7 @@ class CalibrationFit:
     correlations: FloatArray
     fixed: npt.NDArray[np.bool_]
     fixed_standard_errors: FloatArray
+    status: Literal["converged", "stalled", "iteration_limit"] = "converged"
 
 
 def factor_highways(settings: CalibrationSettings) -> tuple[str, ...]:
@@ -429,6 +418,12 @@ def calibrate_car(
         )
 
     first_fit = fit(first_paths, training)
+    if first_fit.status != "converged":
+        return {
+            "first_fit": first_fit,
+            "refit": None,
+            "training_count": len(training),
+        }
     first_weights = adjusted_weights(features, first_fit.values, groups).astype(
         np.float32
     )
@@ -452,6 +447,15 @@ def calibrate_car(
     if not len(refit_training) or not len(reached_holdout):
         raise ValueError("fitted Dial cutoff leaves no training or holdout pairs")
     refit = fit(rerouted_paths, refit_training, first_fit)
+    if refit.status != "converged":
+        return {
+            "first_fit": first_fit,
+            "refit": refit,
+            "training_count": len(training),
+            "refit_training_count": len(refit_training),
+            "fitted_cutoff_training": len(training) - len(refit_training),
+            "fitted_cutoff_holdout": len(holdout) - len(reached_holdout),
+        }
     refit_weights = adjusted_weights(features, refit.values, groups).astype(np.float32)
     if np.any(~np.isfinite(refit_weights)) or np.any(refit_weights < 0):
         raise ValueError("refit produced invalid car arc times")
@@ -518,12 +522,12 @@ def _optimise(
     max_iterations: int,
     tolerance: float,
     max_backtracks: int,
-) -> FloatArray:
+) -> tuple[FloatArray, Literal["converged", "stalled", "iteration_limit"]]:
     scale = upper - lower
     x = (values - lower) / scale
     active = ~fixed
     if not active.any():
-        return values
+        return values, "converged"
     for _ in range(max_iterations):
         values = lower + x * scale
         residual, jacobian = _residual_jacobian(
@@ -534,7 +538,7 @@ def _optimise(
         xa = x[active]
         projected = xa - np.clip(xa - gradient, 0, 1)
         if np.max(np.abs(projected)) <= tolerance:
-            return values
+            return values, "converged"
         step = np.zeros(len(xa))
         free = np.ones(len(xa), dtype=bool)
         for _ in range(len(xa)):
@@ -566,8 +570,8 @@ def _optimise(
                 accepted = True
                 break
         if not accepted:
-            raise RuntimeError("bounded calibration stalled before convergence")
-    raise RuntimeError("bounded calibration exceeded its iteration limit")
+            return values, "stalled"
+    return lower + x * scale, "iteration_limit"
 
 
 def _uncertainty(
@@ -683,7 +687,7 @@ def fit_log_time_ratios(
         fixed = fixed.copy()
         fixed_errors = fixed_errors.copy()
     while True:
-        values = _optimise(
+        values, status = _optimise(
             cruise,
             controls,
             fixed_time,
@@ -696,6 +700,15 @@ def fit_log_time_ratios(
             tolerance,
             max_backtracks,
         )
+        if status != "converged":
+            return CalibrationFit(
+                values,
+                np.full(len(values), np.nan),
+                np.full((len(values), len(values)), np.nan),
+                fixed,
+                fixed_errors,
+                status,
+            )
         residual, jacobian = _residual_jacobian(
             cruise, controls, fixed_time, observed, values
         )

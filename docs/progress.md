@@ -37,7 +37,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; report calibration cutoff and reference handling fixed; rerun and approval pending |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; fit stalled, calibration disabled by default; report rerun pending |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Compact CSR, bounded heap/Dial searches and three products tested synthetically; pilot benchmark favours Dial for all modes |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -122,9 +122,9 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
-- [ ] Step 6 OSRM: rerun the report and inspect
-  car holdout performance, parameter uncertainty and proposed values before
-  approving any network configuration changes. Foot strata unfilled after
+- [ ] Step 6 OSRM: rerun the report with calibration disabled. Select a
+  suitable reference before interpreting car holdout performance, parameter
+  uncertainty or proposed values; the OSRM fit stalled. Foot strata unfilled after
   the configured attempt limit are reported, not proven empty. Calibration
   counts and excludes pairs outside the provisional or fitted Dial cutoff.
   Check unreachable and over-25 m snapping exclusions in the report.

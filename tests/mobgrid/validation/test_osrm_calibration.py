@@ -36,6 +36,26 @@ def test_configured_calibration_bounds_cover_each_requested_class():
     }
     assert len(factor_highways(settings)) == 13
     assert settings.uncertainty_fraction == 0.5
+    assert settings.reference == "none"
+
+
+def test_reference_switch_requires_google_path():
+    settings = load_query_settings(
+        Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
+    ).calibration
+    assert settings is not None
+    data = settings.model_dump()
+    with pytest.raises(ValueError, match="google_reference_path"):
+        type(settings).model_validate({**data, "reference": "google"})
+    google = type(settings).model_validate(
+        {**data, "reference": "google", "google_reference_path": "google.parquet"}
+    )
+    assert google.google_reference_path == Path("google.parquet")
+    assert (
+        type(settings).model_validate({**data, "reference": "osrm"}).reference == "osrm"
+    )
+    with pytest.raises(ValueError, match="reference"):
+        type(settings).model_validate({**data, "reference": "unsupported"})
 
 
 def test_log_ratio_fit_recovers_speed_factors_and_control_delays():
@@ -157,6 +177,50 @@ def test_speed_factor_respects_active_bound():
     )
     assert result.values[0] == pytest.approx(0.8)
     assert not result.fixed[0]
+
+
+def test_stalled_optimizer_returns_last_values_and_unavailable_uncertainty(monkeypatch):
+    def constant_objective(cruise, controls, fixed, observed, values):
+        return np.ones(len(observed)), np.ones((len(observed), len(values)))
+
+    monkeypatch.setattr(
+        "mobgrid.validation.osrm_calibration._residual_jacobian", constant_objective
+    )
+    result = fit_log_time_ratios(
+        np.ones((3, 1)),
+        np.empty((3, 0)),
+        np.zeros(3),
+        np.ones(3),
+        np.array([0.8]),
+        np.array([1.15]),
+        np.array([1.0]),
+        uncertainty_fraction=0.5,
+        max_iterations=10,
+        tolerance=1e-8,
+        max_backtracks=3,
+    )
+    assert result.status == "stalled"
+    np.testing.assert_allclose(result.values, [1.0])
+    assert np.isnan(result.standard_errors).all()
+
+
+def test_iteration_limit_returns_last_accepted_values():
+    cruise = np.linspace(20, 200, 80).reshape(-1, 1)
+    result = fit_log_time_ratios(
+        cruise,
+        np.empty((80, 0)),
+        np.zeros(80),
+        cruise[:, 0] / 0.9,
+        np.array([0.8]),
+        np.array([1.15]),
+        np.array([1.0]),
+        uncertainty_fraction=0.5,
+        max_iterations=1,
+        tolerance=1e-12,
+        max_backtracks=30,
+    )
+    assert result.status == "iteration_limit"
+    assert result.values[0] != pytest.approx(1.0)
 
 
 def test_full_class_fit_converges_with_noise_and_bounded_controls():

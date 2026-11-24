@@ -29,9 +29,8 @@ car_profile_notes:
   signal_penalty_s: 2
 calibration:
   network_config: config/network.yaml
-  reference:
-    type: osrm
-    name: OSRM
+  reference: none
+  google_reference_path: null
   seed: 42
   training_fraction: 0.5
   uncertainty_fraction: 0.5

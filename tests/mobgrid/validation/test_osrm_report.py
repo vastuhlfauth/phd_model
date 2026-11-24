@@ -207,6 +207,7 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
         ).calibration,
     )
     monkeypatch.setenv("OSRM_BASE_URL", "https://example.invalid")
+    assert settings.calibration.reference == "none"
     key_a = osrm_report._calibration_cache_key(settings, 300, 0.1, ["car-1"])
     key_b = osrm_report._calibration_cache_key(settings, 300, 0.1, ["car-2"])
     assert key_a != key_b
@@ -234,6 +235,15 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
                 ),
             },
         )
+    osrm_report.generate_report(settings, "2026-01-01")
+    report = settings.report_path.read_text(encoding="utf-8")
+    assert "Calibration skipped" in report and "reference is none" in report
+    assert not settings.calibration_checkpoint_directory.exists()
+    settings = settings.model_copy(
+        update={
+            "calibration": settings.calibration.model_copy(update={"reference": "osrm"})
+        }
+    )
     osrm_report.generate_report(settings, "2026-01-01")
     report = settings.report_path.read_text(encoding="utf-8")
     assert "2026-01-01" in report
@@ -286,22 +296,64 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
         ),
         reference_path,
     )
-    other_reference = settings.calibration.reference.model_copy(
-        update={"type": "parquet", "name": "Other source", "path": reference_path}
-    )
     other_settings = settings.model_copy(
         update={
             "calibration": settings.calibration.model_copy(
-                update={"reference": other_reference}
+                update={"reference": "google", "google_reference_path": reference_path}
             )
         }
     )
     osrm_report.generate_report(other_settings, "2026-01-01")
     other_report = settings.report_path.read_text(encoding="utf-8")
-    assert "Calibration reference: Other source" in other_report
+    assert "Calibration reference: Google Routes" in other_report
     assert "Training pairs: 3; holdout pairs: 3" in other_report
     assert "Provisional cutoff exclusions: 1" in other_report
     assert "120 | 120" in other_report
+
+    def stalled(cruise, controls, fixed, observed, lower, upper, values, *args):
+        last = values.copy()
+        last[0] = lower[0]
+        last[1] = upper[1]
+        return last, "stalled"
+
+    original_optimise = osrm_calibration._optimise
+    monkeypatch.setattr(osrm_calibration, "_optimise", stalled)
+    osrm_report.generate_report(settings, "2026-01-01")
+    stalled_report = settings.report_path.read_text(encoding="utf-8")
+    assert "stalled" in stalled_report
+    assert "lower bound" in stalled_report and "upper bound" in stalled_report
+    assert "### Holdout metrics" not in stalled_report
+    assert "stalled" in (
+        settings.log_directory / "2026-01-01_osrm_report_summary.md"
+    ).read_text(encoding="utf-8")
+
+    monkeypatch.setattr(osrm_calibration, "_optimise", original_optimise)
+    original_fit = osrm_calibration.fit_log_time_ratios
+    fit_calls = []
+
+    def stalled_refit(*args, **kwargs):
+        fit_calls.append(1)
+        if len(fit_calls) == 1:
+            return original_fit(*args, **kwargs)
+        values = args[6].copy()
+        values[0] = args[5][0]
+        count = len(values)
+        return CalibrationFit(
+            values,
+            np.full(count, np.nan),
+            np.full((count, count), np.nan),
+            np.zeros(count, dtype=bool),
+            np.full(count, np.nan),
+            status="stalled",
+        )
+
+    monkeypatch.setattr(osrm_calibration, "fit_log_time_ratios", stalled_refit)
+    osrm_report.generate_report(settings, "2026-01-01")
+    refit_report = settings.report_path.read_text(encoding="utf-8")
+    assert "refit stalled" in refit_report
+    assert "### First fit: parameters" in refit_report
+    assert "### Refit: parameters" in refit_report
+    assert "upper bound" in refit_report and "### Holdout metrics" not in refit_report
 
     url = osrm._request_url(pairs[0], settings, "https://example.invalid")
     path = (
@@ -334,14 +386,19 @@ def test_car_calibration_report_has_holdout_fits_and_correlations():
     )
     calibration = settings.calibration
     assert calibration is not None
+    settings = settings.model_copy(
+        update={"calibration": calibration.model_copy(update={"reference": "osrm"})}
+    )
     names = [*factor_highways(calibration), *CONTROL_NAMES]
     count = len(names)
     fixed = np.zeros(count, dtype=bool)
     fixed[1] = True
     fixed_errors = np.full(count, np.nan)
     fixed_errors[1] = np.inf
+    values = np.ones(count)
+    values[:2] = [0, 30]
     fit = CalibrationFit(
-        values=np.ones(count),
+        values=values,
         standard_errors=np.where(fixed, np.nan, 0.01),
         correlations=np.eye(count),
         fixed=fixed,
@@ -384,6 +441,7 @@ def test_car_calibration_report_has_holdout_fits_and_correlations():
     assert "25.0%" in text
     assert "fixed" in text
     assert "unidentifiable" in text
+    assert "lower bound" in text and "upper bound" in text
     assert "correlation" in text.lower()
     assert all(stage in text for stage in ("Provisional", "First fit", "Refit"))
 
@@ -394,13 +452,10 @@ def test_parquet_reference_joins_pair_ids_and_rejects_bad_values(tmp_path):
     )
     assert settings.calibration is not None
     path = tmp_path / "references.parquet"
-    reference = settings.calibration.reference.model_copy(
-        update={"type": "parquet", "name": "Other source", "path": path}
-    )
     settings = settings.model_copy(
         update={
             "calibration": settings.calibration.model_copy(
-                update={"reference": reference}
+                update={"reference": "google", "google_reference_path": path}
             )
         }
     )

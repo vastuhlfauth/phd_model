@@ -1,5 +1,8 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6: disable calibration by default (`reference: none`).
+  Preserve and report last values of stalled or iteration-limited fits, flag
+  bounds and omit unfinished holdout metrics rather than claiming convergence.
 - 2026-11-24, step 6: calibrate against the configured named reference; OSRM
   is an exploratory network check, not a speed reference. Exclude and count
   pairs outside the provisional cutoff; if rerouting exceeds the fitted cutoff,
