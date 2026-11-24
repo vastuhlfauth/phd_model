@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import binascii
 import json
 import logging
+import struct
 import sys
 import time
+import zlib
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -400,6 +403,34 @@ class ElevationSummary:
     longest_clipped_edges: tuple[tuple[str, int, str, str, float, float], ...] = ()
 
 
+@dataclass(frozen=True)
+class TileClimb:
+    """Complete directed car-edge climb and length within one 10 km tile."""
+
+    tile_id: int
+    easting_m: int
+    northing_m: int
+    climb_m: float
+    edge_length_m: float
+    incomplete_edges: int
+
+    @property
+    def climb_per_km(self) -> float | None:
+        if self.edge_length_m <= 0:
+            return None
+        return self.climb_m * 1000 / self.edge_length_m
+
+
+@dataclass(frozen=True)
+class ElevationSensitivity:
+    """Directed car climb per kilometre under alternative smoothing windows."""
+
+    windows_m: tuple[float, ...]
+    pilot_climb_per_km: dict[float, float | None]
+    tiles_by_window: dict[float, tuple[TileClimb, ...]]
+    reference_zones: dict[str, dict[float, float | None]]
+
+
 def _smooth_way_elevations(
     connection: duckdb.DuckDBPyConnection, window_m: float, temporary_source: Path
 ) -> None:
@@ -559,7 +590,9 @@ def _prepare_way_elevations(
                    sum(CASE WHEN graph_node THEN 1 ELSE 0 END) OVER (
                        PARTITION BY way_id ORDER BY node_sequence
                    ) AS graph_count,
-                   max(node_sequence) OVER (PARTITION BY way_id) AS last_sequence
+                   max(node_sequence) OVER (
+                       PARTITION BY way_id
+                   ) AS last_sequence
             FROM _osm_way_elevations
         ), segment_points AS (
             SELECT *, graph_count - 1 AS segment_index
@@ -957,6 +990,355 @@ def write_elevation_report(
     )
 
 
+def _compute_elevation_sensitivity(
+    connection: duckdb.DuckDBPyConnection,
+    edges_path: Path,
+    nodes_path: Path,
+    way_elevations_path: Path,
+    windows_m: tuple[float, ...],
+    *,
+    flat_tiles: tuple[int, ...],
+    hilly_tiles: tuple[int, ...],
+) -> ElevationSensitivity:
+    """Measure car climb in metres per kilometre without changing profiles (8.1)."""
+    edges_source = _sql_path(edges_path)
+    nodes_source = _sql_path(nodes_path)
+    profiles_source = _sql_path(way_elevations_path)
+    smoothing_source = way_elevations_path.with_name(
+        way_elevations_path.stem + ".sensitivity.tmp.parquet"
+    )
+    tiles_by_window: dict[float, tuple[TileClimb, ...]] = {}
+    pilot_climb_per_km: dict[float, float | None] = {}
+    try:
+        for window_m in windows_m:
+            connection.execute(f"""
+                CREATE OR REPLACE TEMP TABLE _osm_way_elevations AS
+                SELECT p.way_id, p.node_sequence, p.node_id, p.distance_m,
+                       n.graph_node, p.raw_elevation_m AS elevation_m
+                FROM read_parquet('{profiles_source}') p
+                JOIN read_parquet('{nodes_source}') n USING (node_id)
+            """)
+            if window_m == 0:
+                connection.execute("""
+                    CREATE OR REPLACE TEMP TABLE _osm_way_elevations AS
+                    SELECT *, elevation_m AS smoothed_elevation_m
+                    FROM _osm_way_elevations
+                """)
+            else:
+                _smooth_way_elevations(connection, window_m, smoothing_source)
+
+            connection.execute("""
+                CREATE OR REPLACE TEMP TABLE _osm_sensitivity_segments AS
+                WITH numbered AS (
+                    SELECT *,
+                           sum(CASE WHEN graph_node THEN 1 ELSE 0 END) OVER (
+                               PARTITION BY way_id ORDER BY node_sequence
+                           ) AS graph_count,
+                           max(node_sequence) OVER (
+                               PARTITION BY way_id
+                           ) AS last_sequence
+                    FROM _osm_way_elevations
+                ), segment_points AS (
+                    SELECT *, graph_count - 1 AS segment_index
+                    FROM numbered
+                    WHERE NOT graph_node OR node_sequence < last_sequence
+                    UNION ALL
+                    SELECT *, graph_count - 2 AS segment_index
+                    FROM numbered
+                    WHERE graph_node AND graph_count > 1
+                ), deltas AS (
+                    SELECT *,
+                           smoothed_elevation_m - lag(smoothed_elevation_m) OVER (
+                               PARTITION BY way_id, segment_index
+                               ORDER BY node_sequence
+                           ) AS delta
+                    FROM segment_points
+                )
+                SELECT way_id, segment_index,
+                       CASE WHEN count(smoothed_elevation_m) = count(*)
+                            THEN sum(greatest(delta, 0)) END AS climb_m,
+                       CASE WHEN count(smoothed_elevation_m) = count(*)
+                            THEN sum(greatest(-delta, 0)) END AS descent_m
+                FROM deltas
+                GROUP BY way_id, segment_index
+            """)
+            connection.execute(f"""
+                CREATE OR REPLACE TEMP TABLE _osm_sensitivity_edge_rows AS
+                WITH car_edges AS (
+                    SELECT edge_key, way_id,
+                           try_cast(split_part(edge_key, ':', 2) AS BIGINT)
+                               AS segment_index,
+                           is_forward, length_m,
+                           list_extract(node_ids, 1) AS from_node_id,
+                           list_extract(node_ids, -1) AS to_node_id
+                    FROM read_parquet('{edges_source}')
+                    WHERE mode = 'car'
+                ), located AS (
+                    SELECT e.*,
+                           (n1.x + n2.x) / 2 AS midpoint_x,
+                           (n1.y + n2.y) / 2 AS midpoint_y,
+                           CASE WHEN e.is_forward THEN s.climb_m
+                                ELSE s.descent_m END AS climb_m
+                    FROM car_edges e
+                    LEFT JOIN read_parquet('{nodes_source}') n1
+                      ON e.from_node_id = n1.node_id
+                    LEFT JOIN read_parquet('{nodes_source}') n2
+                      ON e.to_node_id = n2.node_id
+                    LEFT JOIN _osm_sensitivity_segments s
+                      USING (way_id, segment_index)
+                )
+                SELECT *,
+                       CAST(floor(midpoint_y / 10000) AS BIGINT) * 100000
+                         + CAST(floor(midpoint_x / 10000) AS BIGINT) AS tile_id,
+                       CAST(floor(midpoint_x / 10000) AS BIGINT) * 10000
+                         AS tile_easting_m,
+                       CAST(floor(midpoint_y / 10000) AS BIGINT) * 10000
+                         AS tile_northing_m
+                FROM located
+            """)
+            invalid_edges = connection.execute("""
+                SELECT count(*) FROM _osm_sensitivity_edge_rows
+                WHERE length_m IS NULL OR length_m <= 0
+                   OR midpoint_x IS NULL OR midpoint_y IS NULL OR tile_id IS NULL
+            """).fetchone()[0]
+            if invalid_edges:
+                raise ValueError(
+                    f"{invalid_edges} car edges lack valid length or tile coordinates"
+                )
+            tile_rows = connection.execute("""
+                SELECT tile_id, tile_easting_m, tile_northing_m,
+                       coalesce(sum(climb_m), 0),
+                       coalesce(sum(length_m) FILTER (WHERE climb_m IS NOT NULL), 0),
+                       count(*) FILTER (WHERE climb_m IS NULL)
+                FROM _osm_sensitivity_edge_rows
+                GROUP BY tile_id, tile_easting_m, tile_northing_m
+                ORDER BY tile_id
+            """).fetchall()
+            tiles = tuple(
+                TileClimb(
+                    int(tile_id), int(easting), int(northing),
+                    float(climb), float(length), int(incomplete),
+                )
+                for tile_id, easting, northing, climb, length, incomplete in tile_rows
+            )
+            total_climb = sum(tile.climb_m for tile in tiles)
+            total_length = sum(tile.edge_length_m for tile in tiles)
+            pilot_climb_per_km[window_m] = (
+                total_climb * 1000 / total_length if total_length > 0 else None
+            )
+            tiles_by_window[window_m] = tiles
+
+        known_tiles = {tile.tile_id for tile in tiles_by_window[windows_m[0]]}
+        missing_tiles = (set(flat_tiles) | set(hilly_tiles)) - known_tiles
+        if missing_tiles:
+            raise ValueError(
+                "reference tile ids are absent from car edges: "
+                + ", ".join(str(tile_id) for tile_id in sorted(missing_tiles))
+            )
+        reference_zones: dict[str, dict[float, float | None]] = {}
+        for name, selected_ids in (
+            ("flat", flat_tiles), ("hilly", hilly_tiles)
+        ):
+            if not selected_ids:
+                continue
+            reference_zones[name] = {}
+            for window_m, tiles in tiles_by_window.items():
+                selected = [tile for tile in tiles if tile.tile_id in selected_ids]
+                length = sum(tile.edge_length_m for tile in selected)
+                climb = sum(tile.climb_m for tile in selected)
+                reference_zones[name][window_m] = (
+                    climb * 1000 / length if length > 0 else None
+                )
+    finally:
+        smoothing_source.unlink(missing_ok=True)
+    return ElevationSensitivity(
+        windows_m, pilot_climb_per_km, tiles_by_window, reference_zones
+    )
+
+
+def _write_tile_map(path: Path, tiles: tuple[TileClimb, ...]) -> None:
+    """Write a north-up PNG tile map; tile ids and coordinates are in the report."""
+    if not tiles:
+        raise ValueError("cannot map an empty tile set")
+    cell_pixels = 20
+    eastings = [tile.easting_m // 10000 for tile in tiles]
+    northings = [tile.northing_m // 10000 for tile in tiles]
+    min_easting, max_easting = min(eastings), max(eastings)
+    min_northing, max_northing = min(northings), max(northings)
+    columns = max_easting - min_easting + 1
+    rows = max_northing - min_northing + 1
+    width, height = columns * cell_pixels, rows * cell_pixels
+    values = [tile.climb_per_km for tile in tiles if tile.climb_per_km is not None]
+    low, high = min(values, default=0.0), max(values, default=0.0)
+    pixels = bytearray([255] * width * height * 3)
+    for tile in tiles:
+        value = tile.climb_per_km
+        if value is None:
+            color = (150, 150, 150)
+        else:
+            fraction = 0.0 if high == low else (value - low) / (high - low)
+            color = (
+                int(40 + 215 * fraction),
+                int(175 - 125 * fraction),
+                int(70 - 30 * fraction),
+            )
+        column = tile.easting_m // 10000 - min_easting
+        row = max_northing - tile.northing_m // 10000
+        for dy in range(cell_pixels):
+            for dx in range(cell_pixels):
+                if dx in (0, cell_pixels - 1) or dy in (0, cell_pixels - 1):
+                    pixel = (35, 35, 35)
+                else:
+                    pixel = color
+                offset = ((row * cell_pixels + dy) * width
+                          + column * cell_pixels + dx) * 3
+                pixels[offset : offset + 3] = bytes(pixel)
+    scanlines = b"".join(
+        b"\x00" + pixels[row * width * 3 : (row + 1) * width * 3]
+        for row in range(height)
+    )
+
+    def chunk(name: bytes, data: bytes) -> bytes:
+        payload = name + data
+        return (
+            struct.pack(">I", len(data)) + payload
+            + struct.pack(">I", binascii.crc32(payload) & 0xFFFFFFFF)
+        )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(scanlines))
+        + chunk(b"IEND", b"")
+    )
+
+
+def _append_sensitivity_report(
+    report_path: Path,
+    map_path: Path,
+    sensitivity: ElevationSensitivity,
+) -> None:
+    """Replace the optional sensitivity section and map link in the report."""
+    marker = "\n## Smoothing sensitivity\n"
+    existing = report_path.read_text(encoding="utf-8")
+    if marker in existing:
+        existing = existing.split(marker, 1)[0].rstrip() + "\n"
+    windows = sensitivity.windows_m
+    headers = " | ".join(f"{window:g} m" for window in windows)
+    pilot_values = " | ".join(
+        "NA" if sensitivity.pilot_climb_per_km[window] is None
+        else f"{sensitivity.pilot_climb_per_km[window]:.2f}"
+        for window in windows
+    )
+    lines = [
+        "## Smoothing sensitivity",
+        "",
+        "Car climb per kilometre of complete directed car-edge length; "
+        "climb is in metres and distance in kilometres.",
+        "",
+        f"![Climb per km by 10 km tile at 50 m]({map_path.name})",
+        "",
+        "Map tiles are 10 km squares in EPSG:3035, north-up. Each edge is "
+        "assigned by its endpoint midpoint. Tile id is "
+        "`floor(northing / 10000) * 100000 + floor(easting / 10000)`. Color runs "
+        "from green (flattest) to red (hilliest); tile ids and lower-left "
+        "coordinates are listed below.",
+        "",
+        f"| Scope | {headers} |",
+        "|---|" + "|".join("---:" for _ in windows) + "|",
+        f"| Whole pilot | {pilot_values} |",
+    ]
+    for name in ("flat", "hilly"):
+        zone = sensitivity.reference_zones.get(name)
+        if zone is None:
+            continue
+        values = " | ".join(
+            "NA" if zone[window] is None else f"{zone[window]:.2f}"
+            for window in windows
+        )
+        lines.append(f"| {name.title()} reference zone | {values} |")
+    lines.extend([
+        "",
+        "### By 10 km tile",
+        "",
+        f"| Tile id | Easting (m) | Northing (m) | Complete edge km | "
+        f"Incomplete edges | {headers} |",
+        "|---:|---:|---:|---:|---:|" + "|".join("---:" for _ in windows) + "|",
+    ])
+    tile_values: dict[int, dict[float, TileClimb]] = {}
+    for window, tiles in sensitivity.tiles_by_window.items():
+        for tile in tiles:
+            tile_values.setdefault(tile.tile_id, {})[window] = tile
+    for tile_id in sorted(tile_values):
+        tile_by_window = tile_values[tile_id]
+        first = tile_by_window[windows[0]]
+        climb_values = " | ".join(
+            "NA" if tile_by_window[window].climb_per_km is None
+            else f"{tile_by_window[window].climb_per_km:.2f}"
+            for window in windows
+        )
+        lines.append(
+            f"| {tile_id} | {first.easting_m} | {first.northing_m} | "
+            f"{first.edge_length_m / 1000:.2f} | {first.incomplete_edges} | "
+            f"{climb_values} |"
+        )
+    ranked = sensitivity.tiles_by_window.get(50.0, ())
+    for title, ordered in (
+        ("10 flattest tiles at 50 m", sorted(
+            (tile for tile in ranked if tile.climb_per_km is not None),
+            key=lambda tile: (tile.climb_per_km, tile.tile_id),
+        )[:10]),
+        ("10 hilliest tiles at 50 m", sorted(
+            (tile for tile in ranked if tile.climb_per_km is not None),
+            key=lambda tile: (-tile.climb_per_km, tile.tile_id),
+        )[:10]),
+    ):
+        lines.extend(["", f"### {title}", "",
+                      "| Tile id | Easting (m) | Northing (m) | Climb (m/km) |",
+                      "|---:|---:|---:|---:|"])
+        lines.extend(
+            f"| {tile.tile_id} | {tile.easting_m} | {tile.northing_m} | "
+            f"{tile.climb_per_km:.2f} |"
+            for tile in ordered
+        )
+    _write_tile_map(map_path, ranked)
+    report_path.write_text(existing + "\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _parse_smoothing_windows(value: str) -> tuple[float, ...]:
+    try:
+        windows = tuple(float(part.strip()) for part in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "smoothing windows must be comma-separated numbers"
+        ) from exc
+    if (
+        not windows or any(not np.isfinite(window) or window < 0 for window in windows)
+        or len(set(windows)) != len(windows)
+    ):
+        raise argparse.ArgumentTypeError(
+            "smoothing windows must be distinct, finite, non-negative numbers"
+        )
+    if 50.0 not in windows:
+        raise argparse.ArgumentTypeError(
+            "smoothing windows must include 50 m for the tile map and rankings"
+        )
+    return windows
+
+
+def _parse_tile_ids(value: str) -> tuple[int, ...]:
+    try:
+        tile_ids = tuple(int(part.strip()) for part in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "tile ids must be comma-separated integers"
+        ) from exc
+    if not tile_ids or len(set(tile_ids)) != len(tile_ids):
+        raise argparse.ArgumentTypeError("tile ids must be non-empty and distinct")
+    return tile_ids
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mobgrid.osm.elevation")
     parser.add_argument("--state", type=int, required=True)
@@ -973,6 +1355,18 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--report", type=Path)
     parser.add_argument("--log", type=Path)
     parser.add_argument("--summary", type=Path)
+    parser.add_argument(
+        "--smoothing-windows", type=_parse_smoothing_windows,
+        help="report-only climb sensitivity windows in metres (must include 50)",
+    )
+    parser.add_argument(
+        "--flat-tiles", type=_parse_tile_ids,
+        help="comma-separated tile ids for the flat reference zone",
+    )
+    parser.add_argument(
+        "--hilly-tiles", type=_parse_tile_ids,
+        help="comma-separated tile ids for the hilly reference zone",
+    )
     return parser
 
 
@@ -1008,6 +1402,10 @@ def _completion_signature(
 def main(argv: list[str] | None = None) -> int:
     """Sample BD ALTI and add elevation fields to the configured edge table."""
     args = _parser().parse_args(argv)
+    if bool(args.flat_tiles) != bool(args.hilly_tiles):
+        raise ValueError("--flat-tiles and --hilly-tiles must be supplied together")
+    if (args.flat_tiles or args.hilly_tiles) and args.smoothing_windows is None:
+        raise ValueError("reference tiles require --smoothing-windows")
     network = load_network_config(args.network_config)
     energy = load_energy_config(args.energy_config)
     pilot = load_pilot_config(args.pilot_config)
@@ -1091,6 +1489,31 @@ def main(argv: list[str] | None = None) -> int:
                 tile_count=len(elevation_paths),
             )
             cache_directory.mkdir(parents=True, exist_ok=True)
+            _write_json(
+                checkpoint,
+                _completion_signature(
+                    ways_path, elevation_paths, edges_path, nodes_path,
+                    way_elevations, report_path, network, energy,
+                ),
+            )
+        if args.smoothing_windows is not None:
+            connection = open_connection()
+            try:
+                sensitivity = _compute_elevation_sensitivity(
+                    connection,
+                    edges_path,
+                    nodes_path,
+                    way_elevations,
+                    args.smoothing_windows,
+                    flat_tiles=args.flat_tiles or (),
+                    hilly_tiles=args.hilly_tiles or (),
+                )
+            finally:
+                connection.close()
+            map_path = report_path.with_name(
+                report_path.stem + "_climb_per_km_50m.png"
+            )
+            _append_sensitivity_report(report_path, map_path, sensitivity)
             _write_json(
                 checkpoint,
                 _completion_signature(

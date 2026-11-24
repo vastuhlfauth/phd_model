@@ -9,7 +9,12 @@ from mobgrid.energy.rates import load_energy_config
 from mobgrid.osm.active_costs import enrich_active_edge_costs
 from mobgrid.osm.config import load_network_config
 from mobgrid.osm.elevation import (
+    ElevationSensitivity,
     ElevationSummary,
+    TileClimb,
+    _append_sensitivity_report,
+    _compute_elevation_sensitivity,
+    _parser,
     edge_elevation_profile,
     enrich_edges_with_elevation,
     sample_elevations,
@@ -170,6 +175,46 @@ def test_distance_weighted_smoothing_preserves_slopes_and_reduces_zigzag():
     )
 
 
+def test_smoothing_sensitivity_reduces_noisy_flat_climb_and_preserves_slope():
+    distances = np.arange(0.0, 2000.0, 10.0)
+    rng = np.random.default_rng(2026)
+    noisy_flat = rng.normal(0.0, 1.0, len(distances))
+    uniform_slope = 4.0 + distances * 0.02
+    windows = (0.0, 50.0, 100.0, 200.0)
+
+    def climb(elevations):
+        return float(np.maximum(np.diff(elevations), 0).sum())
+
+    noisy_climbs = [climb(noisy_flat)]
+    slope_climbs = [climb(uniform_slope)]
+    for window in windows[1:]:
+        noisy_climbs.append(
+            climb(smooth_elevation_profile(distances, noisy_flat, window))
+        )
+        slope_climbs.append(
+            climb(smooth_elevation_profile(distances, uniform_slope, window))
+        )
+
+    assert all(
+        earlier > later
+        for earlier, later in zip(noisy_climbs, noisy_climbs[1:])
+    )
+    assert slope_climbs == pytest.approx([39.8] * len(windows), abs=1e-9)
+
+
+def test_sensitivity_cli_parses_windows_and_reference_tile_lists():
+    args = _parser().parse_args([
+        "--state", "2021",
+        "--smoothing-windows", "0,50,100,200",
+        "--flat-tiles", "0,1",
+        "--hilly-tiles", "2,3",
+    ])
+
+    assert args.smoothing_windows == (0.0, 50.0, 100.0, 200.0)
+    assert args.flat_tiles == (0, 1)
+    assert args.hilly_tiles == (2, 3)
+
+
 def test_smoothing_weights_by_distance_not_node_density():
     sparse_distances = np.array([0.0, 20.0, 40.0])
     sparse_heights = np.array([0.0, 10.0, 0.0])
@@ -266,6 +311,26 @@ def test_elevation_command_resumes_completed_outputs(tmp_path, monkeypatch, caps
     assert elevation.main(args) == 0
     assert len(calls) == 2
     assert (tmp_path / "run.log").is_file()
+    sensitivity = ElevationSensitivity(
+        (0.0, 50.0, 100.0, 200.0),
+        {0.0: 5.0, 50.0: 4.0, 100.0: 3.0, 200.0: 2.0},
+        {
+            window: (TileClimb(0, 0, 0, climb, 1000.0, 0),)
+            for window, climb in ((0.0, 5.0), (50.0, 4.0),
+                                  (100.0, 3.0), (200.0, 2.0))
+        },
+        {},
+    )
+    monkeypatch.setattr(
+        elevation, "_compute_elevation_sensitivity",
+        lambda *args, **kwargs: sensitivity,
+    )
+    assert elevation.main(args + ["--smoothing-windows", "0,50,100,200"]) == 0
+    assert len(calls) == 2
+    assert "## Smoothing sensitivity" in (
+        tmp_path / "report.md"
+    ).read_text(encoding="utf-8")
+    assert (tmp_path / "report_climb_per_km_50m.png").is_file()
 
 
 def test_unaligned_grids_are_rejected(tmp_path):
@@ -423,6 +488,105 @@ def test_elevation_report_distinguishes_uncovered_nodes_from_missing_samples(
     assert "bike: 100.0 / 60.0; incomplete: 1" in contents
     assert "car: 200.0 / 120.0; incomplete: 0" in contents
     assert "foot: 300.0 / 180.0; incomplete: 0" in contents
+
+
+def test_smoothing_sensitivity_reports_tiles_zones_and_map_without_rewriting_profiles(
+    tmp_path,
+):
+    import duckdb
+
+    edges = tmp_path / "edges.parquet"
+    nodes = tmp_path / "nodes.parquet"
+    profiles = tmp_path / "way_elevations.parquet"
+    node_rows = []
+    profile_rows = []
+    edge_rows = []
+    for way_id, first_node, first_x, elevations in (
+        (1, 1, 5000, [0.0, 10.0, 0.0]),
+        (2, 4, 15000, [0.0, 10.0, 20.0]),
+    ):
+        for index, elevation in enumerate(elevations):
+            node_id = first_node + index
+            node_rows.append({
+                "node_id": node_id,
+                "x": first_x + index * 100,
+                "y": 5000,
+                "graph_node": index in (0, 2),
+            })
+            profile_rows.append({
+                "way_id": way_id,
+                "node_sequence": index + 1,
+                "node_id": node_id,
+                "distance_m": index * 100.0,
+                "raw_elevation_m": elevation,
+                "elevation_m": elevation,
+            })
+        forward = [first_node, first_node + 1, first_node + 2]
+        for is_forward, node_ids, suffix in (
+            (True, forward, "f"),
+            (False, list(reversed(forward)), "r"),
+        ):
+            edge_rows.append({
+                "edge_key": f"{way_id}:0:car:{suffix}",
+                "way_id": way_id,
+                "mode": "car",
+                "is_forward": is_forward,
+                "length_m": 200.0,
+                "node_ids": node_ids,
+            })
+    pq.write_table(pa.Table.from_pylist(node_rows), nodes)
+    pq.write_table(pa.Table.from_pylist(profile_rows), profiles)
+    pq.write_table(
+        pa.Table.from_pylist(
+            edge_rows,
+            schema=pa.schema([
+                ("edge_key", pa.string()),
+                ("way_id", pa.int64()),
+                ("mode", pa.string()),
+                ("is_forward", pa.bool_()),
+                ("length_m", pa.float64()),
+                ("node_ids", pa.list_(pa.int64())),
+            ]),
+        ),
+        edges,
+    )
+    original_profiles = profiles.read_bytes()
+    connection = duckdb.connect()
+    try:
+        sensitivity = _compute_elevation_sensitivity(
+            connection,
+            edges,
+            nodes,
+            profiles,
+            (0.0, 50.0, 100.0, 200.0),
+            flat_tiles=(0,),
+            hilly_tiles=(1,),
+        )
+    finally:
+        connection.close()
+
+    assert profiles.read_bytes() == original_profiles
+    assert sensitivity.pilot_climb_per_km[0.0] > (
+        sensitivity.pilot_climb_per_km[50.0]
+    )
+    assert sensitivity.reference_zones["flat"][0.0] > (
+        sensitivity.reference_zones["flat"][50.0]
+    )
+    assert len(set(sensitivity.reference_zones["hilly"].values())) == 1
+    assert sensitivity.tiles_by_window[50.0][0].tile_id == 0
+
+    report = tmp_path / "elevation.md"
+    report.write_text("# Base report\n", encoding="utf-8")
+    image = tmp_path / "elevation_climb_per_km_50m.png"
+    _append_sensitivity_report(report, image, sensitivity)
+    contents = report.read_text(encoding="utf-8")
+    assert "Whole pilot" in contents
+    assert "Flat reference zone" in contents
+    assert "Hilly reference zone" in contents
+    assert "10 flattest tiles at 50 m" in contents
+    assert "10 hilliest tiles at 50 m" in contents
+    assert "| 0 | 0 | 0 |" in contents
+    assert image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
 @pytest.mark.parametrize("structure", ["bridge", "tunnel"])

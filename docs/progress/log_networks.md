@@ -3,6 +3,18 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: elevation climb sensitivity (2026-11-24)
+
+- Added report-only `--smoothing-windows`; alternative windows are computed
+  from saved raw way elevations and do not rewrite stored profiles.
+- Report whole-pilot and 10 km tile car climb per directed kilometre, the
+  50 m PNG map and 10 flattest/hilliest tile lists.
+- Tile IDs use 10 km EPSG:3035 squares; an edge is assigned by the midpoint
+  of its endpoint coordinates. `--flat-tiles` and `--hilly-tiles` aggregate
+  selected tile lists as the two reference zones.
+- Synthetic flat-noise/slope and report-only CLI tests pass: 16 tests;
+  Ruff clean. Pilot not run; choose reference tiles from the output.
+
 ### Step 6b: vectorized active costs (2026-11-24)
 
 - Load sorted node ids, coordinates, raw elevations and endpoint tags once.

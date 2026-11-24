@@ -7,7 +7,7 @@ Read this file at the start of every task and update it at the end.
 This file holds the current state only. Search the history for your step; don't read it whole.
 
 - `docs/progress/log_networks.md`: steps 6, 8, 9 and 10. Latest entries:
-  - Step 6b: pilot active-cost corrections (2026-11-24)
+  - Step 6b: elevation climb sensitivity (2026-11-24)
   - Step 6b: edge-cost groundwork (2026-11-21)
   - Step 6b: road classes (2026-11-21)
   - Step 6: OSM network pilot pipeline
@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Active-cost corrections and vectorized loading implemented; rerun pilot costs, verify walk/bike under 60 s, and inspect speeds, errors, agreement and Géovélo check |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Added report-only elevation smoothing sensitivity; rerun pilot, choose reference tile lists, and verify costs, speeds, errors, agreement and Géovélo check |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -55,6 +55,11 @@ Status values: not started, in progress, review, merged.
 
 ## Assumptions to check
 
+- 2026-11-24, step 6b: elevation sensitivity assigns each directed car edge
+  to the 10 km EPSG:3035 tile containing its endpoint midpoint; tile ids are
+  `floor(northing / 10000) * 100000 + floor(easting / 10000)`. Climb rates
+  divide by complete directed car-edge length only. This is report grouping,
+  not a change to stored profiles.
 - 2026-11-23, step 6b: the 50 m elevation smoothing window in
   `config/network.yaml` is provisional (`TODO(confirm)`); review pilot
   directed-climb totals before adopting it nationally.
@@ -104,6 +109,9 @@ Each item stays open until a value is decided; the value goes into `config/`.
 
 - [ ] Step 6b: validate the provisional 50 m elevation smoothing window
   against the pilot's before/after climb report.
+- [ ] Step 6b: run the elevation sensitivity report, select the flat and
+  hilly reference tile lists, then rerun with `--flat-tiles` and
+  `--hilly-tiles` to compare their climb rates.
 - [ ] Step 6b: rerun the pilot extraction, edge build and elevation; inspect
   treated structure lengths, climb changes and clipped-edge diagnostics.
 - [ ] Step 6b: measure segment-shared elevation performance on the pilot;

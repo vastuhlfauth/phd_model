@@ -1,5 +1,12 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6b: smoothing sensitivity is report-only and recomputes
+  from saved raw way elevations; 0 m means no smoothing and 50 m is required
+  for the map and ranked lists. Assign each directed car edge to the
+  10 km EPSG:3035 tile containing its endpoint midpoint, with tile id
+  `floor(northing / 10000) * 100000 + floor(easting / 10000)`. Rates use
+  complete directed edge lengths. Optional flat/hilly tile-id lists each
+  aggregate their selected tiles into a reference-zone curve.
 - 2026-11-24, step 6b: load node coordinates, raw elevations and endpoint
   tags once, then use sorted node-id indexes and Arrow list offsets for active
   segment inputs. Remove the per-batch node join/window query, preserve the
