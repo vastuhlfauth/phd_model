@@ -66,7 +66,7 @@ Limit: 25 m at either endpoint. Distribution pools both endpoints of all success
 
 ## Car calibration
 
-Failed: bounded calibration stalled before convergence
+Calibration skipped: reference is none (OSRM is a network check, not a speed reference).
 
 Sample: data\interim\osrm\pairs.parquet.
 Responses: data\interim\osrm\responses.
