@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Segment-shared elevation profiles implemented; pilot timing, unified stage and Géovélo check remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Segment-shared elevation profiles and stage timing implemented; car density optimization, pilot timing, unified stage and Géovélo check remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -107,6 +107,8 @@ Each item stays open until a value is decided; the value goes into `config/`.
   treated structure lengths, climb changes and clipped-edge diagnostics.
 - [ ] Step 6b: measure segment-shared elevation performance on the pilot;
   Monaco regression uses synthetic elevations rather than BD ALTI samples.
+- [ ] Step 6b: implement 50 m grid car density after allowing configuration
+  changes; refit and verify tagged-edge agreement on the pilot.
 - [ ] Step 6: verify the version 7 pilot edge-build time is under five minutes.
   DuckDB memory limit and threads are not exposed by the loaded base, pilot or
   network configs; the existing connection setup remains in use.

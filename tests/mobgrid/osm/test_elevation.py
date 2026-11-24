@@ -208,7 +208,7 @@ def test_elevation_sampling_checkpoint_reuses_and_invalidates(tmp_path, monkeypa
     assert len(calls) == 2
 
 
-def test_elevation_command_resumes_completed_outputs(tmp_path, monkeypatch):
+def test_elevation_command_resumes_completed_outputs(tmp_path, monkeypatch, capsys):
     from types import SimpleNamespace
 
     import mobgrid.osm.elevation as elevation
@@ -249,6 +249,7 @@ def test_elevation_command_resumes_completed_outputs(tmp_path, monkeypatch):
         "--summary", str(tmp_path / "summary.md"),
     ]
     assert elevation.main(args) == 0
+    assert "wrote elevation summary" in capsys.readouterr().err
     assert elevation.main(args) == 0
     assert len(calls) == 1
     assert "reused" in (tmp_path / "summary.md").read_text(encoding="utf-8").lower()
@@ -268,11 +269,12 @@ def test_unaligned_grids_are_rejected(tmp_path):
 
 
 def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, caplog,
 ):
     import duckdb
     import mobgrid.osm.elevation as elevation
 
+    caplog.set_level("INFO", logger=elevation.__name__)
     grid = tmp_path / "tile.asc"
     _grid(grid, 700000, [[10, 15, 12], [10, 15, 12]], y_corner=6600000)
     edges = tmp_path / "edges.parquet"
@@ -346,6 +348,7 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
             "SELECT count(*) FROM _osm_segment_elevation_profiles"
         ).fetchone()[0]
         assert segment_count == 2
+        assert "elevation profiles completed in" in caplog.text
         def unexpected_resample(*args):
             pytest.fail("completed node sampling should be reused")
 

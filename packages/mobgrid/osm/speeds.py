@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
+import time
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import duckdb
@@ -232,6 +235,8 @@ def build_car_costs(
     output = Path(output_path)
     if not edges.is_file():
         raise FileNotFoundError(edges)
+    started = time.perf_counter()
+    logger.info("validating and loading car edges")
     _check_car_classes(connection, edges, config.car_speed)
     output.parent.mkdir(parents=True, exist_ok=True)
     connection.execute("LOAD spatial")
@@ -250,6 +255,9 @@ def build_car_costs(
         SELECT *, ST_Centroid(geom) AS edge_center
         FROM geometries
     """)
+    logger.info("car edge loading completed in %.2f s", time.perf_counter() - started)
+    started = time.perf_counter()
+    logger.info("calculating car road density")
     connection.execute(f"""
         CREATE OR REPLACE TEMP TABLE _car_edge_densities AS
         SELECT target.edge_key,
@@ -267,9 +275,19 @@ def build_car_costs(
           ON ST_DWithin(target.edge_center, neighbor.geom, {radius!r})
         GROUP BY target.edge_key
     """)
+    logger.info(
+        "density calculation completed in %.2f s", time.perf_counter() - started
+    )
+    started = time.perf_counter()
+    logger.info("fitting density threshold")
     threshold, agreement = _fit_density_threshold(
         connection, config.car_speed
     )
+    logger.info(
+        "density threshold fit completed in %.2f s", time.perf_counter() - started
+    )
+    started = time.perf_counter()
+    logger.info("calculating car costs")
     density_flag = f"d.road_density_km >= {threshold!r}"
     connection.execute(f"""
         CREATE OR REPLACE TEMP TABLE _car_edge_costs AS
@@ -326,7 +344,10 @@ def build_car_costs(
                    AS speed_limit_bucket
         FROM timed
     """)
+    logger.info("car costs completed in %.2f s", time.perf_counter() - started)
 
+    started = time.perf_counter()
+    logger.info("writing car costs and calculating summary")
     temporary = output.with_name(output.stem + ".tmp.parquet")
     try:
         write_parquet(
@@ -355,6 +376,7 @@ def build_car_costs(
         GROUP BY road_class
         ORDER BY road_class
     """).fetchall()
+    logger.info("car cost output completed in %.2f s", time.perf_counter() - started)
     return CarCostSummary(
         edge_count=edge_count,
         density_radius_m=radius,
@@ -419,6 +441,8 @@ def _parser() -> argparse.ArgumentParser:
         "--pilot-config", type=Path, default=Path("config/pilot.yaml")
     )
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--log", type=Path)
+    parser.add_argument("--summary", type=Path)
     return parser
 
 
@@ -438,24 +462,57 @@ def main(argv: list[str] | None = None) -> int:
     report_path = args.report or Path(
         f"docs/data/step06_car_speeds_{args.area}_{args.state}.md"
     )
-    connection = open_connection()
+    task = f"osm_speeds_{args.state}_{args.area}"
+    log_path = args.log or root / "logs" / f"{date.today().isoformat()}_{task}.log"
+    summary_path = (
+        args.summary or root / "logs" / f"{date.today().isoformat()}_{task}_summary.md"
+    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    terminal = logging.StreamHandler()
+    terminal.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+    logger.addHandler(handler)
+    logger.addHandler(terminal)
+    logger.setLevel(logging.INFO)
+    started = time.perf_counter()
     try:
-        summary = build_car_costs(
-            connection, edges_path, output_path, config=config
+        connection = open_connection()
+        try:
+            summary = build_car_costs(
+                connection, edges_path, output_path, config=config
+            )
+        finally:
+            connection.close()
+        write_car_speed_report(
+            summary, report_path, state=args.state, area=args.area
         )
+        elapsed = time.perf_counter() - started
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            f"# OSM car speeds run summary\n\n"
+            f"- Input: `{edges_path}`\n"
+            f"- Outputs: `{output_path}`, `{report_path}`\n"
+            f"- Elapsed: {elapsed:.1f} seconds\n"
+            f"- Warnings and counts: see the report below.\n\n"
+            + report_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        logger.info(
+            "wrote %s directed car costs to %s; density threshold %.6g km in %.1f s",
+            summary.edge_count,
+            output_path,
+            summary.density_threshold_km,
+            elapsed,
+        )
+        return 0
     finally:
-        connection.close()
-    write_car_speed_report(
-        summary, report_path, state=args.state, area=args.area
-    )
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    logger.info(
-        "wrote %s directed car costs to %s; density threshold %.6g km",
-        summary.edge_count,
-        output_path,
-        summary.density_threshold_km,
-    )
-    return 0
+        if sys.exc_info()[0] is not None:
+            logger.error("car speed job failed", exc_info=True)
+        logger.removeHandler(handler)
+        handler.close()
+        logger.removeHandler(terminal)
+        terminal.close()
 
 
 if __name__ == "__main__":

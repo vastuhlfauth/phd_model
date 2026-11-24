@@ -477,6 +477,8 @@ def _prepare_way_elevations(
     smoothing_source: Path,
 ) -> tuple[float, float]:
     """Interpolate bridge and tunnel profiles along full OSM ways (8.1)."""
+    started = time.perf_counter()
+    logger.info("building way elevation profiles")
     connection.execute(f"""
         CREATE OR REPLACE TEMP TABLE _osm_way_elevations AS
         WITH points AS (
@@ -542,7 +544,14 @@ def _prepare_way_elevations(
         )
         WHERE complete AND length_m > 0
     """).fetchone()
+    logger.info(
+        "way elevation profiles completed in %.2f s", time.perf_counter() - started
+    )
+    started = time.perf_counter()
+    logger.info("smoothing way elevations")
     _smooth_way_elevations(connection, smoothing_window_m, smoothing_source)
+    logger.info("way smoothing completed in %.2f s", time.perf_counter() - started)
+    started = time.perf_counter()
     connection.execute("""
         CREATE OR REPLACE TEMP TABLE _osm_way_segment_elevations AS
         WITH numbered AS (
@@ -566,6 +575,7 @@ def _prepare_way_elevations(
             PARTITION BY way_id, segment_index ORDER BY node_sequence
         )
     """)
+    logger.info("way segmentation completed in %.2f s", time.perf_counter() - started)
     return float(bridge), float(tunnel)
 
 
@@ -612,6 +622,8 @@ def enrich_edges_with_elevation(
     if missing_grids:
         raise FileNotFoundError(missing_grids[0])
 
+    started = time.perf_counter()
+    logger.info("loading and projecting elevation nodes")
     connection.execute("LOAD spatial")
     connection.execute(f"""
         CREATE OR REPLACE TEMP TABLE _osm_nodes AS
@@ -631,9 +643,13 @@ def enrich_edges_with_elevation(
     node_ids = node_table.column("node_id").to_numpy(zero_copy_only=False)
     x = node_table.column("x").to_numpy(zero_copy_only=False)
     y = node_table.column("y").to_numpy(zero_copy_only=False)
+    logger.info("node projection completed in %.2f s", time.perf_counter() - started)
+    started = time.perf_counter()
+    logger.info("sampling node elevations")
     elevations, uncovered_nodes = _sample_nodes_with_checkpoint(
         nodes, grids, node_ids, x, y, cache_directory
     )
+    logger.info("elevation sampling completed in %.2f s", time.perf_counter() - started)
     sampled_nodes = pa.table(
         {
             "node_id": pa.array(node_ids, type=pa.int64()),
@@ -660,6 +676,8 @@ def enrich_edges_with_elevation(
         bridge_length, tunnel_length = _prepare_way_elevations(
             connection, ways, edges, smoothing_window_m, smoothing_source
         )
+        started = time.perf_counter()
+        logger.info("writing way and node elevation outputs")
         connection.execute(f"""
             CREATE OR REPLACE TEMP TABLE _osm_profile_edges AS
             SELECT edge_key, way_id, is_forward, node_ids, mode, highway, length_m,
@@ -692,6 +710,11 @@ def enrich_edges_with_elevation(
             """,
             temporary_nodes,
         )
+        logger.info(
+            "way and node output completed in %.2f s", time.perf_counter() - started
+        )
+        started = time.perf_counter()
+        logger.info("building segment and directed elevation profiles")
         connection.execute("""
             CREATE OR REPLACE TEMP TABLE _osm_segment_profile_points AS
             SELECT way_id, segment_index, segment_ordinal, node_id,
@@ -763,6 +786,11 @@ def enrich_edges_with_elevation(
             FROM _osm_profile_edges e
             LEFT JOIN _osm_segment_elevation_profiles p USING (way_id, segment_index)
         """)
+        logger.info(
+            "elevation profiles completed in %.2f s", time.perf_counter() - started
+        )
+        started = time.perf_counter()
+        logger.info("summarizing elevation climbs and clipped grades")
         climb_rows = connection.execute(f"""
                 SELECT e.mode, coalesce(sum(p.raw_climb_m), 0),
                        coalesce(sum(p.climb_m), 0),
@@ -824,6 +852,11 @@ def enrich_edges_with_elevation(
             connection, "_osm_clipped_grades",
             network.bike_speed_table.clipped_grade_report_limit,
         )
+        logger.info(
+            "elevation diagnostics completed in %.2f s", time.perf_counter() - started
+        )
+        started = time.perf_counter()
+        logger.info("writing directed elevation profiles")
         columns = [
             row[0]
             for row in connection.execute(
@@ -859,6 +892,9 @@ def enrich_edges_with_elevation(
             FROM read_parquet('{_sql_path(edges)}')
             """
         ).fetchone()
+        logger.info(
+            "elevation output completed in %.2f s", time.perf_counter() - started
+        )
     finally:
         connection.unregister("_osm_sampled_node_elevations")
         temporary.unlink(missing_ok=True)
@@ -1007,7 +1043,10 @@ def main(argv: list[str] | None = None) -> int:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(log_path, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    terminal = logging.StreamHandler()
+    terminal.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
     logger.addHandler(handler)
+    logger.addHandler(terminal)
     logger.setLevel(logging.INFO)
     started = time.perf_counter()
     try:
@@ -1067,6 +1106,8 @@ def main(argv: list[str] | None = None) -> int:
             logger.error("elevation job failed", exc_info=True)
         logger.removeHandler(handler)
         handler.close()
+        logger.removeHandler(terminal)
+        terminal.close()
 
 
 if __name__ == "__main__":

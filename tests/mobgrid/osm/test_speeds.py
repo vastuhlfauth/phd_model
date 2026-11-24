@@ -79,6 +79,39 @@ def _config():
     return load_network_config(ROOT / "config" / "network.yaml")
 
 
+def test_speed_command_logs_to_terminal_and_file(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    import mobgrid.osm.speeds as speeds
+
+    config_path = tmp_path / "config" / "pilot.yaml"
+    config_path.parent.mkdir()
+    monkeypatch.setattr(speeds, "load_network_config", lambda path: _config())
+    monkeypatch.setattr(
+        speeds, "load_pilot_config",
+        lambda path: SimpleNamespace(paths={"base": "data/base"}),
+    )
+    monkeypatch.setattr(
+        speeds, "open_connection", lambda: SimpleNamespace(close=lambda: None)
+    )
+    monkeypatch.setattr(
+        speeds, "build_car_costs",
+        lambda *args, **kwargs: speeds.CarCostSummary(
+            1, 500, 1, 0.88, (("residential", 0.5),), "costs.parquet"
+        ),
+    )
+    log = tmp_path / "speed.log"
+    summary = tmp_path / "summary.md"
+    assert speeds.main([
+        "--state", "2021", "--pilot-config", str(config_path),
+        "--report", str(tmp_path / "report.md"),
+        "--log", str(log), "--summary", str(summary),
+    ]) == 0
+    assert "wrote 1 directed car costs" in capsys.readouterr().err
+    assert "wrote 1 directed car costs" in log.read_text(encoding="utf-8")
+    assert "88.0%" in summary.read_text(encoding="utf-8")
+
+
 def test_class_context_default_is_used_only_when_maxspeed_is_null(tmp_path):
     edges = tmp_path / "edges.parquet"
     costs = tmp_path / "car_costs.parquet"
@@ -270,11 +303,12 @@ def test_class_realism_factor_scales_explicit_speed_limit(tmp_path):
 
 
 def test_density_threshold_maximises_label_agreement_and_reports_urban_share(
-    tmp_path,
+    tmp_path, caplog,
 ):
     edges = tmp_path / "edges.parquet"
     costs = tmp_path / "car_costs.parquet"
     report = tmp_path / "car_speeds.md"
+    caplog.set_level("INFO", logger="mobgrid.osm.speeds")
     _write_edges(
         edges,
         [
@@ -310,6 +344,8 @@ def test_density_threshold_maximises_label_agreement_and_reports_urban_share(
         connection.close()
 
     assert summary.density_agreement == pytest.approx(1.0)
+    assert "density calculation completed in" in caplog.text
+    assert "car costs completed in" in caplog.text
     assert 0.1 < summary.density_threshold_km <= 0.3
     assert inferred_urban is True
     shares = dict(summary.urban_length_share_by_class)
