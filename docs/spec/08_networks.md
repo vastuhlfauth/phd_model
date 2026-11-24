@@ -30,7 +30,7 @@ These values are provisional (`config/network.yaml`). In the 2021 pilot, mean fr
 ## 8.2 Walk (200 m)
 
 - Points: inhabited 200 m cells and all 200 m cells flagged as destinations.
-- Exact routing on the foot graph with a **30-minute cutoff**, rather than a grid graph. Pedestrian barriers (motorways, rail lines, rivers, footbridges) are where grids fail most, and walking is local, so exact routing stays cheap.
+- Exact routing on the foot graph with a **45-minute cutoff**, rather than a grid graph, so that the accessibility measures of section 10.4 (opportunities reachable within 15, 30 and 45 minutes) are complete on foot (decision of 24 November 2026). Pedestrian barriers (motorways, rail lines, rivers, footbridges) are where grids fail most, and walking is local, so exact routing stays cheap.
 - Outputs: (a) walk costs from 200 m cells to 200 m cells, stored in full; (b) an access and egress table from 200 m cells to stop areas within **20 minutes**, including the walk inside stations (section 9.3); (c) transfer footpaths between stop areas from the foot network, up to 400 m.
 - Energy uses the walking formulas of section 9.3, with body mass explicit.
 

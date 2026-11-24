@@ -7,6 +7,6 @@ benchmark_seed: 42
 benchmark_log_directory: logs
 # Supply the mode cutoffs before running the pilot benchmark.
 cutoff_s_by_mode:
-  car: null
-  bike: null
-  foot: null
+  car: 5400  # TODO(confirm): 90 min; covers the 80 km local scope; 4.3% of EMP 2019 car-driver trips exceed 60 min
+  bike: 3600  # TODO(confirm): 60 min; 1.9% of EMP 2019 bike trips exceed it
+  foot: 2700  # spec 8.2 and 10.1: 45 min (decision of 24 November 2026)

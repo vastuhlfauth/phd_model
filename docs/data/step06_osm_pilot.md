@@ -924,17 +924,18 @@ Unmapped non-empty values and values mapped to `null` in `config/network.yaml` a
 ## Graph build
 
 - State / area: 2021 / pilot
-- One-to-one edge-cost validation: 0.93 s
+- One-to-one edge-cost validation: 0.83 s
 - Memory counts include forward and transposed CSR arrays.
+- Legacy memory is estimated for the new contracted topology, without the new membership map; it is not a measurement of the old pilot graph.
 
-| Mode | Nodes before contraction | Edges before contraction | Nodes after contraction | Edges after contraction | Memory before (MiB) | Memory after (MiB) |
-|---|---:|---:|---:|---:|---:|---:|
-| car | 523,531 | 1,154,318 | 428,225 | 976,413 | 293.8 | 248.2 |
-| bike | 639,624 | 1,539,047 | 599,667 | 1,467,556 | 132.1 | 125.7 |
-| foot | 658,414 | 1,701,166 | 640,721 | 1,665,780 | 92.9 | 90.9 |
+| Mode | Nodes before contraction | Edges before contraction | Nodes after contraction | Edges after contraction | Memory before (MiB) | Memory after (MiB) | Legacy estimate (MiB) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| car | 523,531 | 1,154,318 | 429,171 | 978,281 | 67.0 | 57.8 | 248.7 |
+| bike | 639,624 | 1,539,047 | 599,667 | 1,467,556 | 111.5 | 106.6 | 125.7 |
+| foot | 658,414 | 1,701,166 | 640,721 | 1,665,780 | 96.2 | 94.4 | 90.9 |
 
 | Mode | Join and CSR (s) | Largest SCC (s) | Kept-node flags (s) | Contraction (s) | Write (s) |
 |---|---:|---:|---:|---:|---:|
-| car | 3.01 | 1.52 | 3.12 | 3.78 | 3.17 |
-| bike | 4.09 | 1.15 | 4.30 | 3.86 | 1.67 |
-| foot | 3.84 | 1.06 | 4.24 | 4.35 | 1.38 |
+| car | 2.21 | 0.49 | 1.07 | 1.47 | 0.87 |
+| bike | 5.15 | 1.25 | 3.99 | 3.12 | 1.12 |
+| foot | 5.88 | 1.33 | 4.96 | 6.51 | 1.15 |

@@ -4,7 +4,7 @@
 
 | Mode | Per-origin computation | Destinations | Stored O-D table |
 |---|---|---|---|
-| Walk | Search with 30-min cutoff from each 200 m cell on the foot graph | 200 m cells within reach | 200 m pairs, in full |
+| Walk | Search with 45-min cutoff from each 200 m cell on the foot graph | 200 m cells within reach | 200 m pairs, in full |
 | Bike | Search with cutoff on the bike grid graph from each 1 km cell, plus terminal legs | 1 km cells within the bike cutoff | 1 km pairs |
 | Car | Search with cutoff on the combined car graph, plus walking and parking legs | 1 km cells | 1 km pairs; optional bands beyond 30 km |
 | PT | Range RAPTOR over 08:00–09:00 from each 200 m cell, started from stop areas within 20 min on foot; egress to 200 m cells | 200 m cells reached | Aggregated to 1 km pairs |
