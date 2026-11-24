@@ -1,5 +1,10 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6: fit one realism factor per highway class with the
+  supplied class-group bounds. Estimate log-ratio Jacobian covariance and
+  iteratively fix the most imprecise or unidentifiable parameter to its
+  provisional value until the remaining standard errors satisfy the limit.
+  Refit once after rerouting; evaluate its holdout on those fixed paths.
 - 2026-11-24, step 6: report signed model-minus-OSRM bias and mean signed
   relative time error; exclude routes not settled by the configured Dial
   cutoff from metrics while reporting their counts in each stratum.

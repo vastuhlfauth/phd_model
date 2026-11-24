@@ -94,6 +94,8 @@ def test_serial_queries_resume_with_dated_raw_responses(tmp_path, monkeypatch):
     assert saved["response_date"].startswith("2026-01-01")
     assert osrm.query_pairs(sample, config, clock.time, clock.sleep) == (0, 2)
     assert len(requests) == 2
+    summary = config.log_directory / "2026-01-01_osrm_summary.md"
+    assert "Seconds:" in summary.read_text(encoding="utf-8")
 
 
 def test_429_stops_immediately_and_5xx_is_bounded(tmp_path, monkeypatch):

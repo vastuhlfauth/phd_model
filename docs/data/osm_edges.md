@@ -117,7 +117,20 @@ config/osrm.yaml` writes the configured step 6 report from Dial routes and
 matching dated OSRM responses. It reports signed model-minus-OSRM errors by
 mode, band and context, counts routes outside the configured cutoff, and
 records response dates and context-provenance shares. It checkpoints routing
-per mode. The report currently marks car calibration as pending.
+per mode.
+
+The report also fits one car speed factor per road class and directional
+control delays within `config/osrm.yaml` bounds on a seeded half of the car
+pairs. It fits original paths, reroutes training and holdout once, then refits
+the new fixed paths. The report compares holdout metrics for provisional, first
+fit and refit values, gives path-change shares, standard errors and parameter
+correlations, and identifies values fixed at provisional settings because
+their uncertainty exceeds half the allowed range or they are unidentifiable.
+These linearized uncertainties are approximate at bounds. Provisional costs
+must match the original graph and all calibration pairs must settle within
+the car cutoff; otherwise the baseline report is preserved, calibration is
+marked failed, and the command exits with an error. Fitted values are never
+written into `config/network.yaml`.
 
 ## Edge columns
 

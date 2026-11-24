@@ -3,6 +3,18 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6: OSRM car calibration (2026-11-24)
+
+- Added bounded log-time-ratio fits for each road-class factor and six control
+  delays, on a seeded half of car pairs. The first fit uses original Dial
+  paths; one reroute precedes a refit on the new fixed paths.
+- Report holdout metrics for all three parameter sets, path-change share,
+  linearized standard errors, correlations and provisional fixes for
+  unidentifiable or high-uncertainty parameters. Values remain report-only.
+- Original graph members and provisional costs are checked; a cutoff or fit
+  failure is explicit and preserves the baseline report. Route phases resume.
+- Synthetic OSRM tests: 26 passed; Ruff clean. No pilot or OSRM server run.
+
 ### Step 6: OSRM baseline routing metrics (2026-11-24)
 
 - Added Dial time and distance comparisons by mode, crow-fly band and origin

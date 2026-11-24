@@ -1,9 +1,16 @@
+from pathlib import Path
+
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from mobgrid.graph.csr import csr_from_indexed_edges, save_graph
 from mobgrid.validation import osrm, osrm_report
+from mobgrid.validation.osrm_calibration import (
+    CONTROL_NAMES,
+    CalibrationFit,
+    factor_highways,
+)
 from mobgrid.validation.osrm_report import calculate_metrics, route_pairs
 from mobgrid.validation.osrm_sample import SampleSettings
 
@@ -120,6 +127,29 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
                 "band_max_m": 2000.0,
             }
         )
+    pairs.extend({**pairs[0], "pair_id": f"car-{i}"} for i in range(2, 5))
+    pq.write_table(
+        pa.table(
+            {
+                "edge_key": ["a", "b"],
+                "mode": ["car", "car"],
+                "from_node_id": [10, 20],
+                "to_node_id": [20, 10],
+                "highway": ["primary", "primary"],
+                "signal_count": [0, 0],
+                "stop_count": [0, 0],
+                "give_way_count": [0, 0],
+                "mini_roundabout_count": [0, 0],
+                "crossing_count": [0, 0],
+                "to_degree": [2, 2],
+            }
+        ),
+        tmp_path / "edges.parquet",
+    )
+    pq.write_table(
+        pa.table({"edge_key": ["a", "b"], "car_time_s": [120.0, 120.0]}),
+        tmp_path / "costs.parquet",
+    )
     sample_path = tmp_path / "pairs.parquet"
     pq.write_table(pa.Table.from_pylist(pairs), sample_path)
     search_path = tmp_path / "search.yaml"
@@ -138,7 +168,7 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
         area_path=tmp_path / "area.parquet",
         search_config=search_path,
         seed=42,
-        count_by_mode={"car": 1, "bike": 1, "foot": 1},
+        count_by_mode={"car": 4, "bike": 1, "foot": 1},
         band_edges_m=[0, 2000, 20000],
         bike_max_m=2000,
         long_car_min_m=20000,
@@ -162,7 +192,11 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
         sampling=sample,
         report_path=tmp_path / "report.md",
         route_checkpoint_directory=tmp_path / "routing",
+        calibration_checkpoint_directory=tmp_path / "calibration",
         metric_tolerances_min=(2, 5),
+        calibration=osrm.load_query_settings(
+            Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
+        ).calibration,
     )
     monkeypatch.setenv("OSRM_BASE_URL", "https://example.invalid")
     for pair in pairs:
@@ -187,10 +221,84 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
     assert all(mode in report for mode in ("car", "bike", "foot"))
     assert "0.00 | 0.00 | 100.0% | 100.0% | 0.0% | 100 | 100" in report
     assert "calibration" in report.lower()
+    assert "### Holdout metrics" in report
+    assert "First fit: parameter correlations" in report
+    assert "Training pairs: 2; holdout pairs: 2" in report
     changed = {**pairs[0], "destination_lon": 2.0}
     with pytest.raises(ValueError, match="missing valid OSRM responses"):
         osrm_report._responses(settings, [changed])
     monkeypatch.setattr(
         osrm_report, "route_pairs", lambda *args, **kwargs: pytest.fail("not resumed")
     )
+    monkeypatch.setattr(
+        "mobgrid.validation.osrm_calibration.trace_routes",
+        lambda *args, **kwargs: pytest.fail("calibration was not resumed"),
+    )
     osrm_report.generate_report(settings, "2026-01-01")
+
+    def fail_calibration(*args, **kwargs):
+        raise ValueError("synthetic calibration failure")
+
+    monkeypatch.setattr(osrm_report, "_car_calibration", fail_calibration)
+    with pytest.raises(ValueError, match="synthetic calibration failure"):
+        osrm_report.generate_report(settings, "2026-01-01")
+    failure_report = settings.report_path.read_text(encoding="utf-8")
+    assert "Failed: synthetic calibration failure" in failure_report
+    assert "Within 2 min" in failure_report
+
+
+def test_car_calibration_report_has_holdout_fits_and_correlations():
+    settings = osrm.load_query_settings(
+        Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
+    )
+    calibration = settings.calibration
+    assert calibration is not None
+    names = [*factor_highways(calibration), *CONTROL_NAMES]
+    count = len(names)
+    fixed = np.zeros(count, dtype=bool)
+    fixed[1] = True
+    fixed_errors = np.full(count, np.nan)
+    fixed_errors[1] = np.inf
+    fit = CalibrationFit(
+        values=np.ones(count),
+        standard_errors=np.where(fixed, np.nan, 0.01),
+        correlations=np.eye(count),
+        fixed=fixed,
+        fixed_standard_errors=fixed_errors,
+    )
+    result = {
+        "first_fit": fit,
+        "refit": fit,
+        "training_count": 2,
+        "changed_share": 0.25,
+        "holdout": [
+            {
+                "pair_id": "p",
+                "provisional_time_s": 80,
+                "provisional_distance_m": 1000,
+                "first_time_s": 90,
+                "first_distance_m": 900,
+                "refit_time_s": 100,
+                "refit_distance_m": 900,
+                "path_changed": True,
+            }
+        ],
+    }
+    rows = [
+        {
+            "pair_id": "p",
+            "context": "urban",
+            "band_min_m": 0,
+            "band_max_m": 2000,
+            "osrm_time_s": 100,
+            "osrm_distance_m": 900,
+        }
+    ]
+    text = osrm_report.render_calibration(
+        result, names, np.zeros(count), np.ones(count) * 30, rows, settings
+    )
+    assert "25.0%" in text
+    assert "fixed" in text
+    assert "unidentifiable" in text
+    assert "correlation" in text.lower()
+    assert all(stage in text for stage in ("Provisional", "First fit", "Refit"))

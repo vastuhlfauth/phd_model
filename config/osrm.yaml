@@ -15,7 +15,35 @@ response_directory: data/interim/osrm/responses
 log_directory: logs
 report_path: docs/data/step06_osrm_check.md
 route_checkpoint_directory: data/interim/osrm/routing
+calibration_checkpoint_directory: data/interim/osrm/calibration
 metric_tolerances_min: [2, 5]
+calibration:
+  network_config: config/network.yaml
+  seed: 42
+  training_fraction: 0.5
+  uncertainty_fraction: 0.5
+  max_iterations: 200
+  tolerance: 0.00000001
+  max_backtracks: 30
+  arc_time_tolerance_s: 0.1
+  road_groups:
+    motorway_trunk:
+      highways: [motorway, motorway_link, trunk, trunk_link]
+      bounds: [0.80, 1.15]
+    primary_tertiary:
+      highways: [primary, primary_link, secondary, secondary_link, tertiary, tertiary_link]
+      bounds: [0.60, 1.15]
+    local:
+      highways: [unclassified, residential, road]
+      bounds: [0.40, 1.15]
+  fixed_highways: [service, living_street, track, pedestrian, footway, path, cycleway, bridleway]
+  control_bounds_s:
+    signal_s: [0, 30]
+    stop_s: [0, 15]
+    give_way_s: [0, 10]
+    mini_roundabout_s: [0, 15]
+    at_to_node_s: [0, 10]
+    crossing_s: [0, 5]
 sampling:
   graph_directory: data/base/network/2021/pilot/graph
   edges_path: data/base/network/2021/pilot/edges.parquet

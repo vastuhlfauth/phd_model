@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from mobgrid.validation.osrm_calibration import CalibrationSettings
 from mobgrid.validation.osrm_sample import SampleSettings
 
 Mode = Literal["car", "bike", "foot"]
@@ -58,7 +59,9 @@ class QuerySettings(BaseModel):
     sampling: SampleSettings | None = None
     report_path: Path | None = None
     route_checkpoint_directory: Path | None = None
+    calibration_checkpoint_directory: Path | None = None
     metric_tolerances_min: tuple[float, float] | None = None
+    calibration: CalibrationSettings | None = None
 
     @model_validator(mode="after")
     def check_policy(self) -> QuerySettings:
@@ -230,6 +233,7 @@ def query_pairs(
     start = _utc(now())
     log_path = settings.log_directory / f"{start[:10]}_osrm.log"
     summary_path = settings.log_directory / f"{start[:10]}_osrm_summary.md"
+    started = time.perf_counter()
     sent = skipped = 0
     error = ""
     try:
@@ -315,8 +319,9 @@ def query_pairs(
             f"- Started (UTC): {start}\n"
             f"- Sample: {settings.sample_path}\n"
             f"- Requests: {sent}; cached pairs: {skipped}\n"
+            f"- Seconds: {time.perf_counter() - started:.3f}\n"
             f"- Responses: {root}\n"
-            f"- Error: {error or 'none'}\n",
+            f"- Warnings/errors: {error or 'none'}\n",
             encoding="utf-8",
         )
     return sent, skipped

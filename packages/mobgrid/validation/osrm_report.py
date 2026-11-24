@@ -9,6 +9,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import duckdb
 import numpy as np
 import pyarrow.parquet as pq
 
@@ -146,7 +147,9 @@ def _responses(settings: QuerySettings, pairs: list[dict]) -> dict[str, dict]:
     return {str(expected[key]["pair_id"]): record for key, record in records.items()}
 
 
-def _render(rows: list[dict], settings: QuerySettings) -> str:
+def _render(
+    rows: list[dict], settings: QuerySettings, calibration_section: str | None = None
+) -> str:
     if settings.metric_tolerances_min is None:
         raise ValueError("metric tolerances are required")
     tolerances = settings.metric_tolerances_min
@@ -214,15 +217,206 @@ def _render(rows: list[dict], settings: QuerySettings) -> str:
     lines.extend(
         [
             "",
-            "## Car calibration",
-            "",
-            "Pending: fitted values and holdout comparison have not been computed.",
+            calibration_section
+            or "## Car calibration\n\nPending: fitted values have not been computed.",
             "",
             f"Sample: {settings.sample_path}.",
             f"Responses: {settings.response_directory}.",
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def render_calibration(
+    result: dict,
+    names: list[str],
+    lower: np.ndarray,
+    upper: np.ndarray,
+    rows: list[dict],
+    settings: QuerySettings,
+) -> str:
+    """Render two fits, uncertainty, correlations and stratified holdout metrics."""
+    if settings.calibration is None or settings.metric_tolerances_min is None:
+        raise ValueError("calibration settings and metric tolerances are required")
+    config = settings.calibration
+    holdout = result["holdout"]
+    lines = [
+        "## Car calibration",
+        "",
+        f"Training pairs: {result['training_count']}; holdout pairs: {len(holdout)}.",
+        "Changed paths among all pairs after first fit: "
+        f"{result['changed_share']:.1%}.",
+        "The first fit uses provisional paths. Both sets are rerouted once, then "
+        "refit paths remain fixed for the final holdout metrics.",
+        "The fit uses unrounded arc components; reported path times use Dial rounding.",
+        "No network configuration was modified; fitted values require approval.",
+        "Standard errors and correlations use the linearized log-ratio least-squares "
+        "Jacobian; uncertainties at active bounds are approximate.",
+        "Unidentifiable parameters or those with standard error over "
+        f"{config.uncertainty_fraction:.0%} of their bound range were fixed "
+        "at their provisional value.",
+        f"Unfitted road classes (factor 1): {', '.join(config.fixed_highways)}.",
+    ]
+    for label, key in (("First fit", "first_fit"), ("Refit", "refit")):
+        fit = result[key]
+        lines.extend(
+            [
+                "",
+                f"### {label}: parameters",
+                "",
+                "| Parameter | Value | Standard error | Bounds | Status |",
+                "|---|---:|---:|---|---|",
+            ]
+        )
+        for index, name in enumerate(names):
+            if fit.fixed[index]:
+                reason = (
+                    "unidentifiable"
+                    if np.isinf(fit.fixed_standard_errors[index])
+                    else f"SE {fit.fixed_standard_errors[index]:.4g} > configured limit"
+                )
+                status = f"fixed at provisional ({reason})"
+                error = "—"
+            else:
+                status = "fitted"
+                error = f"{fit.standard_errors[index]:.4g}"
+            lines.append(
+                f"| {name} | {fit.values[index]:.4g} | {error} | "
+                f"{lower[index]:g}–{upper[index]:g} | {status} |"
+            )
+        lines.extend(
+            [
+                "",
+                f"### {label}: parameter correlations",
+                "",
+                "| Parameter | " + " | ".join(names) + " |",
+                "|---|" + "---:|" * len(names),
+            ]
+        )
+        for index, name in enumerate(names):
+            values = [
+                f"{value:.3f}" if np.isfinite(value) else "—"
+                for value in fit.correlations[index]
+            ]
+            lines.append(f"| {name} | " + " | ".join(values) + " |")
+    by_id = {row["pair_id"]: row for row in rows}
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for route in holdout:
+        original = by_id[route["pair_id"]]
+        combined = {**original, **route}
+        groups[("all", 0.0, 0.0)].append(combined)
+        groups[
+            (original["context"], original["band_min_m"], original["band_max_m"])
+        ].append(combined)
+    tolerances = settings.metric_tolerances_min
+    lines.extend(
+        [
+            "",
+            "### Holdout metrics",
+            "",
+            "| Stage | Band (km) | Context | Pairs | Bias (min) | Median abs (min) | "
+            f"Within {tolerances[0]:g} min | Within {tolerances[1]:g} min | "
+            "Relative error | Distance bias (m) | Median abs distance (m) |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for stage, prefix in (
+        ("Provisional", "provisional"),
+        ("First fit", "first"),
+        ("Refit", "refit"),
+    ):
+        for (context, lower_band, upper_band), values in sorted(groups.items()):
+            comparisons = [
+                {
+                    "model_time_s": row[f"{prefix}_time_s"],
+                    "model_distance_m": row[f"{prefix}_distance_m"],
+                    "osrm_time_s": row["osrm_time_s"],
+                    "osrm_distance_m": row["osrm_distance_m"],
+                }
+                for row in values
+            ]
+            metric = calculate_metrics(comparisons, tolerances)
+            band = (
+                "all"
+                if context == "all"
+                else f"{lower_band / 1000:g}–{upper_band / 1000:g}"
+            )
+            lines.append(
+                f"| {stage} | {band} | {context} | {metric['count']} | "
+                f"{metric['bias_min']:.2f} | "
+                f"{metric['median_absolute_error_min']:.2f} | "
+                f"{metric['within_first']:.1%} | {metric['within_second']:.1%} | "
+                f"{metric['relative_error']:.1%} | {metric['distance_bias_m']:.0f} | "
+                f"{metric['distance_median_absolute_error_m']:.0f} |"
+            )
+    return "\n".join(lines)
+
+
+def _calibration_cache_key(
+    settings: QuerySettings, cutoff: float, resolution: float
+) -> str:
+    if settings.sampling is None or settings.calibration is None:
+        raise ValueError("calibration and sampling settings are required")
+    sampling, calibration = settings.sampling, settings.calibration
+    paths = (
+        settings.sample_path,
+        sampling.graph_directory / "car.npz",
+        sampling.edges_path,
+        sampling.edge_costs_path,
+        sampling.search_config,
+        calibration.network_config,
+    )
+    inputs = []
+    for path in paths:
+        stat = path.stat()
+        inputs.append([str(path.resolve()), stat.st_size, stat.st_mtime_ns])
+    value = [1, inputs, calibration.model_dump(mode="json"), cutoff, resolution]
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
+    from mobgrid.validation.osrm_calibration import arc_features, calibrate_car
+
+    if (
+        settings.sampling is None
+        or settings.calibration is None
+        or settings.calibration_checkpoint_directory is None
+    ):
+        raise ValueError("calibration settings and checkpoint directory are required")
+    sampling = settings.sampling
+    search_settings = load_search_config(sampling.search_config)
+    cutoff = search_settings.cutoff_s_by_mode["car"]
+    if cutoff is None:
+        raise ValueError("car search cutoff is not configured")
+    graph = load_graph(sampling.graph_directory / "car.npz")
+    features, initial, lower, upper, names = arc_features(
+        graph, sampling.edges_path, sampling.edge_costs_path, settings.calibration
+    )
+    car_rows = [row for row in rows if row["mode"] == "car"]
+    result = calibrate_car(
+        graph,
+        features,
+        car_rows,
+        np.asarray([row["osrm_time_s"] for row in car_rows], dtype=np.float64),
+        initial,
+        lower,
+        upper,
+        settings.calibration,
+        cutoff_s=cutoff,
+        resolution_s=search_settings.dial_resolution_s,
+        checkpoint_directory=settings.calibration_checkpoint_directory,
+        checkpoint_key=_calibration_cache_key(
+            settings, cutoff, search_settings.dial_resolution_s
+        ),
+    )
+    return render_calibration(result, names, lower, upper, car_rows, settings)
+
+
+def _write_report(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp.md")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)
 
 
 def generate_report(settings: QuerySettings, date: str) -> None:
@@ -295,12 +489,32 @@ def generate_report(settings: QuerySettings, date: str) -> None:
                         "data_version": response.get("data_version"),
                     }
                 )
-        text = _render(rows, settings)
-        settings.report_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = settings.report_path.with_suffix(".tmp.md")
-        temporary.write_text(text, encoding="utf-8")
-        temporary.replace(settings.report_path)
-    except (ValueError, OSError, RuntimeError) as exc:
+        calibration_section = None
+        if settings.calibration is not None:
+            try:
+                calibration_section = _car_calibration(rows, settings)
+            except (
+                ValueError,
+                OSError,
+                RuntimeError,
+                duckdb.Error,
+                np.linalg.LinAlgError,
+            ) as exc:
+                _write_report(
+                    settings.report_path,
+                    _render(rows, settings, f"## Car calibration\n\nFailed: {exc}"),
+                )
+                raise
+        _write_report(
+            settings.report_path, _render(rows, settings, calibration_section)
+        )
+    except (
+        ValueError,
+        OSError,
+        RuntimeError,
+        duckdb.Error,
+        np.linalg.LinAlgError,
+    ) as exc:
         error = str(exc)
         raise
     finally:
@@ -312,7 +526,8 @@ def generate_report(settings: QuerySettings, date: str) -> None:
             f"- Pairs processed: {len(rows)}",
             f"- Seconds: {time.perf_counter() - started:.3f}",
             f"- Report: {settings.report_path}",
-            f"- Error: {error or 'none'}",
+            f"- Outside cutoff: {sum(row['model_time_s'] is None for row in rows)}",
+            f"- Warnings/errors: {error or 'none'}",
         ]
         summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         with log_path.open("a", encoding="utf-8") as log:
