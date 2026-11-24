@@ -13,3 +13,21 @@ timeout_s: 30
 sample_path: data/interim/osrm/pairs.parquet
 response_directory: data/interim/osrm/responses
 log_directory: logs
+sampling:
+  graph_directory: data/base/network/2021/pilot/graph
+  edges_path: data/base/network/2021/pilot/edges.parquet
+  edge_costs_path: data/base/network/2021/pilot/edge_costs.parquet
+  nodes_path: data/base/network/2021/pilot/nodes.parquet
+  area_path: data/interim/osm/2021/pilot/area.parquet
+  search_config: config/search.yaml
+  seed: 42
+  count_by_mode:
+    car: 1500
+    bike: 500
+    foot: 500
+  band_edges_m: [0, 2000, 5000, 10000, 20000, 40000, 80000]
+  bike_max_m: 20000
+  long_car_min_m: 20000
+  boundary_margin_m: 10000
+  context_radius_m: 500
+  attempts_per_stratum: 100

@@ -3,6 +3,17 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6: OSRM pilot sample (2026-11-24)
+
+- Added seeded, balanced mode/context/band graph-node sampling with Dial's
+  walking cutoff and the 10 km inward boundary rule for long car bands.
+- Origins use the nearest classified car-edge geometry within 500 m; equal
+  distances use edge key, and the rural fallback and assignment shares are
+  recorded. Mode checkpoints are reusable by input fingerprint.
+- A foot stratum with no candidate after the configured attempts is reported
+  and its quota redistributed; the limit does not prove a stratum is empty.
+- Synthetic sampling/query tests and Ruff were run; no pilot or server run.
+
 ### Step 6: OSRM query stage (2026-11-24)
 
 - Added serial, rate-limited FOSSGIS-compatible queries with durable raw

@@ -100,6 +100,18 @@ the configured delay across restarts, does not follow redirects, and stops on
 HTTP 429 or exhausted retries. Dated logs and summaries record run counts.
 OSRM's current map data need not match the model's 2021 network.
 
+Generate the sample first with `python -m mobgrid.validation.osrm sample
+--config config/osrm.yaml`. It samples graph nodes in balanced origin-context
+and distance strata. Walking pairs must settle within the configured Dial
+cutoff; car pairs in bands starting at 20 km require both endpoints at least
+10 km inside the buffered pilot area. For context, the nearest car-edge
+geometry within 500 m supplies its tagged or density-derived urban flag;
+ties use edge key and more distant origins are rural. Sample rows retain the
+context source and the sample summary reports shares of distinct origins.
+Mode checkpoints are reused when their input fingerprints match. A foot
+stratum with no candidate after the configured attempts is reported and its
+quota redistributed; failure to fill a car or bike stratum stops the run.
+
 ## Edge columns
 
 | Column | Type | Meaning |

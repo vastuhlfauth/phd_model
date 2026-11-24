@@ -1,5 +1,8 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6: assign an origin the nearest classified car edge within
+  500 m, with edge-key tie-breaking; beyond that distance use rural. Report
+  tagged, density-derived and fallback shares for distinct sampled origins.
 - 2026-11-24, step 6: serialize OSRM queries with an OS lock and retain the
   last request timestamp across restarts. Store all raw HTTP responses with
   UTC dates; resume only structurally valid successful routes. Do not follow

@@ -21,6 +21,8 @@ import pyarrow.parquet as pq
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from mobgrid.validation.osrm_sample import SampleSettings
+
 Mode = Literal["car", "bike", "foot"]
 
 
@@ -53,6 +55,7 @@ class QuerySettings(BaseModel):
     sample_path: Path
     response_directory: Path
     log_directory: Path
+    sampling: SampleSettings | None = None
 
     @model_validator(mode="after")
     def check_policy(self) -> QuerySettings:
@@ -311,10 +314,22 @@ def query_pairs(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["queries"])
+    parser.add_argument("command", choices=["sample", "queries"])
     parser.add_argument("--config", type=Path, required=True)
     args = parser.parse_args()
     settings = load_query_settings(args.config)
+    if args.command == "sample":
+        if settings.sampling is None:
+            raise ValueError("sampling configuration is required")
+        from mobgrid.validation.osrm_sample import generate_sample
+
+        generate_sample(
+            settings.sampling,
+            settings.sample_path,
+            settings.log_directory,
+            _utc(time.time())[:10],
+        )
+        return
     pairs = pq.read_table(settings.sample_path).to_pylist()
     sent, skipped = query_pairs(pairs, settings)
     print(f"OSRM requests: {sent}; cached pairs: {skipped}")
