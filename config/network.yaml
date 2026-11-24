@@ -269,12 +269,12 @@ car_speed:
     busway: 1.0
     default: 1.0
   urban_density:
-    # TODO(confirm): calibrate the edge-centroid buffer radius on the pilot.
+    # TODO(confirm): calibrate the focal-disc radius on the pilot.
     radius_m: 500
+    # TODO(confirm): validate grid resolution and tagged-edge agreement on the pilot.
+    grid_cell_m: 50
     # TODO(confirm): use only when tagged urban/rural labels cannot fit a threshold.
     fallback_threshold_km: 1.0
-    # TODO(confirm): review the length-weighted agreement fitting rule.
-    fit_strategy: max_length_weighted_agreement
   delays:
     # TODO(confirm): calibrate fixed delays per directional control.
     signal_s: 15

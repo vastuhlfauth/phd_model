@@ -48,8 +48,8 @@ class UrbanDensityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     radius_m: float = Field(gt=0)
+    grid_cell_m: float = Field(gt=0, allow_inf_nan=False)
     fallback_threshold_km: float = Field(ge=0)
-    fit_strategy: Literal["max_length_weighted_agreement"]
 
 
 class CarDelayConfig(BaseModel):

@@ -133,9 +133,13 @@ unchanged. Provisional stop probabilities and surface defaults are
 direction). It contains `time_s`, `is_urban`, `road_class`, and
 `speed_limit_bucket`. The speed limit uses `maxspeed_kmh` when present;
 otherwise a configured class/context default applies. The urban-density rule
-fits a length-weighted threshold against edges tagged urban or rural and uses
-the configured fallback only when both labels are not available. The report
-records the fitted agreement and urban directed-length share by road class.
+splits undirected car-road geometry into configured grid cells, sums their
+projected length over a cell-centred disc, and samples the centroid cell of
+each directed edge. It fits a length-weighted threshold against edges tagged
+urban or rural and uses the configured fallback only when both labels are not
+available. The report records the fitted agreement and urban directed-length
+share by road class. The CLI checkpoints the density result under interim
+storage and invalidates it when the edges or density settings change.
 All defaults, realism factors, density parameters, delays, and bucket bounds
 are in `config/network.yaml` with `TODO(confirm)` markers.
 Default speeds are capped by class; rural trunk and primary roads use the

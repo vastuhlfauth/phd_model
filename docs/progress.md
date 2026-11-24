@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Segment-shared elevation profiles and stage timing implemented; car density optimization, pilot timing, unified stage and Géovélo check remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Segment-shared elevation profiles, grid car density and stage timing implemented; pilot timing and agreement, unified stage and Géovélo check remain |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -67,8 +67,9 @@ Status values: not started, in progress, review, merged.
   `config/network.yaml` (`TODO(confirm)`): context defaults are 50 km/h
   urban, 80 km/h rural, 30 km/h zone30 and 130 km/h motorway, with class
   overrides for trunk/primary roads; all realism factors are 1.0 until R4.
-  Untagged context uses car-edge length within a 500 m centroid radius and
-  a fitted length-weighted urban/rural separator (1 km fallback). Control
+  Untagged context uses undirected car-road length on a 50 m grid within a
+  500 m cell-centred disc and a fitted length-weighted urban/rural separator
+  (1 km fallback). Grid resolution is provisional (`TODO(confirm)`). Control
   delays are 15 s per signal, 5 s per stop, 2 s per give-way,
   3 s per mini-roundabout, 0 s per unsignalled crossing and 2 s at
   to-nodes of degree 3+, with
@@ -107,8 +108,8 @@ Each item stays open until a value is decided; the value goes into `config/`.
   treated structure lengths, climb changes and clipped-edge diagnostics.
 - [ ] Step 6b: measure segment-shared elevation performance on the pilot;
   Monaco regression uses synthetic elevations rather than BD ALTI samples.
-- [ ] Step 6b: implement 50 m grid car density after allowing configuration
-  changes; refit and verify tagged-edge agreement on the pilot.
+- [ ] Step 6b: measure 50 m grid car-density performance and verify fitted
+  tagged-edge agreement near 88% on the pilot. Monaco lacks rural labels.
 - [ ] Step 6: verify the version 7 pilot edge-build time is under five minutes.
   DuckDB memory limit and threads are not exposed by the loaded base, pilot or
   network configs; the existing connection setup remains in use.

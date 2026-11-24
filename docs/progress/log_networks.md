@@ -3,7 +3,7 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
-### Step 6b: elevation profiles and stage timing (2026-11-24)
+### Step 6b: elevation profiles, car density and timing (2026-11-24)
 
 - Compute profiles and candidate clipped grades once per undirected
   `(way_id, segment_index)`; derive each direction from the shared result.
@@ -14,10 +14,13 @@ Newest entry first. Add yours at the top.
   segments match, with a 1 mm elevation tolerance.
 - Elevation and car-speed stages now log elapsed times to terminal and dated
   files; car speeds also write a dated run summary.
-- Synthetic and Monaco elevation/speed tests: 28 passed; no pilot run. Pilot
-  timings and national-scale memory and runtime remain unverified.
-- Grid-based car density is blocked by the requested file-reading restriction:
-  the 50 m cell size needs a validated configuration setting.
+- Car density rasterizes undirected segments to configured 50 m cells and
+  uses tiled focal-disc convolution. A checkpoint reuses completed densities;
+  the unused single-option fitting-strategy setting was removed.
+- Synthetic and Monaco tests cover density splitting, disc and tile boundaries,
+  configuration and checkpoint invalidation: 37 passed; Ruff clean. No pilot
+  run. Monaco has no rural car labels, so fitted agreement and pilot timing
+  remain unverified.
 
 ### Step 6b: way elevation and active costs (2026-11-23)
 

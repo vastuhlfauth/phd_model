@@ -1,11 +1,16 @@
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from mobgrid.osm.config import load_network_config
-from mobgrid.osm.speeds import build_car_costs, write_car_speed_report
+from mobgrid.osm.speeds import (
+    _rasterize_lines,
+    build_car_costs,
+    write_car_speed_report,
+)
 
 ROOT = Path(__file__).parents[3]
 
@@ -23,7 +28,14 @@ def _write_edges(path, records):
     pq.write_table(
         pa.table(
             {
-                "edge_key": [record["edge_key"] for record in records],
+                "edge_key": [
+                    record["edge_key"] + ":0:car:f" for record in records
+                ],
+                "way_id": [
+                    record.get("way_id", index + 1)
+                    for index, record in enumerate(records)
+                ],
+                "is_forward": [record.get("is_forward", True) for record in records],
                 "mode": ["car"] * len(records),
                 "length_m": [record["length_m"] for record in records],
                 "geometry_wkb": geometry,
@@ -35,7 +47,9 @@ def _write_edges(path, records):
                     [record.get("oneway") for record in records], type=pa.string()
                 ),
                 "maxspeed_kmh": [record["maxspeed_kmh"] for record in records],
-                "speed_context": [record["speed_context"] for record in records],
+                "speed_context": pa.array(
+                    [record["speed_context"] for record in records], type=pa.string()
+                ),
                 "signal_count": [record.get("signal_count", 0) for record in records],
                 "stop_count": [record.get("stop_count", 0) for record in records],
                 "give_way_count": [
@@ -89,7 +103,9 @@ def test_speed_command_logs_to_terminal_and_file(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(speeds, "load_network_config", lambda path: _config())
     monkeypatch.setattr(
         speeds, "load_pilot_config",
-        lambda path: SimpleNamespace(paths={"base": "data/base"}),
+        lambda path: SimpleNamespace(
+            paths={"base": "data/base", "interim": "data/interim"}
+        ),
     )
     monkeypatch.setattr(
         speeds, "open_connection", lambda: SimpleNamespace(close=lambda: None)
@@ -97,7 +113,7 @@ def test_speed_command_logs_to_terminal_and_file(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         speeds, "build_car_costs",
         lambda *args, **kwargs: speeds.CarCostSummary(
-            1, 500, 1, 0.88, (("residential", 0.5),), "costs.parquet"
+            1, 500, 1, 0.88, (("residential", 0.5),), "costs.parquet", 50
         ),
     )
     log = tmp_path / "speed.log"
@@ -139,7 +155,7 @@ def test_class_context_default_is_used_only_when_maxspeed_is_null(tmp_path):
         rows = {
             row[0]: row[1:]
             for row in connection.execute(
-                f"SELECT edge_key, time_s, is_urban, road_class, "
+                f"SELECT split_part(edge_key, ':', 1), time_s, is_urban, road_class, "
                 f"speed_limit_bucket FROM read_parquet('{costs.as_posix()}')"
             ).fetchall()
         }
@@ -189,7 +205,8 @@ def test_each_control_adds_one_delay_and_junction_delay_is_smaller(tmp_path):
         build_car_costs(connection, edges, costs, config=config)
         rows = dict(
             connection.execute(
-                f"SELECT edge_key, time_s FROM read_parquet('{costs.as_posix()}')"
+                f"SELECT split_part(edge_key, ':', 1), time_s "
+                f"FROM read_parquet('{costs.as_posix()}')"
             ).fetchall()
         )
     finally:
@@ -227,7 +244,8 @@ def test_default_caps_and_directional_dual_carriageway(tmp_path):
     try:
         build_car_costs(connection, edges, costs, config=_config())
         times = dict(connection.execute(
-            "SELECT edge_key, time_s FROM read_parquet(?)", [str(costs)]
+            "SELECT split_part(edge_key, ':', 1), time_s FROM read_parquet(?)",
+            [str(costs)],
         ).fetchall())
     finally:
         connection.close()
@@ -337,7 +355,7 @@ def test_density_threshold_maximises_label_agreement_and_reports_urban_share(
             f"""
             SELECT is_urban
             FROM read_parquet('{costs.as_posix()}')
-            WHERE edge_key = 'inferred'
+            WHERE split_part(edge_key, ':', 1) = 'inferred'
             """
         ).fetchone()[0]
     finally:
@@ -355,3 +373,133 @@ def test_density_threshold_maximises_label_agreement_and_reports_urban_share(
     assert "Length-weighted urban/rural label agreement: 100.0%" in contents
     assert "residential" in contents
     assert "75.0%" in contents
+
+
+def test_grid_density_splits_lines_and_counts_two_way_roads_once(tmp_path):
+    edges = tmp_path / "edges.parquet"
+    costs = tmp_path / "costs.parquet"
+    _write_edges(edges, [
+        _record("forward", "LINESTRING (-525 25, 525 25)", length_m=1050,
+                speed_context=None, way_id=7),
+        _record("reverse", "LINESTRING (525 25, -525 25)", length_m=1050,
+                speed_context=None, way_id=7, is_forward=False),
+        _record("outside", "LINESTRING (0 575, 100 575)", length_m=100,
+                speed_context=None, way_id=8),
+    ])
+    connection = duckdb.connect()
+    try:
+        build_car_costs(connection, edges, costs, config=_config())
+        total = connection.execute(
+            "SELECT sum(length_m) FROM _car_density_cells"
+        ).fetchone()[0]
+        densities = dict(connection.execute(
+            "SELECT split_part(edge_key, ':', 1), road_density_km "
+            "FROM _car_edge_densities"
+        ).fetchall())
+    finally:
+        connection.close()
+    assert total == pytest.approx(1150)
+    assert densities["forward"] == pytest.approx(1.025, abs=1e-9)
+    assert densities["reverse"] == pytest.approx(densities["forward"], abs=1e-9)
+
+
+def test_rasterization_handles_grid_corners_and_negative_boundaries():
+    x, y, lengths = _rasterize_lines(
+        np.array([50.0, 0.0]), np.array([50.0, 0.0]),
+        np.array([-50.0, -100.0]), np.array([-50.0, 0.0]), 50.0,
+    )
+    cells = {}
+    for cx, cy, length in zip(x, y, lengths, strict=True):
+        cells[(cx, cy)] = cells.get((cx, cy), 0) + length
+    diagonal = 50 * np.sqrt(2)
+    assert cells == pytest.approx({
+        (0, 0): diagonal,
+        (-1, -1): diagonal,
+        (-1, 0): 50,
+        (-2, 0): 50,
+    })
+
+
+def test_focal_disc_excludes_diagonal_outside_and_crosses_tiles(tmp_path):
+    edges = tmp_path / "edges.parquet"
+    _write_edges(edges, [
+        _record("center", "LINESTRING (20 25, 30 25)", length_m=10),
+        _record("inside", "LINESTRING (350 375, 360 375)", length_m=10),
+        _record("outside", "LINESTRING (400 425, 410 425)", length_m=10),
+        _record("west", "LINESTRING (25570 25, 25580 25)", length_m=10),
+        _record("east", "LINESTRING (25620 25, 25630 25)", length_m=10),
+    ])
+    connection = duckdb.connect()
+    try:
+        build_car_costs(connection, edges, tmp_path / "costs.parquet", config=_config())
+        densities = dict(connection.execute(
+            "SELECT split_part(edge_key, ':', 1), road_density_km "
+            "FROM _car_edge_densities"
+        ).fetchall())
+    finally:
+        connection.close()
+    assert densities["center"] == pytest.approx(0.02, abs=1e-9)
+    assert densities["west"] == pytest.approx(0.02, abs=1e-9)
+    assert densities["east"] == pytest.approx(0.02, abs=1e-9)
+
+
+@pytest.mark.parametrize("invalid", [0, -50, float("inf"), float("nan")])
+def test_density_grid_cell_must_be_positive_and_finite(invalid):
+    density = _config().car_speed.urban_density
+    with pytest.raises(ValueError):
+        type(density).model_validate({**density.model_dump(), "grid_cell_m": invalid})
+
+
+def test_density_checkpoint_reuses_and_invalidates(tmp_path, monkeypatch):
+    import mobgrid.osm.speeds as speeds
+
+    edges = tmp_path / "edges.parquet"
+    _write_edges(edges, [_record("edge", "LINESTRING (0 0, 100 0)")])
+    output = tmp_path / "costs.parquet"
+    cache = tmp_path / "cache"
+    calls = []
+    original = speeds._grid_density
+
+    def tracked(*args):
+        calls.append(1)
+        return original(*args)
+
+    monkeypatch.setattr(speeds, "_grid_density", tracked)
+    config = _config()
+    connection = duckdb.connect()
+    try:
+        build_car_costs(connection, edges, output, config=config, cache_directory=cache)
+        build_car_costs(connection, edges, output, config=config, cache_directory=cache)
+        changed_density = config.car_speed.urban_density.model_copy(
+            update={"grid_cell_m": 25}
+        )
+        changed_car = config.car_speed.model_copy(
+            update={"urban_density": changed_density}
+        )
+        changed = config.model_copy(update={"car_speed": changed_car})
+        build_car_costs(
+            connection, edges, output, config=changed, cache_directory=cache
+        )
+        _write_edges(edges, [_record("edge", "LINESTRING (0 0, 150 0)")])
+        build_car_costs(
+            connection, edges, output, config=changed, cache_directory=cache
+        )
+    finally:
+        connection.close()
+    assert len(calls) == 3
+
+
+def test_monaco_car_density_runs_without_rural_labels(tmp_path):
+    edges = ROOT / "tests" / "fixtures" / "osm_monaco_baseline.parquet"
+    connection = duckdb.connect()
+    try:
+        summary = build_car_costs(
+            connection, edges, tmp_path / "costs.parquet", config=_config()
+        )
+    finally:
+        connection.close()
+    assert summary.edge_count == 2364
+    assert summary.density_agreement is None
+    assert summary.density_threshold_km == (
+        _config().car_speed.urban_density.fallback_threshold_km
+    )
