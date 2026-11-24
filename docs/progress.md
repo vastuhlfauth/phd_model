@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Segment-shared elevation profiles, grid car density and stage timing implemented; pilot timing and agreement, unified stage and Géovélo check remain |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Pilot cost failure fixed; rerun costs and inspect zero-speed diagnostics, timing, agreement and Géovélo check |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -110,6 +110,12 @@ Each item stays open until a value is decided; the value goes into `config/`.
   Monaco regression uses synthetic elevations rather than BD ALTI samples.
 - [ ] Step 6b: measure 50 m grid car-density performance and verify fitted
   tagged-edge agreement near 88% on the pilot. Monaco lacks rural labels.
+- [ ] Step 6b: run the unified cost stage on the pilot and inspect its step 6
+  elevation, speed and urban-length diagnostics.
+- [ ] Step 6b: inspect zero-speed bike segment combinations after the pilot
+  rerun; resolve the configured power/coasting gap on grass/sand if material.
+- [ ] Step 6: investigate the observed assign-segments timing regression
+  (498 s versus 150 s); the forced-rebuild change did not alter its SQL.
 - [ ] Step 6: verify the version 7 pilot edge-build time is under five minutes.
   DuckDB memory limit and threads are not exposed by the loaded base, pilot or
   network configs; the existing connection setup remains in use.

@@ -1,5 +1,13 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6b: retain the configured power/force model for zero-speed
+  bike segments. Count and diagnose them, and null their edge time and energy;
+  do not invent a minimum speed. Paved fallback surfaces are configured for
+  platform, steps, corridor and each bike-infrastructure class.
+- 2026-11-24, step 6b: retain elevation enrichment of edge and node tables;
+  write costs separately by directed edge key, with versioned checkpoints for
+  car, active and joined outputs. Report class speeds as directed length
+  divided by travel time, and urban shares on directed car length.
 - 2026-11-23, step 6b: smooth each way's interpolated profile by the
   distance integral of its piecewise-linear elevation over a centred window.
   Extend endpoint slopes to preserve uniform grades; do not bridge missing

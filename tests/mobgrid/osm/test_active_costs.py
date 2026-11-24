@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pytest
 from mobgrid.energy.bike import (
     bike_ride_energy_kj,
@@ -20,6 +21,78 @@ from mobgrid.osm.config import load_network_config
 ROOT = Path(__file__).resolve().parents[3]
 ENERGY_PATH = ROOT / "config" / "energy.yaml"
 NETWORK_PATH = ROOT / "config" / "network.yaml"
+
+
+def test_every_known_highway_and_bike_class_has_a_valid_surface_default():
+    network = load_network_config(NETWORK_PATH)
+    energy = load_energy_config(ENERGY_PATH)
+    defaults = network.bike_edge_costs
+    assert set(network.known_highways) <= set(defaults.surface_default_by_highway)
+    assert set(network.bike_classes) <= set(defaults.surface_default_by_bike_class)
+    assert set(defaults.surface_default_by_highway.values()) <= set(
+        energy.bike.surface_crr
+    )
+    assert set(defaults.surface_default_by_bike_class.values()) <= set(
+        energy.bike.surface_crr
+    )
+
+
+def test_zero_bike_speed_segments_are_null_counted_and_reported(tmp_path):
+    edges_path, nodes_path = _write_tables(tmp_path)
+    connection = duckdb.connect()
+    connection.execute(
+        "CREATE TABLE edges AS SELECT * FROM read_parquet(?)", [str(edges_path)]
+    )
+    connection.execute("""
+        UPDATE edges SET surface = 'grass', node_elevations_m = [0, -1.4, -2.8]
+        WHERE mode = 'bike'
+    """)
+    connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
+    output = tmp_path / "costs.parquet"
+    try:
+        with np.errstate(divide="raise", invalid="raise"):
+            summary = enrich_active_edge_costs(
+                connection, edges_path, nodes_path, output,
+                energy=load_energy_config(ENERGY_PATH),
+                network=load_network_config(NETWORK_PATH),
+            )
+        row = connection.execute(
+            "SELECT bike_time_s, bike_energy_kj, bike_zero_speed_segments "
+            "FROM read_parquet(?) WHERE edge_key = 'bike:f'", [str(output)]
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row == (None, None, 2)
+    assert summary.zero_speed_segment_count == 2
+    text = output.with_suffix(".grades.md").read_text(encoding="utf-8")
+    assert "grass_sand" in text and "mixed_traffic" in text
+    assert "-0.028" in text and "30" in text
+
+
+def test_missing_highway_uses_bike_class_surface_default(tmp_path):
+    edges_path, nodes_path = _write_tables(tmp_path)
+    connection = duckdb.connect()
+    connection.execute(
+        "CREATE TABLE edges AS SELECT * FROM read_parquet(?)", [str(edges_path)]
+    )
+    connection.execute(
+        "UPDATE edges SET highway = NULL, surface = NULL WHERE mode = 'bike'"
+    )
+    connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
+    output = tmp_path / "costs.parquet"
+    try:
+        enrich_active_edge_costs(
+            connection, edges_path, nodes_path, output,
+            energy=load_energy_config(ENERGY_PATH),
+            network=load_network_config(NETWORK_PATH),
+        )
+        bike_time = connection.execute(
+            "SELECT bike_time_s FROM read_parquet(?) WHERE edge_key = 'bike:f'",
+            [str(output)],
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert bike_time > 0
 
 
 def _write_tables(tmp_path: Path) -> tuple[Path, Path]:

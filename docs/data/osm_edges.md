@@ -27,6 +27,36 @@
   Car costs are stored in the one-to-one `car_costs.parquet` keyed by
   `edge_key`.
 
+## Resumable edge-cost stage
+
+After the edge build, `python -m mobgrid.osm.costs --state 2021 --area pilot`
+reuses the elevation and car-density checkpoints, then builds B1 walk and bike
+costs and joins all modes to `edge_costs.parquet`. Elevation also requires
+the extracted `ways.parquet` and unpacked BD ALTI grids; it enriches the edge
+and node tables in place. The cost and substage checkpoints under
+`data/interim/osm/{state}/{area}/costs/` include a build-logic version,
+input/output fingerprints and relevant parameters. Changes to cost parameters
+invalidate costs, not the edge build. `python -m mobgrid.osm.edges --state 2021
+--area pilot --force` explicitly rebuilds the edges and step 6 report.
+
+The cost command updates the report with incomplete-elevation edge counts,
+length/time mean speeds by highway class, and the urban share of directed car
+length by class. It prints substage times and writes dated logs and summaries.
+Intermediate car and active cost files remain available as described below.
+For the 2021 pilot, both elevation entry points use
+`docs/data/step06_elevation_pilot.md`. An existing checkpoint using the old
+year-suffixed name is reused only when both report contents and all other
+checkpoint signatures match.
+
+`edge_costs.parquet` has exactly one row per directed `edge_key`. Its numeric
+columns are nullable float32: `length_m`, `climb_m` and `separated_length_m`
+are metres; `car_time_s`, `walk_time_s` and `bike_time_s` are seconds;
+`walk_energy_kj`, `bike_energy_kj`, `bike_energy_drag_kj` and
+`bike_pedalling_energy_kj` are kJ; `bike_energy_per_kg_kj_per_kg` is kJ/kg.
+The `is_urban` boolean and `speed_limit_bucket` string apply to car edges.
+`bike_zero_speed_segments` is a nullable int32 count for bike edges.
+Mode-inapplicable values and costs with incomplete elevation profiles are null.
+
 ## Edge columns
 
 | Column | Type | Meaning |
@@ -101,6 +131,13 @@ mode and OSM highway class and lists the configured 20 longest affected
 edges with their most extreme original signed grade.
 The elevation-stage report contains the same diagnostics before active costs
 are built, using the smoothed profiles and configured grade ranges.
+Segments with zero model speed and positive length are counted by highway,
+bike infrastructure, resolved surface, original grade range and speed cap in
+`active_costs.grades.md`. Their containing bike edges have null time and energy,
+not infinite or partial costs. The step 6 report gives the total segment count.
+The configured power model can produce zero for grass/sand on a narrow gentle
+descent: at those slopes neither the selected rider power nor gravity exceeds
+rolling resistance. No unconfigured minimum speed is substituted.
 
 The elevation CLI checkpoints sampled nodes and completed output signatures
 under `data/interim/osm/{state}/{area}/elevation/`. Matching reruns reuse
@@ -121,7 +158,9 @@ dated log and run summary are written under `logs/`.
 Bike total energy equals the per-kg component times configured rider-plus-bike
 mass, plus drag and unloaded-pedalling energy. Unknown non-empty `surface`
 values use the highway-class default and are reported by value in the function
-summary. Stop time adds only the deceleration and acceleration delay beyond
+summary. All known highway classes have defaults; missing or unknown highway
+classes use the configured bike-infrastructure class default. Stop time adds
+only the deceleration and acceleration delay beyond
 the cruising time already counted, plus expected signal wait; stop energy is
 unchanged. Provisional stop probabilities and surface defaults are
 `TODO(confirm)` values in `config/network.yaml`; signal timing is configured in

@@ -35,6 +35,8 @@ class ActiveCostSummary:
     incomplete_profile_count: int
     unknown_surface_count: int
     unknown_surface_values: dict[str, int]
+    zero_speed_segment_count: int
+    zero_speed_by_class: tuple[tuple[str, str, str, float, float, float, int], ...]
     clipped_segments_by_class: dict[tuple[str, str], tuple[int, float]]
     longest_clipped_edges: tuple[tuple[str, int, str, str, float, float], ...]
 
@@ -151,7 +153,7 @@ def _calculate_batch(
     energy: EnergyConfig,
     network: NetworkConfig,
     speed_tables: dict[tuple[str, float], BikeSpeedTable],
-) -> tuple[pa.Table, int, Counter[str], int, pa.Table]:
+) -> tuple[pa.Table, int, Counter[str], int, pa.Table, pa.Table]:
     batch_keys = np.asarray(
         edge_batch.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
     )
@@ -300,6 +302,12 @@ def _calculate_batch(
         network.bike_edge_costs.surface_default_by_highway.items()
     ):
         resolved_surfaces[needs_default & (highways == highway)] = resolved
+    for bike_class, resolved in (
+        network.bike_edge_costs.surface_default_by_bike_class.items()
+    ):
+        resolved_surfaces[
+            bike_edges & (resolved_surfaces == "") & (bike_classes == bike_class)
+        ] = resolved
     unresolved_surface = bike_edges & (resolved_surfaces == "")
     if unresolved_surface.any():
         index = int(np.flatnonzero(unresolved_surface)[0])
@@ -388,12 +396,27 @@ def _calculate_batch(
                 * calmer_factor / 1000.0,
                 0.0,
             )
-            bike_pedalled_time_segment[selected] = np.where(
-                pedalled,
-                segment_lengths[selected] / group_speeds,
-                0.0,
+            bike_pedalled_time_segment[selected] = np.divide(
+                segment_lengths[selected],
+                group_speeds,
+                out=np.zeros_like(group_speeds),
+                where=pedalled & (group_speeds > 0),
             )
 
+    if np.any(bike_segment & (~np.isfinite(speeds) | (speeds < 0))):
+        raise ValueError(
+            "bike speed calculation produced a negative or non-finite speed"
+        )
+    zero_speed = bike_segment & (segment_lengths > 0) & (speeds == 0)
+    zero_counts = np.bincount(groups[zero_speed], minlength=group_count)
+    zero_groups = groups[zero_speed]
+    zero_diagnostics = pa.table({
+        "highway": pa.array(highways[zero_groups], type=pa.string()),
+        "bike_class": pa.array(bike_classes[zero_groups], type=pa.string()),
+        "surface": pa.array(resolved_surfaces[zero_groups], type=pa.string()),
+        "cap_kmh": pa.array(cap_by_edge[zero_groups], type=pa.float64()),
+        "grade": pa.array(grades[zero_speed], type=pa.float64()),
+    })
     bike_time_ride = _sum_by_edge(
         np.divide(
             segment_lengths, speeds, out=np.zeros_like(segment_lengths),
@@ -460,7 +483,7 @@ def _calculate_batch(
     climb = _sum_by_edge(climb_segment, groups)
     incomplete_count = int(np.count_nonzero(~complete_edges))
     valid_walk = foot_edges & complete_edges
-    valid_bike = bike_edges & complete_edges
+    valid_bike = bike_edges & complete_edges & (zero_counts == 0)
 
     def nullable(values: FloatArray, mask: npt.NDArray[np.bool_]) -> pa.Array:
         return pa.array(values, mask=~mask, type=pa.float64())
@@ -484,9 +507,15 @@ def _calculate_batch(
                 np.where(separated_edges, edge_lengths, 0.0),
                 type=pa.float64(),
             ),
+            "bike_zero_speed_segments": pa.array(
+                zero_counts, mask=~bike_edges, type=pa.int32()
+            ),
         }
     )
-    return result, incomplete_count, unknown_surfaces, group_count, diagnostics
+    return (
+        result, incomplete_count, unknown_surfaces, group_count, diagnostics,
+        zero_diagnostics,
+    )
 
 
 def enrich_active_edge_costs(
@@ -571,13 +600,20 @@ def enrich_active_edge_costs(
             bike_energy_drag_kj DOUBLE,
             bike_pedalling_energy_kj DOUBLE,
             climb_m DOUBLE,
-            separated_length_m DOUBLE
+            separated_length_m DOUBLE,
+            bike_zero_speed_segments INTEGER
         )
     """)
     connection.execute("""
         CREATE OR REPLACE TEMP TABLE _active_clipped_grades (
             edge_key VARCHAR, way_id BIGINT, mode VARCHAR, highway VARCHAR,
             edge_length_m DOUBLE, segment_length_m DOUBLE, grade DOUBLE
+        )
+    """)
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _active_zero_speeds (
+            highway VARCHAR, bike_class VARCHAR, surface VARCHAR,
+            cap_kmh DOUBLE, grade DOUBLE
         )
     """)
     speed_tables: dict[tuple[str, float], BikeSpeedTable] = {}
@@ -604,8 +640,8 @@ def enrich_active_edge_costs(
             segments = _active_edge_batch(
                 connection, node_source, edge_batch
             )
-            result, missing, batch_unknown, count, diagnostics = _calculate_batch(
-                edge_batch, segments, energy, network, speed_tables
+            result, missing, batch_unknown, count, diagnostics, zeros = (
+                _calculate_batch(edge_batch, segments, energy, network, speed_tables)
             )
             connection.register("_active_cost_batch", result)
             try:
@@ -623,6 +659,13 @@ def enrich_active_edge_costs(
                 )
             finally:
                 connection.unregister("_active_clipped_batch")
+            connection.register("_active_zero_batch", zeros)
+            try:
+                connection.execute(
+                    "INSERT INTO _active_zero_speeds SELECT * FROM _active_zero_batch"
+                )
+            finally:
+                connection.unregister("_active_zero_batch")
             edge_count += count
             incomplete_count += missing
             unknown_surfaces.update(batch_unknown)
@@ -631,6 +674,13 @@ def enrich_active_edge_costs(
             connection, "_active_clipped_grades",
             network.bike_speed_table.clipped_grade_report_limit,
         )
+        zero_by_class = tuple(connection.execute("""
+            SELECT highway, bike_class, surface, cap_kmh,
+                   min(grade), max(grade), count(*)
+            FROM _active_zero_speeds
+            GROUP BY highway, bike_class, surface, cap_kmh
+            ORDER BY highway, bike_class, surface, cap_kmh
+        """).fetchall())
         write_parquet(connection, "SELECT * FROM _active_cost_result", temporary)
         temporary.replace(output)
     finally:
@@ -642,6 +692,8 @@ def enrich_active_edge_costs(
         incomplete_profile_count=incomplete_count,
         unknown_surface_count=sum(unknown_surfaces.values()),
         unknown_surface_values=dict(sorted(unknown_surfaces.items())),
+        zero_speed_segment_count=sum(row[-1] for row in zero_by_class),
+        zero_speed_by_class=zero_by_class,
         clipped_segments_by_class=clipped_by_class,
         longest_clipped_edges=longest,
     )
@@ -655,4 +707,21 @@ def write_active_grade_report(summary: ActiveCostSummary, path: str | Path) -> N
     lines.extend(_grade_report_lines(
         summary.clipped_segments_by_class, summary.longest_clipped_edges
     ))
+    lines.extend([
+        "",
+        "## Zero-speed bike segments",
+        "",
+        f"Segments: {summary.zero_speed_segment_count:,}. "
+        "Affected bike costs are null.",
+        "Grades are original signed grades; cap is in km/h.",
+        "",
+        "| Highway | Bike class | Surface | Cap | Min grade | Max grade | Segments |",
+        "|---|---|---|---:|---:|---:|---:|",
+    ])
+    for row in summary.zero_speed_by_class:
+        highway, bike_class, surface, cap, low, high, count = row
+        lines.append(
+            f"| {highway} | {bike_class} | {surface} | {cap:g} | "
+            f"{low:.6f} | {high:.6f} | {count:,} |"
+        )
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")

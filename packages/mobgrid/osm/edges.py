@@ -776,6 +776,7 @@ def build_directed_edges(
     output_directory: str | Path,
     *,
     config: NetworkConfig,
+    force: bool = False,
 ) -> EdgeBuildSummary:
     """Split kept ways at graph nodes and write directed, mode-specific edges."""
     ways = Path(ways_path)
@@ -790,7 +791,10 @@ def build_directed_edges(
     output_nodes_path = output / "nodes.parquet"
     metadata_path = output / "_edges.json"
     signature = _input_signature(ways, nodes, config)
-    if edges_path.is_file() and output_nodes_path.is_file() and metadata_path.is_file():
+    if (
+        not force and edges_path.is_file() and output_nodes_path.is_file()
+        and metadata_path.is_file()
+    ):
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         if (
             metadata.get("signature") == signature
@@ -800,6 +804,7 @@ def build_directed_edges(
             logger.info("reusing cached directed edges in %s", output)
             return _summary_from_files(connection, edges_path, output_nodes_path)
 
+    metadata_path.unlink(missing_ok=True)
     stage_started = time.perf_counter()
     connection.execute("LOAD spatial")
     _log_stage_elapsed("load-spatial", stage_started)
@@ -1194,6 +1199,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--report", type=Path)
     parser.add_argument("--log", type=Path)
     parser.add_argument("--summary", type=Path)
+    parser.add_argument("--force", action="store_true", help="rebuild cached edges")
     return parser
 
 
@@ -1233,6 +1239,7 @@ def main(argv: list[str] | None = None) -> int:
             nodes_path,
             output_directory,
             config=config,
+            force=args.force,
         )
         report_started = time.perf_counter()
         write_step06_report(

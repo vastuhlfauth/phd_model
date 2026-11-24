@@ -1029,8 +1029,10 @@ def main(argv: list[str] | None = None) -> int:
         raise FileNotFoundError(
             f"no unpacked BD ALTI ASCII grids found under {tile_directory}"
         )
-    report_path = args.report or Path(
-        f"docs/data/step06_elevation_{args.area}_{args.state}.md"
+    report_path = args.report or root / "docs" / "data" / (
+        "step06_elevation_pilot.md"
+        if args.state == 2021 and args.area == "pilot"
+        else f"step06_elevation_{args.area}_{args.state}.md"
     )
     way_elevations = nodes_path.with_name("way_elevations.parquet")
     cache_directory = ways_path.parent / "elevation"
@@ -1054,10 +1056,21 @@ def main(argv: list[str] | None = None) -> int:
         reused = False
         if checkpoint.is_file() and all(path.is_file() for path in required):
             previous = json.loads(checkpoint.read_text(encoding="utf-8"))
-            reused = previous == _completion_signature(
+            current = _completion_signature(
                 ways_path, elevation_paths, edges_path, nodes_path, way_elevations,
                 report_path, network, energy,
             )
+            reused = previous == current
+            old_report = root / "docs" / "data" / "step06_elevation_pilot_2021.md"
+            if (
+                not reused and args.report is None
+                and args.state == 2021 and args.area == "pilot"
+                and old_report.is_file()
+                and previous == {**current, "report": _file_signature(old_report)}
+                and old_report.read_bytes() == report_path.read_bytes()
+            ):
+                _write_json(checkpoint, current)
+                reused = True
         if reused:
             logger.info("reusing completed elevation outputs")
         else:

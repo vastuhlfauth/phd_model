@@ -405,4 +405,13 @@ bike_edge_costs:
     path: compacted
     track: gravel_unpaved_ground_dirt_earth
     bridleway: gravel_unpaved_ground_dirt_earth
+    steps: asphalt_concrete_paved_default
+    corridor: asphalt_concrete_paved_default
+    platform: asphalt_concrete_paved_default
+  surface_default_by_bike_class:
+    separated_track_path: asphalt_concrete_paved_default
+    painted_lane: asphalt_concrete_paved_default
+    bus_lane: asphalt_concrete_paved_default
+    low_speed: asphalt_concrete_paved_default
+    mixed_traffic: asphalt_concrete_paved_default
 tile_size_m: 50000

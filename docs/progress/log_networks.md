@@ -3,6 +3,33 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: pilot cost failure (2026-11-24)
+
+- Added surface defaults for every known highway and bike class, including
+  platform, corridor and steps.
+- Masked bike divisions; positive-length zero-speed segments invalidate their
+  edge costs and are counted with class, surface, grade and cap diagnostics.
+- Synthetic grass/sand at -2.8% yields zero: configured power and coasting
+  are both zero. No unsupported speed floor was introduced; the failed pilot
+  log did not record its actual combinations.
+- Both elevation commands use the existing pilot report name and migrate an
+  identical old-name checkpoint without redoing elevation. The old duplicate
+  is retained until that migration has run.
+- The edge change adds only forced-rebuild/cache handling and does not change
+  segment assignment SQL. Pilot assign-segments timing regression is unexplained.
+- Validation: 19 touched-module tests passed; Ruff clean. No pilot rerun.
+
+### Step 6b: resumable edge costs (2026-11-24)
+
+- Added the cost CLI: checkpointed elevation, car and B1 active costs,
+  one-to-one float32 cost output, and per-stage terminal/file timings.
+- Cost parameters invalidate costs without rebuilding edge topology; explicit
+  `--force` rebuilds edges. The step 6 report includes elevation coverage,
+  class speed and urban-length diagnostics.
+- Synthetic tests cover speed changes, reuse after interrupted joins, key
+  validation, report values and interrupted forced builds: 26 passed;
+  Ruff clean. Pilot performance remains unverified.
+
 ### Step 6b: elevation profiles, car density and timing (2026-11-24)
 
 - Compute profiles and candidate clipped grades once per undirected

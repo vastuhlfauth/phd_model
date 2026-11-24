@@ -119,6 +119,7 @@ class BikeEdgeCostConfig(BaseModel):
     surface_aliases: dict[str, str]
     surface_by_tracktype: dict[str, str]
     surface_default_by_highway: dict[str, str]
+    surface_default_by_bike_class: dict[BikeClass, str]
 
 
 class NetworkConfig(BaseModel):
