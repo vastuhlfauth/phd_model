@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6: calibrate against the configured named reference; OSRM
+  is an exploratory network check, not a speed reference. Exclude and count
+  pairs outside the provisional cutoff; if rerouting exceeds the fitted cutoff,
+  exclude those pairs from the refit and all holdout metric stages.
 - 2026-11-24, step 6 OSRM: retain NoRoute/NoSegment as completed outcomes
   without replacement; report them by stratum and exclude them from metrics
   and fitting. Exclude successful routes with either endpoint snapped over

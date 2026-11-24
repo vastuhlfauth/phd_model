@@ -3,6 +3,18 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6: calibration cutoff and references (2026-11-24)
+
+- The user-run report processed 2,500 pairs; calibration stopped at the
+  provisional Dial cutoff. Exclude and count eligible cutoff pairs before
+  splitting; count fitted-cutoff exclusions and keep holdout comparisons aligned.
+- Calibration selects a named OSRM or pair-id-keyed Parquet reference, with
+  validated durations and distances; missing reference pairs are counted.
+- The report cites upstream OSRM profile defaults and identifies the deployed
+  profile as unverified. OSRM is a network check, not a speed reference.
+- Synthetic tests: 30 passed; Ruff clean. No real-data report or calibration
+  run was started during this fix.
+
 ### Step 6: OSRM unreachable and snapping outcomes (2026-11-24)
 
 - The user-run query saved 1,607 routes before a NoRoute stopped it; the

@@ -39,6 +39,20 @@ class _NoRedirect(HTTPRedirectHandler):
 urlopen = build_opener(_NoRedirect()).open
 
 
+class CarProfileNotes(BaseModel):
+    """Published upstream profile values, not verified deployed-server settings."""
+
+    model_config = ConfigDict(extra="forbid")
+    source_url: str = Field(min_length=1)
+    unclassified_kmh: float = Field(gt=0, allow_inf_nan=False)
+    residential_kmh: float = Field(gt=0, allow_inf_nan=False)
+    tertiary_kmh: float = Field(gt=0, allow_inf_nan=False)
+    primary_kmh: float = Field(gt=0, allow_inf_nan=False)
+    maxspeed_factor: float = Field(gt=0, allow_inf_nan=False)
+    turn_penalty_s: float = Field(ge=0, allow_inf_nan=False)
+    signal_penalty_s: float = Field(ge=0, allow_inf_nan=False)
+
+
 class QuerySettings(BaseModel):
     """HTTP policy and paths for a serial section 13 OSRM query run."""
 
@@ -62,6 +76,7 @@ class QuerySettings(BaseModel):
     route_checkpoint_directory: Path | None = None
     calibration_checkpoint_directory: Path | None = None
     metric_tolerances_min: tuple[float, float] | None = None
+    car_profile_notes: CarProfileNotes | None = None
     calibration: CalibrationSettings | None = None
 
     @model_validator(mode="after")

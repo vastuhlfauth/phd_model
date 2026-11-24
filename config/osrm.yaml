@@ -18,8 +18,20 @@ report_path: docs/data/step06_osrm_check.md
 route_checkpoint_directory: data/interim/osrm/routing
 calibration_checkpoint_directory: data/interim/osrm/calibration
 metric_tolerances_min: [2, 5]
+car_profile_notes:
+  source_url: https://github.com/Project-OSRM/osrm-backend/blob/v5.27.1/profiles/car.lua
+  unclassified_kmh: 25
+  residential_kmh: 25
+  tertiary_kmh: 40
+  primary_kmh: 65
+  maxspeed_factor: 0.8
+  turn_penalty_s: 7.5
+  signal_penalty_s: 2
 calibration:
   network_config: config/network.yaml
+  reference:
+    type: osrm
+    name: OSRM
   seed: 42
   training_fraction: 0.5
   uncertainty_fraction: 0.5

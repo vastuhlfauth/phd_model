@@ -377,3 +377,82 @@ def test_calibration_reroutes_once_then_refits_on_the_new_paths(tmp_path, monkey
         checkpoint_key="abc",
     )
     assert resumed["changed_share"] == 1
+
+
+def test_fitted_cutoff_exclusions_keep_the_original_split(monkeypatch):
+    settings = load_query_settings(
+        Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
+    ).calibration
+    assert settings is not None
+    graph = csr_from_indexed_edges(
+        "car",
+        np.array([10, 20], dtype=np.int64),
+        np.array([0]),
+        np.array([1]),
+        {
+            "time_s": np.array([100], dtype=np.float32),
+            "distance_m": np.array([1000], dtype=np.float32),
+        },
+        reference_mass_kg=74,
+        bike_mass_kg=15,
+    )
+    count = len(factor_highways(settings))
+    features = np.zeros((1, 1 + count + 6))
+    features[0, 0] = 100
+    initial = np.array([*np.ones(count), 15, 5, 2, 3, 2, 0])
+    lower = np.array([0.8] * count + [0] * 6)
+    upper = np.array([1.15] * count + [30, 15, 10, 15, 10, 5])
+    pairs = [
+        {"pair_id": f"p{i}", "origin_node_id": 10, "destination_node_id": 20}
+        for i in range(6)
+    ]
+    permutation = np.random.default_rng(settings.seed).permutation(6)
+    excluded = {f"p{permutation[0]}", f"p{permutation[3]}"}
+    calls = []
+
+    def paths(graph, features, pairs, cutoff, resolution, checkpoint):
+        calls.append(1)
+        return [
+            {"pair_id": pair["pair_id"], "path": None}
+            if len(calls) == 2 and pair["pair_id"] in excluded
+            else {
+                "pair_id": pair["pair_id"],
+                "path": np.array([0]),
+                "features": features[0],
+                "time_s": 100.0,
+                "distance_m": 1000.0,
+            }
+            for pair in pairs
+        ]
+
+    fit_sizes = []
+
+    def fit(cruise, *args, **kwargs):
+        fit_sizes.append(len(cruise))
+        return CalibrationFit(
+            initial.copy(),
+            np.zeros(len(initial)),
+            np.eye(len(initial)),
+            np.zeros(len(initial), dtype=bool),
+            np.full(len(initial), np.nan),
+        )
+
+    monkeypatch.setattr("mobgrid.validation.osrm_calibration._cached_paths", paths)
+    monkeypatch.setattr("mobgrid.validation.osrm_calibration.fit_log_time_ratios", fit)
+    result = calibrate_car(
+        graph,
+        features,
+        pairs,
+        np.full(6, 100.0),
+        initial,
+        lower,
+        upper,
+        settings,
+        cutoff_s=300,
+        resolution_s=0.1,
+    )
+    assert fit_sizes == [3, 2]
+    assert result["fitted_cutoff_training"] == 1
+    assert result["fitted_cutoff_holdout"] == 1
+    assert len(result["holdout"]) == 2
+    assert all(row["pair_id"] not in excluded for row in result["holdout"])

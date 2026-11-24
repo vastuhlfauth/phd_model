@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import duckdb
 import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from mobgrid.graph.config import load_search_config
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 def calculate_metrics(
     rows: list[dict], tolerances_min: tuple[float, float]
 ) -> dict[str, float | int]:
-    """Return signed model-minus-OSRM errors in minutes, metres and ratios."""
+    """Return signed model-minus-reference errors in minutes, metres and ratios."""
     if not rows:
         raise ValueError("metrics require at least one matched route")
     if not (
@@ -34,29 +35,36 @@ def calculate_metrics(
     ):
         raise ValueError("metric tolerances must be finite, positive and increasing")
     model_time = np.asarray([row["model_time_s"] for row in rows], dtype=float)
-    osrm_time = np.asarray([row["osrm_time_s"] for row in rows], dtype=float)
+    reference_time = np.asarray([row["reference_time_s"] for row in rows], dtype=float)
     model_distance = np.asarray([row["model_distance_m"] for row in rows], dtype=float)
-    osrm_distance = np.asarray([row["osrm_distance_m"] for row in rows], dtype=float)
+    reference_distance = np.asarray(
+        [row["reference_distance_m"] for row in rows], dtype=float
+    )
     if (
         not all(
             np.isfinite(array).all()
-            for array in (model_time, osrm_time, model_distance, osrm_distance)
+            for array in (
+                model_time,
+                reference_time,
+                model_distance,
+                reference_distance,
+            )
         )
-        or np.any(osrm_time <= 0)
-        or np.any(osrm_distance <= 0)
+        or np.any(reference_time <= 0)
+        or np.any(reference_distance <= 0)
         or np.any(model_time < 0)
         or np.any(model_distance < 0)
     ):
-        raise ValueError("routing metrics require finite positive OSRM costs")
-    time_error = model_time - osrm_time
-    distance_error = model_distance - osrm_distance
+        raise ValueError("routing metrics require finite positive reference costs")
+    time_error = model_time - reference_time
+    distance_error = model_distance - reference_distance
     return {
         "count": len(rows),
         "bias_min": float(np.mean(time_error) / 60),
         "median_absolute_error_min": float(np.median(np.abs(time_error)) / 60),
         "within_first": float(np.mean(np.abs(time_error) <= tolerances_min[0] * 60)),
         "within_second": float(np.mean(np.abs(time_error) <= tolerances_min[1] * 60)),
-        "relative_error": float(np.mean(time_error / osrm_time)),
+        "relative_error": float(np.mean(time_error / reference_time)),
         "distance_bias_m": float(np.mean(distance_error)),
         "distance_median_absolute_error_m": float(np.median(np.abs(distance_error))),
     }
@@ -160,9 +168,16 @@ def _responses(settings: QuerySettings, pairs: list[dict]) -> dict[str, dict]:
 def _render(
     rows: list[dict], settings: QuerySettings, calibration_section: str | None = None
 ) -> str:
-    if settings.metric_tolerances_min is None or settings.max_snap_distance_m is None:
-        raise ValueError("metric tolerances and snapping limit are required")
+    if (
+        settings.metric_tolerances_min is None
+        or settings.max_snap_distance_m is None
+        or settings.car_profile_notes is None
+    ):
+        raise ValueError(
+            "metric tolerances, snapping limit and car profile notes are required"
+        )
     tolerances = settings.metric_tolerances_min
+    profile = settings.car_profile_notes
     groups: dict[tuple, list[dict]] = defaultdict(list)
     origin_methods = {}
     for row in rows:
@@ -191,7 +206,21 @@ def _render(
         "difference divided by OSRM time. Time shares include the stated boundary.",
         "NoRoute, NoSegment and pairs snapped beyond the configured limit are "
         "excluded from metrics and calibration. Eligible routes not reached within "
-        "the Dial cutoff are excluded from metrics.",
+        "the Dial cutoff are excluded from metrics and calibration.",
+        "",
+        "## OSRM car profile context",
+        "",
+        f"The [upstream OSRM car profile]({profile.source_url}) defaults for "
+        f"untagged roads include unclassified and residential: "
+        f"{profile.unclassified_kmh:g} km/h and {profile.residential_kmh:g} km/h, "
+        f"tertiary: {profile.tertiary_kmh:g} km/h, "
+        f"primary: {profile.primary_kmh:g} km/h. "
+        f"Tagged maxspeed is multiplied by {profile.maxspeed_factor:g}; turn penalties "
+        f"are angle-dependent up to {profile.turn_penalty_s:g} s and signals add "
+        f"{profile.signal_penalty_s:g} s. Other tags can change these values.",
+        "These upstream defaults may not match the deployed FOSSGIS profile; its "
+        "version and configuration are not verified. OSRM is used as a network check, "
+        "not as a speed reference; the calibration against it is exploratory.",
         "",
         "| Mode | Band (km) | Context | Matched | Cutoff | NoRoute | NoSegment | "
         "Over snap limit | Bias (min) | "
@@ -307,6 +336,8 @@ def render_calibration(
     upper: np.ndarray,
     rows: list[dict],
     settings: QuerySettings,
+    provisional_cutoff: int,
+    missing_reference: int,
 ) -> str:
     """Render two fits, uncertainty, correlations and stratified holdout metrics."""
     if settings.calibration is None or settings.metric_tolerances_min is None:
@@ -316,8 +347,15 @@ def render_calibration(
     lines = [
         "## Car calibration",
         "",
+        f"Calibration reference: {config.reference.name}.",
+        f"Provisional cutoff exclusions: {provisional_cutoff}; "
+        f"pairs missing reference: {missing_reference}.",
         f"Training pairs: {result['training_count']}; holdout pairs: {len(holdout)}.",
-        "Changed paths among all pairs after first fit: "
+        f"Fitted cutoff exclusions: {result['fitted_cutoff_training']} training, "
+        f"{result['fitted_cutoff_holdout']} holdout; refit training pairs: "
+        f"{result['refit_training_count']}. Holdout metrics use the same pairs "
+        "at all stages.",
+        "Changed paths among pairs reached after first fit: "
         f"{result['changed_share']:.1%}.",
         "The first fit uses provisional paths. Both sets are rerouted once, then "
         "refit paths remain fixed for the final holdout metrics.",
@@ -403,8 +441,8 @@ def render_calibration(
                 {
                     "model_time_s": row[f"{prefix}_time_s"],
                     "model_distance_m": row[f"{prefix}_distance_m"],
-                    "osrm_time_s": row["osrm_time_s"],
-                    "osrm_distance_m": row["osrm_distance_m"],
+                    "reference_time_s": row["reference_time_s"],
+                    "reference_distance_m": row["reference_distance_m"],
                 }
                 for row in values
             ]
@@ -454,6 +492,49 @@ def _calibration_cache_key(
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
+def _calibration_references(
+    rows: list[dict], settings: QuerySettings
+) -> dict[str, tuple[float, float]]:
+    """Load pair-id keyed reference durations in seconds and distances in metres."""
+    if settings.calibration is None:
+        raise ValueError("calibration settings are required")
+    reference = settings.calibration.reference
+    if reference.type == "osrm":
+        return {
+            row["pair_id"]: (row["reference_time_s"], row["reference_distance_m"])
+            for row in rows
+            if row["eligible"]
+        }
+    if reference.path is None:
+        raise ValueError("parquet calibration reference path is required")
+    with duckdb.connect() as connection:
+        connection.register(
+            "_reference_pairs", pa.table({"pair_id": [row["pair_id"] for row in rows]})
+        )
+        values = connection.execute(
+            """
+            SELECT r.pair_id, r.duration_s, r.distance_m
+            FROM read_parquet(?) r
+            SEMI JOIN _reference_pairs p ON r.pair_id = p.pair_id
+            """,
+            [str(reference.path)],
+        ).fetchall()
+    result: dict[str, tuple[float, float]] = {}
+    for pair_id, duration, distance in values:
+        if pair_id in result:
+            raise ValueError(f"duplicate calibration reference pair ID: {pair_id}")
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not np.isfinite(value)
+            or value <= 0
+            for value in (duration, distance)
+        ):
+            raise ValueError(f"invalid calibration reference costs for pair: {pair_id}")
+        result[pair_id] = (float(duration), float(distance))
+    return result
+
+
 def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
     from mobgrid.validation.osrm_calibration import arc_features, calibrate_car
 
@@ -468,16 +549,36 @@ def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
     cutoff = search_settings.cutoff_s_by_mode["car"]
     if cutoff is None:
         raise ValueError("car search cutoff is not configured")
+    candidates = [
+        row
+        for row in rows
+        if row["mode"] == "car"
+        and (settings.calibration.reference.type != "osrm" or row["eligible"])
+    ]
+    references = _calibration_references(candidates, settings)
+    missing_reference = sum(row["pair_id"] not in references for row in candidates)
+    provisional_cutoff = sum(
+        row["pair_id"] in references and row["model_time_s"] is None
+        for row in candidates
+    )
+    car_rows = [
+        {
+            **row,
+            "reference_time_s": references[row["pair_id"]][0],
+            "reference_distance_m": references[row["pair_id"]][1],
+        }
+        for row in candidates
+        if row["pair_id"] in references and row["model_time_s"] is not None
+    ]
     graph = load_graph(sampling.graph_directory / "car.npz")
     features, initial, lower, upper, names = arc_features(
         graph, sampling.edges_path, sampling.edge_costs_path, settings.calibration
     )
-    car_rows = [row for row in rows if row["mode"] == "car" and row["eligible"]]
     result = calibrate_car(
         graph,
         features,
         car_rows,
-        np.asarray([row["osrm_time_s"] for row in car_rows], dtype=np.float64),
+        np.asarray([row["reference_time_s"] for row in car_rows], dtype=np.float64),
         initial,
         lower,
         upper,
@@ -492,7 +593,16 @@ def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
             [row["pair_id"] for row in car_rows],
         ),
     )
-    return render_calibration(result, names, lower, upper, car_rows, settings)
+    return render_calibration(
+        result,
+        names,
+        lower,
+        upper,
+        car_rows,
+        settings,
+        provisional_cutoff,
+        missing_reference,
+    )
 
 
 def _write_report(path: Path, text: str) -> None:
@@ -512,6 +622,7 @@ def generate_report(settings: QuerySettings, date: str) -> None:
         or settings.route_checkpoint_directory is None
         or settings.metric_tolerances_min is None
         or settings.max_snap_distance_m is None
+        or settings.car_profile_notes is None
     ):
         raise ValueError("sampling, report path and route checkpoint path are required")
     sampling = settings.sampling
@@ -581,10 +692,10 @@ def generate_report(settings: QuerySettings, date: str) -> None:
                         "snap_distances_m": distances,
                         "over_snap": over_snap,
                         "eligible": outcome == "Ok" and not over_snap,
-                        "osrm_time_s": response["routes"][0]["duration"]
+                        "reference_time_s": response["routes"][0]["duration"]
                         if outcome == "Ok"
                         else None,
-                        "osrm_distance_m": response["routes"][0]["distance"]
+                        "reference_distance_m": response["routes"][0]["distance"]
                         if outcome == "Ok"
                         else None,
                         "response_date": record["response_date"],

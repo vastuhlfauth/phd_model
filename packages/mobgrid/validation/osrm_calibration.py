@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Literal
 
 import duckdb
 import numpy as np
@@ -37,11 +38,27 @@ class RoadGroup(BaseModel):
     bounds: tuple[float, float]
 
 
+class CalibrationReference(BaseModel):
+    """Source of pair-id keyed durations in seconds and distances in metres."""
+
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["osrm", "parquet"]
+    name: str = Field(min_length=1)
+    path: Path | None = None
+
+    @model_validator(mode="after")
+    def check_path(self) -> CalibrationReference:
+        if (self.type == "parquet") != (self.path is not None):
+            raise ValueError("a reference path is required only for parquet")
+        return self
+
+
 class CalibrationSettings(BaseModel):
     """Car fit bounds and numerical controls, in seconds where applicable."""
 
     model_config = ConfigDict(extra="forbid")
     network_config: Path
+    reference: CalibrationReference
     seed: int = Field(ge=0)
     training_fraction: float = Field(gt=0, lt=1)
     uncertainty_fraction: float = Field(gt=0, le=1)
@@ -388,14 +405,16 @@ def calibrate_car(
         raise ValueError("car calibration pairs exceed the provisional Dial cutoff")
 
     def fit(
-        paths: list[dict], previous: CalibrationFit | None = None
+        paths: list[dict],
+        indices: npt.NDArray[np.int64],
+        previous: CalibrationFit | None = None,
     ) -> CalibrationFit:
-        design = np.stack([paths[index]["features"] for index in training])
+        design = np.stack([paths[index]["features"] for index in indices])
         return fit_log_time_ratios(
             design[:, 1 : 1 + groups],
             design[:, 1 + groups :],
             design[:, 0],
-            observed[training],
+            observed[indices],
             lower,
             upper,
             provisional,
@@ -409,7 +428,7 @@ def calibrate_car(
             ),
         )
 
-    first_fit = fit(first_paths)
+    first_fit = fit(first_paths, training)
     first_weights = adjusted_weights(features, first_fit.values, groups).astype(
         np.float32
     )
@@ -427,19 +446,24 @@ def calibrate_car(
     rerouted_paths = _cached_paths(
         rerouted_graph, features, pairs, cutoff_s, resolution_s, rerouted_checkpoint
     )
-    if any(row["path"] is None for row in rerouted_paths):
-        raise ValueError("car calibration pairs exceed the fitted Dial cutoff")
-    refit = fit(rerouted_paths, first_fit)
+    reached = np.asarray([row["path"] is not None for row in rerouted_paths])
+    refit_training = training[reached[training]]
+    reached_holdout = holdout[reached[holdout]]
+    if not len(refit_training) or not len(reached_holdout):
+        raise ValueError("fitted Dial cutoff leaves no training or holdout pairs")
+    refit = fit(rerouted_paths, refit_training, first_fit)
     refit_weights = adjusted_weights(features, refit.values, groups).astype(np.float32)
     if np.any(~np.isfinite(refit_weights)) or np.any(refit_weights < 0):
         raise ValueError("refit produced invalid car arc times")
     ticks = np.rint(refit_weights.astype(np.float64) / resolution_s)
-    changed = [
-        not np.array_equal(before["path"], after["path"])
-        for before, after in zip(first_paths, rerouted_paths, strict=True)
-    ]
+    changed = {
+        index: not np.array_equal(
+            first_paths[index]["path"], rerouted_paths[index]["path"]
+        )
+        for index in np.flatnonzero(reached)
+    }
     holdout_rows = []
-    for index in holdout:
+    for index in reached_holdout:
         before, after = first_paths[index], rerouted_paths[index]
         holdout_rows.append(
             {
@@ -457,8 +481,11 @@ def calibrate_car(
         "first_fit": first_fit,
         "refit": refit,
         "training_count": len(training),
+        "refit_training_count": len(refit_training),
+        "fitted_cutoff_training": len(training) - len(refit_training),
+        "fitted_cutoff_holdout": len(holdout) - len(reached_holdout),
         "holdout": holdout_rows,
-        "changed_share": float(np.mean(changed)),
+        "changed_share": float(np.mean(list(changed.values()))),
     }
 
 

@@ -128,18 +128,28 @@ by mode. Missing or invalid waypoint distances fail explicitly. Routing is
 checkpointed per mode.
 
 The report also fits one car speed factor per road class and directional
-control delays within `config/osrm.yaml` bounds on a seeded half of the car
-pairs eligible after these exclusions. It fits original paths, reroutes training
-and holdout once, then refits
-the new fixed paths. The report compares holdout metrics for provisional, first
-fit and refit values, gives path-change shares, standard errors and parameter
-correlations, and identifies values fixed at provisional settings because
-their uncertainty exceeds half the allowed range or they are unidentifiable.
-These linearized uncertainties are approximate at bounds. Provisional costs
-must match the original graph and all calibration pairs must settle within
-the car cutoff; otherwise the baseline report is preserved, calibration is
-marked failed, and the command exits with an error. Fitted values are never
-written into `config/network.yaml`.
+control delays within `config/osrm.yaml` bounds. The configured calibration
+reference currently selects OSRM, excluding unreachable and over-snapped
+pairs. A future alternative may select `type: parquet`, a descriptive `name`
+and a `path`: its Parquet rows use unique `pair_id` strings, positive finite
+`duration_s` (seconds) and `distance_m` (metres). References join by pair id;
+missing matches are counted and duplicate or invalid matched values fail.
+Alternative references do not inherit OSRM's snapping or reachability filters.
+
+Pairs not reached by provisional Dial routing are excluded and counted before
+the seeded training/holdout split. The first fit uses original paths; both
+sets are rerouted once, and the new fixed paths are refitted. Pairs outside
+the fitted cutoff are counted by split and removed from the refit and from
+all three holdout metric stages, keeping those comparisons on the same pairs.
+Empty training or holdout sets fail explicitly. The report gives path-change
+shares, linearized standard errors and correlations and identifies values
+fixed at provisional settings. Uncertainty at active bounds is approximate.
+Provisional costs must match the graph; errors preserve the baseline report.
+Fitted values are report-only and never written into `config/network.yaml`.
+
+The report cites the upstream OSRM car-profile defaults; the deployed server
+profile is not verified. OSRM is a network check, not a speed reference, and
+the fit against it is exploratory.
 
 ## Edge columns
 

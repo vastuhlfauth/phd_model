@@ -37,7 +37,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries interrupted after 1,607 successes; unreachable and snapping handling fixed, resume and approval pending |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; report calibration cutoff and reference handling fixed; rerun and approval pending |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Compact CSR, bounded heap/Dial searches and three products tested synthetically; pilot benchmark favours Dial for all modes |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -59,7 +59,9 @@ Status values: not started, in progress, review, merged.
 - 2026-11-24, step 6 OSRM: fit uses unrounded arc cruising seconds and
   directional control counts, but reported paths use Dial rounding. Standard
   errors and correlations are linearized and approximate at active bounds;
-  unsupported or imprecise parameters are fixed at provisional values.
+  unsupported or imprecise parameters are fixed at provisional values. The
+  deployed OSRM car profile is unverified; its fit is exploratory, not a speed
+  reference.
 - 2026-11-24, step 6b: Géovélo amenagement values map to the four OSM bike
   families in `config/network.yaml`; null-mapped and unknown non-empty values
   are excluded and counted. Generic cycleway lanes count on both sides;
@@ -120,13 +122,12 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
-- [ ] Step 6 OSRM: run the stratified sample, queries and report; inspect
+- [ ] Step 6 OSRM: rerun the report and inspect
   car holdout performance, parameter uncertainty and proposed values before
   approving any network configuration changes. Foot strata unfilled after
   the configured attempt limit are reported, not proven empty. Calibration
-  stops explicitly if an eligible car pair is outside the configured Dial
-  cutoff. Resume the interrupted query using its stored responses; check the
-  unreachable and over-25 m snapping exclusions in the report.
+  counts and excludes pairs outside the provisional or fitted Dial cutoff.
+  Check unreachable and over-25 m snapping exclusions in the report.
 - [ ] Step 8: rebuild version 2 graphs on the 2021 pilot and inspect per-mode
   counts, memory and timings; compare car memory with the prior 248 MiB for
   976k arcs. The pilot was not run during coding.
