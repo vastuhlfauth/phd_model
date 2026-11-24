@@ -37,7 +37,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM sample, serial queries, Dial metrics and two-pass car calibration tested synthetically; user runs and approval pending |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries interrupted after 1,607 successes; unreachable and snapping handling fixed, resume and approval pending |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Compact CSR, bounded heap/Dial searches and three products tested synthetically; pilot benchmark favours Dial for all modes |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -124,7 +124,9 @@ Each item stays open until a value is decided; the value goes into `config/`.
   car holdout performance, parameter uncertainty and proposed values before
   approving any network configuration changes. Foot strata unfilled after
   the configured attempt limit are reported, not proven empty. Calibration
-  stops explicitly if a car pair is outside the configured Dial cutoff.
+  stops explicitly if an eligible car pair is outside the configured Dial
+  cutoff. Resume the interrupted query using its stored responses; check the
+  unreachable and over-25 m snapping exclusions in the report.
 - [ ] Step 8: rebuild version 2 graphs on the 2021 pilot and inspect per-mode
   counts, memory and timings; compare car memory with the prior 248 MiB for
   976k arcs. The pilot was not run during coding.

@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6 OSRM: retain NoRoute/NoSegment as completed outcomes
+  without replacement; report them by stratum and exclude them from metrics
+  and fitting. Exclude successful routes with either endpoint snapped over
+  25 m, report snapping distributions, and retain prior raw responses.
 - 2026-11-24, step 6: fit one realism factor per highway class with the
   supplied class-group bounds. Estimate log-ratio Jacobian covariance and
   iteratively fix the most imprecise or unidentifiable parameter to its

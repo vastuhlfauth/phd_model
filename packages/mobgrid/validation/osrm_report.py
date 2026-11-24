@@ -122,7 +122,13 @@ def _checkpoint_key(
 
 
 def _responses(settings: QuerySettings, pairs: list[dict]) -> dict[str, dict]:
-    from mobgrid.validation.osrm import _base_url, _key, _request_url, _valid_response
+    from mobgrid.validation.osrm import (
+        _base_url,
+        _key,
+        _request_url,
+        _unreachable_response,
+        _valid_response,
+    )
 
     base = _base_url(settings)
     expected = {_key(pair, _request_url(pair, settings, base)): pair for pair in pairs}
@@ -130,9 +136,13 @@ def _responses(settings: QuerySettings, pairs: list[dict]) -> dict[str, dict]:
     for path in settings.response_directory.glob("*/*.json"):
         record = json.loads(path.read_text(encoding="utf-8"))
         key = record.get("request_key")
-        if key not in expected or record.get("http_status") != 200:
+        if key not in expected:
             continue
-        if not _valid_response(record.get("response")):
+        if not (
+            record.get("http_status") == 200 and _valid_response(record.get("response"))
+        ) and not _unreachable_response(
+            record.get("http_status"), record.get("response")
+        ):
             continue
         if not isinstance(record.get("response_date"), str):
             raise ValueError(f"OSRM response has no date: {path}")
@@ -150,8 +160,8 @@ def _responses(settings: QuerySettings, pairs: list[dict]) -> dict[str, dict]:
 def _render(
     rows: list[dict], settings: QuerySettings, calibration_section: str | None = None
 ) -> str:
-    if settings.metric_tolerances_min is None:
-        raise ValueError("metric tolerances are required")
+    if settings.metric_tolerances_min is None or settings.max_snap_distance_m is None:
+        raise ValueError("metric tolerances and snapping limit are required")
     tolerances = settings.metric_tolerances_min
     groups: dict[tuple, list[dict]] = defaultdict(list)
     origin_methods = {}
@@ -179,20 +189,26 @@ def _render(
         "",
         "Errors are model minus OSRM; relative error is the mean signed time "
         "difference divided by OSRM time. Time shares include the stated boundary.",
-        "Routes not reached within the configured Dial cutoff are counted and "
-        "excluded from metric denominators.",
+        "NoRoute, NoSegment and pairs snapped beyond the configured limit are "
+        "excluded from metrics and calibration. Eligible routes not reached within "
+        "the Dial cutoff are excluded from metrics.",
         "",
-        "| Mode | Band (km) | Context | Matched | Cutoff | Bias (min) | "
+        "| Mode | Band (km) | Context | Matched | Cutoff | NoRoute | NoSegment | "
+        "Over snap limit | Bias (min) | "
         f"Median abs (min) | Within {tolerances[0]:g} min | "
         f"Within {tolerances[1]:g} min | Relative error | "
         "Distance bias (m) | Median abs distance (m) |",
-        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for (mode, lower, upper, context), values in sorted(groups.items()):
-        reached = [row for row in values if row["model_time_s"] is not None]
+        eligible = [row for row in values if row["eligible"]]
+        reached = [row for row in eligible if row["model_time_s"] is not None]
         prefix = (
             f"| {mode} | {lower / 1000:g}-{upper / 1000:g} | {context} | "
-            f"{len(reached)} | {len(values) - len(reached)} | "
+            f"{len(reached)} | {len(eligible) - len(reached)} | "
+            f"{sum(row['outcome'] == 'NoRoute' for row in values)} | "
+            f"{sum(row['outcome'] == 'NoSegment' for row in values)} | "
+            f"{sum(row['over_snap'] for row in values)} | "
         )
         if not reached:
             lines.append(prefix + "— | — | — | — | — | — | — |")
@@ -204,6 +220,63 @@ def _render(
             + f"{m['within_first']:.1%} | {m['within_second']:.1%} | "
             + f"{m['relative_error']:.1%} | {m['distance_bias_m']:.0f} | "
             + f"{m['distance_median_absolute_error_m']:.0f} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## OSRM unreachable pairs",
+            "",
+            "Our route time is in seconds; not reached means outside the Dial cutoff.",
+            "",
+            "| Pair ID | Mode | Band (km) | Context | Outcome | Origin (lon, lat) | "
+            "Destination (lon, lat) | Our time (s) |",
+            "|---|---|---|---|---|---|---|---:|",
+        ]
+    )
+    for row in rows:
+        if row["outcome"] not in ("NoRoute", "NoSegment"):
+            continue
+        route_time = (
+            f"{row['model_time_s']:.1f}"
+            if row["model_time_s"] is not None
+            else "not reached"
+        )
+        lines.append(
+            f"| {row['pair_id']} | {row['mode']} | "
+            f"{row['band_min_m'] / 1000:g}-{row['band_max_m'] / 1000:g} | "
+            f"{row['context']} | {row['outcome']} | "
+            f"{row['origin_lon']}, {row['origin_lat']} | "
+            f"{row['destination_lon']}, {row['destination_lat']} | {route_time} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## OSRM snapping distances",
+            "",
+            f"Limit: {settings.max_snap_distance_m:g} m at either endpoint. "
+            "Distribution pools both endpoints of all successful routes, "
+            "including over-limit pairs.",
+            "",
+            "| Mode | Successful pairs | Over limit | Endpoint distances | "
+            "Minimum (m) | Median (m) | P90 (m) | Maximum (m) |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for mode in MODES:
+        successful = [
+            row for row in rows if row["mode"] == mode and row["outcome"] == "Ok"
+        ]
+        if not successful:
+            lines.append(f"| {mode} | 0 | 0 | 0 | — | — | — | — |")
+            continue
+        distances = [
+            distance for row in successful for distance in row["snap_distances_m"]
+        ]
+        minimum, median, p90, maximum = np.percentile(distances, [0, 50, 90, 100])
+        over_limit = sum(row["over_snap"] for row in successful)
+        lines.append(
+            f"| {mode} | {len(successful)} | {over_limit} | {len(distances)} | "
+            f"{minimum:.2f} | {median:.2f} | {p90:.2f} | {maximum:.2f} |"
         )
     lines.extend(["", "## Origin context provenance", ""])
     for mode in MODES:
@@ -353,7 +426,7 @@ def render_calibration(
 
 
 def _calibration_cache_key(
-    settings: QuerySettings, cutoff: float, resolution: float
+    settings: QuerySettings, cutoff: float, resolution: float, pair_ids: list[str]
 ) -> str:
     if settings.sampling is None or settings.calibration is None:
         raise ValueError("calibration and sampling settings are required")
@@ -370,7 +443,14 @@ def _calibration_cache_key(
     for path in paths:
         stat = path.stat()
         inputs.append([str(path.resolve()), stat.st_size, stat.st_mtime_ns])
-    value = [1, inputs, calibration.model_dump(mode="json"), cutoff, resolution]
+    value = [
+        2,
+        inputs,
+        calibration.model_dump(mode="json"),
+        cutoff,
+        resolution,
+        pair_ids,
+    ]
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
@@ -392,7 +472,7 @@ def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
     features, initial, lower, upper, names = arc_features(
         graph, sampling.edges_path, sampling.edge_costs_path, settings.calibration
     )
-    car_rows = [row for row in rows if row["mode"] == "car"]
+    car_rows = [row for row in rows if row["mode"] == "car" and row["eligible"]]
     result = calibrate_car(
         graph,
         features,
@@ -406,7 +486,10 @@ def _car_calibration(rows: list[dict], settings: QuerySettings) -> str:
         resolution_s=search_settings.dial_resolution_s,
         checkpoint_directory=settings.calibration_checkpoint_directory,
         checkpoint_key=_calibration_cache_key(
-            settings, cutoff, search_settings.dial_resolution_s
+            settings,
+            cutoff,
+            search_settings.dial_resolution_s,
+            [row["pair_id"] for row in car_rows],
         ),
     )
     return render_calibration(result, names, lower, upper, car_rows, settings)
@@ -421,13 +504,14 @@ def _write_report(path: Path, text: str) -> None:
 
 def generate_report(settings: QuerySettings, date: str) -> None:
     """Write baseline metrics and dated logs; reuse matching mode-route checkpoints."""
-    from mobgrid.validation.osrm import _write_json
+    from mobgrid.validation.osrm import _snap_distances, _write_json
 
     if (
         settings.sampling is None
         or settings.report_path is None
         or settings.route_checkpoint_directory is None
         or settings.metric_tolerances_min is None
+        or settings.max_snap_distance_m is None
     ):
         raise ValueError("sampling, report path and route checkpoint path are required")
     sampling = settings.sampling
@@ -479,12 +563,30 @@ def generate_report(settings: QuerySettings, date: str) -> None:
             for pair in mode_pairs:
                 record = responses[pair["pair_id"]]
                 response = record["response"]
+                outcome = response["code"]
+                distances = _snap_distances(response) if outcome == "Ok" else None
+                over_snap = (
+                    any(
+                        distance > settings.max_snap_distance_m
+                        for distance in distances
+                    )
+                    if distances is not None
+                    else False
+                )
                 rows.append(
                     {
                         **pair,
                         **route_by_id[pair["pair_id"]],
-                        "osrm_time_s": response["routes"][0]["duration"],
-                        "osrm_distance_m": response["routes"][0]["distance"],
+                        "outcome": outcome,
+                        "snap_distances_m": distances,
+                        "over_snap": over_snap,
+                        "eligible": outcome == "Ok" and not over_snap,
+                        "osrm_time_s": response["routes"][0]["duration"]
+                        if outcome == "Ok"
+                        else None,
+                        "osrm_distance_m": response["routes"][0]["distance"]
+                        if outcome == "Ok"
+                        else None,
                         "response_date": record["response_date"],
                         "data_version": response.get("data_version"),
                     }
@@ -527,6 +629,8 @@ def generate_report(settings: QuerySettings, date: str) -> None:
             f"- Seconds: {time.perf_counter() - started:.3f}",
             f"- Report: {settings.report_path}",
             f"- Outside cutoff: {sum(row['model_time_s'] is None for row in rows)}",
+            f"- NoRoute/NoSegment: {sum(row['outcome'] != 'Ok' for row in rows)}",
+            f"- Over snap limit: {sum(row['over_snap'] for row in rows)}",
             f"- Warnings/errors: {error or 'none'}",
         ]
         summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

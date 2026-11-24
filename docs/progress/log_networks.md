@@ -3,6 +3,17 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6: OSRM unreachable and snapping outcomes (2026-11-24)
+
+- The user-run query saved 1,607 routes before a NoRoute stopped it; the
+  report could not run because 893 sample responses were missing.
+- NoRoute and NoSegment are resumable outcomes, logged and reported by stratum
+  with coordinates and Dial times, without replacement pairs.
+- Successful routes with either snap distance over the configured 25 m limit
+  are excluded from metrics and calibration; report endpoint distributions.
+- Existing responses are retained. Mocked tests: 18 passed; Ruff clean.
+- No pilot, download or server request was run during this fix.
+
 ### Step 6: OSRM car calibration (2026-11-24)
 
 - Added bounded log-time-ratio fits for each road-class factor and six control

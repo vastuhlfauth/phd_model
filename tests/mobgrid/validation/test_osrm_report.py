@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -127,7 +128,7 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
                 "band_max_m": 2000.0,
             }
         )
-    pairs.extend({**pairs[0], "pair_id": f"car-{i}"} for i in range(2, 5))
+    pairs.extend({**pairs[0], "pair_id": f"car-{i}"} for i in range(2, 7))
     pq.write_table(
         pa.table(
             {
@@ -168,7 +169,7 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
         area_path=tmp_path / "area.parquet",
         search_config=search_path,
         seed=42,
-        count_by_mode={"car": 4, "bike": 1, "foot": 1},
+        count_by_mode={"car": 6, "bike": 1, "foot": 1},
         band_edges_m=[0, 2000, 20000],
         bike_max_m=2000,
         long_car_min_m=20000,
@@ -194,11 +195,15 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
         route_checkpoint_directory=tmp_path / "routing",
         calibration_checkpoint_directory=tmp_path / "calibration",
         metric_tolerances_min=(2, 5),
+        max_snap_distance_m=25,
         calibration=osrm.load_query_settings(
             Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
         ).calibration,
     )
     monkeypatch.setenv("OSRM_BASE_URL", "https://example.invalid")
+    key_a = osrm_report._calibration_cache_key(settings, 300, 0.1, ["car-1"])
+    key_b = osrm_report._calibration_cache_key(settings, 300, 0.1, ["car-2"])
+    assert key_a != key_b
     for pair in pairs:
         url = osrm._request_url(pair, settings, "https://example.invalid")
         key = osrm._key(pair, url)
@@ -207,12 +212,20 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
             path,
             {
                 "request_key": key,
-                "http_status": 200,
+                "http_status": 400 if pair["pair_id"] in ("car-5", "foot-1") else 200,
                 "response_date": "2026-01-01T00:00:00+00:00",
-                "response": {
-                    "code": "Ok",
-                    "routes": [{"duration": 120, "distance": 900}],
-                },
+                "response": (
+                    {"code": "NoRoute" if pair["mode"] == "car" else "NoSegment"}
+                    if pair["pair_id"] in ("car-5", "foot-1")
+                    else {
+                        "code": "Ok",
+                        "routes": [{"duration": 120, "distance": 900}],
+                        "waypoints": [
+                            {"distance": 25.0 if pair["mode"] == "bike" else 1.0},
+                            {"distance": 25.01 if pair["pair_id"] == "car-6" else 2.0},
+                        ],
+                    }
+                ),
             },
         )
     osrm_report.generate_report(settings, "2026-01-01")
@@ -224,6 +237,17 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
     assert "### Holdout metrics" in report
     assert "First fit: parameter correlations" in report
     assert "Training pairs: 2; holdout pairs: 2" in report
+    assert "NoRoute" in report and "NoSegment" in report
+    assert "car-5" in report and "foot-1" in report
+    assert "25.01" in report and "snapping" in report.lower()
+    assert "120.0" in report
+    assert "| car | 0-2 | urban | 4 | 0 | 1 | 0 | 1 |" in report
+    assert "| bike | 0-2 | urban | 1 | 0 | 0 | 0 | 0 |" in report
+    assert "| foot | 0-2 | urban | 0 | 0 | 0 | 1 | 0 |" in report
+    assert (
+        "| car-5 | car | 0-2 | urban | NoRoute | 1.0, 45.0 | 1.01, 45.01 | 120.0 |"
+        in report
+    )
     changed = {**pairs[0], "destination_lon": 2.0}
     with pytest.raises(ValueError, match="missing valid OSRM responses"):
         osrm_report._responses(settings, [changed])
@@ -235,6 +259,20 @@ def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch)
         lambda *args, **kwargs: pytest.fail("calibration was not resumed"),
     )
     osrm_report.generate_report(settings, "2026-01-01")
+
+    url = osrm._request_url(pairs[0], settings, "https://example.invalid")
+    path = (
+        settings.response_directory
+        / "2026-01-01"
+        / f"{osrm._key(pairs[0], url)}_test.json"
+    )
+    saved = path.read_text(encoding="utf-8")
+    record = json.loads(saved)
+    del record["response"]["waypoints"]
+    osrm._write_json(path, record)
+    with pytest.raises(ValueError, match="snapping distances"):
+        osrm_report.generate_report(settings, "2026-01-01")
+    path.write_text(saved, encoding="utf-8")
 
     def fail_calibration(*args, **kwargs):
         raise ValueError("synthetic calibration failure")

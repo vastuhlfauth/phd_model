@@ -95,7 +95,9 @@ environment variable named in `config/osrm.yaml`, then run
 `python -m mobgrid.validation.osrm queries --config config/osrm.yaml`.
 It does not generate the sample. It saves each raw response and its UTC
 request/response dates under the configured interim directory, including
-failures, and resumes valid matching responses. It serializes runs, enforces
+failures, and resumes valid routes and `NoRoute`/`NoSegment` outcomes without
+requerying them. Unreachable outcomes are logged and do not stop the run or
+trigger replacement pairs. It serializes runs, enforces
 the configured delay across restarts, does not follow redirects, and stops on
 HTTP 429 or exhausted retries. Dated logs and summaries record run counts.
 OSRM's current map data need not match the model's 2021 network.
@@ -116,12 +118,19 @@ After all queries, `python -m mobgrid.validation.osrm report --config
 config/osrm.yaml` writes the configured step 6 report from Dial routes and
 matching dated OSRM responses. It reports signed model-minus-OSRM errors by
 mode, band and context, counts routes outside the configured cutoff, and
-records response dates and context-provenance shares. It checkpoints routing
-per mode.
+records response dates and context-provenance shares. `NoRoute` and
+`NoSegment` counts are broken down by mode, band and context, with pair
+coordinates and our Dial time listed. For successful responses, waypoint
+snapping distances are retained in the raw JSON; pairs with either endpoint
+beyond the configured 25 m limit are excluded from metrics and calibration.
+The report includes the over-limit counts and endpoint-distance distribution
+by mode. Missing or invalid waypoint distances fail explicitly. Routing is
+checkpointed per mode.
 
 The report also fits one car speed factor per road class and directional
 control delays within `config/osrm.yaml` bounds on a seeded half of the car
-pairs. It fits original paths, reroutes training and holdout once, then refits
+pairs eligible after these exclusions. It fits original paths, reroutes training
+and holdout once, then refits
 the new fixed paths. The report compares holdout metrics for provisional, first
 fit and refit values, gives path-change shares, standard errors and parameter
 correlations, and identifies values fixed at provisional settings because

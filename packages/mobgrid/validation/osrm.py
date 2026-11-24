@@ -53,6 +53,7 @@ class QuerySettings(BaseModel):
     retry_backoff_s: float = Field(gt=0, allow_inf_nan=False)
     max_attempts: int = Field(ge=1)
     timeout_s: float = Field(gt=0, allow_inf_nan=False)
+    max_snap_distance_m: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     sample_path: Path
     response_directory: Path
     log_directory: Path
@@ -205,11 +206,41 @@ def _valid_response(payload: object) -> bool:
     return True
 
 
+def _unreachable_response(status: int | None, payload: object) -> bool:
+    return (
+        status in (200, 400)
+        and isinstance(payload, dict)
+        and payload.get("code") in ("NoRoute", "NoSegment")
+    )
+
+
+def _snap_distances(payload: dict) -> tuple[float, float]:
+    waypoints = payload.get("waypoints")
+    if not isinstance(waypoints, list) or len(waypoints) != 2:
+        raise ValueError("OSRM response must contain two waypoint snapping distances")
+    distances = []
+    for waypoint in waypoints:
+        value = waypoint.get("distance") if isinstance(waypoint, dict) else None
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
+            raise ValueError(
+                "OSRM waypoint snapping distance must be finite and nonnegative"
+            )
+        distances.append(float(value))
+    return distances[0], distances[1]
+
+
 def _successful_records(directory: Path) -> set[str]:
     completed = set()
     for path in directory.glob("*/*.json"):
         record = json.loads(path.read_text(encoding="utf-8"))
-        if record.get("http_status") == 200 and _valid_response(record.get("response")):
+        if (
+            record.get("http_status") == 200 and _valid_response(record.get("response"))
+        ) or _unreachable_response(record.get("http_status"), record.get("response")):
             completed.add(record["request_key"])
     return completed
 
@@ -235,6 +266,7 @@ def query_pairs(
     summary_path = settings.log_directory / f"{start[:10]}_osrm_summary.md"
     started = time.perf_counter()
     sent = skipped = 0
+    unreachable = 0
     error = ""
     try:
         with _exclusive_lock(root / ".query.lock"):
@@ -296,6 +328,15 @@ def query_pairs(
                         break
                     if status == 429:
                         raise QueryError("OSRM returned HTTP 429; stopping immediately")
+                    if _unreachable_response(status, payload):
+                        completed.add(key)
+                        unreachable += 1
+                        with log_path.open("a", encoding="utf-8") as log:
+                            log.write(
+                                f"{response_date}: pair={pair['pair_id']}, "
+                                f"mode={pair['mode']}, outcome={payload['code']}\n"
+                            )
+                        break
                     retry = network_error is not None or (
                         status is not None and 500 <= status < 600
                     )
@@ -319,6 +360,7 @@ def query_pairs(
             f"- Started (UTC): {start}\n"
             f"- Sample: {settings.sample_path}\n"
             f"- Requests: {sent}; cached pairs: {skipped}\n"
+            f"- New unreachable outcomes: {unreachable}\n"
             f"- Seconds: {time.perf_counter() - started:.3f}\n"
             f"- Responses: {root}\n"
             f"- Warnings/errors: {error or 'none'}\n",

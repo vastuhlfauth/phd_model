@@ -64,7 +64,13 @@ def pair(pair_id, mode="car"):
 
 
 def success(request, timeout):
-    return Response({"code": "Ok", "routes": [{"duration": 120, "distance": 900}]})
+    return Response(
+        {
+            "code": "Ok",
+            "routes": [{"duration": 120, "distance": 900}],
+            "waypoints": [{"distance": 2}, {"distance": 25}],
+        }
+    )
 
 
 def test_serial_queries_resume_with_dated_raw_responses(tmp_path, monkeypatch):
@@ -121,23 +127,80 @@ def test_429_stops_immediately_and_5xx_is_bounded(tmp_path, monkeypatch):
     assert clock.sleeps[-2:] == [2, 4]
 
 
-def test_invalid_response_not_cached_and_invalid_interval_rejected(
+def test_unreachable_outcomes_are_cached_logged_and_queries_continue(
+    tmp_path, monkeypatch
+):
+    clock = Clock()
+    monkeypatch.setenv("OSRM_BASE_URL", "https://example.invalid")
+    calls = []
+
+    def request(req, timeout):
+        calls.append(req.full_url)
+        if len(calls) <= 2:
+            code = ("NoRoute", "NoSegment")[len(calls) - 1]
+            raise HTTPError(
+                req.full_url,
+                400,
+                "error",
+                {},
+                io.BytesIO(json.dumps({"code": code}).encode()),
+            )
+        return success(req, timeout)
+
+    monkeypatch.setattr(osrm, "urlopen", request)
+    config = settings(tmp_path)
+    sample = [pair("one"), pair("two"), pair("three")]
+    assert osrm.query_pairs(sample, config, clock.time, clock.sleep) == (3, 0)
+    assert osrm.query_pairs(sample, config, clock.time, clock.sleep) == (0, 3)
+    assert len(calls) == 3
+    log = (config.log_directory / "2026-01-01_osrm.log").read_text(encoding="utf-8")
+    assert "NoRoute" in log and "NoSegment" in log
+
+
+def test_previous_unreachable_response_is_reused_without_request(tmp_path, monkeypatch):
+    clock = Clock()
+    monkeypatch.setenv("OSRM_BASE_URL", "https://example.invalid")
+    config = settings(tmp_path)
+    sample = pair("old")
+    url = osrm._request_url(sample, config, "https://example.invalid")
+    key = osrm._key(sample, url)
+    osrm._write_json(
+        config.response_directory / "2026-01-01" / "old.json",
+        {"request_key": key, "http_status": 400, "response": {"code": "NoRoute"}},
+    )
+    monkeypatch.setattr(
+        osrm, "urlopen", lambda *args, **kwargs: pytest.fail("requested cached outcome")
+    )
+    assert osrm.query_pairs([sample], config, clock.time, clock.sleep) == (0, 1)
+
+
+@pytest.mark.parametrize(
+    "waypoints",
+    [
+        None,
+        [],
+        [{"distance": 1}],
+        [{"distance": 1}, {"distance": -1}],
+        [{"distance": 1}, {"distance": float("nan")}],
+        [{"distance": 1}, {}],
+    ],
+)
+def test_missing_or_invalid_snap_distances_fail_explicitly(waypoints):
+    with pytest.raises(ValueError, match="snapping distance"):
+        osrm._snap_distances({"waypoints": waypoints})
+
+
+def test_unexpected_error_not_cached_and_invalid_interval_rejected(
     tmp_path, monkeypatch
 ):
     clock = Clock()
     monkeypatch.setenv("OSRM_BASE_URL", "https://example.invalid")
     monkeypatch.setattr(
-        osrm, "urlopen", lambda req, timeout: Response({"code": "NoRoute"})
+        osrm, "urlopen", lambda req, timeout: Response({"code": "InvalidQuery"})
     )
     config = settings(tmp_path)
-    with pytest.raises(osrm.QueryError, match="NoRoute"):
+    with pytest.raises(osrm.QueryError, match="InvalidQuery"):
         osrm.query_pairs([pair("one")], config, clock.time, clock.sleep)
-    assert (
-        json.loads(
-            next(config.response_directory.glob("*/*.json")).read_text(encoding="utf-8")
-        )["response"]["code"]
-        == "NoRoute"
-    )
     with pytest.raises(ValueError):
         osrm.QuerySettings.model_validate(
             {**settings(tmp_path).model_dump(), "interval_s": 0.5}
