@@ -220,3 +220,38 @@ lengths are ellipsoidal metres computed from ordered OSM node latitude/longitude
 | mixed_traffic | 1,444,784 | 241,984,451.2 |
 | painted_lane | 11,365 | 660,079.5 |
 | separated_track_path | 33,314 | 4,272,270.8 |
+
+## Edge costs
+
+- Directed edges with null elevation profiles: 0 of 4,461,184
+- Zero-speed bike segments: 2,813; see `active_costs.grades.md` for highway, bike class, surface, grade and cap.
+- Mean speeds are total directed length divided by total time, including delays.
+- Urban length share uses directed car edges.
+
+| Highway class | Car (km/h) | Walk (km/h) | Bike (km/h) | Urban length share |
+|---|---:|---:|---:|---:|
+| (no highway) | n/a | 4.80 | n/a | n/a |
+| bridleway | 19.94 | 4.72 | 6.75 | n/a |
+| corridor | n/a | 4.51 | 11.18 | n/a |
+| cycleway | 19.83 | 4.79 | 12.17 | 23.4% |
+| footway | 18.50 | 4.73 | 8.75 | 68.2% |
+| living_street | 17.54 | 4.78 | 12.01 | 80.3% |
+| motorway | 121.49 | n/a | n/a | 30.7% |
+| motorway_link | 61.47 | n/a | n/a | 95.1% |
+| path | 19.47 | 4.64 | 9.44 | 21.1% |
+| pedestrian | 16.56 | 4.75 | 9.24 | 91.9% |
+| platform | n/a | 4.80 | 12.90 | n/a |
+| primary | 56.20 | 4.78 | 12.47 | 27.5% |
+| primary_link | 36.98 | 4.77 | 12.12 | 83.5% |
+| residential | 37.43 | 4.75 | 12.28 | 68.2% |
+| road | 65.63 | 4.71 | 12.04 | 11.9% |
+| secondary | 56.67 | 4.77 | 12.42 | 20.8% |
+| secondary_link | 25.15 | 4.77 | 11.24 | 83.4% |
+| service | 18.41 | 4.70 | 11.93 | 35.5% |
+| steps | n/a | 7.23 | 8.80 | n/a |
+| tertiary | 60.48 | 4.76 | 12.35 | 14.3% |
+| tertiary_link | 23.69 | 4.74 | 10.70 | 66.0% |
+| track | 19.58 | 4.72 | 6.94 | 12.1% |
+| trunk | 99.26 | 4.80 | 12.86 | 49.5% |
+| trunk_link | 55.91 | 4.76 | 12.06 | 95.3% |
+| unclassified | 66.83 | 4.71 | 12.18 | 7.9% |
