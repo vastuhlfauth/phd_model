@@ -11,7 +11,8 @@ Newest entry first. Add yours at the top.
   smoothing update with a table join. Bump the completion checkpoint version.
 - Monaco regression uses deterministic synthetic elevations and the original
   directed implementation as its baseline: 14,149 profiles and 314 clipped
-  segments match, with a 1 mm elevation tolerance.
+  segments match, with a 1 mm elevation tolerance; raw and smoothed
+  directed-climb totals also match to 1 mm.
 - Elevation and car-speed stages now log elapsed times to terminal and dated
   files; car speeds also write a dated run summary.
 - Car density rasterizes undirected segments to configured 50 m cells and

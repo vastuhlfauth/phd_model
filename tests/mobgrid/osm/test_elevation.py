@@ -101,6 +101,15 @@ def test_monaco_profiles_match_directed_baseline(tmp_path, monkeypatch):
     } == {
         key: value[0] for key, value in summary.clipped_segments_by_class.items()
     }
+    expected_climb = pq.read_table(
+        fixtures / "osm_monaco_elevation_climb_baseline.parquet"
+    ).to_pylist()
+    assert set(summary.climb_by_mode) == {row["mode"] for row in expected_climb}
+    for row in expected_climb:
+        assert summary.climb_by_mode[row["mode"]] == pytest.approx(
+            (row["raw_climb_m"], row["climb_m"]), abs=0.001, rel=0
+        )
+        assert summary.incomplete_by_mode[row["mode"]] == row["incomplete"]
 
 
 def _grid(path, x_corner, rows, y_corner=0):
