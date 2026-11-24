@@ -3,6 +3,21 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 8: CSR and degree-2 graph build (2026-11-24)
+
+- Added per-mode CSR arrays from the validated one-to-one edge/cost join,
+  including time, distance, reference-mass energy, climb and bike/car
+  components; every graph also stores its transpose.
+- Largest-SCC filtering reuses the OSM Kosaraju routine. Degree-2 chains
+  stop at kept nodes and sum every float32 weight; unanchored cycles remain
+  intact. Kept nodes include signals, junctions and mixed road classes.
+- Added `python -m mobgrid.graph.build --state 2021 --area pilot`; it writes
+  three `.npz` graphs and reports node/edge counts, array memory and stage
+  timings to the terminal and step 6 report.
+- Synthetic graph tests: 10 passed; Ruff clean. No pilot or national build
+  was run. Dijkstra and search products remain for the rest of step 8.
+- Command for the user: `python -m mobgrid.graph.build --state 2021 --area pilot`.
+
 ### Step 6b: standalone Géovélo comparison (2026-11-24)
 
 - Removed the Géovélo comparison from edge builds; it now has a standalone

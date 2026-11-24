@@ -1,5 +1,16 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 8: save each mode graph as an uncompressed `.npz`
+  containing int64 OSM node ids and offsets, int32 neighbour indices,
+  float32 time/secondary weights, and the same arrays for the transpose.
+  Keep the reference-mass bike energy total plus its per-kilogram, drag,
+  pedalling and step-walking components so edge energy can be recomposed
+  for another body mass without rebuilding.
+- 2026-11-24, step 8: contract only unkept physical degree-2 nodes whose
+  two incident links permit a continuous direction (both bidirectional, or
+  one incoming and one outgoing). Keep signals, tagged/multi-way junctions,
+  mixed-road-class nodes and nodes with more than two neighbours; leave an
+  unanchored degree-2 cycle intact.
 - 2026-11-24, step 6b: keep the Géovélo comparison out of edge builds and
   generate it with a standalone command. Match 5 m length-weighted samples to
   the nearest same-family OSM line within 15 m. Count generic lane tags on

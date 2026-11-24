@@ -39,7 +39,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Standalone department-only Géovélo report with 5 m nearest-line matching; pilot performance not rerun |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
-| 8 | `mobgrid/graph` | not started | | |
+| 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Cost-weighted CSR, largest SCC, degree-2 contraction and build command; pilot not run |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
 | 10 | `mobgrid/od` | not started | | |
 | 11 | `mobgrid/budget` | review | `step/mobgrid-budget-entd2008` | Notes moved to `docs/progress/log_time_budget.md` (Step 11: notes from the steps table) |
@@ -116,6 +116,9 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
+- [ ] Step 8: run the synthetic-tested CSR build on the 2021 pilot; inspect
+  per-mode SCC and contracted counts, memory and stage timings in the step 6
+  report. The pilot was not run during coding.
 - [ ] Step 6b: validate the provisional 50 m elevation smoothing window
   against the pilot's before/after climb report.
 - [ ] Step 6b: run the elevation sensitivity report, select the flat and

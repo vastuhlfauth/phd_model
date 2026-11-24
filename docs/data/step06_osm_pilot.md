@@ -920,3 +920,9 @@ Unmapped non-empty values and values mapped to `null` in `config/network.yaml` a
 | trunk | 99.26 | 4.80 | 12.86 | 49.5% |
 | trunk_link | 55.91 | 4.76 | 12.06 | 95.3% |
 | unclassified | 66.83 | 4.71 | 12.20 | 7.9% |
+
+## Graph build
+
+Not run during coding. Run `python -m mobgrid.graph.build --state 2021 --area pilot`
+to write per-mode graphs under `data/base/network/2021/pilot/graph/` and replace
+this note with SCC/contracted counts, array memory and stage timings.
