@@ -1,3 +1,6 @@
+from pathlib import Path
+from shutil import copyfile
+
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -16,6 +19,88 @@ from mobgrid.osm.elevation import (
 
 ENERGY = load_energy_config("config/energy.yaml")
 NETWORK = load_network_config("config/network.yaml")
+
+
+def _monaco_elevation_run(tmp_path, monkeypatch, elevation_module):
+    import duckdb
+
+    fixtures = Path(__file__).parents[2] / "fixtures"
+    edges = tmp_path / "edges.parquet"
+    nodes = tmp_path / "nodes.parquet"
+    ways = fixtures / "osm_monaco_ways.parquet"
+    grid = tmp_path / "synthetic.asc"
+    grid.write_text("synthetic", encoding="ascii")
+    connection = duckdb.connect()
+    connection.execute("LOAD spatial")
+    copyfile(fixtures / "osm_monaco_baseline.parquet", edges)
+    connection.execute("""
+        CREATE TEMP TABLE test_nodes AS
+            WITH endpoints AS (
+                SELECT from_node_id AS node_id FROM read_parquet(?)
+                UNION SELECT to_node_id AS node_id FROM read_parquet(?)
+            ), projected AS (
+                SELECT n.node_id, n.tags, n.lat, n.lon,
+                       ST_Transform(ST_Point(n.lon, n.lat),
+                                    'EPSG:4326', 'EPSG:3035', true) AS point,
+                       e.node_id IS NOT NULL AS graph_node
+                FROM read_parquet(?) n LEFT JOIN endpoints e USING (node_id)
+            )
+            SELECT node_id, tags, lat, lon, ST_X(point) AS x, ST_Y(point) AS y,
+                   graph_node FROM projected
+    """, [str(edges), str(edges), str(fixtures / "osm_monaco_nodes.parquet")])
+    connection.execute("COPY test_nodes TO ? (FORMAT PARQUET)", [str(nodes)])
+    monkeypatch.setattr(
+        elevation_module, "sample_elevations",
+        lambda paths, x, y: 30 + 40 * np.sin(x / 200) + 20 * np.cos(y / 150),
+    )
+    monkeypatch.setattr(
+        elevation_module, "nodes_without_tile", lambda paths, x, y: 0
+    )
+    summary = elevation_module.enrich_edges_with_elevation(
+        connection, edges, nodes, [grid], ways_path=ways,
+        way_elevations_path=tmp_path / "way_elevations.parquet",
+        network=NETWORK, energy=ENERGY,
+    )
+    connection.close()
+    return edges, summary
+
+
+def test_monaco_profiles_match_directed_baseline(tmp_path, monkeypatch):
+    import mobgrid.osm.elevation as elevation
+
+    fixtures = Path(__file__).parents[2] / "fixtures"
+    edges, summary = _monaco_elevation_run(tmp_path, monkeypatch, elevation)
+    columns = [
+        "edge_key", "node_elevations_m", "elevation_from_m", "elevation_to_m",
+        "climb_m", "descent_m", "mean_grade",
+    ]
+    actual = sorted(
+        pq.read_table(edges, columns=columns).to_pylist(),
+        key=lambda row: row["edge_key"],
+    )
+    expected = sorted(
+        pq.read_table(fixtures / "osm_monaco_elevation_baseline.parquet").to_pylist(),
+        key=lambda row: row["edge_key"],
+    )
+    assert len(actual) == len(expected)
+    for result, baseline in zip(actual, expected, strict=True):
+        assert result["edge_key"] == baseline["edge_key"]
+        for column in columns[1:]:
+            if baseline[column] is None:
+                assert result[column] is None
+            else:
+                tolerance = 1e-9 if column == "mean_grade" else 0.001
+                assert result[column] == pytest.approx(
+                    baseline[column], abs=tolerance, rel=0
+                )
+    expected_clips = pq.read_table(
+        fixtures / "osm_monaco_elevation_clipped_baseline.parquet"
+    ).to_pylist()
+    assert {
+        (row["mode"], row["highway"]): row["count"] for row in expected_clips
+    } == {
+        key: value[0] for key, value in summary.clipped_segments_by_class.items()
+    }
 
 
 def _grid(path, x_corner, rows, y_corner=0):
@@ -257,6 +342,10 @@ def test_edge_elevation_profiles_keep_direction_and_report_uncovered_nodes(
             energy=ENERGY,
             cache_directory=tmp_path / "cache",
         )
+        segment_count = connection.execute(
+            "SELECT count(*) FROM _osm_segment_elevation_profiles"
+        ).fetchone()[0]
+        assert segment_count == 2
         def unexpected_resample(*args):
             pytest.fail("completed node sampling should be reused")
 

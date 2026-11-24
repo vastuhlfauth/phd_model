@@ -461,17 +461,17 @@ def _smooth_way_elevations(
         reader_connection.close()
         temporary_source.unlink(missing_ok=True)
     connection.execute("""
-        ALTER TABLE _osm_way_elevations ADD COLUMN smoothed_elevation_m DOUBLE;
-        UPDATE _osm_way_elevations AS w SET smoothed_elevation_m = s.elevation_m
-        FROM _osm_smoothed_elevations s
-        WHERE w.way_id = s.way_id AND w.node_sequence = s.node_sequence
+        CREATE OR REPLACE TEMP TABLE _osm_way_elevations AS
+        SELECT w.*, s.elevation_m AS smoothed_elevation_m
+        FROM _osm_way_elevations w
+        LEFT JOIN _osm_smoothed_elevations s
+          ON w.way_id = s.way_id AND w.node_sequence = s.node_sequence
     """)
 
 
 def _prepare_way_elevations(
     connection: duckdb.DuckDBPyConnection,
     ways: Path,
-    nodes: Path,
     edges: Path,
     smoothing_window_m: float,
     smoothing_source: Path,
@@ -491,7 +491,7 @@ def _prepare_way_elevations(
                 SELECT DISTINCT way_id FROM read_parquet('{_sql_path(edges)}')
             ) e USING (way_id)
             CROSS JOIN UNNEST(w.refs) WITH ORDINALITY AS ref(node_id, node_sequence)
-            LEFT JOIN read_parquet('{_sql_path(nodes)}') n USING (node_id)
+            LEFT JOIN _osm_nodes n USING (node_id)
             LEFT JOIN _osm_sampled_node_elevations s USING (node_id)
             WINDOW way_order AS (PARTITION BY w.way_id ORDER BY ref.node_sequence)
         ), distances AS (
@@ -613,7 +613,11 @@ def enrich_edges_with_elevation(
         raise FileNotFoundError(missing_grids[0])
 
     connection.execute("LOAD spatial")
-    node_table = connection.execute(f"""
+    connection.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _osm_nodes AS
+        SELECT node_id, x, y, graph_node FROM read_parquet('{_sql_path(nodes)}')
+    """)
+    node_table = connection.execute("""
         SELECT node_id,
                ST_X(ST_Transform(
                    ST_Point(x, y), 'EPSG:3035', 'EPSG:2154', true
@@ -621,7 +625,7 @@ def enrich_edges_with_elevation(
                ST_Y(ST_Transform(
                    ST_Point(x, y), 'EPSG:3035', 'EPSG:2154', true
                )) AS y
-        FROM read_parquet('{_sql_path(nodes)}')
+        FROM _osm_nodes
         ORDER BY node_id
     """).to_arrow_table()
     node_ids = node_table.column("node_id").to_numpy(zero_copy_only=False)
@@ -654,22 +658,14 @@ def enrich_edges_with_elevation(
         edge_source = _sql_path(edges)
         node_source = _sql_path(nodes)
         bridge_length, tunnel_length = _prepare_way_elevations(
-            connection, ways, nodes, edges, smoothing_window_m, smoothing_source
+            connection, ways, edges, smoothing_window_m, smoothing_source
         )
-        mismatch = connection.execute(f"""
-            SELECT count(*)
-            FROM read_parquet('{edge_source}') e
-            CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY AS ref(node_id, ordinal)
-            LEFT JOIN _osm_way_segment_elevations p
-              ON p.way_id = e.way_id
-             AND p.segment_index = try_cast(split_part(e.edge_key, ':', 2) AS BIGINT)
-             AND p.segment_ordinal = CASE WHEN e.is_forward THEN ref.ordinal
-                 ELSE p.segment_count - ref.ordinal + 1 END
-            WHERE p.node_id IS NULL OR p.node_id <> ref.node_id
-               OR p.segment_count <> len(e.node_ids)
-        """).fetchone()[0]
-        if mismatch:
-            raise ValueError(f"{mismatch} edge nodes do not match their way profiles")
+        connection.execute(f"""
+            CREATE OR REPLACE TEMP TABLE _osm_profile_edges AS
+            SELECT edge_key, way_id, is_forward, node_ids, mode, highway, length_m,
+                   try_cast(split_part(edge_key, ':', 2) AS BIGINT) AS segment_index
+            FROM read_parquet('{edge_source}')
+        """)
         write_parquet(
             connection,
             "SELECT way_id, node_sequence, node_id, distance_m, "
@@ -696,71 +692,76 @@ def enrich_edges_with_elevation(
             """,
             temporary_nodes,
         )
-        connection.execute(f"""
-            CREATE OR REPLACE TEMP TABLE _osm_edge_elevation_profiles AS
-            WITH ordered_nodes AS (
-                SELECT e.edge_key, edge_node.node_sequence,
-                       n.x, n.y, p.smoothed_elevation_m AS elevation_m,
-                       p.elevation_m AS raw_elevation_m,
-                       lag(n.x) OVER edge_order AS previous_x,
-                       lag(n.y) OVER edge_order AS previous_y,
-                       lag(p.smoothed_elevation_m) OVER edge_order
-                           AS previous_elevation_m,
-                       lag(p.elevation_m) OVER edge_order
-                           AS previous_raw_elevation_m
-                FROM read_parquet('{edge_source}') e
-                CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
-                    AS edge_node(node_id, node_sequence)
-                JOIN read_parquet('{node_source}') n USING (node_id)
-                JOIN _osm_way_segment_elevations p
-                  ON p.way_id = e.way_id
-                 AND p.segment_index = try_cast(
-                     split_part(e.edge_key, ':', 2) AS BIGINT
-                 )
-                 AND p.segment_ordinal = CASE WHEN e.is_forward
-                     THEN edge_node.node_sequence
-                     ELSE p.segment_count - edge_node.node_sequence + 1 END
-                WINDOW edge_order AS (
-                    PARTITION BY e.edge_key ORDER BY edge_node.node_sequence
-                )
-            ),
-            edge_stats AS (
-                SELECT edge_key,
-                       list(elevation_m ORDER BY node_sequence) AS node_elevations_m,
-                       first(elevation_m ORDER BY node_sequence)
-                           AS elevation_from_m,
-                       last(elevation_m ORDER BY node_sequence)
-                           AS elevation_to_m,
-                       count(elevation_m) = count(*) AS has_complete_profile,
-                       sum(
-                           CASE WHEN node_sequence > 1
-                                THEN sqrt(
-                                    pow(x - previous_x, 2)
-                                    + pow(y - previous_y, 2)
-                                )
-                           END
-                       ) AS horizontal_length_m,
-                       sum(greatest(elevation_m - previous_elevation_m, 0))
-                           AS climb_m,
-                       sum(greatest(
-                           raw_elevation_m - previous_raw_elevation_m, 0
-                       )) AS raw_climb_m,
-                       sum(greatest(previous_elevation_m - elevation_m, 0))
-                           AS descent_m
-                FROM ordered_nodes
-                GROUP BY edge_key
+        connection.execute("""
+            CREATE OR REPLACE TEMP TABLE _osm_segment_profile_points AS
+            SELECT way_id, segment_index, segment_ordinal, node_id,
+                   smoothed_elevation_m AS elevation_m,
+                   elevation_m AS raw_elevation_m,
+                   sqrt(pow(x - lag(x) OVER segment_order, 2)
+                      + pow(y - lag(y) OVER segment_order, 2)) AS horizontal,
+                   smoothed_elevation_m
+                       - lag(smoothed_elevation_m) OVER segment_order AS delta,
+                   elevation_m - lag(elevation_m) OVER segment_order AS raw_delta
+            FROM _osm_way_segment_elevations
+            WINDOW segment_order AS (
+                PARTITION BY way_id, segment_index ORDER BY segment_ordinal
             )
-            SELECT edge_key, node_elevations_m, elevation_from_m, elevation_to_m,
-                   CASE WHEN has_complete_profile THEN climb_m END AS climb_m,
-                   CASE WHEN has_complete_profile THEN raw_climb_m END AS raw_climb_m,
-                   CASE WHEN has_complete_profile THEN descent_m END
-                       AS descent_m,
-                   CASE
-                     WHEN has_complete_profile AND horizontal_length_m > 0
-                     THEN (elevation_to_m - elevation_from_m)
-                          / horizontal_length_m
+        """)
+        connection.execute("""
+            CREATE OR REPLACE TEMP TABLE _osm_segment_elevation_profiles AS
+            WITH stats AS (
+                SELECT way_id, segment_index,
+                       list(node_id ORDER BY segment_ordinal) AS node_ids,
+                       list(elevation_m ORDER BY segment_ordinal) AS node_elevations_m,
+                       first(elevation_m ORDER BY segment_ordinal) AS elevation_from_m,
+                       last(elevation_m ORDER BY segment_ordinal) AS elevation_to_m,
+                       count(elevation_m) = count(*) AS complete,
+                       sum(horizontal) AS horizontal_length_m,
+                       sum(greatest(delta, 0)) AS climb_m,
+                       sum(greatest(-delta, 0)) AS descent_m,
+                       sum(greatest(raw_delta, 0)) AS raw_climb_m,
+                       sum(greatest(-raw_delta, 0)) AS raw_descent_m
+                FROM _osm_segment_profile_points
+                GROUP BY way_id, segment_index
+            )
+            SELECT way_id, segment_index, node_ids, node_elevations_m,
+                   elevation_from_m, elevation_to_m, horizontal_length_m,
+                   CASE WHEN complete THEN climb_m END AS climb_m,
+                   CASE WHEN complete THEN descent_m END AS descent_m,
+                   CASE WHEN complete THEN raw_climb_m END AS raw_climb_m,
+                   CASE WHEN complete THEN raw_descent_m END AS raw_descent_m,
+                   CASE WHEN complete AND horizontal_length_m > 0
+                        THEN (elevation_to_m - elevation_from_m) / horizontal_length_m
                    END AS mean_grade
-            FROM edge_stats
+            FROM stats
+        """)
+        mismatch = connection.execute("""
+            SELECT count(*) FROM _osm_profile_edges e
+            LEFT JOIN _osm_segment_elevation_profiles p USING (way_id, segment_index)
+            WHERE p.node_ids IS NULL OR e.node_ids IS DISTINCT FROM
+                CASE WHEN e.is_forward THEN p.node_ids ELSE list_reverse(p.node_ids) END
+        """).fetchone()[0]
+        if mismatch:
+            raise ValueError(f"{mismatch} edge nodes do not match their way profiles")
+        connection.execute("""
+            CREATE OR REPLACE TEMP TABLE _osm_edge_elevation_profiles AS
+            SELECT e.edge_key,
+                   CASE WHEN e.is_forward THEN p.node_elevations_m
+                        ELSE list_reverse(p.node_elevations_m) END AS node_elevations_m,
+                   CASE WHEN e.is_forward THEN p.elevation_from_m
+                        ELSE p.elevation_to_m END AS elevation_from_m,
+                   CASE WHEN e.is_forward THEN p.elevation_to_m
+                        ELSE p.elevation_from_m END AS elevation_to_m,
+                   CASE WHEN e.is_forward THEN p.climb_m
+                        ELSE p.descent_m END AS climb_m,
+                   CASE WHEN e.is_forward THEN p.descent_m
+                        ELSE p.climb_m END AS descent_m,
+                   CASE WHEN e.is_forward THEN p.raw_climb_m
+                        ELSE p.raw_descent_m END AS raw_climb_m,
+                   CASE WHEN e.is_forward THEN p.mean_grade
+                        ELSE -p.mean_grade END AS mean_grade
+            FROM _osm_profile_edges e
+            LEFT JOIN _osm_segment_elevation_profiles p USING (way_id, segment_index)
         """)
         climb_rows = connection.execute(f"""
                 SELECT e.mode, coalesce(sum(p.raw_climb_m), 0),
@@ -777,38 +778,37 @@ def enrich_edges_with_elevation(
         incomplete_by_mode = {
             mode: int(incomplete) for mode, _, _, incomplete in climb_rows
         }
-        connection.execute(f"""
+        connection.execute("""
+            CREATE OR REPLACE TEMP TABLE _osm_segment_clipped_grades AS
+            SELECT way_id, segment_index, horizontal,
+                   delta / nullif(horizontal, 0) AS grade
+            FROM _osm_segment_profile_points
+            WHERE segment_ordinal > 1 AND horizontal > 0
+              AND (delta / horizontal < greatest(?, -?, ?, -?)
+                   OR delta / horizontal > least(?, -?, ?, -?))
+        """, [
+            energy.walking.gradient_valid_range[0],
+            energy.walking.gradient_valid_range[1],
+            network.bike_speed_table.grade_min,
+            network.bike_speed_table.grade_max,
+            energy.walking.gradient_valid_range[1],
+            energy.walking.gradient_valid_range[0],
+            network.bike_speed_table.grade_max,
+            network.bike_speed_table.grade_min,
+        ])
+        connection.execute("""
             CREATE OR REPLACE TEMP TABLE _osm_clipped_grades AS
-            WITH points AS (
+            WITH graded AS (
                 SELECT e.edge_key, e.way_id, e.mode,
                        lower(trim(coalesce(e.highway, ''))) AS highway,
-                       e.length_m AS edge_length_m, ref.node_sequence,
-                       n.x, n.y,
-                       list_extract(p.node_elevations_m, ref.node_sequence) AS z,
-                       lag(n.x) OVER edge_order AS previous_x,
-                       lag(n.y) OVER edge_order AS previous_y,
-                       lag(list_extract(
-                           p.node_elevations_m, ref.node_sequence
-                       )) OVER edge_order AS previous_z
-                FROM read_parquet('{edge_source}') e
-                JOIN _osm_edge_elevation_profiles p USING (edge_key)
-                CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
-                    AS ref(node_id, node_sequence)
-                JOIN read_parquet('{node_source}') n USING (node_id)
+                       e.length_m AS edge_length_m,
+                       s.horizontal * e.length_m / nullif(p.horizontal_length_m, 0)
+                           AS segment_length_m,
+                       CASE WHEN e.is_forward THEN s.grade ELSE -s.grade END AS grade
+                FROM _osm_profile_edges e
+                JOIN _osm_segment_elevation_profiles p USING (way_id, segment_index)
+                JOIN _osm_segment_clipped_grades s USING (way_id, segment_index)
                 WHERE e.mode IN ('foot', 'bike') AND p.climb_m IS NOT NULL
-                WINDOW edge_order AS (
-                    PARTITION BY e.edge_key ORDER BY ref.node_sequence
-                )
-            ), segments AS (
-                SELECT *, sqrt(pow(x - previous_x, 2) + pow(y - previous_y, 2))
-                    AS horizontal
-                FROM points WHERE node_sequence > 1
-            ), graded AS (
-                SELECT *, (z - previous_z) / nullif(horizontal, 0) AS grade,
-                       horizontal * edge_length_m / nullif(
-                           sum(horizontal) OVER (PARTITION BY edge_key), 0
-                       ) AS segment_length_m
-                FROM segments
             )
             SELECT edge_key, way_id, mode, highway, edge_length_m,
                    segment_length_m, grade
@@ -952,7 +952,7 @@ def _completion_signature(
 ) -> dict[str, object]:
     """Fingerprint completed outputs, source files and relevant settings."""
     return {
-        "version": 1,
+        "version": 2,
         "ways": _file_signature(ways),
         "grids": [_file_signature(path) for path in grids],
         "edges": _file_signature(edges),

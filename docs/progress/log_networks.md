@@ -3,6 +3,18 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: segment elevation profiles (2026-11-24)
+
+- Compute profiles and candidate clipped grades once per undirected
+  `(way_id, segment_index)`; derive each direction from the shared result.
+- Materialize only needed node columns for profile work and replace the
+  smoothing update with a table join. Bump the completion checkpoint version.
+- Monaco regression uses deterministic synthetic elevations and the original
+  directed implementation as its baseline: 14,149 profiles and 314 clipped
+  segments match, with a 1 mm elevation tolerance.
+- Synthetic and Monaco elevation tests: 13 passed; no pilot run. Pilot
+  timings and national-scale memory and runtime remain unverified.
+
 ### Step 6b: way elevation and active costs (2026-11-23)
 
 - Extract bridge, tunnel and layer tags; interpolate complete bridge/tunnel
