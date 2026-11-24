@@ -106,8 +106,52 @@ def test_build_graphs_saves_each_mode_and_kept_nodes(tmp_path):
         0.06,
     )
     car = load_graph(output / "car.npz")
-    assert car.weights["time_s:road_class:residential"].sum() == 6.0
-    assert car.weights["time_s:speed_limit_bucket:30-50"].sum() == 6.0
+    assert set(car.road_classes) == {"residential"}
+    assert set(car.speed_buckets) == {"30-50"}
+    assert car.weights["time_s"].sum() == 6.0
+
+
+def test_contraction_stops_at_class_and_bucket_changes(tmp_path):
+    edges_path, costs_path, nodes_path = _pilot_inputs(tmp_path)
+    edges = pq.read_table(edges_path).to_pylist()
+    costs = pq.read_table(costs_path).to_pylist()
+    for edge, cost in zip(edges, costs, strict=True):
+        if edge["mode"] == "car" and 3 in (edge["from_node_id"], edge["to_node_id"]):
+            edge["highway"] = "primary"
+        if edge["mode"] == "car" and 4 in (edge["from_node_id"], edge["to_node_id"]):
+            cost["speed_limit_bucket"] = "50-80"
+    pq.write_table(pa.Table.from_pylist(edges), edges_path)
+    pq.write_table(pa.Table.from_pylist(costs), costs_path)
+    with duckdb.connect() as connection:
+        build_graphs(
+            connection,
+            edges_path,
+            costs_path,
+            nodes_path,
+            tmp_path / "graph",
+            reference_mass_kg=74.0,
+            bike_mass_kg=15.0,
+            car_energy_kj_per_s=0.1,
+        )
+    graph = load_graph(tmp_path / "graph" / "car.npz")
+    for edge_index in range(len(graph.indices)):
+        start, end = graph.member_offsets[edge_index : edge_index + 2]
+        members = graph.member_edge_rows[start:end]
+        source = np.searchsorted(graph.indptr, edge_index, side="right") - 1
+        current = graph.node_ids[source]
+        for member in members:
+            assert current == edges[member]["from_node_id"]
+            current = edges[member]["to_node_id"]
+        assert current == graph.node_ids[graph.indices[edge_index]]
+        assert graph.weights["time_s"][edge_index] == np.float32(
+            sum(costs[member]["car_time_s"] for member in members)
+        )
+        assert {edges[i]["highway"] for i in members} == {
+            graph.road_classes[graph.road_class_ids[edge_index]]
+        }
+        assert {costs[i]["speed_limit_bucket"] for i in members} == {
+            graph.speed_buckets[graph.speed_bucket_ids[edge_index]]
+        }
 
 
 def test_graph_report_replaces_previous_graph_section(tmp_path):

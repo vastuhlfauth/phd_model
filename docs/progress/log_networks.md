@@ -3,6 +3,17 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 8: compact graph storage (2026-11-24)
+
+- Graph archives version 2 store compact class and bucket ids, reverse arc
+  references, and ordered original Parquet edge-row membership.
+- Contraction retains class and bucket transitions; SCC filtering and archive
+  round trips preserve the member paths and weight sums.
+- Synthetic graph tests: 11 passed; Ruff clean. No pilot build was run.
+- Report estimates the old format on the new topology alongside actual memory;
+  the previously reported pilot car graph used 248 MiB for 976k arcs.
+- Next: implement bounded searches and destination products.
+
 ### Step 8: CSR and degree-2 graph build (2026-11-24)
 
 - Added per-mode CSR arrays from the validated one-to-one edge/cost join,

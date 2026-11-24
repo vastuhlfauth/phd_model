@@ -18,6 +18,7 @@ from mobgrid.graph.csr import (
     CSRGraph,
     build_csr_graph,
     graph_memory_bytes,
+    legacy_graph_memory_bytes,
     save_graph,
     validate_edge_cost_join,
 )
@@ -40,6 +41,7 @@ class ModeGraphBuild:
     edges_after_contraction: int
     memory_before_bytes: int
     memory_after_bytes: int
+    legacy_contracted_memory_bytes: int
     output_path: Path
     stage_seconds: tuple[tuple[str, float], ...]
 
@@ -170,6 +172,7 @@ def build_graphs(
                 edges_after_contraction=len(contracted.indices),
                 memory_before_bytes=graph_memory_bytes(component),
                 memory_after_bytes=graph_memory_bytes(contracted),
+                legacy_contracted_memory_bytes=legacy_graph_memory_bytes(contracted),
                 output_path=output_path,
                 stage_seconds=tuple(stages),
             )
@@ -194,11 +197,13 @@ def _graph_report_section(
         f"- State / area: {state} / {area}",
         f"- One-to-one edge-cost validation: {result.validation_seconds:.2f} s",
         "- Memory counts include forward and transposed CSR arrays.",
+        "- Legacy memory is estimated for the new contracted topology, without "
+        "the new membership map; it is not a measurement of the old pilot graph.",
         "",
         "| Mode | Nodes before contraction | Edges before contraction | "
         "Nodes after contraction | Edges after contraction | "
-        "Memory before (MiB) | Memory after (MiB) |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "Memory before (MiB) | Memory after (MiB) | Legacy estimate (MiB) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for summary in result.modes:
         lines.append(
@@ -207,7 +212,8 @@ def _graph_report_section(
             f"{summary.nodes_after_contraction:,} | "
             f"{summary.edges_after_contraction:,} | "
             f"{_memory_mib(summary.memory_before_bytes)} | "
-            f"{_memory_mib(summary.memory_after_bytes)} |"
+            f"{_memory_mib(summary.memory_after_bytes)} | "
+            f"{_memory_mib(summary.legacy_contracted_memory_bytes)} |"
         )
     lines.extend(
         [

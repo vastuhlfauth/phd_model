@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from numba import njit
 
-from mobgrid.graph.csr import CSRGraph, csr_from_indexed_edges
+from mobgrid.graph.csr import CSRGraph, csr_from_indexed_edges, select_edge_members
 from mobgrid.osm.edges import _strongly_connected_components
 
 BoolArray = npt.NDArray[np.bool_]
@@ -53,6 +53,10 @@ def largest_strong_component(graph: CSRGraph) -> CSRGraph:
     targets = graph.indices.astype(np.int64, copy=False)
     edge_keep = keep[sources] & keep[targets]
     weights = {name: values[edge_keep] for name, values in graph.weights.items()}
+    edge_order = np.flatnonzero(edge_keep)
+    member_offsets, members = select_edge_members(
+        graph.member_offsets, graph.member_edge_rows, edge_order
+    )
     return csr_from_indexed_edges(
         graph.mode,
         graph.node_ids[kept_indices],
@@ -61,6 +65,12 @@ def largest_strong_component(graph: CSRGraph) -> CSRGraph:
         weights,
         reference_mass_kg=graph.reference_mass_kg,
         bike_mass_kg=graph.bike_mass_kg,
+        road_classes=graph.road_classes,
+        road_class_ids=graph.road_class_ids[edge_keep],
+        speed_buckets=graph.speed_buckets,
+        speed_bucket_ids=graph.speed_bucket_ids[edge_keep],
+        member_offsets=member_offsets,
+        member_edge_rows=members,
     )
 
 
@@ -88,19 +98,32 @@ def _contract_edges(
     neighbours: IntArray,
     neighbour_pairs: IntArray,
     arc_lookup: IntArray,
-) -> tuple[IntArray, IntArray, np.ndarray, int, bool]:
+    member_offsets: IntArray,
+    member_rows: IntArray,
+) -> tuple[IntArray, IntArray, np.ndarray, IntArray, IntArray, IntArray, int, bool]:
     edge_count = len(indices)
     node_count = len(indptr) - 1
     weight_count = weights.shape[1]
     out_sources = np.empty(edge_count, dtype=np.int64)
     out_targets = np.empty(edge_count, dtype=np.int64)
     out_weights = np.empty((edge_count, weight_count), dtype=np.float64)
+    out_first_edges = np.empty(edge_count, dtype=np.int64)
+    out_member_offsets = np.empty(edge_count + 1, dtype=np.int64)
+    out_member_rows = np.empty(len(member_rows), dtype=np.int64)
     out_count = 0
+    member_count = 0
 
     for source in range(node_count):
         if eligible[source]:
             continue
         for edge_position in range(indptr[source], indptr[source + 1]):
+            out_first_edges[out_count] = edge_position
+            out_member_offsets[out_count] = member_count
+            for member in range(
+                member_offsets[edge_position], member_offsets[edge_position + 1]
+            ):
+                out_member_rows[member_count] = member_rows[member]
+                member_count += 1
             target = indices[edge_position]
             for weight_index in range(weight_count):
                 out_weights[out_count, weight_index] = weights[
@@ -119,7 +142,21 @@ def _contract_edges(
                     direction = 1
                 next_edge = arc_lookup[pair, direction]
                 if next_edge < 0:
-                    return out_sources, out_targets, out_weights, out_count, True
+                    return (
+                        out_sources,
+                        out_targets,
+                        out_weights,
+                        out_first_edges,
+                        out_member_offsets,
+                        out_member_rows,
+                        out_count,
+                        True,
+                    )
+                for member in range(
+                    member_offsets[next_edge], member_offsets[next_edge + 1]
+                ):
+                    out_member_rows[member_count] = member_rows[member]
+                    member_count += 1
                 for weight_index in range(weight_count):
                     out_weights[out_count, weight_index] += weights[
                         next_edge, weight_index
@@ -128,11 +165,30 @@ def _contract_edges(
                 target = next_node
                 traversed += 1
                 if traversed > node_count:
-                    return out_sources, out_targets, out_weights, out_count, True
+                    return (
+                        out_sources,
+                        out_targets,
+                        out_weights,
+                        out_first_edges,
+                        out_member_offsets,
+                        out_member_rows,
+                        out_count,
+                        True,
+                    )
             out_sources[out_count] = source
             out_targets[out_count] = target
             out_count += 1
-    return out_sources, out_targets, out_weights, out_count, False
+    out_member_offsets[out_count] = member_count
+    return (
+        out_sources,
+        out_targets,
+        out_weights,
+        out_first_edges,
+        out_member_offsets,
+        out_member_rows,
+        out_count,
+        False,
+    )
 
 
 def _contractible_nodes(
@@ -216,6 +272,14 @@ def _contractible_nodes(
         & ~bad_incident
         & (same_bidirectional | opposite_one_way)
     )
+    for category_ids in (graph.road_class_ids, graph.speed_bucket_ids):
+        minimum = np.full(node_count, 256, dtype=np.int16)
+        maximum = np.full(node_count, -1, dtype=np.int16)
+        np.minimum.at(minimum, sources, category_ids)
+        np.minimum.at(minimum, targets, category_ids)
+        np.maximum.at(maximum, sources, category_ids)
+        np.maximum.at(maximum, targets, category_ids)
+        eligible &= minimum == maximum
     return eligible, neighbours, neighbour_pairs, arc_lookup
 
 
@@ -235,7 +299,16 @@ def contract_degree_two(graph: CSRGraph, kept_nodes: BoolArray) -> CSRGraph:
     edge_weights = np.column_stack(
         [graph.weights[name] for name in weight_names]
     ).astype(np.float32, copy=False)
-    out_sources, out_targets, out_weights, out_count, failed = _contract_edges(
+    (
+        out_sources,
+        out_targets,
+        out_weights,
+        out_first_edges,
+        out_member_offsets,
+        out_member_rows,
+        out_count,
+        failed,
+    ) = _contract_edges(
         graph.indptr,
         graph.indices.astype(np.int64, copy=False),
         edge_weights,
@@ -243,6 +316,8 @@ def contract_degree_two(graph: CSRGraph, kept_nodes: BoolArray) -> CSRGraph:
         neighbours,
         neighbour_pairs,
         arc_lookup,
+        graph.member_offsets,
+        graph.member_edge_rows,
     )
     if failed:
         raise RuntimeError("degree-2 chain traversal found an invalid continuation")
@@ -264,4 +339,10 @@ def contract_degree_two(graph: CSRGraph, kept_nodes: BoolArray) -> CSRGraph:
         weights,
         reference_mass_kg=graph.reference_mass_kg,
         bike_mass_kg=graph.bike_mass_kg,
+        road_classes=graph.road_classes,
+        road_class_ids=graph.road_class_ids[out_first_edges[:out_count]],
+        speed_buckets=graph.speed_buckets,
+        speed_bucket_ids=graph.speed_bucket_ids[out_first_edges[:out_count]],
+        member_offsets=out_member_offsets[: out_count + 1],
+        member_edge_rows=out_member_rows[: out_member_offsets[out_count]],
     )

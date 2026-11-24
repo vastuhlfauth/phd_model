@@ -66,6 +66,14 @@ Mode-inapplicable values and costs with incomplete elevation profiles are null.
 For bike steps, the three riding-energy component columns are null; total
 energy is the walking stair energy.
 
+The version 2 per-mode graph archives store each contracted arc's ordered
+zero-based row positions in this exact `edges.parquet`, using int64 offsets
+and member rows. Rebuild the graph after replacing or reordering that file.
+Road classes and speed-limit buckets use uint8 ids with archive dictionaries;
+contraction stops at changes of either. The transpose points to forward arc
+indices rather than duplicating costs. Graph reports compare actual array
+memory with an estimate of version 1 for the same contracted topology.
+
 ## Edge columns
 
 | Column | Type | Meaning |

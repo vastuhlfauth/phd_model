@@ -1,5 +1,11 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 8: graph version 2 keeps class and speed-bucket changes
+  as contraction boundaries and stores ordered zero-based directed-edge row
+  positions from the exact source Parquet; replacing that file requires a rebuild.
+- 2026-11-24, step 8: compute requested road-class and speed-bucket path times
+  in a compiled pass over the settle order after searching, rather than in the
+  heap loop. Dial uses configured 0.1 s rounding; the heap retains float costs.
 - 2026-11-24, step 8: save each mode graph as an uncompressed `.npz`
   containing int64 OSM node ids and offsets, int32 neighbour indices,
   float32 time/secondary weights, and the same arrays for the transpose.

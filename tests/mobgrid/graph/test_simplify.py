@@ -58,6 +58,21 @@ def test_contracts_bidirectional_chain_with_exact_sums_for_every_weight():
 
     np.testing.assert_array_equal(contracted.node_ids, [10, 40])
     assert len(contracted.indices) == 2
+    for edge_index in range(len(contracted.indices)):
+        start, end = contracted.member_offsets[edge_index : edge_index + 2]
+        members = contracted.member_edge_rows[start:end]
+        source = np.searchsorted(contracted.indptr, edge_index, side="right") - 1
+        current = contracted.node_ids[source]
+        for member in members:
+            original_source = np.searchsorted(graph.indptr, member, side="right") - 1
+            assert current == graph.node_ids[original_source]
+            current = graph.node_ids[graph.indices[member]]
+        assert current == contracted.node_ids[contracted.indices[edge_index]]
+        for name in graph.weights:
+            expected = np.float32(
+                np.sum(graph.weights[name][members], dtype=np.float64)
+            )
+            assert contracted.weights[name][edge_index] == expected
     for name in graph.weights:
         np.testing.assert_allclose(
             _weight(contracted, 10, 40, name),

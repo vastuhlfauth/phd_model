@@ -97,7 +97,7 @@ def edge_files(tmp_path):
     return edges_path, costs_path
 
 
-def test_car_csr_uses_int_indices_and_transposes_every_weight(edge_files):
+def test_car_csr_uses_compact_categories_and_forward_edge_transpose(edge_files):
     edges_path, costs_path = edge_files
     connection = duckdb.connect()
     validate_edge_cost_join(connection, edges_path, costs_path)
@@ -119,17 +119,25 @@ def test_car_csr_uses_int_indices_and_transposes_every_weight(edge_files):
     assert graph.weights["time_s"].dtype == np.float32
     np.testing.assert_array_equal(graph.weights["time_s"], [3.0, 2.0])
     np.testing.assert_allclose(graph.weights["energy_kj"], [0.3, 0.2])
-    np.testing.assert_array_equal(
-        graph.weights["time_s:road_class:primary"], [3.0, 0.0]
-    )
-    np.testing.assert_array_equal(
-        graph.weights["time_s:road_class:residential"], [0.0, 2.0]
-    )
+    assert graph.road_class_ids.dtype == np.uint8
+    assert graph.speed_bucket_ids.dtype == np.uint8
+    assert [graph.road_classes[i] for i in graph.road_class_ids] == [
+        "primary",
+        "residential",
+    ]
+    assert [graph.speed_buckets[i] for i in graph.speed_bucket_ids] == [
+        "50-80",
+        "30-50",
+    ]
+    assert not any(name.startswith("time_s:") for name in graph.weights)
+    np.testing.assert_array_equal(graph.member_offsets, [0, 1, 2])
+    np.testing.assert_array_equal(graph.member_edge_rows, [1, 0])
     np.testing.assert_array_equal(graph.reverse_indptr, [0, 1, 1, 2])
     np.testing.assert_array_equal(graph.reverse_indices, [2, 1])
+    np.testing.assert_array_equal(graph.reverse_edge_indices, [1, 0])
     for name in graph.weights:
         np.testing.assert_array_equal(
-            graph.reverse_weights[name], graph.weights[name][::-1]
+            graph.weights[name][graph.reverse_edge_indices], graph.weights[name][::-1]
         )
     connection.close()
 
@@ -165,11 +173,13 @@ def test_bike_components_and_mass_sensitive_energy_are_preserved(edge_files):
     save_graph(graph, output)
     restored = load_graph(output)
     np.testing.assert_array_equal(restored.node_ids, graph.node_ids)
+    np.testing.assert_array_equal(restored.member_offsets, graph.member_offsets)
+    np.testing.assert_array_equal(restored.member_edge_rows, graph.member_edge_rows)
+    np.testing.assert_array_equal(
+        restored.reverse_edge_indices, graph.reverse_edge_indices
+    )
     for name in graph.weights:
         np.testing.assert_array_equal(restored.weights[name], graph.weights[name])
-        np.testing.assert_array_equal(
-            restored.reverse_weights[name], graph.reverse_weights[name]
-        )
     connection.close()
 
 
