@@ -6,6 +6,8 @@
 - 2026-11-24, step 8: compute requested road-class and speed-bucket path times
   in a compiled pass over the settle order after searching, rather than in the
   heap loop. Dial uses configured 0.1 s rounding; the heap retains float costs.
+  For shortest-path costs, the rounding-error bound uses the greater edge count
+  of the rounded-optimal and float-optimal paths, since their routes can differ.
 - 2026-11-24, step 8: save each mode graph as an uncompressed `.npz`
   containing int64 OSM node ids and offsets, int32 neighbour indices,
   float32 time/secondary weights, and the same arrays for the transpose.

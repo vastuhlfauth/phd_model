@@ -1,0 +1,4 @@
+dial_resolution_s: 0.1
+time_bin_s: 60
+distance_bin_m: 250
+energy_bin_kj: 10

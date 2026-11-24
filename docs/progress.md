@@ -39,7 +39,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Standalone department-only Géovélo report with 5 m nearest-line matching; pilot performance not rerun |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
-| 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Compact version 2 CSR and contraction membership; searches and products pending; pilot not run |
+| 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Compact version 2 CSR, contraction membership and bounded searches; products pending; pilot not run |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
 | 10 | `mobgrid/od` | not started | | |
 | 11 | `mobgrid/budget` | review | `step/mobgrid-budget-entd2008` | Notes moved to `docs/progress/log_time_budget.md` (Step 11: notes from the steps table) |
