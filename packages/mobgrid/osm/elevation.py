@@ -960,6 +960,13 @@ def write_elevation_report(
     """Write the directed-edge elevation and no-coverage counts (8.1)."""
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    sensitivity_section = ""
+    if destination.is_file():
+        existing = destination.read_text(encoding="utf-8")
+        marker = "## Smoothing sensitivity\n"
+        _, found, suffix = existing.partition(marker)
+        if found:
+            sensitivity_section = marker + suffix.rstrip()
     climb_lines = "\n".join(
         f"  - {mode}: {values[0]:,.1f} / {values[1]:,.1f}; "
         f"incomplete: {summary.incomplete_by_mode[mode]:,}"
@@ -968,8 +975,7 @@ def write_elevation_report(
     grade_lines = "\n".join(_grade_report_lines(
         summary.clipped_segments_by_class, summary.longest_clipped_edges
     ))
-    destination.write_text(
-        f"""# OSM elevation profiles ({state}, {area})
+    report = f"""# OSM elevation profiles ({state}, {area})
 
 - BD ALTI ASCII tiles: {tile_count:,}
 - Directed edge profiles: {summary.edge_count:,}
@@ -985,7 +991,11 @@ def write_elevation_report(
 ## Grades to clip in active costs
 
 {grade_lines}
-""",
+"""
+    if sensitivity_section:
+        report = report.rstrip() + "\n\n" + sensitivity_section + "\n"
+    destination.write_text(
+        report,
         encoding="utf-8",
     )
 

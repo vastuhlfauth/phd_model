@@ -427,6 +427,7 @@ geovelo_report:
     COULOIR BUS+VELO: bus_lane
     VELO RUE: low_speed
     DOUBLE SENS CYCLABLE: low_speed
+    DOUBLE SENS CYCLABLE NON MATERIALISE: low_speed
     DOUBLE SENS CYCLABLE BANDE: painted_lane
     DOUBLE SENS CYCLABLE PISTE: separated_track_path
     AUCUN: null
@@ -439,8 +440,11 @@ geovelo_report:
     opposite_lane: painted_lane
     share_busway: bus_lane
     opposite: low_speed
+  osm_generic_cycleway_side_counts:
+    lane: 2
   osm_unmarked_contraflow_rules:
     - oneway=yes+oneway:bicycle=no
     - oneway=-1+oneway:bicycle=no
   match_tolerance_m: 15
+  match_sample_spacing_m: 5
 tile_size_m: 50000

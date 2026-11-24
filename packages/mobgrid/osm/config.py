@@ -17,6 +17,7 @@ Mode = Literal["car", "bike", "foot"]
 SpeedContext = Literal["urban", "rural", "zone30", "motorway"]
 PositiveSpeed = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 Probability = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
+FacilitySideCount = Annotated[int, Field(ge=1, le=2)]
 BikeClass = Literal[
     "separated_track_path",
     "painted_lane",
@@ -136,8 +137,10 @@ class GeoveloReportConfig(BaseModel):
     source_ids_by_state: dict[int, str]
     amenagement_families: dict[str, BikeReportFamily | None]
     osm_cycleway_families: dict[str, BikeReportFamily]
+    osm_generic_cycleway_side_counts: dict[str, FacilitySideCount]
     osm_unmarked_contraflow_rules: tuple[str, ...]
     match_tolerance_m: float = Field(gt=0, allow_inf_nan=False)
+    match_sample_spacing_m: float = Field(gt=0, allow_inf_nan=False)
 
 
 class NetworkConfig(BaseModel):

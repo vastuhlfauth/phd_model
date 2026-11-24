@@ -468,6 +468,11 @@ def test_elevation_report_distinguishes_uncovered_nodes_from_missing_samples(
     tmp_path,
 ):
     report = tmp_path / "elevation.md"
+    report.write_text(
+        "# Existing elevation report\n\n## Smoothing sensitivity\n"
+        "Preserve the smoothing table and map link.\n",
+        encoding="utf-8",
+    )
 
     write_elevation_report(
         ElevationSummary(
@@ -488,6 +493,10 @@ def test_elevation_report_distinguishes_uncovered_nodes_from_missing_samples(
     assert "bike: 100.0 / 60.0; incomplete: 1" in contents
     assert "car: 200.0 / 120.0; incomplete: 0" in contents
     assert "foot: 300.0 / 180.0; incomplete: 0" in contents
+    assert (
+        "## Smoothing sensitivity\n"
+        "Preserve the smoothing table and map link."
+    ) in contents
 
 
 def test_smoothing_sensitivity_reports_tiles_zones_and_map_without_rewriting_profiles(

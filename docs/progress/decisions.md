@@ -1,5 +1,10 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6b: keep the Géovélo comparison out of edge builds and
+  generate it with a standalone command. Match 5 m length-weighted samples to
+  the nearest same-family OSM line within 15 m. Count generic lane tags on
+  both sides; count designated paths once and report other car-free bike paths
+  separately. Keep the comparison-only OSM classifications out of routing.
 - 2026-11-24, step 6b: validate `geovelo-2022` inside the configured pilot
   department only. Map `ame_d`/`ame_g` to the four existing bike families;
   count non-empty unmapped and explicitly null-mapped values as excluded.

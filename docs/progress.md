@@ -7,6 +7,7 @@ Read this file at the start of every task and update it at the end.
 This file holds the current state only. Search the history for your step; don't read it whole.
 
 - `docs/progress/log_networks.md`: steps 6, 8, 9 and 10. Latest entries:
+  - Step 6b: standalone Géovélo comparison (2026-11-24)
   - Step 6b: elevation climb sensitivity (2026-11-24)
   - Step 6b: edge-cost groundwork (2026-11-21)
   - Step 6b: road classes (2026-11-21)
@@ -36,7 +37,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Added elevation sensitivity and the department-only Géovélo-2022 comparison; rerun pilot to inspect values, matching, tile choices and costs |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Standalone department-only Géovélo report with 5 m nearest-line matching; pilot performance not rerun |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -57,10 +58,12 @@ Status values: not started, in progress, review, merged.
 
 - 2026-11-24, step 6b: Géovélo amenagement values map to the four OSM bike
   families in `config/network.yaml`; null-mapped and unknown non-empty values
-  are excluded and counted. Facility-side lengths count once per side, except
-  two-sided separated features and OSM cycleway/path ways, which count once.
-  The report clips both datasets to the configured department and matches
-  within the configured 15 m.
+  are excluded and counted. Generic cycleway lanes count on both sides;
+  designated cycleways and designated paths count once, while other car-free
+  paths open to bikes are reported separately. Same-family matching uses
+  length-weighted samples no farther apart than 5 m and a 15 m nearest-line
+  limit. Géovélo is built from OSM, so this checks classification, not OSM
+  completeness.
 - 2026-11-24, step 6b: elevation sensitivity assigns each directed car edge
   to the 10 km EPSG:3035 tile containing its endpoint midpoint; tile ids are
   `floor(northing / 10000) * 100000 + floor(easting / 10000)`. Climb rates
@@ -144,10 +147,9 @@ Each item stays open until a value is decided; the value goes into `config/`.
   and highway speed caps, grade grid and tolerances in `config/network.yaml`.
   Active-mode cost functions now use these plus the user-supplied provisional
   stop probabilities and surface fallbacks; all remain unconfirmed.
-- [ ] Step 6b (section 8.1): run the department-only Géovélo report and inspect
-  its distinct `ame_d`/`ame_g` values, excluded lengths, family totals and
-  same-family 15 m matching shares. The configured mappings are provisional
-  until those report values are reviewed.
+- [ ] Step 6b (section 8.1): rerun the standalone department-only Géovélo
+  report and confirm the point matcher completes under 60 s; inspect the
+  updated lengths and matching shares. Do not run the pilot during coding.
 - [ ] Step 6b: user rerun of BD ALTI unpack after the Windows path-length
   fix; move aside old nested/stale department outputs first. Real archive
   extraction was not run during validation; no new parameter assumptions.

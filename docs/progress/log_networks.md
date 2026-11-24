@@ -3,6 +3,26 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: standalone Géovélo comparison (2026-11-24)
+
+- Removed the Géovélo comparison from edge builds; it now has a standalone
+  `python -m mobgrid.osm.geovelo_report` command.
+- Replaced buffer unions with Shapely STRtree nearest-line matching of
+  length-weighted samples at 5 m spacing, within the configured 15 m.
+- Generic OSM `cycleway=lane` and `cycleway:both=lane` count both sides.
+  `highway=cycleway`, designated paths/footways and `cycleway:*=track` are
+  counted as cycle facilities; other car-free paths open to bikes appear in
+  a separate table. Routing's `bike_infra` is unchanged.
+- Mapped `DOUBLE SENS CYCLABLE NON MATERIALISE` to low speed. Report reruns
+  preserve later sections, and elevation rewrites preserve smoothing
+  sensitivity. The report notes Géovélo is itself based on OSM.
+- Synthetic validation: 46 focused OSM tests passed; Ruff clean. No pilot or
+  national build was run. Next, run the standalone command and confirm the
+  requested under-60-second pilot timing.
+- Command: `python -m mobgrid.osm.geovelo_report --state 2021 --config
+  config/network.yaml --manifest config/sources.yaml --pilot-config
+  config/pilot.yaml --report docs/data/step06_osm_pilot.md`.
+
 ### Step 6b: Géovélo department comparison (2026-11-24)
 
 - Added configured `ame_d`/`ame_g` family mappings, including marked and
