@@ -206,6 +206,7 @@ def test_ride_speed_and_power_has_no_zero_speed_plateau(config, crr) -> None:
             grade, p0_w, k, p_max_w, mass_total, crr, config.bike.cda_m2,
             config.bike.rho_air_kg_per_m3, config.bike.drivetrain_efficiency,
             v_max_descent_m_per_s,
+            paved_rolling_resistance=crr,
         )
         assert speed > 0.0, f"zero speed at grade={grade}"
         assert power >= 0.0
@@ -221,6 +222,7 @@ def test_ride_speed_and_power_caps_a_steep_descent(config, crr) -> None:
         -0.15, 52.5, 37.0, 200.0, RIDER_MASS_KG, crr, config.bike.cda_m2,
         config.bike.rho_air_kg_per_m3, config.bike.drivetrain_efficiency,
         v_max_descent_m_per_s,
+        paved_rolling_resistance=crr,
     )
     assert speed == pytest.approx(v_max_descent_m_per_s)
     # The power that exactly holds the capped speed is well under what
@@ -236,6 +238,7 @@ def test_descent_cap_does_not_limit_flat_or_uphill(config, crr) -> None:
             gradient, 500.0, 37.0, 500.0, RIDER_MASS_KG, crr,
             config.bike.cda_m2, config.bike.rho_air_kg_per_m3,
             config.bike.drivetrain_efficiency, cap,
+            paved_rolling_resistance=crr,
         )
         assert speed > cap
         assert power == pytest.approx(500.0)
@@ -243,6 +246,7 @@ def test_descent_cap_does_not_limit_flat_or_uphill(config, crr) -> None:
             gradient, 500.0, 37.0, 500.0, RIDER_MASS_KG, crr,
             config.bike.cda_m2, config.bike.rho_air_kg_per_m3,
             config.bike.drivetrain_efficiency, cap, class_cap_m_per_s=cap,
+            paved_rolling_resistance=crr,
         )
         assert class_speed == pytest.approx(cap)
 
@@ -367,6 +371,7 @@ def test_ebike_assist_increases_speed_below_cap(config, crr) -> None:
         0.0, 80.0, 0.0, 80.0, mass, crr, config.bike.cda_m2,
         config.bike.rho_air_kg_per_m3, config.bike.drivetrain_efficiency, assist,
         ebike.motor_power_cap_w, speed_cap_m_per_s, v_max_descent_m_per_s,
+        paved_rolling_resistance=crr,
     )
     assert unassisted < assisted < speed_cap_m_per_s
     assert rider_power == pytest.approx(80.0)
@@ -392,6 +397,7 @@ def test_ebike_speed_is_governed_at_the_pedelec_cap(config, crr) -> None:
         0.0, 100.0, 0.0, 100.0, mass, crr, config.bike.cda_m2,
         config.bike.rho_air_kg_per_m3, config.bike.drivetrain_efficiency, assist,
         ebike.motor_power_cap_w, speed_cap_m_per_s, v_max_descent_m_per_s,
+        paved_rolling_resistance=crr,
     )
     assert speed == pytest.approx(speed_cap_m_per_s, rel=0.01)
     # The motor backs off partially to hold the cap (not to zero): less
@@ -411,6 +417,7 @@ def test_ebike_ride_caps_a_steep_descent_reducing_rider_first(config, crr) -> No
         -0.15, 52.5, 37.0, 200.0, mass, crr, config.bike.cda_m2,
         config.bike.rho_air_kg_per_m3, config.bike.drivetrain_efficiency, assist,
         ebike.motor_power_cap_w, speed_cap_m_per_s, v_max_descent_m_per_s,
+        paved_rolling_resistance=crr,
     )
     assert speed == pytest.approx(v_max_descent_m_per_s)
     assert motor_power == pytest.approx(0.0)

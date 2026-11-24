@@ -94,7 +94,32 @@ def test_cost_stage_recomputes_after_speed_change_without_rebuilding_edges(
     assert before.schema.field("length_m").type == pa.float32()
     assert "null elevation" in report.read_text(encoding="utf-8").lower()
     assert "urban" in report.read_text(encoding="utf-8").lower()
-    assert "completed in" in capsys.readouterr().err
+    terminal = capsys.readouterr().err
+    for stage in ("loading", "walk", "speed tables", "bike riding", "stops", "writing"):
+        assert stage in terminal
+
+    completed_checkpoint = interim / "costs" / "completed.json"
+    active_checkpoint = interim / "costs" / "active.json"
+    for path, version in ((completed_checkpoint, 1), (active_checkpoint, 2)):
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        saved["signature"]["version"] = version
+        path.write_text(json.dumps(saved), encoding="utf-8")
+    active_calls = []
+    original_active = costs.enrich_active_edge_costs
+    with monkeypatch.context() as patch:
+        def unexpected(*args, **kwargs):
+            raise AssertionError("matching elevation or car checkpoint was not reused")
+
+        def count_active(*args, **kwargs):
+            active_calls.append(True)
+            return original_active(*args, **kwargs)
+
+        patch.setattr(elevation, "enrich_edges_with_elevation", unexpected)
+        patch.setattr(costs.speeds, "build_car_costs", unexpected)
+        patch.setattr(costs, "enrich_active_edge_costs", count_active)
+        assert costs.main(args) == 0
+    assert active_calls == [True]
+    assert edges.stat().st_mtime_ns == edge_mtime
 
     old_report = elevation_report.with_name("step06_elevation_pilot_2021.md")
     copyfile(elevation_report, old_report)
@@ -263,7 +288,7 @@ def test_cost_report_speeds_and_urban_share(tmp_path):
         connection.close()
     text = report.read_text(encoding="utf-8")
     assert "null elevation profiles: 1 of 4" in text
-    assert "zero-speed bike segments: 2" in text.lower()
+    assert "zero-speed bike segments (errors): 2" in text.lower()
     assert "| residential | 36.00 | n/a | 18.00 | 25.0% |" in text
     assert text.count("## Edge costs") == 1
     assert "## Other\n\nKept." in text

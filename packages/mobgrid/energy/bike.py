@@ -89,7 +89,7 @@ def required_power_w(
 def select_ride_power_w(
     gradient: float, p0_w: float, k: float, p_max_w: float
 ) -> float:
-    """Rider power P_r by slope, on every grade (section 9.7).
+    """Rider power P_r by effective slope, on every grade (section 9.7).
 
     P_r = clamp(P_0 . (1 + k.i), 0, P_max), climbs and descents alike:
     a gentle descent still has the rider pedalling at reduced power, down
@@ -231,17 +231,21 @@ def ride_speed_and_power(
     v_max_descent_m_per_s: float,
     class_cap_m_per_s: float | None = None,
     headwind_m_per_s: float = 0.0,
+    *,
+    paved_rolling_resistance: float,
 ) -> tuple[float, float]:
     """Speed and rider power on one edge, by direction (section 9.7).
 
-    P_r = ``select_ride_power_w`` on every grade; if the resulting speed
+    P_r uses effective grade i + (Crr - paved Crr), while force balance uses
+    the physical grade (both dimensionless). If the resulting speed
     would exceed v_max,desc on a descent or an infrastructure-class cap
     on any grade, speed is capped and P_r reduced to the power that exactly
     holds the cap (braking absorbs any excess mechanically, at no
     metabolic cost, so the reduced P_r is never negative). Returns
     ``(speed_m_per_s, rider_power_w)``.
     """
-    power_w = select_ride_power_w(gradient, p0_w, k, p_max_w)
+    felt_grade = gradient + (rolling_resistance - paved_rolling_resistance)
+    power_w = select_ride_power_w(felt_grade, p0_w, k, p_max_w)
     speed_m_per_s = solve_bike_speed_m_per_s(
         power_w, mass_total_kg, gradient, rolling_resistance, cda_m2,
         rho_air_kg_per_m3, drivetrain_efficiency, headwind_m_per_s,
@@ -300,17 +304,21 @@ def ebike_ride_speed_and_power(
     v_max_descent_m_per_s: float,
     class_cap_m_per_s: float | None = None,
     headwind_m_per_s: float = 0.0,
+    *,
+    paved_rolling_resistance: float,
 ) -> tuple[float, float, float]:
     """E-bike speed, rider power and motor power on one edge (9.7).
 
-    Extends ``ride_speed_and_power`` with pedelec assistance
+    Uses the same effective grade as ``ride_speed_and_power`` for rider power.
+    Extends it with pedelec assistance
     (``ebike_motor_power_w``) below the EU speed cap, cutting out above
     it; descents are capped exactly as for a plain bike, with the
     reduction applied to the rider first (the motor is assumed to cut
     out, like coasting/regen braking, before the rider stops pedalling).
     Returns ``(speed_m_per_s, rider_power_w, motor_power_w)``.
     """
-    rider_power_w = select_ride_power_w(gradient, p0_w, k, p_max_w)
+    felt_grade = gradient + (rolling_resistance - paved_rolling_resistance)
+    rider_power_w = select_ride_power_w(felt_grade, p0_w, k, p_max_w)
     motor_power_w = ebike_motor_power_w(rider_power_w, assist_factor, motor_cap_w)
     speed_m_per_s = solve_bike_speed_m_per_s(
         rider_power_w + motor_power_w, mass_total_kg, gradient, rolling_resistance,

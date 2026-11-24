@@ -32,6 +32,9 @@ class BikeSpeedTable:
         self.energy = energy
         self.grid = grid
         self.rolling_resistance = rolling_resistance
+        self.paved_rolling_resistance = energy.bike.surface_crr[
+            "asphalt_concrete_paved_default"
+        ]
         self.cap_kmh = cap_kmh
         self.p0 = float(power.p0_w)
         self.k = float(power.k)
@@ -50,6 +53,7 @@ class BikeSpeedTable:
                 energy.reference_mass_kg + bike.bike_mass_kg,
                 rolling_resistance, bike.cda_m2, bike.rho_air_kg_per_m3,
                 bike.drivetrain_efficiency, self.descent_cap, cap_kmh / 3.6,
+                paved_rolling_resistance=self.paved_rolling_resistance,
             )[0]
             for grade in self.grades
         ])
@@ -65,7 +69,10 @@ class BikeSpeedTable:
             * (self.rolling_resistance + grades) / np.sqrt(1 + grades**2)
         )
         drag = 0.5 * bike.rho_air_kg_per_m3 * bike.cda_m2
-        selected_power = np.clip(self.p0 * (1 + self.k * grades), 0, self.p_max)
+        felt_grades = grades + (
+            self.rolling_resistance - self.paved_rolling_resistance
+        )
+        selected_power = np.clip(self.p0 * (1 + self.k * felt_grades), 0, self.p_max)
         target = selected_power * bike.drivetrain_efficiency
         # A fixed coarse grid straddles cap/coasting kinks. Refine its
         # interpolated estimate with vectorised, bracketed force balance.

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import math
+import time
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +25,7 @@ from mobgrid.osm.bike_speed_table import BikeSpeedTable
 from mobgrid.osm.config import NetworkConfig
 
 FloatArray = npt.NDArray[np.float64]
+logger = logging.getLogger(__name__)
 _EDGE_BATCH_SIZE = 25_000
 _CONTROLLED_HIGHWAYS = {"traffic_signals", "stop", "give_way", "mini_roundabout"}
 
@@ -124,13 +127,16 @@ def _active_edge_batch(
                        e.give_way_count, e.crossing_count, e.to_degree,
                        e.to_highway, e.to_crossing, e.node_ids,
                        edge_node.node_sequence, n.x, n.y,
-                       list_extract(e.node_elevations_m, edge_node.node_sequence)
-                           AS elevation_m,
+                       CASE WHEN e.highway = 'steps' THEN n.elevation_m
+                            ELSE list_extract(
+                                e.node_elevations_m, edge_node.node_sequence
+                            ) END AS elevation_m,
                        lag(n.x) OVER edge_order AS previous_x,
                        lag(n.y) OVER edge_order AS previous_y,
-                       lag(list_extract(
-                           e.node_elevations_m, edge_node.node_sequence
-                       )) OVER edge_order AS previous_elevation_m
+                       lag(CASE WHEN e.highway = 'steps' THEN n.elevation_m
+                                ELSE list_extract(
+                                    e.node_elevations_m, edge_node.node_sequence
+                                ) END) OVER edge_order AS previous_elevation_m
                 FROM _active_edge_batch e
                 CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
                     AS edge_node(node_id, node_sequence)
@@ -153,11 +159,15 @@ def _calculate_batch(
     energy: EnergyConfig,
     network: NetworkConfig,
     speed_tables: dict[tuple[str, float], BikeSpeedTable],
+    timings: dict[str, float],
 ) -> tuple[pa.Table, int, Counter[str], int, pa.Table, pa.Table]:
+    stage = time.perf_counter()
     batch_keys = np.asarray(
         edge_batch.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
     )
-    segment_keys = np.asarray(segments.column("edge_key").to_pylist(), dtype=object)
+    segment_keys = np.asarray(
+        segments.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
+    )
     if not len(segment_keys):
         raise ValueError("active edge batch has no ordered node segments")
     unique_keys, groups = np.unique(segment_keys, return_inverse=True)
@@ -181,6 +191,8 @@ def _calculate_batch(
     to_crossings = _text_column(edge_batch, "to_crossing")[metadata_indices]
     foot_edges = edge_modes == "foot"
     bike_edges = edge_modes == "bike"
+    stair_edges = highways == "steps"
+    riding_edges = bike_edges & ~stair_edges
 
     x = _float_column(segments, "x")
     y = _float_column(segments, "y")
@@ -224,7 +236,7 @@ def _calculate_batch(
     )
     clipped = complete_edges[groups] & (
         (non_stair_walk[groups] & (grades != walking_grades))
-        | (bike_edges[groups] & (grades != bike_grades))
+        | (riding_edges[groups] & (grades != bike_grades))
     )
     clipped_groups = groups[clipped]
     way_ids = np.asarray(
@@ -255,7 +267,7 @@ def _calculate_batch(
         where=walking_speed > 0,
     )
     walk_energy_segment = mass * c0 * segment_lengths * gradient_cost / 1000.0
-    stair = foot_edges[groups] & (highways[groups] == "steps")
+    stair = stair_edges[groups]
     stair_height = np.abs(height_change)
     stair_time_segment = np.where(
         height_change >= 0,
@@ -274,8 +286,13 @@ def _calculate_batch(
     walk_energy_segment = np.where(stair, stair_energy_segment, walk_energy_segment)
     walk_time = _sum_by_edge(walk_time_segment, groups)
     walk_energy = _sum_by_edge(walk_energy_segment, groups)
+    walk_time = np.where(
+        stair_edges, np.maximum(walk_time, edge_lengths / walking_v0), walk_time
+    )
+    timings["walk"] += time.perf_counter() - stage
+    stage = time.perf_counter()
 
-    bike_segment = bike_edges[groups] & complete_edges[groups]
+    bike_segment = riding_edges[groups] & complete_edges[groups]
     raw_surfaces = _text_column(edge_batch, "surface")[metadata_indices]
     raw_tracktypes = _text_column(edge_batch, "tracktype")[metadata_indices]
     raw_surfaces = raw_surfaces.astype(str)
@@ -345,8 +362,9 @@ def _calculate_batch(
     bike_drag_segment = np.zeros(len(segment_keys), dtype=np.float64)
     bike_pedalled_time_segment = np.zeros(len(segment_keys), dtype=np.float64)
     bike = energy.bike
-    for surface in np.unique(resolved_surfaces[bike_edges]):
-        surface_edges = bike_edges & (resolved_surfaces == surface)
+    table_seconds = 0.0
+    for surface in np.unique(resolved_surfaces[riding_edges]):
+        surface_edges = riding_edges & (resolved_surfaces == surface)
         for cap in np.unique(cap_by_edge[surface_edges]):
             selected = (
                 bike_segment
@@ -355,6 +373,7 @@ def _calculate_batch(
             )
             table = speed_tables.get((surface, cap))
             if table is None:
+                table_started = time.perf_counter()
                 table = BikeSpeedTable(
                     energy,
                     network.bike_speed_table,
@@ -362,6 +381,7 @@ def _calculate_batch(
                     cap,
                 )
                 speed_tables[(surface, cap)] = table
+                table_seconds += time.perf_counter() - table_started
             group_speeds, group_powers = table.lookup(bike_grades[selected])
             speeds[selected] = group_speeds
             crr = energy.bike.surface_crr[surface]
@@ -438,6 +458,9 @@ def _calculate_batch(
         out=np.zeros(group_count, dtype=np.float64),
         where=bike_time_ride > 0,
     )
+    timings["speed tables"] += table_seconds
+    timings["bike riding"] += time.perf_counter() - stage - table_seconds
+    stage = time.perf_counter()
     stops = bike.stops
     signal_probability = stops.red_time_s / stops.signal_cycle_s
     if signal_probability > 1:
@@ -468,7 +491,7 @@ def _calculate_batch(
         edge_average_speed / (2 * stops.deceleration_m_per_s2)
         + edge_average_speed / (2 * stops.acceleration_m_per_s2)
     ) * expected_stops + signal_counts * expected_signal_wait
-    separated_edges = bike_edges & (bike_classes == "separated_track_path")
+    separated_edges = riding_edges & (bike_classes == "separated_track_path")
     bike_stop_work_per_kg = (
         expected_stops * 0.5 * edge_average_speed**2
         / bike.gross_muscular_efficiency / 1000.0
@@ -476,8 +499,12 @@ def _calculate_batch(
     )
 
     bike_work_per_kg += bike_stop_work_per_kg
-    bike_energy = bike_work_per_kg * total_mass + bike_drag + bike_pedalling_energy
-    bike_time = bike_time_ride + bike_stop_time
+    bike_energy = np.where(
+        stair_edges, walk_energy,
+        bike_work_per_kg * total_mass + bike_drag + bike_pedalling_energy,
+    )
+    bike_time = np.where(stair_edges, walk_time, bike_time_ride + bike_stop_time)
+    timings["stops"] += time.perf_counter() - stage
 
     climb_segment = np.maximum(height_change, 0.0)
     climb = _sum_by_edge(climb_segment, groups)
@@ -496,11 +523,11 @@ def _calculate_batch(
             "bike_time_s": nullable(bike_time, valid_bike),
             "bike_energy_kj": nullable(bike_energy, valid_bike),
             "bike_energy_per_kg_kj_per_kg": nullable(
-                bike_work_per_kg, valid_bike
+                bike_work_per_kg, valid_bike & ~stair_edges
             ),
-            "bike_energy_drag_kj": nullable(bike_drag, valid_bike),
+            "bike_energy_drag_kj": nullable(bike_drag, valid_bike & ~stair_edges),
             "bike_pedalling_energy_kj": nullable(
-                bike_pedalling_energy, valid_bike
+                bike_pedalling_energy, valid_bike & ~stair_edges
             ),
             "climb_m": nullable(climb, complete_edges),
             "separated_length_m": pa.array(
@@ -529,8 +556,9 @@ def enrich_active_edge_costs(
 ) -> ActiveCostSummary:
     """Write section 9.3/9.7 costs for directed foot and bike edges.
 
-    Way-specific edge elevations are metres, coordinates and lengths are metres, grades
-    are dimensionless, times are seconds, and energies are kJ. Inputs are
+    Stair elevations use raw node samples; other profiles use smoothed way elevations.
+    Elevations, coordinates and lengths are metres, grades are dimensionless,
+    times are seconds, and energies are kJ. Inputs are
     existing OSM edge and node Parquet tables; this function is intended to
     be called by the later B2 stage, not as a standalone command.
     """
@@ -554,7 +582,7 @@ def enrich_active_edge_costs(
             f"DESCRIBE SELECT * FROM read_parquet('{node_source}')"
         ).fetchall()
     }
-    missing_node_columns = {"node_id", "x", "y", "tags"} - node_columns
+    missing_node_columns = {"node_id", "x", "y", "elevation_m", "tags"} - node_columns
     if missing_node_columns:
         raise ValueError(
             f"node table is missing required columns: "
@@ -620,8 +648,12 @@ def enrich_active_edge_costs(
     unknown_surfaces: Counter[str] = Counter()
     edge_count = 0
     incomplete_count = 0
+    timings = dict.fromkeys(
+        ("loading", "walk", "speed tables", "bike riding", "stops", "writing"), 0.0
+    )
     reader_connection = connection.cursor()
     try:
+        stage = time.perf_counter()
         edge_reader = reader_connection.execute(f"""
             SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.node_elevations_m,
                    e.length_m, e.highway,
@@ -636,13 +668,25 @@ def enrich_active_edge_costs(
             WHERE e.mode IN ('foot', 'bike')
             ORDER BY e.edge_key
         """).to_arrow_reader(batch_size=_EDGE_BATCH_SIZE)
-        for edge_batch in edge_reader:
+        timings["loading"] += time.perf_counter() - stage
+        edge_iterator = iter(edge_reader)
+        while True:
+            stage = time.perf_counter()
+            try:
+                edge_batch = next(edge_iterator)
+            except StopIteration:
+                timings["loading"] += time.perf_counter() - stage
+                break
             segments = _active_edge_batch(
                 connection, node_source, edge_batch
             )
+            timings["loading"] += time.perf_counter() - stage
             result, missing, batch_unknown, count, diagnostics, zeros = (
-                _calculate_batch(edge_batch, segments, energy, network, speed_tables)
+                _calculate_batch(
+                    edge_batch, segments, energy, network, speed_tables, timings
+                )
             )
+            stage = time.perf_counter()
             connection.register("_active_cost_batch", result)
             try:
                 connection.execute(
@@ -669,7 +713,9 @@ def enrich_active_edge_costs(
             edge_count += count
             incomplete_count += missing
             unknown_surfaces.update(batch_unknown)
+            timings["writing"] += time.perf_counter() - stage
 
+        stage = time.perf_counter()
         clipped_by_class, longest = _summarize_clipped_grades(
             connection, "_active_clipped_grades",
             network.bike_speed_table.clipped_grade_report_limit,
@@ -683,6 +729,7 @@ def enrich_active_edge_costs(
         """).fetchall())
         write_parquet(connection, "SELECT * FROM _active_cost_result", temporary)
         temporary.replace(output)
+        timings["writing"] += time.perf_counter() - stage
     finally:
         reader_connection.close()
         temporary.unlink(missing_ok=True)
@@ -697,7 +744,11 @@ def enrich_active_edge_costs(
         clipped_segments_by_class=clipped_by_class,
         longest_clipped_edges=longest,
     )
+    stage = time.perf_counter()
     write_active_grade_report(summary, output.with_suffix(".grades.md"))
+    timings["writing"] += time.perf_counter() - stage
+    for name, elapsed in timings.items():
+        logger.info("active %s completed in %.2f s", name, elapsed)
     return summary
 
 
@@ -711,7 +762,7 @@ def write_active_grade_report(summary: ActiveCostSummary, path: str | Path) -> N
         "",
         "## Zero-speed bike segments",
         "",
-        f"Segments: {summary.zero_speed_segment_count:,}. "
+        f"Error segments: {summary.zero_speed_segment_count:,}. "
         "Affected bike costs are null.",
         "Grades are original signed grades; cap is in km/h.",
         "",

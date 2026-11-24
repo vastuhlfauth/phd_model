@@ -15,13 +15,13 @@ from common.config import load_pilot_config
 from common.duckdb_io import open_connection, write_parquet
 
 from mobgrid.energy.rates import load_energy_config
-from mobgrid.osm import elevation, speeds
+from mobgrid.osm import active_costs, elevation, speeds
 from mobgrid.osm.active_costs import enrich_active_edge_costs
 from mobgrid.osm.config import load_network_config
 
 logger = logging.getLogger(__name__)
-_BUILD_VERSION = 2
-_CAR_BUILD_VERSION = 1
+_BUILD_VERSION = 3
+_CAR_BUILD_VERSION = 2
 _REPORT_HEADING = "## Edge costs"
 
 
@@ -173,7 +173,8 @@ def _write_report(
         _REPORT_HEADING,
         "",
         f"- Directed edges with null elevation profiles: {missing:,} of {total:,}",
-        f"- Zero-speed bike segments: {zero_speed:,}; see `active_costs.grades.md` "
+        f"- Zero-speed bike segments (errors): {zero_speed:,}; "
+        "see `active_costs.grades.md` "
         "for highway, bike class, surface, grade and cap.",
         "- Mean speeds are total directed length divided by total time, "
         "including delays.",
@@ -253,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     terminal = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     terminal.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
-    for target in (logger, speeds.logger):
+    for target in (logger, speeds.logger, active_costs.logger):
         target.addHandler(handler)
         target.addHandler(terminal)
         target.setLevel(logging.INFO)
@@ -280,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         timings["elevation"] = time.perf_counter() - stage
         logger.info("elevation completed in %.2f s", timings["elevation"])
         signature = {
-            "version": _CAR_BUILD_VERSION,
+            "version": _BUILD_VERSION,
             "edges": _file_signature(edges),
             "nodes": _file_signature(nodes),
             "network": network.model_dump(mode="json"),
@@ -298,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 stage = time.perf_counter()
                 car_signature = {
-                    "version": _BUILD_VERSION,
+                    "version": _CAR_BUILD_VERSION,
                     "edges": _file_signature(edges),
                     "config": network.car_speed.model_dump(mode="json"),
                 }
@@ -343,6 +344,12 @@ def main(argv: list[str] | None = None) -> int:
                         active_summary.unknown_surface_count,
                         active_summary.zero_speed_segment_count,
                     )
+                    if active_summary.zero_speed_segment_count:
+                        logger.error(
+                            "%s zero-speed bike segments have null costs; see %s",
+                            active_summary.zero_speed_segment_count,
+                            active.with_suffix(".grades.md"),
+                        )
                     _save_checkpoint(active_checkpoint, active_signature, active)
                 timings["active"] = time.perf_counter() - stage
                 logger.info("walk and bike completed in %.2f s", timings["active"])
@@ -389,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"- Elapsed: {time.perf_counter() - started:.2f} s\n",
                 encoding="utf-8",
             )
-        for target in (logger, speeds.logger):
+        for target in (logger, speeds.logger, active_costs.logger):
             target.removeHandler(handler)
             target.removeHandler(terminal)
         handler.close()

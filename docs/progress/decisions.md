@@ -1,5 +1,12 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6b: user approved section 9.7 rider power based on
+  effective grade `i + (Crr_surface - Crr_paved)`; force balance retains
+  physical grade and paved speeds are unchanged. Spec wording will follow.
+  Stairs use raw node elevations, at least flat-walking time, and walking
+  cost for bikes pushed; riding energy components are null on bike steps.
+  Remaining positive-length zero speeds are reported as errors with null
+  edge costs. This supersedes the earlier zero-speed decision below.
 - 2026-11-24, step 6b: retain the configured power/force model for zero-speed
   bike segments. Count and diagnose them, and null their edge time and energy;
   do not invent a minimum speed. Paved fallback surfaces are configured for

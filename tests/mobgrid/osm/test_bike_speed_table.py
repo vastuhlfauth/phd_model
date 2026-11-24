@@ -4,12 +4,58 @@ from mobgrid.energy.bike import (
     bike_ride_energy_kj,
     climbing_work_j_per_kg,
     drag_work_j,
+    required_power_w,
     ride_speed_and_power,
     rolling_work_j_per_kg,
+    select_ride_power_w,
+    solve_bike_speed_m_per_s,
 )
 from mobgrid.energy.rates import load_energy_config
 from mobgrid.osm.bike_speed_table import BikeSpeedTable
 from mobgrid.osm.config import load_network_config
+
+
+def test_felt_grade_produces_positive_speed_for_all_surfaces_and_grid():
+    energy = load_energy_config("config/energy.yaml")
+    network = load_network_config("config/network.yaml")
+    for crr in energy.bike.surface_crr.values():
+        for cap in set(network.bike_speed_table.class_cap_kmh.values()) | set(
+            network.bike_speed_table.highway_cap_kmh.values()
+        ):
+            table = BikeSpeedTable(energy, network.bike_speed_table, crr, cap)
+            speeds, _ = table.lookup(np.append(table.grades, -0.028))
+            assert np.isfinite(speeds).all()
+            assert (speeds > 0).all()
+
+
+def test_paved_power_rule_matches_previous_solver():
+    energy = load_energy_config("config/energy.yaml")
+    grid = load_network_config("config/network.yaml").bike_speed_table
+    crr = energy.bike.surface_crr["asphalt_concrete_paved_default"]
+    table = BikeSpeedTable(energy, grid, crr, 30)
+    grades = np.linspace(grid.grade_min, grid.grade_max, 101)
+    speeds, powers = table.lookup(grades)
+    bike = energy.bike
+    expected = []
+    mass = energy.reference_mass_kg + bike.bike_mass_kg
+    for grade in grades:
+        power = select_ride_power_w(
+            grade, bike.power.p0_w, bike.power.k, bike.power.p_max_w
+        )
+        speed = solve_bike_speed_m_per_s(
+            power, mass, grade, crr, bike.cda_m2, bike.rho_air_kg_per_m3,
+            bike.drivetrain_efficiency,
+        )
+        cap = min(bike.power.v_max_descent_kmh, 30) / 3.6 if grade < 0 else 30 / 3.6
+        if speed > cap:
+            speed = cap
+            power = max(required_power_w(
+                speed, mass, grade, crr, bike.cda_m2, bike.rho_air_kg_per_m3,
+                bike.drivetrain_efficiency,
+            ), 0)
+        expected.append((speed, power))
+    assert speeds == pytest.approx([item[0] for item in expected])
+    assert powers == pytest.approx([item[1] for item in expected])
 
 
 @pytest.mark.parametrize("surface", [
@@ -39,6 +85,9 @@ def test_table_matches_scalar_solver_across_grade_transitions(surface, cap_kmh):
             energy.reference_mass_kg + bike.bike_mass_kg, crr,
             bike.cda_m2, bike.rho_air_kg_per_m3, bike.drivetrain_efficiency,
             power.v_max_descent_kmh / 3.6, cap_kmh / 3.6,
+            paved_rolling_resistance=bike.surface_crr[
+                "asphalt_concrete_paved_default"
+            ],
         )
         for grade in grades
     ])
@@ -86,6 +135,9 @@ def test_lookup_handles_grades_outside_the_grid_and_rejects_nonfinite_values():
             energy.reference_mass_kg + bike.bike_mass_kg, 0.006,
             bike.cda_m2, bike.rho_air_kg_per_m3, bike.drivetrain_efficiency,
             power.v_max_descent_kmh / 3.6, 30 / 3.6,
+            paved_rolling_resistance=bike.surface_crr[
+                "asphalt_concrete_paved_default"
+            ],
         )[0]
         for grade in grades
     ]

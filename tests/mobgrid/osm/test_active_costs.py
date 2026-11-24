@@ -37,7 +37,7 @@ def test_every_known_highway_and_bike_class_has_a_valid_surface_default():
     )
 
 
-def test_zero_bike_speed_segments_are_null_counted_and_reported(tmp_path):
+def test_grass_descent_has_finite_bike_costs(tmp_path):
     edges_path, nodes_path = _write_tables(tmp_path)
     connection = duckdb.connect()
     connection.execute(
@@ -62,11 +62,95 @@ def test_zero_bike_speed_segments_are_null_counted_and_reported(tmp_path):
         ).fetchone()
     finally:
         connection.close()
+    assert np.isfinite(row[0]) and row[0] > 0
+    assert np.isfinite(row[1]) and row[1] > 0
+    assert row[2] == 0
+    assert summary.zero_speed_segment_count == 0
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected_height"),
+    [([0, 0, 0], 0), ([0, 10, 20], 20), ([20, 10, 0], -20)],
+)
+def test_steps_use_raw_elevation_and_bikes_push(tmp_path, raw, expected_height):
+    edges_path, nodes_path = _write_tables(tmp_path)
+    connection = duckdb.connect()
+    connection.execute(
+        "CREATE TABLE edges AS SELECT * FROM read_parquet(?)", [str(edges_path)]
+    )
+    connection.execute(
+        "UPDATE edges SET highway = 'steps', node_elevations_m = [0, 0, 0], "
+        "signal_count = 1"
+    )
+    connection.execute("COPY edges TO ? (FORMAT PARQUET)", [str(edges_path)])
+    connection.execute(
+        "CREATE TABLE nodes AS SELECT * FROM read_parquet(?)", [str(nodes_path)]
+    )
+    connection.execute(
+        "UPDATE nodes SET elevation_m = list_extract(?::DOUBLE[], node_id)", [raw]
+    )
+    connection.execute("COPY nodes TO ? (FORMAT PARQUET)", [str(nodes_path)])
+    energy = load_energy_config(ENERGY_PATH)
+    output = tmp_path / "costs.parquet"
+    try:
+        enrich_active_edge_costs(
+            connection, edges_path, nodes_path, output,
+            energy=energy, network=load_network_config(NETWORK_PATH),
+        )
+        rows = connection.execute(
+            "SELECT edge_key, walk_time_s, walk_energy_kj, bike_time_s, "
+            "bike_energy_kj, bike_energy_per_kg_kj_per_kg, bike_energy_drag_kj, "
+            "bike_pedalling_energy_kj FROM read_parquet(?) ORDER BY edge_key",
+            [str(output)],
+        ).fetchall()
+    finally:
+        connection.close()
+    bike, walk = rows
+    stair_speed = (
+        energy.stairs.up_speed_m_per_s if expected_height >= 0
+        else energy.stairs.down_speed_m_per_s
+    )
+    expected_time = max(
+        100 / (energy.walking.v0_kmh / 3.6),
+        abs(expected_height) / stair_speed,
+    )
+    assert walk[1] == pytest.approx(expected_time)
+    assert bike[3] == pytest.approx(walk[1])
+    assert bike[4] == pytest.approx(walk[2])
+    assert bike[5:] == (None, None, None)
+    assert walk[2] == pytest.approx(
+        energy.reference_mass_kg * 9.81 * abs(expected_height)
+        / energy.stairs.up_efficiency / 1000
+        * (1 if expected_height >= 0 else energy.stairs.down_to_up_energy_ratio)
+    )
+
+
+def test_zero_bike_speed_is_reported_as_error(tmp_path, monkeypatch):
+    edges_path, nodes_path = _write_tables(tmp_path)
+    monkeypatch.setattr(
+        BikeSpeedTable, "lookup",
+        lambda self, grades: (np.zeros_like(grades), np.zeros_like(grades)),
+    )
+    output = tmp_path / "costs.parquet"
+    connection = duckdb.connect()
+    try:
+        with np.errstate(divide="raise", invalid="raise"):
+            summary = enrich_active_edge_costs(
+                connection, edges_path, nodes_path, output,
+                energy=load_energy_config(ENERGY_PATH),
+                network=load_network_config(NETWORK_PATH),
+            )
+        row = connection.execute(
+            "SELECT bike_time_s, bike_energy_kj, bike_zero_speed_segments "
+            "FROM read_parquet(?) WHERE edge_key = 'bike:f'", [str(output)]
+        ).fetchone()
+    finally:
+        connection.close()
     assert row == (None, None, 2)
     assert summary.zero_speed_segment_count == 2
-    text = output.with_suffix(".grades.md").read_text(encoding="utf-8")
-    assert "grass_sand" in text and "mixed_traffic" in text
-    assert "-0.028" in text and "30" in text
+    assert "Error segments: 2" in output.with_suffix(".grades.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_missing_highway_uses_bike_class_surface_default(tmp_path):
@@ -197,6 +281,9 @@ def test_sloped_edge_costs_match_energy_package_segment_by_segment(tmp_path):
             bike.drivetrain_efficiency,
             bike.power.v_max_descent_kmh / 3.6,
             speed_cap,
+            paved_rolling_resistance=bike.surface_crr[
+                "asphalt_concrete_paved_default"
+            ],
         )
         bike_time += length_m / speed
         bike_energy += bike_ride_energy_kj(
@@ -298,7 +385,9 @@ def test_steps_use_configured_stair_formula(tmp_path):
         ).fetchone()
     finally:
         connection.close()
-    assert walk_time == pytest.approx(10.0 / energy.stairs.up_speed_m_per_s)
+    assert walk_time == pytest.approx(max(
+        10.0 / energy.stairs.up_speed_m_per_s, 100 / (energy.walking.v0_kmh / 3.6)
+    ))
     assert walk_energy == pytest.approx(
         energy.reference_mass_kg * 9.81 * 10 / energy.stairs.up_efficiency / 1000
     )
@@ -393,6 +482,9 @@ def test_tracktype_surface_fallback_precedes_highway_default(tmp_path):
             bike.drivetrain_efficiency,
             bike.power.v_max_descent_kmh / 3.6,
             cap,
+            paved_rolling_resistance=bike.surface_crr[
+                "asphalt_concrete_paved_default"
+            ],
         )
         expected_time += length_m / speed
     assert bike_time == pytest.approx(expected_time)
@@ -460,6 +552,9 @@ def test_bike_stops_use_configured_probabilities_and_unknown_surfaces_fallback(
             bike.drivetrain_efficiency,
             bike.power.v_max_descent_kmh / 3.6,
             cap,
+            paved_rolling_resistance=bike.surface_crr[
+                "asphalt_concrete_paved_default"
+            ],
         )
         ride_time += length_m / speed
         if rider_power > 0:
@@ -601,6 +696,9 @@ def test_extreme_grades_are_clipped_counted_and_reported(tmp_path):
         bike.drivetrain_efficiency,
         bike.power.v_max_descent_kmh / 3.6,
         network.bike_speed_table.class_cap_kmh["mixed_traffic"] / 3.6,
+        paved_rolling_resistance=bike.surface_crr[
+            "asphalt_concrete_paved_default"
+        ],
     )
     assert bike_time == pytest.approx(100 / bike_speed)
     assert summary.clipped_segments_by_class[("foot", "residential")] == (2, 100.0)

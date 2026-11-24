@@ -3,6 +3,20 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: pilot active-cost corrections (2026-11-24)
+
+- Use the approved surface-adjusted effective grade for bike rider power;
+  physical grade still determines forces and paved outputs remain unchanged.
+- Use raw node samples for stairs; floor stair time at flat walking time,
+  and treat bike steps as pushing, without riding or stop components.
+- Report any remaining zero-speed segments as errors; aggregate and print
+  loading, walking, table, riding, stop and writing times across batches.
+- Version active and joined cost checkpoints separately from the unchanged
+  car checkpoint; matching edge, elevation and car outputs can be reused.
+- Synthetic regressions cover the speed grid, stairs, checkpoint invalidation
+  and timing logs: 88 passed, Ruff clean. No pilot rerun; inspect timings and
+  reports after rerunning.
+
 ### Step 6b: pilot cost failure (2026-11-24)
 
 - Added surface defaults for every known highway and bike class, including

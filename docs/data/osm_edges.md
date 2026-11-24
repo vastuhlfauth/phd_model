@@ -56,6 +56,8 @@ are metres; `car_time_s`, `walk_time_s` and `bike_time_s` are seconds;
 The `is_urban` boolean and `speed_limit_bucket` string apply to car edges.
 `bike_zero_speed_segments` is a nullable int32 count for bike edges.
 Mode-inapplicable values and costs with incomplete elevation profiles are null.
+For bike steps, the three riding-energy component columns are null; total
+energy is the walking stair energy.
 
 ## Edge columns
 
@@ -121,23 +123,29 @@ graph node can change subsequent segment indexes and keys.
 
 The step 6b active-cost function writes `active_costs.parquet`, one row per
 directed foot or bike `edge_key`. Inapplicable mode-specific cost columns are
-null. It uses way-specific ordered edge elevations for segment grades and leaves costs null
-for incomplete profiles, which are counted in its summary.
+null. It uses way-specific smoothed edge elevations for segment grades,
+except for steps, which use raw `nodes.parquet` elevation samples. Incomplete
+profiles have null costs and are counted in its summary.
 Non-stair walking grades are clipped to the configured Minetti range and
-bike grades to the configured speed-table grid for both time and energy.
+non-stair bike grades to the configured speed-table grid for both time and energy.
 Physical climb remains based on the original elevation changes. The adjacent
 `.grades.md` report counts clipped directed segments and their lengths by
 mode and OSM highway class and lists the configured 20 longest affected
 edges with their most extreme original signed grade.
-The elevation-stage report contains the same diagnostics before active costs
-are built, using the smoothed profiles and configured grade ranges.
-Segments with zero model speed and positive length are counted by highway,
+The elevation-stage report is computed before active costs, using smoothed
+profiles and configured grade ranges, including bike steps; its clipping
+counts can therefore differ from the active report.
+For rider power, the approved effective grade is physical grade plus the
+surface Crr minus the configured paved Crr; force balance retains physical
+grade. Paved results are unchanged. Any remaining zero-speed segments with
+positive length are errors counted by highway,
 bike infrastructure, resolved surface, original grade range and speed cap in
 `active_costs.grades.md`. Their containing bike edges have null time and energy,
-not infinite or partial costs. The step 6 report gives the total segment count.
-The configured power model can produce zero for grass/sand on a narrow gentle
-descent: at those slopes neither the selected rider power nor gravity exceeds
-rolling resistance. No unconfigured minimum speed is substituted.
+not infinite or partial costs. The step 6 report gives the total error count.
+Stair time is at least flat walking time over the full edge; bike steps use
+the walking stair time and energy without riding or stop costs.
+Active-cost loading, walking, speed-table construction, riding, stops and
+writing times are printed and logged as batch-aggregated durations.
 
 The elevation CLI checkpoints sampled nodes and completed output signatures
 under `data/interim/osm/{state}/{area}/elevation/`. Matching reruns reuse
@@ -148,14 +156,14 @@ dated log and run summary are written under `logs/`.
 |---|---|---|---|
 | `edge_key` | string | none | Directed foot or bike edge key |
 | `walk_time_s`, `walk_energy_kj` | float64, nullable | seconds, kJ | Summed segment walk cost; steps use the stair formula |
-| `bike_time_s`, `bike_energy_kj` | float64, nullable | seconds, kJ | Ride plus expected stop time; total riding energy |
-| `bike_energy_per_kg_kj_per_kg` | float64, nullable | kJ/kg | Rolling, signed climb, and stop energy per total bike+rider kg |
-| `bike_energy_drag_kj` | float64, nullable | kJ | Drag energy |
-| `bike_pedalling_energy_kj` | float64, nullable | kJ | Unloaded pedalling energy, based on reference body mass |
+| `bike_time_s`, `bike_energy_kj` | float64, nullable | seconds, kJ | Ride plus expected stop time and riding energy; walking cost on steps |
+| `bike_energy_per_kg_kj_per_kg` | float64, nullable | kJ/kg | Rolling, signed climb, and stop energy per total bike+rider kg; null on steps |
+| `bike_energy_drag_kj` | float64, nullable | kJ | Drag energy; null on steps |
+| `bike_pedalling_energy_kj` | float64, nullable | kJ | Unloaded pedalling energy, based on reference body mass; null on steps |
 | `climb_m` | float64, nullable | metres | Sum of positive segment elevation changes |
 | `separated_length_m` | float64 | metres | Bike-edge length on separated infrastructure, otherwise zero |
 
-Bike total energy equals the per-kg component times configured rider-plus-bike
+For riding, bike total energy equals the per-kg component times configured rider-plus-bike
 mass, plus drag and unloaded-pedalling energy. Unknown non-empty `surface`
 values use the highway-class default and are reported by value in the function
 summary. All known highway classes have defaults; missing or unknown highway
