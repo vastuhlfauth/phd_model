@@ -43,6 +43,13 @@ The cost command updates the report with incomplete-elevation edge counts,
 length/time mean speeds by highway class, and the urban share of directed car
 length by class. It prints substage times and writes dated logs and summaries.
 Intermediate car and active cost files remain available as described below.
+The 2021 pilot edge report also compares `geovelo-2022` to OSM inside the
+configured department: it lists distinct `ame_d`/`ame_g` values, excluded
+lengths, family lengths by commune, and same-family matches within the
+configured tolerance. Run the command below to write the report; matching
+edge-build outputs are reused:
+
+`python -m mobgrid.osm.edges --state 2021 --area pilot`
 For the 2021 pilot, both elevation entry points use
 `docs/data/step06_elevation_pilot.md`. An existing checkpoint using the old
 year-suffixed name is reused only when both report contents and all other

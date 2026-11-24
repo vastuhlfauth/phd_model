@@ -24,6 +24,12 @@ BikeClass = Literal[
     "low_speed",
     "mixed_traffic",
 ]
+BikeReportFamily = Literal[
+    "separated_track_path",
+    "painted_lane",
+    "bus_lane",
+    "low_speed",
+]
 
 
 class AccessRule(BaseModel):
@@ -122,6 +128,18 @@ class BikeEdgeCostConfig(BaseModel):
     surface_default_by_bike_class: dict[BikeClass, str]
 
 
+class GeoveloReportConfig(BaseModel):
+    """Géovélo facility mapping and spatial matching for section 8.1."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_ids_by_state: dict[int, str]
+    amenagement_families: dict[str, BikeReportFamily | None]
+    osm_cycleway_families: dict[str, BikeReportFamily]
+    osm_unmarked_contraflow_rules: tuple[str, ...]
+    match_tolerance_m: float = Field(gt=0, allow_inf_nan=False)
+
+
 class NetworkConfig(BaseModel):
     """Validated OSM extraction and tiling parameters."""
 
@@ -150,6 +168,7 @@ class NetworkConfig(BaseModel):
     bike_classes: dict[BikeClass, tuple[str, ...]]
     bike_speed_table: BikeSpeedTableConfig
     bike_edge_costs: BikeEdgeCostConfig
+    geovelo_report: GeoveloReportConfig
     tile_size_m: int = Field(gt=0)
 
 

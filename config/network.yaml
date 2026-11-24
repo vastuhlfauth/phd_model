@@ -414,4 +414,33 @@ bike_edge_costs:
     bus_lane: asphalt_concrete_paved_default
     low_speed: asphalt_concrete_paved_default
     mixed_traffic: asphalt_concrete_paved_default
+geovelo_report:
+  source_ids_by_state:
+    2021: geovelo-2022
+  amenagement_families:
+    PISTE CYCLABLE: separated_track_path
+    VOIE VERTE: separated_track_path
+    AMENAGEMENT MIXTE PIETON VELO HORS VOIE VERTE: separated_track_path
+    BANDE CYCLABLE: painted_lane
+    ACCOTEMENT REVETU HORS CVCB: painted_lane
+    CHAUSSEE A VOIE CENTRALE BANALISEE: painted_lane
+    COULOIR BUS+VELO: bus_lane
+    VELO RUE: low_speed
+    DOUBLE SENS CYCLABLE: low_speed
+    DOUBLE SENS CYCLABLE BANDE: painted_lane
+    DOUBLE SENS CYCLABLE PISTE: separated_track_path
+    AUCUN: null
+    AUTRE: null
+    GOULOTTE: null
+  osm_cycleway_families:
+    track: separated_track_path
+    opposite_track: separated_track_path
+    lane: painted_lane
+    opposite_lane: painted_lane
+    share_busway: bus_lane
+    opposite: low_speed
+  osm_unmarked_contraflow_rules:
+    - oneway=yes+oneway:bicycle=no
+    - oneway=-1+oneway:bicycle=no
+  match_tolerance_m: 15
 tile_size_m: 50000

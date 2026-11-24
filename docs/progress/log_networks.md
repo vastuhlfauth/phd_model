@@ -3,6 +3,21 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: Géovélo department comparison (2026-11-24)
+
+- Added configured `ame_d`/`ame_g` family mappings, including marked and
+  unmarked contraflow, plus explicit exclusions and a 15 m matching threshold.
+- The step 6 report lists distinct values, excluded counts/lengths, family
+  lengths by commune, and Géovélo same-family matched shares.
+- Both sources are clipped to the configured department; OSM uses way tags
+  and ordered way geometry, not directed-edge lengths. Two-sided facilities
+  count twice; separated paths count once.
+- Synthetic report test covers two-sided OSM/Géovélo lanes, a two-way path,
+  distinct values, exclusions and matching; report settings leave the edge
+  cache signature unchanged. Focused OSM tests: 21 passed; Ruff clean.
+- No pilot or national build was run. Run the step 6 report to inspect the
+  real department values and matching results.
+
 ### Step 6b: elevation climb sensitivity (2026-11-24)
 
 - Added report-only `--smoothing-windows`; alternative windows are computed

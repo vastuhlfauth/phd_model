@@ -305,6 +305,22 @@ def test_car_speed_parameter_changes_do_not_invalidate_edge_build_cache(
         connection.close()
 
 
+def test_geovelo_report_settings_do_not_invalidate_edge_build_cache(tmp_path) -> None:
+    connection, ways_path, nodes_path = _raw_tables(tmp_path)
+    config = load_network_config("config/network.yaml")
+    changed_geovelo = config.geovelo_report.model_copy(update={
+        "match_tolerance_m": config.geovelo_report.match_tolerance_m + 1
+    })
+    changed_config = config.model_copy(update={"geovelo_report": changed_geovelo})
+
+    try:
+        assert _input_signature(ways_path, nodes_path, config) == _input_signature(
+            ways_path, nodes_path, changed_config
+        )
+    finally:
+        connection.close()
+
+
 def test_edge_keys_distinguish_repeated_segments_and_rebuilds(tmp_path) -> None:
     connection, ways_path, nodes_path = _raw_tables(tmp_path)
     connection.execute("""

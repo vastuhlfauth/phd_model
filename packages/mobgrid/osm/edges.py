@@ -14,6 +14,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pyarrow as pa
+from acquire.manifest import load_manifest
 from common.config import load_pilot_config
 from common.duckdb_io import read_parquet, write_parquet
 from common.grid import cell_id
@@ -21,6 +22,7 @@ from numba import njit
 
 from mobgrid.osm.bike_infra import bike_infrastructure_sql, maxspeed_sql
 from mobgrid.osm.config import Mode, NetworkConfig, load_network_config
+from mobgrid.osm.geovelo_report import write_geovelo_report_section
 from mobgrid.pt.osm_route_extraction import configure_extraction_connection
 
 logger = logging.getLogger(__name__)
@@ -375,7 +377,8 @@ def _input_signature(
                 "config": config.model_dump(
                     mode="json",
                     exclude={
-                        "car_speed", "bike_speed_table", "elevation_smoothing_window_m"
+                    "car_speed", "bike_speed_table", "elevation_smoothing_window_m",
+                    "geovelo_report",
                     },
                 ),
             },
@@ -1195,6 +1198,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--state", type=int, required=True)
     parser.add_argument("--area", choices=("pilot", "national"), default="pilot")
     parser.add_argument("--config", type=Path, default=Path("config/network.yaml"))
+    parser.add_argument("--manifest", type=Path, default=Path("config/sources.yaml"))
     parser.add_argument("--pilot-config", type=Path, default=Path("config/pilot.yaml"))
     parser.add_argument("--report", type=Path)
     parser.add_argument("--log", type=Path)
@@ -1251,6 +1255,30 @@ def main(argv: list[str] | None = None) -> int:
             ways_path=ways_path,
             config=config,
         )
+        source_id = config.geovelo_report.source_ids_by_state.get(args.state)
+        if args.area == "pilot" and source_id is not None:
+            sources = {source.id: source for source in load_manifest(args.manifest)}
+            geovelo_source = sources.get(source_id)
+            contour_source = sources.get(config.contour_source_id)
+            if geovelo_source is None:
+                raise ValueError(f"Géovélo source {source_id!r} is not in the manifest")
+            if contour_source is None:
+                raise ValueError(
+                    "contour source "
+                    f"{config.contour_source_id!r} is not in the manifest"
+                )
+            write_geovelo_report_section(
+                connection,
+                report_path,
+                ways_path=ways_path,
+                nodes_path=nodes_path,
+                edges_path=result.edges_path,
+                geovelo_path=geovelo_source.local_path,
+                contours_path=contour_source.local_path,
+                department=pilot.department,
+                source_id=source_id,
+                config=config,
+            )
         _log_stage_elapsed("connectivity-and-report", report_started)
     finally:
         connection.close()

@@ -14,6 +14,8 @@
 
 | Field | Type | Unit | Meaning |
 |---|---|---|---|
+| `code` | string | none | Commune code, used to identify report rows |
+| `nom` | string | none | Commune name, used to label report rows |
 | `departement` | string | none | Department code on each commune feature |
 | `geom` | geometry | CRS coordinates | Commune polygon read by DuckDB `ST_Read` |
 

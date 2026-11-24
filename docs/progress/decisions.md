@@ -1,5 +1,12 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6b: validate `geovelo-2022` inside the configured pilot
+  department only. Map `ame_d`/`ame_g` to the four existing bike families;
+  count non-empty unmapped and explicitly null-mapped values as excluded.
+  Count each amenagement side and OSM `cycleway:left/right/both` once, but
+  count a two-sided separated feature or a separate OSM `highway=cycleway`/
+  `highway=path` geometry once. Match clipped Géovélo length to the union of
+  same-family OSM buffers at the configured 15 m tolerance.
 - 2026-11-24, step 6b: smoothing sensitivity is report-only and recomputes
   from saved raw way elevations; 0 m means no smoothing and 50 m is required
   for the map and ranked lists. Assign each directed car edge to the
