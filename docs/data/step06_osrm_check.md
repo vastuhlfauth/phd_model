@@ -6,7 +6,12 @@ Server data versions: not provided.
 This is the full-network baseline, not the grid-variant or accessibility rank-correlation validation.
 
 Errors are model minus OSRM; relative error is the mean signed time difference divided by OSRM time. Time shares include the stated boundary.
-NoRoute, NoSegment and pairs snapped beyond the configured limit are excluded from metrics and calibration. Eligible routes not reached within the Dial cutoff are excluded from metrics.
+NoRoute, NoSegment and pairs snapped beyond the configured limit are excluded from metrics and calibration. Eligible routes not reached within the Dial cutoff are excluded from metrics and calibration.
+
+## OSRM car profile context
+
+The [upstream OSRM car profile](https://github.com/Project-OSRM/osrm-backend/blob/v5.27.1/profiles/car.lua) defaults for untagged roads include unclassified and residential: 25 km/h and 25 km/h, tertiary: 40 km/h, primary: 65 km/h. Tagged maxspeed is multiplied by 0.8; turn penalties are angle-dependent up to 7.5 s and signals add 2 s. Other tags can change these values.
+These upstream defaults may not match the deployed FOSSGIS profile; its version and configuration are not verified. OSRM is used as a network check, not as a speed reference; the calibration against it is exploratory.
 
 | Mode | Band (km) | Context | Matched | Cutoff | NoRoute | NoSegment | Over snap limit | Bias (min) | Median abs (min) | Within 2 min | Within 5 min | Relative error | Distance bias (m) | Median abs distance (m) |
 |---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -61,7 +66,7 @@ Limit: 25 m at either endpoint. Distribution pools both endpoints of all success
 
 ## Car calibration
 
-Failed: car calibration pairs exceed the provisional Dial cutoff
+Failed: bounded calibration stalled before convergence
 
 Sample: data\interim\osrm\pairs.parquet.
 Responses: data\interim\osrm\responses.
