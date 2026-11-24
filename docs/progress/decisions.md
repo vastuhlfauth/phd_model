@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6: serialize OSRM queries with an OS lock and retain the
+  last request timestamp across restarts. Store all raw HTTP responses with
+  UTC dates; resume only structurally valid successful routes. Do not follow
+  redirects, which could bypass the request interval.
 - 2026-11-24, step 8: select Dial in `config/search.yaml`; the 1,000-origin
   pilot benchmark found it faster in car, bike and foot. Heap remains available.
 - 2026-11-24, step 8: graph version 2 keeps class and speed-bucket changes

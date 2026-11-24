@@ -86,6 +86,20 @@ The benchmark needs all three mode cutoffs filled in that configuration; it
 checkpoints under the pilot interim directory and writes a dated log and
 summary under the configured log directory.
 
+## OSRM query checkpoints
+
+The section 13 query command reads the configured sample Parquet with
+`pair_id`, `mode`, `origin_lon`, `origin_lat`, `destination_lon` and
+`destination_lat`. Coordinates are WGS84 longitude and latitude. Set the
+environment variable named in `config/osrm.yaml`, then run
+`python -m mobgrid.validation.osrm queries --config config/osrm.yaml`.
+It does not generate the sample. It saves each raw response and its UTC
+request/response dates under the configured interim directory, including
+failures, and resumes valid matching responses. It serializes runs, enforces
+the configured delay across restarts, does not follow redirects, and stops on
+HTTP 429 or exhausted retries. Dated logs and summaries record run counts.
+OSRM's current map data need not match the model's 2021 network.
+
 ## Edge columns
 
 | Column | Type | Meaning |

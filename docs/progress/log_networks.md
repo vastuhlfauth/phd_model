@@ -3,6 +3,15 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6: OSRM query stage (2026-11-24)
+
+- Added serial, rate-limited FOSSGIS-compatible queries with durable raw
+  responses and UTC request/response dates; successful pairs resume.
+- An OS lock prevents concurrent runs; request timestamps persist across
+  restarts. HTTP 429 stops immediately; 5xx and network retries are bounded.
+- Tests mock HTTP: 5 passed; Ruff clean. No OSRM server was contacted.
+- The stratified sample and routing/calibration report remain to implement.
+
 ### Step 8: benchmark cutoff and queue (2026-11-24)
 
 - The million-node synthetic chain now settles all one million nodes; previously

@@ -1,0 +1,15 @@
+base_url_env: OSRM_BASE_URL
+profile: driving
+prefixes:
+  car: routed-car
+  bike: routed-bike
+  foot: routed-foot
+user_agent: "phd_model, ENTPE research"
+interval_s: 1.1
+policy_minimum_interval_s: 1.0
+retry_backoff_s: 2.0
+max_attempts: 3
+timeout_s: 30
+sample_path: data/interim/osrm/pairs.parquet
+response_directory: data/interim/osrm/responses
+log_directory: logs
