@@ -221,6 +221,766 @@ lengths are ellipsoidal metres computed from ordered OSM node latitude/longitude
 | painted_lane | 11,365 | 660,079.5 |
 | separated_track_path | 33,314 | 4,272,270.8 |
 
+## Géovélo comparison
+
+- Géovélo source: `geovelo-2022`.
+- Scope: department `33` only; geometries are clipped to configured commune contours in EPSG:3035.
+- OSM lengths use each tagged way geometry once per facility side, not directed-edge lengths. `highway=cycleway` and `highway=path` count once regardless of direction; Géovélo amenagement sides each count once except a separated facility shared by both fields.
+- Matching threshold: 15 m; each Géovélo family's geometry is matched against the union of same-family OSM buffers.
+
+### Distinct Géovélo amenagement values
+
+| Field | Value | Features |
+|---|---|---:|
+| ame_d | (blank) | 2 |
+| ame_d | AMENAGEMENT MIXTE PIETON VELO HORS VOIE VERTE | 127 |
+| ame_d | AUCUN | 1,767 |
+| ame_d | AUTRE | 221 |
+| ame_d | BANDE CYCLABLE | 1,911 |
+| ame_d | CHAUSSEE A VOIE CENTRALE BANALISEE | 1 |
+| ame_d | COULOIR BUS+VELO | 313 |
+| ame_d | DOUBLE SENS CYCLABLE BANDE | 2 |
+| ame_d | GOULOTTE | 16 |
+| ame_d | PISTE CYCLABLE | 4,049 |
+| ame_d | VELO RUE | 7 |
+| ame_d | VOIE VERTE | 491 |
+| ame_g | AMENAGEMENT MIXTE PIETON VELO HORS VOIE VERTE | 112 |
+| ame_g | AUCUN | 2,625 |
+| ame_g | AUTRE | 174 |
+| ame_g | BANDE CYCLABLE | 901 |
+| ame_g | CHAUSSEE A VOIE CENTRALE BANALISEE | 1 |
+| ame_g | COULOIR BUS+VELO | 73 |
+| ame_g | DOUBLE SENS CYCLABLE BANDE | 263 |
+| ame_g | DOUBLE SENS CYCLABLE NON MATERIALISE | 1,357 |
+| ame_g | DOUBLE SENS CYCLABLE PISTE | 11 |
+| ame_g | GOULOTTE | 16 |
+| ame_g | PISTE CYCLABLE | 2,936 |
+| ame_g | VOIE VERTE | 438 |
+
+### Length by commune and family
+
+| Commune code | Commune | Family | OSM (m) | Géovélo (m) |
+|---|---|---|---:|---:|
+| 33001 | Abzac | low_speed | 1,063.4 | 0.0 |
+| 33001 | Abzac | separated_track_path | 49.3 | 0.0 |
+| 33002 | Aillas | separated_track_path | 274.6 | 0.0 |
+| 33003 | Ambarès-et-Lagrave | low_speed | 7,530.3 | 0.0 |
+| 33003 | Ambarès-et-Lagrave | painted_lane | 3,188.4 | 5,077.0 |
+| 33003 | Ambarès-et-Lagrave | separated_track_path | 12,457.4 | 8,663.6 |
+| 33004 | Ambès | low_speed | 2,535.5 | 0.0 |
+| 33004 | Ambès | painted_lane | 2,223.9 | 3,038.7 |
+| 33004 | Ambès | separated_track_path | 4,387.0 | 2,884.6 |
+| 33005 | Andernos-les-Bains | low_speed | 2,745.0 | 0.0 |
+| 33005 | Andernos-les-Bains | painted_lane | 1,535.4 | 1,535.4 |
+| 33005 | Andernos-les-Bains | separated_track_path | 37,239.9 | 19,822.5 |
+| 33007 | Arbanats | separated_track_path | 2,988.4 | 0.0 |
+| 33008 | Porte-de-Benauge | low_speed | 150.0 | 0.0 |
+| 33008 | Porte-de-Benauge | separated_track_path | 2,166.9 | 0.0 |
+| 33009 | Arcachon | low_speed | 5,315.1 | 0.0 |
+| 33009 | Arcachon | separated_track_path | 40,355.7 | 24,672.0 |
+| 33010 | Arcins | low_speed | 839.0 | 0.0 |
+| 33011 | Arès | low_speed | 4,168.4 | 0.0 |
+| 33011 | Arès | painted_lane | 475.5 | 951.0 |
+| 33011 | Arès | separated_track_path | 21,035.7 | 13,077.9 |
+| 33012 | Arsac | low_speed | 2,911.1 | 0.0 |
+| 33012 | Arsac | separated_track_path | 12,914.1 | 1,205.9 |
+| 33013 | Artigues-près-Bordeaux | low_speed | 1,657.3 | 0.0 |
+| 33013 | Artigues-près-Bordeaux | painted_lane | 3,934.2 | 6,813.7 |
+| 33013 | Artigues-près-Bordeaux | separated_track_path | 7,397.1 | 4,960.5 |
+| 33014 | Les Artigues-de-Lussac | low_speed | 1.4 | 0.0 |
+| 33015 | Arveyres | low_speed | 1,416.3 | 0.0 |
+| 33015 | Arveyres | painted_lane | 6,357.4 | 10,275.3 |
+| 33015 | Arveyres | separated_track_path | 1,344.7 | 621.2 |
+| 33017 | Aubiac | separated_track_path | 379.8 | 0.0 |
+| 33018 | Val de Virvée | low_speed | 2,024.7 | 0.0 |
+| 33018 | Val de Virvée | painted_lane | 218.0 | 436.1 |
+| 33018 | Val de Virvée | separated_track_path | 1,200.4 | 0.0 |
+| 33019 | Audenge | low_speed | 9,292.7 | 0.0 |
+| 33019 | Audenge | separated_track_path | 28,958.0 | 19,320.2 |
+| 33021 | Auros | separated_track_path | 1,450.5 | 0.0 |
+| 33022 | Avensan | painted_lane | 1,010.0 | 2,020.0 |
+| 33022 | Avensan | separated_track_path | 6,060.5 | 42.2 |
+| 33023 | Ayguemorte-les-Graves | low_speed | 760.9 | 0.0 |
+| 33023 | Ayguemorte-les-Graves | separated_track_path | 2.3 | 0.0 |
+| 33025 | Baigneaux | separated_track_path | 670.1 | 670.1 |
+| 33026 | Balizac | low_speed | 1,184.3 | 0.0 |
+| 33026 | Balizac | separated_track_path | 4,395.8 | 0.0 |
+| 33027 | Barie | separated_track_path | 3,451.5 | 0.0 |
+| 33028 | Baron | separated_track_path | 1,826.4 | 0.0 |
+| 33029 | Le Barp | low_speed | 15,711.5 | 0.0 |
+| 33029 | Le Barp | separated_track_path | 15,371.3 | 5,869.2 |
+| 33030 | Barsac | low_speed | 2,084.4 | 0.0 |
+| 33030 | Barsac | separated_track_path | 4,852.3 | 0.0 |
+| 33031 | Bassanne | separated_track_path | 979.9 | 611.3 |
+| 33032 | Bassens | bus_lane | 1,095.2 | 163.6 |
+| 33032 | Bassens | low_speed | 5,045.6 | 0.0 |
+| 33032 | Bassens | painted_lane | 1,594.3 | 3,101.1 |
+| 33032 | Bassens | separated_track_path | 11,875.6 | 9,021.6 |
+| 33035 | Bayon-sur-Gironde | separated_track_path | 3,295.3 | 0.0 |
+| 33036 | Bazas | low_speed | 3,773.6 | 0.0 |
+| 33036 | Bazas | painted_lane | 1,813.0 | 1,813.0 |
+| 33036 | Bazas | separated_track_path | 14,488.0 | 10,848.5 |
+| 33037 | Beautiran | separated_track_path | 3,618.1 | 0.0 |
+| 33038 | Bégadan | separated_track_path | 24.1 | 0.0 |
+| 33039 | Bègles | bus_lane | 3,754.5 | 3,791.3 |
+| 33039 | Bègles | low_speed | 31,274.1 | 0.0 |
+| 33039 | Bègles | painted_lane | 9,130.4 | 11,760.2 |
+| 33039 | Bègles | separated_track_path | 26,437.5 | 15,817.2 |
+| 33040 | Béguey | low_speed | 266.9 | 0.0 |
+| 33040 | Béguey | separated_track_path | 3.0 | 0.0 |
+| 33042 | Belin-Béliet | low_speed | 4,673.0 | 0.0 |
+| 33042 | Belin-Béliet | painted_lane | 1,807.8 | 3,615.7 |
+| 33042 | Belin-Béliet | separated_track_path | 75,551.3 | 18,237.6 |
+| 33043 | Bellebat | separated_track_path | 1,140.7 | 0.0 |
+| 33044 | Bellefond | low_speed | 362.4 | 0.0 |
+| 33044 | Bellefond | separated_track_path | 2,541.2 | 2,066.0 |
+| 33045 | Belvès-de-Castillon | separated_track_path | 114.5 | 0.0 |
+| 33046 | Bernos-Beaulac | separated_track_path | 6,842.3 | 6,828.0 |
+| 33047 | Berson | separated_track_path | 380.0 | 0.0 |
+| 33049 | Beychac-et-Caillau | low_speed | 113.3 | 0.0 |
+| 33049 | Beychac-et-Caillau | separated_track_path | 4,476.4 | 0.0 |
+| 33051 | Biganos | low_speed | 1,864.8 | 0.0 |
+| 33051 | Biganos | painted_lane | 2,433.7 | 3,980.0 |
+| 33051 | Biganos | separated_track_path | 63,663.1 | 19,761.3 |
+| 33052 | Les Billaux | painted_lane | 72.1 | 72.1 |
+| 33052 | Les Billaux | separated_track_path | 2,748.0 | 719.3 |
+| 33053 | Birac | separated_track_path | 48.8 | 0.0 |
+| 33054 | Blaignac | separated_track_path | 1,211.7 | 1,211.7 |
+| 33055 | Blaignan-Prignac | separated_track_path | 939.8 | 0.0 |
+| 33056 | Blanquefort | low_speed | 18,343.6 | 0.0 |
+| 33056 | Blanquefort | painted_lane | 3,287.1 | 4,617.5 |
+| 33056 | Blanquefort | separated_track_path | 37,221.7 | 27,744.8 |
+| 33057 | Blasimon | separated_track_path | 3,855.1 | 0.0 |
+| 33058 | Blaye | low_speed | 1,144.5 | 0.0 |
+| 33058 | Blaye | separated_track_path | 7,258.7 | 1,685.4 |
+| 33059 | Blésignac | separated_track_path | 156.9 | 0.0 |
+| 33060 | Bommes | separated_track_path | 1,319.2 | 0.0 |
+| 33061 | Bonnetan | low_speed | 153.9 | 0.0 |
+| 33061 | Bonnetan | separated_track_path | 1,988.7 | 0.0 |
+| 33062 | Bonzac | low_speed | 143.1 | 0.0 |
+| 33062 | Bonzac | separated_track_path | 340.3 | 0.0 |
+| 33063 | Bordeaux | bus_lane | 45,445.3 | 47,879.8 |
+| 33063 | Bordeaux | low_speed | 225,143.3 | 1,268.3 |
+| 33063 | Bordeaux | painted_lane | 102,864.8 | 122,244.5 |
+| 33063 | Bordeaux | separated_track_path | 95,809.8 | 65,310.1 |
+| 33064 | Bossugan | separated_track_path | 1,373.2 | 0.0 |
+| 33065 | Bouliac | low_speed | 1,815.6 | 0.0 |
+| 33065 | Bouliac | painted_lane | 1,163.1 | 2,322.9 |
+| 33065 | Bouliac | separated_track_path | 15,091.3 | 5,570.8 |
+| 33067 | Bourg | low_speed | 457.0 | 0.0 |
+| 33067 | Bourg | separated_track_path | 11,312.0 | 0.0 |
+| 33069 | Le Bouscat | bus_lane | 837.7 | 1,203.1 |
+| 33069 | Le Bouscat | low_speed | 29,626.1 | 0.0 |
+| 33069 | Le Bouscat | painted_lane | 7,248.9 | 8,237.5 |
+| 33069 | Le Bouscat | separated_track_path | 6,058.6 | 5,283.1 |
+| 33070 | Brach | low_speed | 512.1 | 0.0 |
+| 33070 | Brach | separated_track_path | 129.7 | 107.4 |
+| 33071 | Branne | low_speed | 483.5 | 0.0 |
+| 33073 | Braud-et-Saint-Louis | separated_track_path | 11,460.3 | 0.0 |
+| 33074 | Brouqueyran | separated_track_path | 254.3 | 0.0 |
+| 33075 | Bruges | bus_lane | 560.1 | 306.3 |
+| 33075 | Bruges | low_speed | 22,726.4 | 0.0 |
+| 33075 | Bruges | painted_lane | 2,793.3 | 3,459.4 |
+| 33075 | Bruges | separated_track_path | 35,982.4 | 26,668.2 |
+| 33076 | Budos | low_speed | 321.6 | 0.0 |
+| 33076 | Budos | separated_track_path | 4,996.3 | 0.0 |
+| 33077 | Cabanac-et-Villagrains | low_speed | 1,734.7 | 0.0 |
+| 33077 | Cabanac-et-Villagrains | separated_track_path | 24,700.4 | 11,816.1 |
+| 33078 | Cabara | separated_track_path | 174.6 | 0.0 |
+| 33079 | Cadarsac | separated_track_path | 464.8 | 464.8 |
+| 33080 | Cadaujac | low_speed | 931.3 | 0.0 |
+| 33080 | Cadaujac | painted_lane | 643.4 | 1,286.8 |
+| 33080 | Cadaujac | separated_track_path | 535.9 | 188.2 |
+| 33081 | Cadillac | low_speed | 1,397.6 | 0.0 |
+| 33081 | Cadillac | painted_lane | 76.5 | 76.5 |
+| 33081 | Cadillac | separated_track_path | 2,006.5 | 875.5 |
+| 33082 | Cadillac-en-Fronsadais | low_speed | 153.7 | 0.0 |
+| 33083 | Camarsac | separated_track_path | 1,461.5 | 0.0 |
+| 33084 | Cambes | separated_track_path | 3,440.3 | 0.0 |
+| 33085 | Camblanes-et-Meynac | low_speed | 775.5 | 0.0 |
+| 33085 | Camblanes-et-Meynac | painted_lane | 593.6 | 866.5 |
+| 33085 | Camblanes-et-Meynac | separated_track_path | 1,157.2 | 0.0 |
+| 33086 | Camiac-et-Saint-Denis | separated_track_path | 1,565.3 | 0.0 |
+| 33088 | Camps-sur-l'Isle | low_speed | 401.9 | 0.0 |
+| 33089 | Campugnan | separated_track_path | 932.9 | 0.0 |
+| 33090 | Canéjan | low_speed | 3,519.2 | 0.0 |
+| 33090 | Canéjan | painted_lane | 2,445.3 | 3,543.5 |
+| 33090 | Canéjan | separated_track_path | 63,215.1 | 18,572.4 |
+| 33093 | Capian | low_speed | 37.4 | 0.0 |
+| 33093 | Capian | separated_track_path | 7,055.3 | 0.0 |
+| 33095 | Captieux | separated_track_path | 8,998.9 | 4,113.2 |
+| 33096 | Carbon-Blanc | bus_lane | 190.8 | 177.7 |
+| 33096 | Carbon-Blanc | low_speed | 13,548.3 | 0.0 |
+| 33096 | Carbon-Blanc | painted_lane | 1,401.1 | 2,219.5 |
+| 33096 | Carbon-Blanc | separated_track_path | 8,117.3 | 6,265.6 |
+| 33097 | Carcans | low_speed | 5,762.2 | 0.0 |
+| 33097 | Carcans | painted_lane | 622.1 | 622.1 |
+| 33097 | Carcans | separated_track_path | 92,441.2 | 55,579.5 |
+| 33098 | Cardan | separated_track_path | 1,784.2 | 0.0 |
+| 33099 | Carignan-de-Bordeaux | low_speed | 1,732.7 | 0.0 |
+| 33099 | Carignan-de-Bordeaux | separated_track_path | 12,020.0 | 1,985.1 |
+| 33100 | Cars | low_speed | 312.2 | 0.0 |
+| 33100 | Cars | separated_track_path | 1,151.5 | 0.0 |
+| 33101 | Cartelègue | separated_track_path | 1,624.3 | 1,191.2 |
+| 33102 | Casseuil | separated_track_path | 971.5 | 0.0 |
+| 33103 | Castelmoron-d'Albret | separated_track_path | 86.9 | 0.0 |
+| 33104 | Castelnau-de-Médoc | low_speed | 578.7 | 0.0 |
+| 33104 | Castelnau-de-Médoc | separated_track_path | 1,569.4 | 878.1 |
+| 33106 | Castets et Castillon | low_speed | 957.6 | 0.0 |
+| 33106 | Castets et Castillon | separated_track_path | 10,229.6 | 5,819.4 |
+| 33108 | Castillon-la-Bataille | low_speed | 1,456.7 | 0.0 |
+| 33108 | Castillon-la-Bataille | separated_track_path | 650.7 | 0.0 |
+| 33109 | Castres-Gironde | separated_track_path | 1,027.7 | 0.0 |
+| 33111 | Caudrot | separated_track_path | 727.8 | 0.0 |
+| 33112 | Caumont | separated_track_path | 2,843.2 | 0.0 |
+| 33114 | Cavignac | low_speed | 197.0 | 0.0 |
+| 33114 | Cavignac | separated_track_path | 2,007.0 | 310.4 |
+| 33116 | Cazats | separated_track_path | 1,141.8 | 0.0 |
+| 33117 | Cazaugitat | low_speed | 503.6 | 0.0 |
+| 33117 | Cazaugitat | separated_track_path | 560.0 | 0.0 |
+| 33118 | Cénac | low_speed | 823.5 | 0.0 |
+| 33118 | Cénac | separated_track_path | 6,569.9 | 2,375.0 |
+| 33119 | Cenon | bus_lane | 1,165.8 | 1,846.8 |
+| 33119 | Cenon | low_speed | 24,363.5 | 0.0 |
+| 33119 | Cenon | painted_lane | 9,487.7 | 13,011.1 |
+| 33119 | Cenon | separated_track_path | 15,787.5 | 7,979.4 |
+| 33120 | Cérons | separated_track_path | 1,303.6 | 0.0 |
+| 33121 | Cessac | separated_track_path | 2,674.9 | 2,078.5 |
+| 33122 | Cestas | low_speed | 12,035.0 | 0.0 |
+| 33122 | Cestas | painted_lane | 2,075.3 | 3,911.2 |
+| 33122 | Cestas | separated_track_path | 105,996.4 | 27,202.5 |
+| 33123 | Cézac | low_speed | 3,099.4 | 0.0 |
+| 33123 | Cézac | separated_track_path | 8,863.5 | 0.0 |
+| 33124 | Chamadelle | separated_track_path | 740.2 | 0.0 |
+| 33125 | Cissac-Médoc | separated_track_path | 16.7 | 0.0 |
+| 33126 | Civrac-de-Blaye | low_speed | 60.0 | 0.0 |
+| 33126 | Civrac-de-Blaye | separated_track_path | 2,407.7 | 0.0 |
+| 33131 | Coirac | separated_track_path | 589.0 | 0.0 |
+| 33132 | Comps | separated_track_path | 192.5 | 0.0 |
+| 33135 | Courpiac | separated_track_path | 1,609.6 | 1,380.5 |
+| 33138 | Coutras | bus_lane | 190.8 | 190.8 |
+| 33138 | Coutras | low_speed | 794.3 | 0.0 |
+| 33138 | Coutras | separated_track_path | 2,007.1 | 282.7 |
+| 33140 | Créon | low_speed | 6,068.4 | 0.0 |
+| 33140 | Créon | painted_lane | 150.6 | 150.6 |
+| 33140 | Créon | separated_track_path | 7,046.3 | 6,543.9 |
+| 33141 | Croignon | low_speed | 1,938.6 | 0.0 |
+| 33141 | Croignon | separated_track_path | 1,075.4 | 0.0 |
+| 33142 | Cubnezais | separated_track_path | 2,940.5 | 0.0 |
+| 33143 | Cubzac-les-Ponts | low_speed | 296.1 | 0.0 |
+| 33143 | Cubzac-les-Ponts | separated_track_path | 1,385.9 | 1,058.1 |
+| 33144 | Cudos | low_speed | 34.3 | 0.0 |
+| 33144 | Cudos | separated_track_path | 6,780.4 | 4,495.9 |
+| 33145 | Cursan | separated_track_path | 1,079.3 | 0.0 |
+| 33146 | Cussac-Fort-Médoc | separated_track_path | 108.5 | 0.0 |
+| 33147 | Daignac | separated_track_path | 4,955.7 | 4,261.4 |
+| 33148 | Dardenac | separated_track_path | 65.9 | 0.0 |
+| 33149 | Daubèze | separated_track_path | 338.0 | 338.0 |
+| 33150 | Dieulivol | separated_track_path | 4,466.9 | 0.0 |
+| 33151 | Donnezac | separated_track_path | 710.2 | 0.0 |
+| 33152 | Donzac | separated_track_path | 404.9 | 0.0 |
+| 33154 | Les Églisottes-et-Chalaures | low_speed | 314.2 | 0.0 |
+| 33157 | Espiet | separated_track_path | 3,947.5 | 3,947.5 |
+| 33159 | Étauliers | separated_track_path | 3,800.6 | 3,702.5 |
+| 33160 | Eynesse | separated_track_path | 1,524.8 | 0.0 |
+| 33161 | Eyrans | separated_track_path | 2,538.8 | 2,538.8 |
+| 33162 | Eysines | bus_lane | 1,762.7 | 2,256.5 |
+| 33162 | Eysines | low_speed | 11,053.6 | 0.0 |
+| 33162 | Eysines | painted_lane | 19,038.4 | 26,523.7 |
+| 33162 | Eysines | separated_track_path | 28,664.6 | 26,312.8 |
+| 33164 | Fargues | low_speed | 2,170.3 | 0.0 |
+| 33164 | Fargues | separated_track_path | 11,592.6 | 3,162.6 |
+| 33165 | Fargues-Saint-Hilaire | low_speed | 1,632.5 | 0.0 |
+| 33165 | Fargues-Saint-Hilaire | separated_track_path | 4,496.3 | 286.6 |
+| 33167 | Floirac | bus_lane | 859.5 | 205.6 |
+| 33167 | Floirac | low_speed | 26,839.7 | 0.0 |
+| 33167 | Floirac | painted_lane | 4,911.2 | 6,445.8 |
+| 33167 | Floirac | separated_track_path | 19,402.8 | 8,512.1 |
+| 33168 | Flaujagues | separated_track_path | 1,619.4 | 0.0 |
+| 33169 | Floudès | separated_track_path | 256.5 | 0.0 |
+| 33170 | Fontet | low_speed | 284.8 | 0.0 |
+| 33170 | Fontet | separated_track_path | 4,404.0 | 4,048.3 |
+| 33172 | Fours | separated_track_path | 2,831.8 | 2,831.8 |
+| 33175 | Frontenac | low_speed | 447.0 | 0.0 |
+| 33175 | Frontenac | separated_track_path | 4,651.6 | 2,316.4 |
+| 33177 | Gaillan-en-Médoc | low_speed | 365.0 | 0.0 |
+| 33177 | Gaillan-en-Médoc | separated_track_path | 5,880.8 | 0.0 |
+| 33178 | Gajac | separated_track_path | 497.2 | 0.0 |
+| 33179 | Galgon | low_speed | 972.8 | 0.0 |
+| 33179 | Galgon | separated_track_path | 922.7 | 0.0 |
+| 33182 | Gauriac | separated_track_path | 6,252.3 | 0.0 |
+| 33185 | Génissac | separated_track_path | 223.4 | 0.0 |
+| 33186 | Gensac | separated_track_path | 1,399.6 | 0.0 |
+| 33187 | Gironde-sur-Dropt | painted_lane | 631.5 | 1,263.0 |
+| 33187 | Gironde-sur-Dropt | separated_track_path | 1,403.0 | 0.0 |
+| 33188 | Giscos | separated_track_path | 5,670.6 | 0.0 |
+| 33191 | Gours | separated_track_path | 4,021.9 | 0.0 |
+| 33192 | Gradignan | bus_lane | 494.6 | 342.9 |
+| 33192 | Gradignan | low_speed | 11,667.8 | 0.0 |
+| 33192 | Gradignan | painted_lane | 25,332.0 | 34,521.3 |
+| 33192 | Gradignan | separated_track_path | 65,649.4 | 21,684.6 |
+| 33193 | Grayan-et-l'Hôpital | low_speed | 46,309.3 | 0.0 |
+| 33193 | Grayan-et-l'Hôpital | separated_track_path | 82,063.3 | 20,670.0 |
+| 33194 | Grézillac | low_speed | 276.0 | 0.0 |
+| 33195 | Grignols | low_speed | 1,158.9 | 0.0 |
+| 33195 | Grignols | separated_track_path | 3,415.5 | 0.0 |
+| 33197 | Guillos | separated_track_path | 7,507.6 | 0.0 |
+| 33199 | Gujan-Mestras | low_speed | 16,554.1 | 0.0 |
+| 33199 | Gujan-Mestras | painted_lane | 6,576.9 | 7,321.8 |
+| 33199 | Gujan-Mestras | separated_track_path | 62,802.5 | 28,915.4 |
+| 33200 | Le Haillan | bus_lane | 1,018.9 | 1,018.9 |
+| 33200 | Le Haillan | low_speed | 14,126.2 | 0.0 |
+| 33200 | Le Haillan | painted_lane | 8,759.5 | 12,636.2 |
+| 33200 | Le Haillan | separated_track_path | 21,518.9 | 16,479.7 |
+| 33202 | Hostens | low_speed | 919.5 | 0.0 |
+| 33202 | Hostens | separated_track_path | 64,052.6 | 12,981.5 |
+| 33203 | Hourtin | low_speed | 15,113.1 | 0.0 |
+| 33203 | Hourtin | separated_track_path | 97,381.1 | 49,247.7 |
+| 33204 | Hure | separated_track_path | 4,300.7 | 4,204.8 |
+| 33205 | Illats | separated_track_path | 14,775.5 | 0.0 |
+| 33206 | Isle-Saint-Georges | separated_track_path | 948.6 | 0.0 |
+| 33208 | Jau-Dignac-et-Loirac | low_speed | 500.0 | 0.0 |
+| 33208 | Jau-Dignac-et-Loirac | separated_track_path | 4,503.6 | 0.0 |
+| 33209 | Jugazan | separated_track_path | 3,503.0 | 0.0 |
+| 33210 | Juillac | separated_track_path | 498.1 | 0.0 |
+| 33211 | Labarde | separated_track_path | 869.8 | 0.0 |
+| 33213 | La Brède | low_speed | 2,480.0 | 0.0 |
+| 33213 | La Brède | separated_track_path | 16,631.3 | 3,823.0 |
+| 33214 | Lacanau | low_speed | 14,589.9 | 0.0 |
+| 33214 | Lacanau | painted_lane | 2,722.0 | 4,343.7 |
+| 33214 | Lacanau | separated_track_path | 135,420.0 | 95,238.8 |
+| 33215 | Ladaux | separated_track_path | 531.6 | 0.0 |
+| 33218 | Lagorce | separated_track_path | 1,768.4 | 0.0 |
+| 33219 | La Lande-de-Fronsac | separated_track_path | 327.1 | 0.0 |
+| 33220 | Lamarque | separated_track_path | 7.3 | 0.0 |
+| 33221 | Lamothe-Landerron | separated_track_path | 13.9 | 0.0 |
+| 33222 | Lalande-de-Pomerol | separated_track_path | 27.1 | 27.1 |
+| 33224 | Landerrouet-sur-Ségur | separated_track_path | 312.9 | 0.0 |
+| 33225 | Landiras | separated_track_path | 10,019.5 | 0.0 |
+| 33226 | Langoiran | low_speed | 146.3 | 0.0 |
+| 33226 | Langoiran | separated_track_path | 7,109.2 | 711.5 |
+| 33227 | Langon | low_speed | 16,087.4 | 0.0 |
+| 33227 | Langon | painted_lane | 3,402.8 | 3,616.3 |
+| 33227 | Langon | separated_track_path | 9,264.3 | 4,948.9 |
+| 33228 | Lansac | separated_track_path | 7,591.8 | 0.0 |
+| 33229 | Lanton | low_speed | 8,413.2 | 0.0 |
+| 33229 | Lanton | painted_lane | 1,179.1 | 1,179.3 |
+| 33229 | Lanton | separated_track_path | 21,436.5 | 10,624.3 |
+| 33230 | Lapouyade | separated_track_path | 9,925.1 | 0.0 |
+| 33231 | Laroque | separated_track_path | 234.7 | 0.0 |
+| 33233 | Laruscade | separated_track_path | 14,329.1 | 0.0 |
+| 33234 | Latresne | low_speed | 2,121.5 | 0.0 |
+| 33234 | Latresne | painted_lane | 335.1 | 670.2 |
+| 33234 | Latresne | separated_track_path | 9,921.3 | 7,621.4 |
+| 33236 | Lège-Cap-Ferret | low_speed | 15,400.7 | 0.0 |
+| 33236 | Lège-Cap-Ferret | painted_lane | 14,028.3 | 27,675.5 |
+| 33236 | Lège-Cap-Ferret | separated_track_path | 172,618.7 | 75,149.9 |
+| 33237 | Léogeats | separated_track_path | 1,517.2 | 0.0 |
+| 33238 | Léognan | low_speed | 2,077.9 | 0.0 |
+| 33238 | Léognan | painted_lane | 4,493.6 | 8,123.8 |
+| 33238 | Léognan | separated_track_path | 50,587.2 | 11,743.5 |
+| 33239 | Lerm-et-Musset | low_speed | 1,887.6 | 0.0 |
+| 33239 | Lerm-et-Musset | separated_track_path | 947.1 | 0.0 |
+| 33240 | Lesparre-Médoc | low_speed | 194.7 | 0.0 |
+| 33240 | Lesparre-Médoc | separated_track_path | 52.2 | 0.0 |
+| 33241 | Lestiac-sur-Garonne | separated_track_path | 3,469.7 | 0.0 |
+| 33242 | Les Lèves-et-Thoumeyragues | separated_track_path | 8,794.5 | 0.0 |
+| 33243 | Libourne | low_speed | 11,764.6 | 0.0 |
+| 33243 | Libourne | painted_lane | 12,363.0 | 17,098.3 |
+| 33243 | Libourne | separated_track_path | 28,704.3 | 15,833.0 |
+| 33244 | Lignan-de-Bazas | separated_track_path | 1,412.9 | 1,412.9 |
+| 33245 | Lignan-de-Bordeaux | separated_track_path | 4,289.4 | 3,907.2 |
+| 33246 | Ligueux | separated_track_path | 3,577.3 | 0.0 |
+| 33248 | Listrac-Médoc | low_speed | 566.3 | 0.0 |
+| 33248 | Listrac-Médoc | separated_track_path | 324.5 | 0.0 |
+| 33249 | Lormont | bus_lane | 434.6 | 608.6 |
+| 33249 | Lormont | low_speed | 21,482.1 | 43.7 |
+| 33249 | Lormont | painted_lane | 6,166.1 | 7,975.5 |
+| 33249 | Lormont | separated_track_path | 24,385.9 | 18,430.3 |
+| 33251 | Louchats | separated_track_path | 1,246.8 | 0.0 |
+| 33252 | Loupes | separated_track_path | 123.0 | 0.0 |
+| 33253 | Loupiac | painted_lane | 165.8 | 165.8 |
+| 33253 | Loupiac | separated_track_path | 5,718.0 | 7.2 |
+| 33254 | Loupiac-de-la-Réole | separated_track_path | 629.2 | 629.2 |
+| 33256 | Ludon-Médoc | low_speed | 1,480.1 | 0.0 |
+| 33256 | Ludon-Médoc | separated_track_path | 539.4 | 60.7 |
+| 33258 | Lugasson | separated_track_path | 139.6 | 0.0 |
+| 33259 | Lugon-et-l'Île-du-Carnay | low_speed | 407.7 | 0.0 |
+| 33259 | Lugon-et-l'Île-du-Carnay | separated_track_path | 238.8 | 0.0 |
+| 33260 | Lugos | low_speed | 1,855.8 | 0.0 |
+| 33260 | Lugos | separated_track_path | 16,348.5 | 0.0 |
+| 33261 | Lussac | low_speed | 240.2 | 0.0 |
+| 33262 | Macau | separated_track_path | 3,531.0 | 0.0 |
+| 33264 | Maransin | separated_track_path | 619.6 | 0.0 |
+| 33266 | Marcenais | separated_track_path | 5,155.0 | 0.0 |
+| 33268 | Margaux-Cantenac | low_speed | 452.3 | 0.0 |
+| 33268 | Margaux-Cantenac | separated_track_path | 10,938.6 | 0.0 |
+| 33269 | Margueron | separated_track_path | 827.4 | 0.0 |
+| 33271 | Marions | low_speed | 758.0 | 0.0 |
+| 33271 | Marions | separated_track_path | 3,225.3 | 0.0 |
+| 33272 | Marsas | separated_track_path | 281.2 | 0.0 |
+| 33273 | Martignas-sur-Jalle | low_speed | 1,349.0 | 0.0 |
+| 33273 | Martignas-sur-Jalle | painted_lane | 1,910.8 | 3,509.2 |
+| 33273 | Martignas-sur-Jalle | separated_track_path | 23,421.4 | 8,112.5 |
+| 33274 | Martillac | low_speed | 934.2 | 0.0 |
+| 33274 | Martillac | separated_track_path | 12,824.5 | 2,197.8 |
+| 33275 | Martres | separated_track_path | 1,603.5 | 1,603.5 |
+| 33278 | Mauriac | separated_track_path | 1,502.9 | 0.0 |
+| 33281 | Mérignac | bus_lane | 2,610.8 | 2,305.7 |
+| 33281 | Mérignac | low_speed | 143,059.2 | 0.0 |
+| 33281 | Mérignac | painted_lane | 51,914.1 | 81,090.7 |
+| 33281 | Mérignac | separated_track_path | 104,288.1 | 77,763.4 |
+| 33283 | Mesterrieux | separated_track_path | 4.0 | 0.0 |
+| 33284 | Mios | low_speed | 6,517.3 | 0.0 |
+| 33284 | Mios | painted_lane | 799.4 | 879.0 |
+| 33284 | Mios | separated_track_path | 128,227.9 | 19,659.1 |
+| 33285 | Mombrier | separated_track_path | 1,605.4 | 0.0 |
+| 33288 | Monprimblanc | separated_track_path | 509.2 | 0.0 |
+| 33289 | Monségur | separated_track_path | 1,625.9 | 0.0 |
+| 33290 | Montagne | separated_track_path | 2,914.9 | 0.0 |
+| 33292 | Montignac | separated_track_path | 953.4 | 0.0 |
+| 33293 | Montussan | low_speed | 2,825.2 | 0.0 |
+| 33293 | Montussan | separated_track_path | 2,889.3 | 0.0 |
+| 33294 | Morizès | separated_track_path | 678.2 | 0.0 |
+| 33296 | Mouliets-et-Villemartin | separated_track_path | 883.9 | 0.0 |
+| 33297 | Moulis-en-Médoc | low_speed | 316.5 | 0.0 |
+| 33297 | Moulis-en-Médoc | separated_track_path | 357.9 | 0.0 |
+| 33298 | Moulon | separated_track_path | 890.4 | 0.0 |
+| 33299 | Mourens | separated_track_path | 655.4 | 0.0 |
+| 33300 | Naujac-sur-Mer | low_speed | 2,925.1 | 0.0 |
+| 33300 | Naujac-sur-Mer | separated_track_path | 13,595.6 | 11,062.8 |
+| 33301 | Naujan-et-Postiac | separated_track_path | 4,886.9 | 3,282.9 |
+| 33304 | Neuffons | separated_track_path | 2,115.2 | 0.0 |
+| 33305 | Le Nizan | separated_track_path | 8,108.7 | 6,023.3 |
+| 33307 | Noaillan | low_speed | 2,326.3 | 0.0 |
+| 33307 | Noaillan | separated_track_path | 4,821.4 | 480.7 |
+| 33308 | Omet | separated_track_path | 0.8 | 0.0 |
+| 33309 | Ordonnac | separated_track_path | 3,037.3 | 0.0 |
+| 33310 | Origne | low_speed | 1,215.7 | 0.0 |
+| 33311 | Paillet | low_speed | 257.4 | 0.0 |
+| 33311 | Paillet | separated_track_path | 323.1 | 0.0 |
+| 33312 | Parempuyre | low_speed | 6,122.6 | 0.0 |
+| 33312 | Parempuyre | painted_lane | 1,570.1 | 2,394.5 |
+| 33312 | Parempuyre | separated_track_path | 7,776.1 | 6,441.6 |
+| 33314 | Pauillac | separated_track_path | 574.9 | 0.0 |
+| 33316 | Pellegrue | separated_track_path | 2,507.8 | 0.0 |
+| 33317 | Périssac | low_speed | 658.8 | 0.0 |
+| 33317 | Périssac | separated_track_path | 2,016.2 | 0.0 |
+| 33318 | Pessac | bus_lane | 57.3 | 532.2 |
+| 33318 | Pessac | low_speed | 46,604.1 | 0.0 |
+| 33318 | Pessac | painted_lane | 47,355.9 | 66,636.3 |
+| 33318 | Pessac | separated_track_path | 110,989.8 | 53,874.5 |
+| 33319 | Pessac-sur-Dordogne | low_speed | 712.3 | 0.0 |
+| 33319 | Pessac-sur-Dordogne | separated_track_path | 3,721.3 | 0.0 |
+| 33320 | Petit-Palais-et-Cornemps | separated_track_path | 4,115.0 | 0.0 |
+| 33321 | Peujard | low_speed | 174.6 | 0.0 |
+| 33321 | Peujard | separated_track_path | 2,179.8 | 0.0 |
+| 33322 | Le Pian-Médoc | low_speed | 7,214.3 | 0.0 |
+| 33322 | Le Pian-Médoc | painted_lane | 1,111.1 | 1,111.1 |
+| 33322 | Le Pian-Médoc | separated_track_path | 17,095.1 | 1,138.4 |
+| 33323 | Le Pian-sur-Garonne | low_speed | 3,050.6 | 0.0 |
+| 33323 | Le Pian-sur-Garonne | separated_track_path | 2,906.5 | 726.7 |
+| 33324 | Pineuilh | low_speed | 3,188.8 | 0.0 |
+| 33324 | Pineuilh | separated_track_path | 5,707.0 | 152.6 |
+| 33325 | Plassac | low_speed | 709.9 | 0.0 |
+| 33325 | Plassac | separated_track_path | 8,979.1 | 0.0 |
+| 33327 | Podensac | separated_track_path | 2,331.1 | 0.0 |
+| 33328 | Pomerol | separated_track_path | 404.4 | 0.0 |
+| 33329 | Pompéjac | separated_track_path | 350.3 | 0.0 |
+| 33330 | Pompignac | low_speed | 146.4 | 0.0 |
+| 33330 | Pompignac | separated_track_path | 1,545.6 | 0.0 |
+| 33333 | Le Porge | low_speed | 9,696.2 | 0.0 |
+| 33333 | Le Porge | separated_track_path | 70,661.5 | 40,221.8 |
+| 33334 | Portets | low_speed | 1,929.5 | 0.0 |
+| 33334 | Portets | separated_track_path | 190.5 | 0.0 |
+| 33335 | Le Pout | separated_track_path | 468.6 | 0.0 |
+| 33336 | Préchac | separated_track_path | 4,729.9 | 0.0 |
+| 33337 | Preignac | low_speed | 385.4 | 0.0 |
+| 33337 | Preignac | separated_track_path | 8,598.9 | 0.0 |
+| 33339 | Prignac-et-Marcamps | separated_track_path | 5,772.5 | 0.0 |
+| 33341 | Pugnac | low_speed | 106.7 | 0.0 |
+| 33341 | Pugnac | separated_track_path | 6,501.5 | 0.0 |
+| 33342 | Puisseguin | low_speed | 284.9 | 0.0 |
+| 33342 | Puisseguin | separated_track_path | 10,179.4 | 0.0 |
+| 33343 | Pujols-sur-Ciron | low_speed | 508.2 | 0.0 |
+| 33343 | Pujols-sur-Ciron | separated_track_path | 9,006.1 | 0.0 |
+| 33345 | Le Puy | separated_track_path | 136.9 | 0.0 |
+| 33346 | Puybarban | separated_track_path | 3,008.2 | 3,008.2 |
+| 33347 | Puynormand | separated_track_path | 5,961.6 | 0.0 |
+| 33348 | Queyrac | low_speed | 203.7 | 0.0 |
+| 33348 | Queyrac | separated_track_path | 6,663.8 | 6,538.9 |
+| 33349 | Quinsac | separated_track_path | 128.7 | 0.0 |
+| 33350 | Rauzan | separated_track_path | 2,295.6 | 0.0 |
+| 33352 | La Réole | low_speed | 773.1 | 0.0 |
+| 33352 | La Réole | painted_lane | 2,403.1 | 4,754.0 |
+| 33352 | La Réole | separated_track_path | 3,552.5 | 0.0 |
+| 33353 | Rimons | low_speed | 263.9 | 0.0 |
+| 33353 | Rimons | separated_track_path | 0.3 | 0.0 |
+| 33354 | Riocaud | separated_track_path | 2,609.9 | 0.0 |
+| 33355 | Rions | low_speed | 846.8 | 0.0 |
+| 33355 | Rions | separated_track_path | 3,319.6 | 0.0 |
+| 33357 | Roaillan | separated_track_path | 7,457.3 | 4,994.4 |
+| 33360 | La Roquille | low_speed | 780.7 | 0.0 |
+| 33360 | La Roquille | separated_track_path | 6,015.1 | 0.0 |
+| 33361 | Ruch | separated_track_path | 1,703.1 | 0.0 |
+| 33362 | Sablons | low_speed | 431.0 | 0.0 |
+| 33362 | Sablons | separated_track_path | 762.5 | 0.0 |
+| 33363 | Sadirac | low_speed | 1,658.4 | 0.0 |
+| 33363 | Sadirac | separated_track_path | 19,823.6 | 6,977.1 |
+| 33364 | Saillans | separated_track_path | 1,422.8 | 0.0 |
+| 33365 | Saint-Aignan | separated_track_path | 631.4 | 0.0 |
+| 33366 | Saint-André-de-Cubzac | low_speed | 3,906.7 | 0.0 |
+| 33366 | Saint-André-de-Cubzac | painted_lane | 2,414.3 | 3,280.9 |
+| 33366 | Saint-André-de-Cubzac | separated_track_path | 7,742.3 | 6,223.2 |
+| 33367 | Saint-André-du-Bois | separated_track_path | 2,438.8 | 0.0 |
+| 33369 | Saint-André-et-Appelles | separated_track_path | 4,771.5 | 0.0 |
+| 33370 | Saint-Androny | separated_track_path | 1,780.7 | 0.0 |
+| 33373 | Saint-Antoine-sur-l'Isle | separated_track_path | 599.6 | 0.0 |
+| 33375 | Saint-Aubin-de-Branne | separated_track_path | 3,546.6 | 0.0 |
+| 33376 | Saint-Aubin-de-Médoc | low_speed | 35,008.6 | 0.0 |
+| 33376 | Saint-Aubin-de-Médoc | painted_lane | 1,674.2 | 3,249.8 |
+| 33376 | Saint-Aubin-de-Médoc | separated_track_path | 25,809.1 | 15,375.6 |
+| 33377 | Saint-Avit-de-Soulège | separated_track_path | 2,746.9 | 0.0 |
+| 33378 | Saint-Avit-Saint-Nazaire | low_speed | 748.1 | 0.0 |
+| 33378 | Saint-Avit-Saint-Nazaire | separated_track_path | 74.4 | 0.0 |
+| 33379 | Saint-Brice | separated_track_path | 2,697.1 | 2,697.1 |
+| 33380 | Val-de-Livenne | separated_track_path | 4,574.5 | 0.0 |
+| 33382 | Saint-Christoly-de-Blaye | low_speed | 16.5 | 0.0 |
+| 33382 | Saint-Christoly-de-Blaye | separated_track_path | 9,827.5 | 0.0 |
+| 33384 | Saint-Christophe-des-Bardes | separated_track_path | 22.2 | 0.0 |
+| 33385 | Saint-Christophe-de-Double | low_speed | 1,202.7 | 0.0 |
+| 33386 | Saint-Cibard | separated_track_path | 114.0 | 0.0 |
+| 33387 | Saint-Ciers-d'Abzac | low_speed | 1,025.6 | 0.0 |
+| 33388 | Saint-Ciers-de-Canesse | separated_track_path | 5,710.3 | 0.0 |
+| 33389 | Saint-Ciers-sur-Gironde | low_speed | 365.9 | 0.0 |
+| 33389 | Saint-Ciers-sur-Gironde | separated_track_path | 734.8 | 0.0 |
+| 33392 | Sainte-Croix-du-Mont | low_speed | 58.2 | 0.0 |
+| 33392 | Sainte-Croix-du-Mont | separated_track_path | 4,156.9 | 0.0 |
+| 33393 | Saint-Denis-de-Pile | low_speed | 5,994.1 | 0.0 |
+| 33393 | Saint-Denis-de-Pile | painted_lane | 299.6 | 299.6 |
+| 33393 | Saint-Denis-de-Pile | separated_track_path | 261.0 | 139.0 |
+| 33394 | Saint-Émilion | low_speed | 109.8 | 0.0 |
+| 33394 | Saint-Émilion | painted_lane | 654.7 | 654.7 |
+| 33394 | Saint-Émilion | separated_track_path | 14,767.8 | 877.5 |
+| 33395 | Saint-Estèphe | separated_track_path | 8.2 | 0.0 |
+| 33396 | Saint-Étienne-de-Lisse | separated_track_path | 2.3 | 0.0 |
+| 33397 | Sainte-Eulalie | bus_lane | 62.1 | 62.1 |
+| 33397 | Sainte-Eulalie | low_speed | 5,188.7 | 0.0 |
+| 33397 | Sainte-Eulalie | separated_track_path | 569.9 | 715.8 |
+| 33399 | Saint-Félix-de-Foncaude | separated_track_path | 2,163.6 | 0.0 |
+| 33400 | Saint-Ferme | separated_track_path | 1,392.8 | 0.0 |
+| 33402 | Sainte-Foy-la-Grande | low_speed | 360.7 | 0.0 |
+| 33402 | Sainte-Foy-la-Grande | separated_track_path | 162.8 | 162.8 |
+| 33405 | Saint-Genès-de-Blaye | separated_track_path | 5,842.2 | 389.9 |
+| 33407 | Saint-Genès-de-Fronsac | separated_track_path | 130.9 | 0.0 |
+| 33408 | Saint-Genès-de-Lombaud | separated_track_path | 522.5 | 0.0 |
+| 33411 | Saint-Germain-de-Grave | separated_track_path | 3,587.5 | 0.0 |
+| 33412 | Saint-Germain-d'Esteuil | separated_track_path | 2,512.4 | 0.0 |
+| 33413 | Saint-Germain-du-Puch | low_speed | 171.8 | 0.0 |
+| 33413 | Saint-Germain-du-Puch | separated_track_path | 3,619.7 | 0.0 |
+| 33414 | Saint-Germain-de-la-Rivière | low_speed | 106.2 | 0.0 |
+| 33414 | Saint-Germain-de-la-Rivière | separated_track_path | 276.8 | 0.0 |
+| 33415 | Saint-Gervais | low_speed | 690.2 | 0.0 |
+| 33415 | Saint-Gervais | separated_track_path | 1,188.8 | 456.5 |
+| 33416 | Saint-Girons-d'Aiguevives | low_speed | 13.6 | 0.0 |
+| 33416 | Saint-Girons-d'Aiguevives | separated_track_path | 0.5 | 0.0 |
+| 33417 | Sainte-Hélène | low_speed | 2,638.5 | 0.0 |
+| 33417 | Sainte-Hélène | separated_track_path | 13,228.4 | 13,379.9 |
+| 33419 | Saint-Hilaire-du-Bois | separated_track_path | 780.6 | 0.0 |
+| 33420 | Saint-Hippolyte | separated_track_path | 658.5 | 0.0 |
+| 33421 | Saint-Jean-de-Blaignac | separated_track_path | 542.7 | 0.0 |
+| 33422 | Saint-Jean-d'Illac | low_speed | 2,264.3 | 0.0 |
+| 33422 | Saint-Jean-d'Illac | painted_lane | 1,514.1 | 2,178.3 |
+| 33422 | Saint-Jean-d'Illac | separated_track_path | 51,329.4 | 12,572.8 |
+| 33423 | Saint-Julien-Beychevelle | separated_track_path | 2,542.0 | 0.0 |
+| 33424 | Saint-Laurent-Médoc | low_speed | 185.0 | 0.0 |
+| 33424 | Saint-Laurent-Médoc | separated_track_path | 8,272.2 | 0.0 |
+| 33425 | Saint-Laurent-d'Arce | separated_track_path | 151.7 | 0.0 |
+| 33429 | Saint-Léger-de-Balson | separated_track_path | 9,802.2 | 8,077.0 |
+| 33432 | Saint-Loubert | separated_track_path | 434.2 | 0.0 |
+| 33433 | Saint-Loubès | low_speed | 184.1 | 0.0 |
+| 33433 | Saint-Loubès | painted_lane | 0.0 | 338.5 |
+| 33433 | Saint-Loubès | separated_track_path | 1,850.4 | 728.7 |
+| 33434 | Saint-Louis-de-Montferrand | low_speed | 920.8 | 0.0 |
+| 33434 | Saint-Louis-de-Montferrand | painted_lane | 493.8 | 987.6 |
+| 33434 | Saint-Louis-de-Montferrand | separated_track_path | 2,208.8 | 2,208.8 |
+| 33435 | Saint-Macaire | low_speed | 4,451.9 | 0.0 |
+| 33435 | Saint-Macaire | separated_track_path | 1,809.4 | 1,178.4 |
+| 33436 | Saint-Magne | low_speed | 2,404.2 | 0.0 |
+| 33436 | Saint-Magne | separated_track_path | 19,107.9 | 9,956.2 |
+| 33437 | Saint-Magne-de-Castillon | low_speed | 1,674.2 | 0.0 |
+| 33437 | Saint-Magne-de-Castillon | separated_track_path | 286.7 | 286.7 |
+| 33438 | Saint-Maixant | low_speed | 831.8 | 0.0 |
+| 33438 | Saint-Maixant | separated_track_path | 2,044.1 | 0.0 |
+| 33439 | Saint-Mariens | low_speed | 400.0 | 0.0 |
+| 33439 | Saint-Mariens | separated_track_path | 2,083.4 | 0.0 |
+| 33441 | Saint-Martin-Lacaussade | separated_track_path | 2,692.5 | 2,692.5 |
+| 33443 | Saint-Martin-de-Lerm | separated_track_path | 27.9 | 0.0 |
+| 33444 | Saint-Martin-de-Sescas | separated_track_path | 312.1 | 0.0 |
+| 33446 | Saint-Martin-du-Puy | separated_track_path | 1,041.0 | 0.0 |
+| 33447 | Saint-Médard-de-Guizières | low_speed | 109.0 | 0.0 |
+| 33447 | Saint-Médard-de-Guizières | separated_track_path | 118.9 | 0.0 |
+| 33448 | Saint-Médard-d'Eyrans | low_speed | 2,326.1 | 0.0 |
+| 33448 | Saint-Médard-d'Eyrans | separated_track_path | 1,504.6 | 0.0 |
+| 33449 | Saint-Médard-en-Jalles | low_speed | 39,216.3 | 0.0 |
+| 33449 | Saint-Médard-en-Jalles | painted_lane | 17,967.6 | 29,161.2 |
+| 33449 | Saint-Médard-en-Jalles | separated_track_path | 96,620.3 | 48,480.6 |
+| 33452 | Saint-Michel-de-Rieufret | separated_track_path | 5,067.6 | 0.0 |
+| 33454 | Saint-Morillon | low_speed | 1,229.3 | 0.0 |
+| 33454 | Saint-Morillon | separated_track_path | 10,860.2 | 3,913.9 |
+| 33456 | Saint-Palais | separated_track_path | 4,031.9 | 0.0 |
+| 33457 | Saint-Pardon-de-Conques | separated_track_path | 2,577.6 | 0.0 |
+| 33460 | Saint-Pey-de-Castets | separated_track_path | 62.5 | 0.0 |
+| 33462 | Saint-Philippe-du-Seignal | low_speed | 7.5 | 0.0 |
+| 33462 | Saint-Philippe-du-Seignal | separated_track_path | 881.3 | 0.0 |
+| 33463 | Saint-Pierre-d'Aurillac | low_speed | 4,787.1 | 0.0 |
+| 33463 | Saint-Pierre-d'Aurillac | separated_track_path | 1,397.3 | 0.0 |
+| 33464 | Saint-Pierre-de-Bat | low_speed | 102.1 | 0.0 |
+| 33464 | Saint-Pierre-de-Bat | separated_track_path | 914.4 | 0.0 |
+| 33465 | Saint-Pierre-de-Mons | low_speed | 144.8 | 0.0 |
+| 33465 | Saint-Pierre-de-Mons | separated_track_path | 18.7 | 0.0 |
+| 33466 | Saint-Quentin-de-Baron | separated_track_path | 2,080.0 | 0.0 |
+| 33467 | Saint-Quentin-de-Caplong | separated_track_path | 501.5 | 0.0 |
+| 33468 | Sainte-Radegonde | low_speed | 148.8 | 0.0 |
+| 33470 | Saint-Romain-la-Virvée | low_speed | 513.5 | 0.0 |
+| 33470 | Saint-Romain-la-Virvée | separated_track_path | 150.6 | 0.0 |
+| 33471 | Saint-Sauveur | separated_track_path | 2,724.8 | 0.0 |
+| 33472 | Saint-Sauveur-de-Puynormand | separated_track_path | 2,935.3 | 0.0 |
+| 33473 | Saint-Savin | separated_track_path | 144.0 | 0.0 |
+| 33474 | Saint-Selve | separated_track_path | 15,646.0 | 335.3 |
+| 33475 | Saint-Seurin-de-Bourg | separated_track_path | 2,417.5 | 0.0 |
+| 33477 | Saint-Seurin-de-Cursac | low_speed | 40.8 | 0.0 |
+| 33477 | Saint-Seurin-de-Cursac | separated_track_path | 1,467.8 | 1,467.8 |
+| 33478 | Saint-Seurin-sur-l'Isle | separated_track_path | 1,069.5 | 0.0 |
+| 33480 | Saint-Sulpice-de-Faleyrens | separated_track_path | 159.7 | 0.0 |
+| 33482 | Saint-Sulpice-de-Pommiers | separated_track_path | 2,671.5 | 2,671.5 |
+| 33483 | Saint-Sulpice-et-Cameyrac | low_speed | 891.4 | 0.0 |
+| 33483 | Saint-Sulpice-et-Cameyrac | separated_track_path | 2,084.7 | 0.0 |
+| 33484 | Saint-Symphorien | painted_lane | 324.1 | 648.3 |
+| 33484 | Saint-Symphorien | separated_track_path | 14,372.8 | 10,274.4 |
+| 33485 | Sainte-Terre | low_speed | 73.3 | 0.0 |
+| 33486 | Saint-Trojan | separated_track_path | 2,268.3 | 0.0 |
+| 33487 | Saint-Vincent-de-Paul | low_speed | 1,530.1 | 0.0 |
+| 33487 | Saint-Vincent-de-Paul | separated_track_path | 1,876.4 | 1,876.4 |
+| 33488 | Saint-Vincent-de-Pertignas | separated_track_path | 1,481.3 | 0.0 |
+| 33489 | Saint-Vivien-de-Blaye | separated_track_path | 1,431.1 | 0.0 |
+| 33490 | Saint-Vivien-de-Médoc | separated_track_path | 241.9 | 0.0 |
+| 33492 | Saint-Yzan-de-Soudiac | low_speed | 2,161.1 | 0.0 |
+| 33492 | Saint-Yzan-de-Soudiac | separated_track_path | 2,546.1 | 27.7 |
+| 33494 | Salaunes | separated_track_path | 6,179.6 | 6,179.6 |
+| 33496 | Sallebœuf | low_speed | 302.7 | 0.0 |
+| 33496 | Sallebœuf | separated_track_path | 2,219.0 | 0.0 |
+| 33498 | Salles | low_speed | 17,209.8 | 0.0 |
+| 33498 | Salles | painted_lane | 995.2 | 1,943.6 |
+| 33498 | Salles | separated_track_path | 81,638.3 | 12,453.6 |
+| 33500 | Samonac | separated_track_path | 4,858.7 | 0.0 |
+| 33501 | Saucats | low_speed | 292.1 | 0.0 |
+| 33501 | Saucats | separated_track_path | 43,524.3 | 0.0 |
+| 33502 | Saugon | separated_track_path | 292.7 | 0.0 |
+| 33503 | Saumos | separated_track_path | 9,267.0 | 7,973.5 |
+| 33504 | Sauternes | separated_track_path | 3,659.4 | 0.0 |
+| 33505 | La Sauve | separated_track_path | 5,811.7 | 4,760.9 |
+| 33506 | Sauveterre-de-Guyenne | painted_lane | 170.7 | 314.7 |
+| 33506 | Sauveterre-de-Guyenne | separated_track_path | 3,654.2 | 2,385.9 |
+| 33507 | Sauviac | separated_track_path | 790.5 | 0.0 |
+| 33508 | Savignac | separated_track_path | 4,614.0 | 0.0 |
+| 33509 | Savignac-de-l'Isle | separated_track_path | 410.5 | 0.0 |
+| 33510 | Semens | separated_track_path | 3,120.1 | 0.0 |
+| 33512 | Sigalens | separated_track_path | 9,280.0 | 0.0 |
+| 33513 | Sillas | separated_track_path | 85.4 | 0.0 |
+| 33514 | Soulac-sur-Mer | low_speed | 2,199.7 | 0.0 |
+| 33514 | Soulac-sur-Mer | painted_lane | 1,173.7 | 1,173.7 |
+| 33514 | Soulac-sur-Mer | separated_track_path | 47,635.9 | 15,641.1 |
+| 33515 | Soulignac | separated_track_path | 311.5 | 0.0 |
+| 33517 | Soussans | separated_track_path | 1,989.6 | 0.0 |
+| 33518 | Tabanac | separated_track_path | 997.1 | 0.0 |
+| 33519 | Le Taillan-Médoc | low_speed | 21,534.6 | 0.0 |
+| 33519 | Le Taillan-Médoc | painted_lane | 2,143.0 | 4,286.0 |
+| 33519 | Le Taillan-Médoc | separated_track_path | 22,778.9 | 14,945.8 |
+| 33521 | Talais | separated_track_path | 8,532.7 | 8,532.7 |
+| 33522 | Talence | bus_lane | 668.5 | 422.5 |
+| 33522 | Talence | low_speed | 28,830.5 | 349.3 |
+| 33522 | Talence | painted_lane | 13,865.7 | 17,033.2 |
+| 33522 | Talence | separated_track_path | 30,349.1 | 17,985.4 |
+| 33523 | Targon | low_speed | 1,534.8 | 0.0 |
+| 33523 | Targon | separated_track_path | 911.8 | 0.0 |
+| 33525 | Tauriac | separated_track_path | 4,769.2 | 0.0 |
+| 33526 | Tayac | separated_track_path | 3,300.1 | 0.0 |
+| 33527 | Le Teich | low_speed | 3,142.5 | 0.0 |
+| 33527 | Le Teich | painted_lane | 291.2 | 582.4 |
+| 33527 | Le Teich | separated_track_path | 69,240.0 | 27,433.4 |
+| 33529 | La Teste-de-Buch | low_speed | 23,759.2 | 0.0 |
+| 33529 | La Teste-de-Buch | painted_lane | 4,890.7 | 7,700.2 |
+| 33529 | La Teste-de-Buch | separated_track_path | 192,506.1 | 93,223.7 |
+| 33530 | Teuillac | separated_track_path | 741.1 | 0.0 |
+| 33532 | Tizac-de-Lapouyade | separated_track_path | 2,968.4 | 0.0 |
+| 33533 | Toulenne | low_speed | 619.2 | 0.0 |
+| 33533 | Toulenne | painted_lane | 342.9 | 685.8 |
+| 33533 | Toulenne | separated_track_path | 3,820.6 | 0.0 |
+| 33534 | Le Tourne | low_speed | 925.9 | 0.0 |
+| 33534 | Le Tourne | separated_track_path | 1,327.5 | 0.0 |
+| 33535 | Tresses | low_speed | 2,680.7 | 0.0 |
+| 33535 | Tresses | separated_track_path | 4,845.6 | 1,884.8 |
+| 33536 | Le Tuzan | separated_track_path | 4,599.8 | 4,599.8 |
+| 33537 | Uzeste | separated_track_path | 9,608.6 | 5,728.9 |
+| 33538 | Valeyrac | separated_track_path | 1,852.6 | 0.0 |
+| 33539 | Vayres | low_speed | 827.6 | 0.0 |
+| 33539 | Vayres | separated_track_path | 2,229.2 | 0.0 |
+| 33540 | Vendays-Montalivet | low_speed | 19,118.1 | 0.0 |
+| 33540 | Vendays-Montalivet | separated_track_path | 36,735.1 | 28,787.3 |
+| 33541 | Vensac | separated_track_path | 22,144.0 | 11,475.8 |
+| 33542 | Vérac | low_speed | 185.5 | 0.0 |
+| 33542 | Vérac | separated_track_path | 1,066.1 | 0.0 |
+| 33543 | Verdelais | low_speed | 1,929.9 | 0.0 |
+| 33543 | Verdelais | separated_track_path | 1,367.4 | 0.0 |
+| 33544 | Le Verdon-sur-Mer | low_speed | 2,609.0 | 0.0 |
+| 33544 | Le Verdon-sur-Mer | painted_lane | 96.8 | 96.8 |
+| 33544 | Le Verdon-sur-Mer | separated_track_path | 56,837.0 | 8,500.2 |
+| 33545 | Vertheuil | separated_track_path | 168.3 | 0.0 |
+| 33547 | Villandraut | low_speed | 103.9 | 0.0 |
+| 33547 | Villandraut | separated_track_path | 7,809.9 | 5,715.5 |
+| 33548 | Villegouge | low_speed | 540.7 | 0.0 |
+| 33548 | Villegouge | separated_track_path | 2,505.6 | 0.0 |
+| 33549 | Villenave-de-Rions | separated_track_path | 193.4 | 0.0 |
+| 33550 | Villenave-d'Ornon | bus_lane | 386.6 | 163.2 |
+| 33550 | Villenave-d'Ornon | low_speed | 16,089.7 | 0.0 |
+| 33550 | Villenave-d'Ornon | painted_lane | 8,353.9 | 11,698.5 |
+| 33550 | Villenave-d'Ornon | separated_track_path | 49,724.3 | 26,711.0 |
+| 33551 | Villeneuve | separated_track_path | 5,154.6 | 0.0 |
+| 33552 | Virelade | low_speed | 70.3 | 0.0 |
+| 33552 | Virelade | separated_track_path | 29,174.1 | 0.0 |
+| 33553 | Virsac | low_speed | 1,077.6 | 0.0 |
+| 33553 | Virsac | painted_lane | 2.2 | 4.4 |
+| 33553 | Virsac | separated_track_path | 248.6 | 0.0 |
+| 33554 | Yvrac | low_speed | 385.4 | 0.0 |
+| 33554 | Yvrac | separated_track_path | 753.5 | 3.8 |
+| 33555 | Marcheprime | low_speed | 2,253.5 | 0.0 |
+| 33555 | Marcheprime | painted_lane | 583.1 | 1,166.3 |
+| 33555 | Marcheprime | separated_track_path | 34,359.2 | 16,281.3 |
+
+### Géovélo length within the same-family OSM buffer
+
+| Family | Géovélo length (m) | Matched (m) | Share |
+|---|---:|---:|---:|
+| bus_lane | 63,477.7 | 56,242.3 | 88.6% |
+| low_speed | 1,661.3 | 1,335.6 | 80.4% |
+| painted_lane | 628,478.3 | 619,202.4 | 98.5% |
+| separated_track_path | 1,670,000.2 | 1,628,245.9 | 97.5% |
+
+### Excluded and counted Géovélo values
+
+| Field | Value | Sides | Length (m) |
+|---|---|---:|---:|
+| ame_d | AUCUN | 1,767 | 296,706.1 |
+| ame_d | AUTRE | 221 | 61,867.1 |
+| ame_d | GOULOTTE | 16 | 150.6 |
+| ame_g | AUCUN | 2,625 | 428,747.3 |
+| ame_g | AUTRE | 174 | 58,122.3 |
+| ame_g | DOUBLE SENS CYCLABLE NON MATERIALISE | 1,357 | 231,637.4 |
+| ame_g | GOULOTTE | 16 | 150.6 |
+
+Unmapped non-empty values and values mapped to `null` in `config/network.yaml` are excluded from family totals and listed above. Blank values are shown in the distinct-value table but are not counted as facilities.
+
 ## Edge costs
 
 - Directed edges with null elevation profiles: 0 of 4,461,184
