@@ -112,6 +112,13 @@ Mode checkpoints are reused when their input fingerprints match. A foot
 stratum with no candidate after the configured attempts is reported and its
 quota redistributed; failure to fill a car or bike stratum stops the run.
 
+After all queries, `python -m mobgrid.validation.osrm report --config
+config/osrm.yaml` writes the configured step 6 report from Dial routes and
+matching dated OSRM responses. It reports signed model-minus-OSRM errors by
+mode, band and context, counts routes outside the configured cutoff, and
+records response dates and context-provenance shares. It checkpoints routing
+per mode. The report currently marks car calibration as pending.
+
 ## Edge columns
 
 | Column | Type | Meaning |

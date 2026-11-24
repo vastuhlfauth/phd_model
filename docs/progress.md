@@ -37,7 +37,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM sample and serial query stages tested synthetically; routing and calibration report pending |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM sample, query and baseline Dial metrics tested synthetically; car calibration pending |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | in progress | `step/mobgrid-osm` | Compact CSR, bounded heap/Dial searches and three products tested synthetically; pilot benchmark favours Dial for all modes |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -116,8 +116,8 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
-- [ ] Step 6 OSRM: implement routing metrics and car calibration; then run
-  the stratified sample and queries and inspect the report. Foot strata
+- [ ] Step 6 OSRM: implement car calibration; then run the stratified
+  sample and queries and inspect the report. Foot strata
   unfilled after the configured attempt limit are reported, not proven empty.
 - [ ] Step 8: rebuild version 2 graphs on the 2021 pilot and inspect per-mode
   counts, memory and timings; compare car memory with the prior 248 MiB for

@@ -13,6 +13,9 @@ timeout_s: 30
 sample_path: data/interim/osrm/pairs.parquet
 response_directory: data/interim/osrm/responses
 log_directory: logs
+report_path: docs/data/step06_osrm_check.md
+route_checkpoint_directory: data/interim/osrm/routing
+metric_tolerances_min: [2, 5]
 sampling:
   graph_directory: data/base/network/2021/pilot/graph
   edges_path: data/base/network/2021/pilot/edges.parquet

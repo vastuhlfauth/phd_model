@@ -56,6 +56,9 @@ class QuerySettings(BaseModel):
     response_directory: Path
     log_directory: Path
     sampling: SampleSettings | None = None
+    report_path: Path | None = None
+    route_checkpoint_directory: Path | None = None
+    metric_tolerances_min: tuple[float, float] | None = None
 
     @model_validator(mode="after")
     def check_policy(self) -> QuerySettings:
@@ -63,6 +66,13 @@ class QuerySettings(BaseModel):
             raise ValueError("interval_s must respect the configured server policy")
         if set(self.prefixes) != {"car", "bike", "foot"}:
             raise ValueError("prefixes must include car, bike and foot")
+        if self.metric_tolerances_min is not None and not (
+            0 < self.metric_tolerances_min[0] < self.metric_tolerances_min[1]
+            and all(math.isfinite(value) for value in self.metric_tolerances_min)
+        ):
+            raise ValueError(
+                "metric tolerances must be finite, positive and increasing"
+            )
         if any(
             not value
             or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for c in value)
@@ -314,7 +324,7 @@ def query_pairs(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["sample", "queries"])
+    parser.add_argument("command", choices=["sample", "queries", "report"])
     parser.add_argument("--config", type=Path, required=True)
     args = parser.parse_args()
     settings = load_query_settings(args.config)
@@ -329,6 +339,11 @@ def main() -> None:
             settings.log_directory,
             _utc(time.time())[:10],
         )
+        return
+    if args.command == "report":
+        from mobgrid.validation.osrm_report import generate_report
+
+        generate_report(settings, _utc(time.time())[:10])
         return
     pairs = pq.read_table(settings.sample_path).to_pylist()
     sent, skipped = query_pairs(pairs, settings)

@@ -3,6 +3,16 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6: OSRM baseline routing metrics (2026-11-24)
+
+- Added Dial time and distance comparisons by mode, crow-fly band and origin
+  context, including signed bias, median errors, tolerance shares and relative
+  error. Cutoff exclusions and response dates are explicit.
+- Route results checkpoint per mode; the report records origin-context
+  provenance and marks car calibration as pending.
+- Offline sample/query/report tests: 15 passed; Ruff clean. Synthetic reports
+  use stored test responses only; no pilot or server run.
+
 ### Step 6: OSRM pilot sample (2026-11-24)
 
 - Added seeded, balanced mode/context/band graph-node sampling with Dial's

@@ -1,5 +1,8 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6: report signed model-minus-OSRM bias and mean signed
+  relative time error; exclude routes not settled by the configured Dial
+  cutoff from metrics while reporting their counts in each stratum.
 - 2026-11-24, step 6: assign an origin the nearest classified car edge within
   500 m, with edge-key tie-breaking; beyond that distance use rural. Report
   tagged, density-derived and fallback shares for distinct sampled origins.
