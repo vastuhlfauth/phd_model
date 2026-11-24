@@ -163,6 +163,7 @@ def test_bike_components_and_mass_sensitive_energy_are_preserved(edge_files):
     np.testing.assert_allclose(graph.weights["bike_energy_drag_kj"], [2.2, 0.0])
     np.testing.assert_allclose(graph.weights["bike_pedalling_energy_kj"], [2.3, 0.0])
     np.testing.assert_array_equal(graph.weights["bike_energy_step_kj"], [0.0, 13.0])
+    np.testing.assert_array_equal(graph.member_edge_rows, [2, 3])
     np.testing.assert_array_equal(
         bike_energy_for_mass(graph, 74.0), graph.weights["energy_kj"]
     )

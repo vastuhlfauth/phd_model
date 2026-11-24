@@ -7,10 +7,15 @@
   in a compiled pass over the settle order after searching, rather than in the
   heap loop. Dial uses configured 0.1 s rounding; the heap retains float costs.
   For shortest-path costs, the rounding-error bound uses the greater edge count
-  of the rounded-optimal and float-optimal paths, since their routes can differ.
+  of the rounded-optimal and float-optimal paths, since their routes can differ,
+  plus one half-resolution allowance if a source offset is rounded.
+- 2026-11-24, step 8: queue ties use insertion order in both variants, so
+  rounded searches agree on predecessors and secondary path weights. The
+  benchmark selects no production queue; it reports the faster variant.
 - 2026-11-24, step 8: save each mode graph as an uncompressed `.npz`
   containing int64 OSM node ids and offsets, int32 neighbour indices,
-  float32 time/secondary weights, and the same arrays for the transpose.
+  float32 time/secondary weights, and the same arrays for the transpose
+  (transpose arrays superseded by version 2 above).
   Keep the reference-mass bike energy total plus its per-kilogram, drag,
   pedalling and step-walking components so edge energy can be recomposed
   for another body mass without rebuilding.

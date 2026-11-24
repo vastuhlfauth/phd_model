@@ -1,10 +1,14 @@
 import heapq
+import time
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
+from mobgrid.graph.config import load_search_config
 from mobgrid.graph.csr import csr_from_indexed_edges
 from mobgrid.graph.dijkstra import SearchWorkspace, path_time_splits, search
+from pydantic import ValidationError
 
 
 def _random_graph(seed):
@@ -137,6 +141,63 @@ def test_rejects_negative_or_nonfinite_inputs():
         search(graph, workspace, np.array([1]), np.array([-1.0]), 10.0)
 
 
+def test_search_configuration_rejects_invalid_cutoffs_and_resolution():
+    config = load_search_config(
+        Path(__file__).resolve().parents[3] / "config" / "search.yaml"
+    )
+    values = config.model_dump()
+    values["dial_resolution_s"] = 0
+    with pytest.raises(ValidationError):
+        type(config).model_validate(values)
+    values["dial_resolution_s"] = config.dial_resolution_s
+    values["cutoff_s_by_mode"] = {"car": -1, "bike": None, "foot": None}
+    with pytest.raises(ValidationError):
+        type(config).model_validate(values)
+
+
+def test_reused_workspace_masks_unreached_labels():
+    graph = _random_graph(99)
+    workspace = SearchWorkspace(graph, ("distance_m",))
+    old = search(graph, workspace, np.array([0]), np.array([0.0]), 100)
+    result = search(graph, workspace, np.array([1]), np.array([0.0]), 0)
+    with pytest.raises(ValueError, match="invalidated"):
+        _ = old.time_s
+    unreachable = np.arange(len(graph.node_ids)) != 1
+    assert np.isinf(result.time_s[unreachable]).all()
+    assert (result.predecessor_node[unreachable] == -1).all()
+    assert (result.predecessor_edge[unreachable] == -1).all()
+    assert np.isnan(result.secondary[unreachable]).all()
+
+
+def test_reverse_search_uses_forward_weights_and_predecessor_edges():
+    graph = csr_from_indexed_edges(
+        "foot",
+        np.arange(3, dtype=np.int64),
+        np.array([0, 1, 0]),
+        np.array([1, 2, 2]),
+        {
+            "time_s": np.array([1, 2, 10], dtype=np.float32),
+            "distance_m": np.array([5, 6, 90], dtype=np.float32),
+        },
+        reference_mass_kg=74,
+        bike_mass_kg=15,
+    )
+    result = search(
+        graph,
+        SearchWorkspace(graph, ("distance_m",)),
+        np.array([2]),
+        np.array([0.0]),
+        20,
+        reverse=True,
+    )
+    np.testing.assert_array_equal(result.time_s, [3, 2, 0])
+    assert result.secondary[0, 0] == 11
+    for node in [0, 1]:
+        edge = result.predecessor_edge[node]
+        assert graph.indices[edge] == result.predecessor_node[node]
+        assert graph.indptr[node] <= edge < graph.indptr[node + 1]
+
+
 def test_dial_includes_cutoff_on_decimal_tick_boundary():
     graph = csr_from_indexed_edges(
         "foot",
@@ -158,6 +219,38 @@ def test_dial_includes_cutoff_on_decimal_tick_boundary():
         resolution_s=0.1,
     )
     np.testing.assert_array_equal(result.settled, [0, 1])
+
+
+def test_tied_rounded_paths_have_same_predecessors_and_secondary_costs():
+    graph = csr_from_indexed_edges(
+        "foot",
+        np.arange(4, dtype=np.int64),
+        np.array([0, 0, 1, 2]),
+        np.array([1, 2, 3, 3]),
+        {
+            "time_s": np.array([1, 1, 1, 1], dtype=np.float32),
+            "distance_m": np.array([2, 10, 3, 20], dtype=np.float32),
+        },
+        reference_mass_kg=74,
+        bike_mass_kg=15,
+    )
+    workspace = SearchWorkspace(graph, ("distance_m",), max_dial_ticks=30)
+    heap = search(graph, workspace, np.array([0]), np.array([0.0]), 3)
+    heap_order = heap.settled.copy()
+    heap_parents = heap.predecessor_node.copy()
+    heap_secondary = heap.secondary.copy()
+    dial = search(
+        graph,
+        workspace,
+        np.array([0]),
+        np.array([0.0]),
+        3,
+        queue="dial",
+        resolution_s=0.1,
+    )
+    np.testing.assert_array_equal(dial.settled, heap_order)
+    np.testing.assert_array_equal(dial.predecessor_node, heap_parents)
+    np.testing.assert_array_equal(dial.secondary, heap_secondary)
 
 
 def test_dial_rounding_error_is_bounded_by_path_lengths():
@@ -186,3 +279,52 @@ def test_dial_rounding_error_is_bounded_by_path_lengths():
             path_length(node, dial_parents), path_length(node, heap_parents)
         )
         assert abs(dial_times[node] - heap_times[node]) <= bound + 1e-10
+
+
+@pytest.mark.pilot
+def test_synthetic_million_node_benchmark():
+    n = 1_000_000
+    sources = np.arange(n - 1, dtype=np.int64)
+    graph = csr_from_indexed_edges(
+        "foot",
+        np.arange(n, dtype=np.int64),
+        sources,
+        sources + 1,
+        {"time_s": np.ones(n - 1, dtype=np.float32)},
+        reference_mass_kg=74,
+        bike_mass_kg=15,
+    )
+    resolution = load_search_config(
+        Path(__file__).resolve().parents[3] / "config" / "search.yaml"
+    ).dial_resolution_s
+    cutoff = 12_000.0
+    workspace = SearchWorkspace(graph, (), max_dial_ticks=int(cutoff / resolution))
+    origin, offset = np.array([0]), np.array([0.0])
+    timings = {}
+    for queue in ("heap", "dial"):
+        search(
+            graph,
+            workspace,
+            origin,
+            offset,
+            cutoff,
+            queue=queue,
+            resolution_s=resolution,
+        )
+        started = time.perf_counter()
+        result = search(
+            graph,
+            workspace,
+            origin,
+            offset,
+            cutoff,
+            queue=queue,
+            resolution_s=resolution,
+        )
+        elapsed = time.perf_counter() - started
+        timings[queue] = elapsed
+        print(
+            f"{queue}: {result.count / elapsed:,.0f} settled nodes/s "
+            f"({result.count:,} nodes)"
+        )
+    print(f"Faster queue: {min(timings, key=timings.get)}")

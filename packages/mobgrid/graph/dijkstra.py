@@ -10,47 +10,54 @@ import numpy.typing as npt
 from numba import njit
 
 from mobgrid.graph.csr import CSRGraph
+from mobgrid.od.products import SearchProducts, record_settled
 
 
 @njit(cache=True)
-def _heap_push(keys, nodes, size, key, node):
+def _heap_push(keys, nodes, sequences, size, key, node, sequence):
     position = size
     while position:
         parent = (position - 1) // 2
-        if keys[parent] < key or (keys[parent] == key and nodes[parent] <= node):
+        if keys[parent] < key or (
+            keys[parent] == key and sequences[parent] <= sequence
+        ):
             break
         keys[position] = keys[parent]
         nodes[position] = nodes[parent]
+        sequences[position] = sequences[parent]
         position = parent
     keys[position] = key
     nodes[position] = node
+    sequences[position] = sequence
     return size + 1
 
 
 @njit(cache=True)
-def _heap_pop(keys, nodes, size):
+def _heap_pop(keys, nodes, sequences, size):
     key, node = keys[0], nodes[0]
     size -= 1
     if size:
-        last_key, last_node = keys[size], nodes[size]
+        last_key, last_node, last_sequence = keys[size], nodes[size], sequences[size]
         position = 0
         while position * 2 + 1 < size:
             child = position * 2 + 1
             right = child + 1
             if right < size and (
                 keys[right] < keys[child]
-                or (keys[right] == keys[child] and nodes[right] < nodes[child])
+                or (keys[right] == keys[child] and sequences[right] < sequences[child])
             ):
                 child = right
             if keys[child] > last_key or (
-                keys[child] == last_key and nodes[child] >= last_node
+                keys[child] == last_key and sequences[child] >= last_sequence
             ):
                 break
             keys[position] = keys[child]
             nodes[position] = nodes[child]
+            sequences[position] = sequences[child]
             position = child
         keys[position] = last_key
         nodes[position] = last_node
+        sequences[position] = last_sequence
     return key, node, size
 
 
@@ -58,6 +65,8 @@ def _heap_pop(keys, nodes, size):
 def _run(
     indptr,
     indices,
+    reverse_edge_indices,
+    reverse,
     weights,
     secondary_weights,
     sources,
@@ -77,8 +86,13 @@ def _run(
     settled,
     heap_keys,
     heap_nodes,
+    heap_sequences,
     bucket_heads,
+    bucket_tails,
     bucket_next,
+    product_arrays,
+    distance_index,
+    energy_index,
 ):
     size = 0
     entries = 0
@@ -107,11 +121,18 @@ def _run(
                 tick = int(time)
                 heap_nodes[entries] = node
                 heap_keys[entries] = time
-                bucket_next[entries] = bucket_heads[tick]
-                bucket_heads[tick] = entries
+                bucket_next[entries] = -1
+                if bucket_heads[tick] == -1:
+                    bucket_heads[tick] = entries
+                else:
+                    bucket_next[bucket_tails[tick]] = entries
+                bucket_tails[tick] = entries
                 entries += 1
             else:
-                size = _heap_push(heap_keys, heap_nodes, size, time, node)
+                size = _heap_push(
+                    heap_keys, heap_nodes, heap_sequences, size, time, node, entries
+                )
+                entries += 1
     count = 0
     tick = 0
     while True:
@@ -122,11 +143,13 @@ def _run(
                 break
             entry = bucket_heads[tick]
             bucket_heads[tick] = bucket_next[entry]
+            if bucket_heads[tick] == -1:
+                bucket_tails[tick] = -1
             time, node = heap_keys[entry], heap_nodes[entry]
         else:
             if size == 0:
                 break
-            time, node, size = _heap_pop(heap_keys, heap_nodes, size)
+            time, node, size = _heap_pop(heap_keys, heap_nodes, heap_sequences, size)
         if (
             stamps[node] != generation
             or times[node] != time
@@ -136,8 +159,17 @@ def _run(
         settled_stamps[node] = generation
         settled[count] = node
         count += 1
-        for edge in range(indptr[node], indptr[node + 1]):
-            target = indices[edge]
+        if product_arrays is not None:
+            record_settled(
+                node,
+                time * resolution,
+                secondary[node, distance_index],
+                secondary[node, energy_index],
+                product_arrays,
+            )
+        for position in range(indptr[node], indptr[node + 1]):
+            target = indices[position]
+            edge = reverse_edge_indices[position] if reverse else position
             edge_time = weights[edge]
             if dial:
                 edge_time = np.rint(edge_time / resolution)
@@ -157,16 +189,29 @@ def _run(
                     bucket = int(candidate)
                     heap_nodes[entries] = target
                     heap_keys[entries] = candidate
-                    bucket_next[entries] = bucket_heads[bucket]
-                    bucket_heads[bucket] = entries
+                    bucket_next[entries] = -1
+                    if bucket_heads[bucket] == -1:
+                        bucket_heads[bucket] = entries
+                    else:
+                        bucket_next[bucket_tails[bucket]] = entries
+                    bucket_tails[bucket] = entries
                     entries += 1
                 else:
-                    size = _heap_push(heap_keys, heap_nodes, size, candidate, target)
+                    size = _heap_push(
+                        heap_keys,
+                        heap_nodes,
+                        heap_sequences,
+                        size,
+                        candidate,
+                        target,
+                        entries,
+                    )
+                    entries += 1
     return count
 
 
 class SearchWorkspace:
-    """Preallocate node, queue and secondary-label arrays for one graph."""
+    """Preallocate search arrays; Dial's cutoff cannot exceed max_dial_ticks."""
 
     def __init__(
         self,
@@ -191,6 +236,7 @@ class SearchWorkspace:
         )
         if not np.isfinite(self.secondary_weights).all():
             raise ValueError("secondary weights must be finite")
+        self.nonnegative_secondary = np.all(self.secondary_weights >= 0, axis=0)
         self.zero_source_secondary = np.empty(
             (0, len(secondary_names)), dtype=np.float64
         )
@@ -204,22 +250,29 @@ class SearchWorkspace:
         self.settle_order = np.empty(n, dtype=np.int32)
         self.heap_keys = np.empty(capacity, dtype=np.float64)
         self.heap_nodes = np.empty(capacity, dtype=np.int32)
+        self.heap_sequences = np.empty(capacity, dtype=np.int64)
         self.bucket_next = np.empty(capacity, dtype=np.int64)
         self.bucket_heads = np.full(max_dial_ticks + 1, -1, dtype=np.int64)
+        self.bucket_tails = np.full(max_dial_ticks + 1, -1, dtype=np.int64)
         self.generation = 0
 
 
 @dataclass(frozen=True)
 class SearchResult:
-    """Search labels; views are invalidated when the workspace is reused."""
+    """Search labels, invalidated when reused; unvisited labels are masked."""
 
     workspace: SearchWorkspace
     generation: int
     count: int
     scale: float
 
+    def _check_current(self) -> None:
+        if self.workspace.generation != self.generation:
+            raise ValueError("search result was invalidated by workspace reuse")
+
     @property
     def time_s(self) -> npt.NDArray[np.float64]:
+        self._check_current()
         return np.where(
             self.workspace.stamps == self.generation,
             self.workspace.times * self.scale,
@@ -228,19 +281,35 @@ class SearchResult:
 
     @property
     def settled(self) -> npt.NDArray[np.int32]:
+        self._check_current()
         return self.workspace.settle_order[: self.count]
 
     @property
     def predecessor_node(self) -> npt.NDArray[np.int32]:
-        return self.workspace.predecessor_node
+        self._check_current()
+        return np.where(
+            self.workspace.stamps == self.generation,
+            self.workspace.predecessor_node,
+            np.int32(-1),
+        )
 
     @property
     def predecessor_edge(self) -> npt.NDArray[np.int32]:
-        return self.workspace.predecessor_edge
+        self._check_current()
+        return np.where(
+            self.workspace.stamps == self.generation,
+            self.workspace.predecessor_edge,
+            np.int32(-1),
+        )
 
     @property
     def secondary(self) -> npt.NDArray[np.float64]:
-        return self.workspace.secondary
+        self._check_current()
+        return np.where(
+            (self.workspace.stamps == self.generation)[:, None],
+            self.workspace.secondary,
+            np.nan,
+        )
 
 
 def search(
@@ -253,8 +322,10 @@ def search(
     queue: Literal["heap", "dial"] = "heap",
     resolution_s: float | None = None,
     source_secondary: npt.NDArray[np.floating] | None = None,
+    products: SearchProducts | None = None,
+    reverse: bool = False,
 ) -> SearchResult:
-    """Minimise seconds up to cutoff, carrying secondary SI-unit path sums."""
+    """Minimise seconds up to cutoff; reverse predecessors use forward edge ids."""
     sources = np.asarray(sources)
     offsets_s = np.asarray(offsets_s, dtype=np.float64)
     if workspace.graph is not graph:
@@ -293,6 +364,31 @@ def search(
         cutoff = np.floor(np.nextafter(cutoff_s / scale, np.inf))
         if cutoff >= len(workspace.bucket_heads):
             raise ValueError("Dial cutoff exceeds workspace bucket capacity")
+    product_arrays = None
+    distance_index = -1
+    energy_index = -1
+    if products is not None:
+        if len(products.od_flags) != len(graph.node_ids):
+            raise ValueError("destination arrays must align with graph nodes")
+        try:
+            distance_index = workspace.secondary_names.index("distance_m")
+            energy_index = workspace.secondary_names.index("energy_kj")
+        except ValueError as exc:
+            raise ValueError("products require distance_m and energy_kj") from exc
+        if (
+            not workspace.nonnegative_secondary[distance_index]
+            or not workspace.nonnegative_secondary[energy_index]
+            or (
+                len(source_secondary)
+                and (
+                    np.any(source_secondary[:, distance_index] < 0)
+                    or np.any(source_secondary[:, energy_index] < 0)
+                )
+            )
+        ):
+            raise ValueError("product distance and energy must be non-negative")
+        products.reset()
+        product_arrays = products.arrays
     if workspace.generation == np.iinfo(np.int64).max:
         workspace.stamps.fill(0)
         workspace.settled_stamps.fill(0)
@@ -300,8 +396,10 @@ def search(
         workspace.generation = 0
     workspace.generation += 1
     count = _run(
-        graph.indptr,
-        graph.indices,
+        graph.reverse_indptr if reverse else graph.indptr,
+        graph.reverse_indices if reverse else graph.indices,
+        graph.reverse_edge_indices,
+        reverse,
         times,
         workspace.secondary_weights,
         sources,
@@ -321,9 +419,16 @@ def search(
         workspace.settle_order,
         workspace.heap_keys,
         workspace.heap_nodes,
+        workspace.heap_sequences,
         workspace.bucket_heads,
+        workspace.bucket_tails,
         workspace.bucket_next,
+        product_arrays,
+        distance_index,
+        energy_index,
     )
+    if products is not None and products._overflow[0]:
+        raise ValueError("product bin capacity is insufficient")
     return SearchResult(workspace, workspace.generation, count, scale)
 
 

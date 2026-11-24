@@ -2,3 +2,11 @@ dial_resolution_s: 0.1
 time_bin_s: 60
 distance_bin_m: 250
 energy_bin_kj: 10
+nearest_extra: 2
+benchmark_seed: 42
+benchmark_log_directory: logs
+# Supply the mode cutoffs before running the pilot benchmark.
+cutoff_s_by_mode:
+  car: null
+  bike: null
+  foot: null
