@@ -20,7 +20,7 @@ from mobgrid.osm.active_costs import enrich_active_edge_costs
 from mobgrid.osm.config import load_network_config
 
 logger = logging.getLogger(__name__)
-_BUILD_VERSION = 3
+_BUILD_VERSION = 4
 _CAR_BUILD_VERSION = 2
 _REPORT_HEADING = "## Edge costs"
 

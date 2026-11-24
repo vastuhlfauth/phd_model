@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 3 | `landgrid/origins` | not started | | |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
-| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Active-cost corrections implemented; rerun pilot costs and inspect speeds, errors, timing, agreement and Géovélo check |
+| 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | Active-cost corrections and vectorized loading implemented; rerun pilot costs, verify walk/bike under 60 s, and inspect speeds, errors, agreement and Géovélo check |
 | 7 | `mobgrid/energy` | review | `step/mobgrid-energy` | Notes moved to `docs/progress/log_networks.md` (Step 7: notes from the steps table) |
 | 8 | `mobgrid/graph` | not started | | |
 | 9 | `mobgrid/layers/gridgraph.py` | not started | | |
@@ -115,7 +115,8 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [ ] Step 6b: verify the approved surface-adjusted power rule eliminates
   zero-speed bike segments in the pilot report; inspect any remaining errors.
 - [ ] Step 6b: inspect raw-elevation stair speeds and active-cost timing
-  breakdown on the pilot; no national performance measurement has been run.
+  breakdown on the pilot and verify optimized walk/bike costs are under 60 s;
+  this change has not been run on the pilot.
 - [ ] Step 6: investigate the observed assign-segments timing regression
   (498 s versus 150 s); the forced-rebuild change did not alter its SQL.
 - [ ] Step 6: verify the version 7 pilot edge-build time is under five minutes.

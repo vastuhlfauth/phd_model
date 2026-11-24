@@ -1,5 +1,10 @@
 ## Decisions taken while coding
 
+- 2026-11-24, step 6b: load node coordinates, raw elevations and endpoint
+  tags once, then use sorted node-id indexes and Arrow list offsets for active
+  segment inputs. Remove the per-batch node join/window query, preserve the
+  cost formula and timing categories, and invalidate active/joined checkpoints
+  while retaining the independent car-cost checkpoint.
 - 2026-11-24, step 6b: user approved section 9.7 rider power based on
   effective grade `i + (Crr_surface - Crr_paved)`; force balance retains
   physical grade and paved speeds are unchanged. Spec wording will follow.

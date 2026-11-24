@@ -25,9 +25,21 @@ from mobgrid.osm.bike_speed_table import BikeSpeedTable
 from mobgrid.osm.config import NetworkConfig
 
 FloatArray = npt.NDArray[np.float64]
+IntArray = npt.NDArray[np.int64]
 logger = logging.getLogger(__name__)
 _EDGE_BATCH_SIZE = 25_000
 _CONTROLLED_HIGHWAYS = {"traffic_signals", "stop", "give_way", "mini_roundabout"}
+
+
+@dataclass(frozen=True)
+class _NodeArrays:
+    """Section 9.3/9.7 node coordinates/elevations in metres, sorted by id."""
+
+    node_ids: IntArray
+    x: FloatArray
+    y: FloatArray
+    elevation_m: FloatArray
+    tags: pa.Array
 
 
 @dataclass(frozen=True)
@@ -109,48 +121,155 @@ def _text_column(table: pa.Table, name: str) -> npt.NDArray[np.str_]:
     return np.char.lower(np.char.strip(np.asarray(values, dtype=str)))
 
 
+def _load_node_arrays(
+    connection: duckdb.DuckDBPyConnection, nodes_path: str | Path
+) -> _NodeArrays:
+    """Load section 9.3/9.7 coordinates, raw metre elevations and tags once."""
+    source = _sql_path(nodes_path)
+    table = connection.execute(f"""
+        SELECT node_id, x, y, elevation_m, tags
+        FROM read_parquet('{source}')
+    """).to_arrow_table()
+    node_ids = np.asarray(
+        table.column("node_id").to_numpy(zero_copy_only=False), dtype=np.int64
+    )
+    order = np.argsort(node_ids, kind="stable")
+    node_ids = node_ids[order]
+    if np.any(np.diff(node_ids) == 0):
+        raise ValueError("node table contains duplicate node ids")
+    tags = pc.take(table.column("tags"), pa.array(order, type=pa.int64()))
+    return _NodeArrays(
+        node_ids=node_ids,
+        x=np.asarray(
+            table.column("x").to_numpy(zero_copy_only=False), dtype=np.float64
+        )[order],
+        y=np.asarray(
+            table.column("y").to_numpy(zero_copy_only=False), dtype=np.float64
+        )[order],
+        elevation_m=np.asarray(
+            table.column("elevation_m").to_numpy(zero_copy_only=False),
+            dtype=np.float64,
+        )[order],
+        tags=tags.combine_chunks(),
+    )
+
+
+def _node_positions(
+    node_ids: IntArray, requested_ids: IntArray
+) -> tuple[IntArray, npt.NDArray[np.bool_]]:
+    """Map node ids to sorted array positions, marking ids absent from the table."""
+    positions = np.searchsorted(node_ids, requested_ids).astype(np.int64)
+    found = positions < len(node_ids)
+    valid_rows = np.flatnonzero(found)
+    found[valid_rows] = node_ids[positions[valid_rows]] == requested_ids[valid_rows]
+    return np.minimum(positions, max(0, len(node_ids) - 1)), found
+
+
+def _flat_list_column(
+    batch: pa.RecordBatch, name: str, dtype: npt.DTypeLike
+) -> tuple[IntArray, npt.NDArray]:
+    """Return normalized Arrow list offsets and their flattened values."""
+    column = batch.column(batch.schema.get_field_index(name))
+    if not pa.types.is_list(column.type) or column.null_count:
+        raise ValueError(f"{name} must contain non-null list values")
+    offsets = np.asarray(
+        column.offsets.to_numpy(zero_copy_only=False), dtype=np.int64
+    )
+    offsets -= offsets[0]
+    values = np.asarray(
+        column.flatten().to_numpy(zero_copy_only=False), dtype=dtype
+    )
+    return offsets, values
+
+
+def _add_to_node_tags(batch: pa.RecordBatch, nodes: _NodeArrays) -> pa.RecordBatch:
+    """Add section 9.7 endpoint tags without rereading node parquet."""
+    to_node_ids = np.asarray(
+        batch.column(batch.schema.get_field_index("to_node_id")).to_numpy(
+            zero_copy_only=False
+        ),
+        dtype=np.int64,
+    )
+    if len(nodes.node_ids):
+        positions, found = _node_positions(nodes.node_ids, to_node_ids)
+        tags = pc.take(nodes.tags, pa.array(positions, type=pa.int64()))
+        highway = pc.map_lookup(tags, "highway", occurrence="last")
+        crossing = pc.map_lookup(tags, "crossing", occurrence="last")
+        found_mask = pa.array(found)
+        highway = pc.if_else(found_mask, highway, pa.scalar(None, type=pa.string()))
+        crossing = pc.if_else(found_mask, crossing, pa.scalar(None, type=pa.string()))
+    else:
+        highway = crossing = pa.nulls(batch.num_rows, type=pa.string())
+    return pa.RecordBatch.from_arrays(
+        [*batch.columns, highway, crossing],
+        names=[*batch.schema.names, "to_highway", "to_crossing"],
+    )
+
+
+def _segments_from_edge_batch(
+    batch: pa.RecordBatch, nodes: _NodeArrays
+) -> pa.Table:
+    """Build section 9.3/9.7 segments with metre coordinates/elevations."""
+    node_offsets, flat_node_ids = _flat_list_column(batch, "node_ids", np.int64)
+    elevation_offsets, flat_profile_elevations = _flat_list_column(
+        batch, "node_elevations_m", np.float64
+    )
+    if not np.array_equal(node_offsets, elevation_offsets):
+        raise ValueError("edge node ids and elevation profiles are misaligned")
+    node_counts = np.diff(node_offsets)
+    if np.any(node_counts < 2):
+        raise ValueError("an active edge has fewer than two nodes")
+    segment_counts = node_counts - 1
+    edge_indices = np.repeat(np.arange(batch.num_rows, dtype=np.int64), segment_counts)
+    segment_offsets = np.cumsum(segment_counts) - segment_counts
+    start_indices = (
+        np.repeat(node_offsets[:-1], segment_counts)
+        + np.arange(int(segment_counts.sum()), dtype=np.int64)
+        - np.repeat(segment_offsets, segment_counts)
+    )
+    end_indices = start_indices + 1
+
+    start_positions, start_found = _node_positions(
+        nodes.node_ids, flat_node_ids[start_indices]
+    )
+    end_positions, end_found = _node_positions(
+        nodes.node_ids, flat_node_ids[end_indices]
+    )
+
+    def gather(
+        values: FloatArray, positions: IntArray, found: np.ndarray
+    ) -> FloatArray:
+        result = np.full(len(positions), np.nan, dtype=np.float64)
+        result[found] = values[positions[found]]
+        return result
+
+    previous_x = gather(nodes.x, start_positions, start_found)
+    previous_y = gather(nodes.y, start_positions, start_found)
+    x = gather(nodes.x, end_positions, end_found)
+    y = gather(nodes.y, end_positions, end_found)
+    previous_elevation = flat_profile_elevations[start_indices].copy()
+    elevation = flat_profile_elevations[end_indices].copy()
+    stairs = _text_column(batch, "highway") == "steps"
+    stair_segments = stairs[edge_indices]
+    previous_elevation[stair_segments] = gather(
+        nodes.elevation_m, start_positions[stair_segments], start_found[stair_segments]
+    )
+    elevation[stair_segments] = gather(
+        nodes.elevation_m, end_positions[stair_segments], end_found[stair_segments]
+    )
+    return pa.table({
+        "edge_index": pa.array(edge_indices, type=pa.int64()),
+        "x": pa.array(x, type=pa.float64()),
+        "y": pa.array(y, type=pa.float64()),
+        "elevation_m": pa.array(elevation, type=pa.float64()),
+        "previous_x": pa.array(previous_x, type=pa.float64()),
+        "previous_y": pa.array(previous_y, type=pa.float64()),
+        "previous_elevation_m": pa.array(previous_elevation, type=pa.float64()),
+    })
+
+
 def _sum_by_edge(values: FloatArray, groups: npt.NDArray[np.int64]) -> FloatArray:
     return np.bincount(groups, weights=values, minlength=int(groups.max()) + 1)
-
-
-def _active_edge_batch(
-    connection: duckdb.DuckDBPyConnection,
-    nodes_path: str,
-    edge_batch: pa.RecordBatch,
-) -> pa.Table:
-    connection.register("_active_edge_batch", edge_batch)
-    try:
-        return connection.execute(f"""
-            WITH ordered_nodes AS (
-                SELECT e.edge_key, e.mode, e.highway, e.bike_infra, e.surface,
-                       e.tracktype, e.length_m, e.signal_count, e.stop_count,
-                       e.give_way_count, e.crossing_count, e.to_degree,
-                       e.to_highway, e.to_crossing, e.node_ids,
-                       edge_node.node_sequence, n.x, n.y,
-                       CASE WHEN e.highway = 'steps' THEN n.elevation_m
-                            ELSE list_extract(
-                                e.node_elevations_m, edge_node.node_sequence
-                            ) END AS elevation_m,
-                       lag(n.x) OVER edge_order AS previous_x,
-                       lag(n.y) OVER edge_order AS previous_y,
-                       lag(CASE WHEN e.highway = 'steps' THEN n.elevation_m
-                                ELSE list_extract(
-                                    e.node_elevations_m, edge_node.node_sequence
-                                ) END) OVER edge_order AS previous_elevation_m
-                FROM _active_edge_batch e
-                CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
-                    AS edge_node(node_id, node_sequence)
-                LEFT JOIN read_parquet('{nodes_path}') n USING (node_id)
-                WINDOW edge_order AS (
-                    PARTITION BY e.edge_key ORDER BY edge_node.node_sequence
-                )
-            )
-            SELECT * FROM ordered_nodes
-            WHERE node_sequence > 1
-            ORDER BY edge_key, node_sequence
-        """).to_arrow_table()
-    finally:
-        connection.unregister("_active_edge_batch")
 
 
 def _calculate_batch(
@@ -165,19 +284,18 @@ def _calculate_batch(
     batch_keys = np.asarray(
         edge_batch.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
     )
-    segment_keys = np.asarray(
-        segments.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
+    unique_keys = batch_keys
+    groups = np.asarray(
+        segments.column("edge_index").to_numpy(zero_copy_only=False), dtype=np.int64
     )
-    if not len(segment_keys):
+    if not len(groups):
         raise ValueError("active edge batch has no ordered node segments")
-    unique_keys, groups = np.unique(segment_keys, return_inverse=True)
-    groups = groups.astype(np.int64, copy=False)
-    group_count = len(unique_keys)
-    if group_count != edge_batch.num_rows:
+    group_count = len(batch_keys)
+    if np.any(groups >= group_count) or np.any(groups < 0):
+        raise ValueError("segment rows do not align with edge rows")
+    if np.any(np.bincount(groups, minlength=group_count) == 0):
         raise ValueError("an active edge has no ordered node segments")
-    metadata_indices = np.searchsorted(batch_keys, unique_keys)
-    if not np.array_equal(batch_keys[metadata_indices], unique_keys):
-        raise ValueError("edge and segment rows do not align by edge_key")
+    metadata_indices = np.arange(group_count, dtype=np.int64)
     edge_modes = _text_column(edge_batch, "mode")[metadata_indices]
     highways = _text_column(edge_batch, "highway")[metadata_indices]
     bike_classes = _text_column(edge_batch, "bike_infra")[metadata_indices]
@@ -357,10 +475,10 @@ def _calculate_batch(
             cap_by_edge[bike_edges & (highways == highway)], cap
         )
 
-    speeds = np.zeros(len(segment_keys), dtype=np.float64)
-    bike_work_per_kg_segment = np.zeros(len(segment_keys), dtype=np.float64)
-    bike_drag_segment = np.zeros(len(segment_keys), dtype=np.float64)
-    bike_pedalled_time_segment = np.zeros(len(segment_keys), dtype=np.float64)
+    speeds = np.zeros(len(groups), dtype=np.float64)
+    bike_work_per_kg_segment = np.zeros(len(groups), dtype=np.float64)
+    bike_drag_segment = np.zeros(len(groups), dtype=np.float64)
+    bike_pedalled_time_segment = np.zeros(len(groups), dtype=np.float64)
     bike = energy.bike
     table_seconds = 0.0
     for surface in np.unique(resolved_surfaces[riding_edges]):
@@ -604,15 +722,6 @@ def enrich_active_edge_costs(
         raise ValueError(
             f"edge table is missing required columns: {sorted(missing_columns)}"
         )
-    invalid_profiles = connection.execute(f"""
-        SELECT count(*) FROM read_parquet('{edge_source}')
-        WHERE mode IN ('foot', 'bike')
-          AND (node_elevations_m IS NULL
-               OR len(node_elevations_m) <> len(node_ids))
-    """).fetchone()[0]
-    if invalid_profiles:
-        raise ValueError(f"{invalid_profiles} edges have misaligned elevation profiles")
-
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(output.stem + ".tmp.parquet")
     if temporary.exists():
@@ -654,19 +763,17 @@ def enrich_active_edge_costs(
     reader_connection = connection.cursor()
     try:
         stage = time.perf_counter()
+        node_arrays = _load_node_arrays(reader_connection, nodes)
+        timings["loading"] += time.perf_counter() - stage
+        stage = time.perf_counter()
         edge_reader = reader_connection.execute(f"""
             SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.node_elevations_m,
                    e.length_m, e.highway,
                    e.bike_infra, e.surface, e.tracktype, e.signal_count,
                    e.stop_count, e.give_way_count, e.crossing_count,
-                   e.to_degree, e.to_node_id,
-                   to_node.tags['highway'] AS to_highway,
-                   to_node.tags['crossing'] AS to_crossing
+                   e.to_degree, e.to_node_id
             FROM read_parquet('{edge_source}') e
-            LEFT JOIN read_parquet('{node_source}') to_node
-                ON e.to_node_id = to_node.node_id
             WHERE e.mode IN ('foot', 'bike')
-            ORDER BY e.edge_key
         """).to_arrow_reader(batch_size=_EDGE_BATCH_SIZE)
         timings["loading"] += time.perf_counter() - stage
         edge_iterator = iter(edge_reader)
@@ -677,9 +784,8 @@ def enrich_active_edge_costs(
             except StopIteration:
                 timings["loading"] += time.perf_counter() - stage
                 break
-            segments = _active_edge_batch(
-                connection, node_source, edge_batch
-            )
+            edge_batch = _add_to_node_tags(edge_batch, node_arrays)
+            segments = _segments_from_edge_batch(edge_batch, node_arrays)
             timings["loading"] += time.perf_counter() - stage
             result, missing, batch_unknown, count, diagnostics, zeros = (
                 _calculate_batch(

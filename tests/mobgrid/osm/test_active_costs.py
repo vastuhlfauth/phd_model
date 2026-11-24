@@ -3,7 +3,9 @@
 from pathlib import Path
 
 import duckdb
+import mobgrid.osm.active_costs as active_costs
 import numpy as np
+import pyarrow as pa
 import pytest
 from mobgrid.energy.bike import (
     bike_ride_energy_kj,
@@ -21,6 +23,115 @@ from mobgrid.osm.config import load_network_config
 ROOT = Path(__file__).resolve().parents[3]
 ENERGY_PATH = ROOT / "config" / "energy.yaml"
 NETWORK_PATH = ROOT / "config" / "network.yaml"
+MONACO_EDGES = ROOT / "tests" / "fixtures" / "osm_monaco_baseline.parquet"
+MONACO_ELEVATIONS = (
+    ROOT / "tests" / "fixtures" / "osm_monaco_elevation_baseline.parquet"
+)
+MONACO_NODES = ROOT / "tests" / "fixtures" / "osm_monaco_nodes.parquet"
+
+
+def _legacy_segments(
+    connection: duckdb.DuckDBPyConnection,
+    nodes_path: Path,
+    edge_batch: pa.RecordBatch,
+) -> pa.Table:
+    node_source = str(nodes_path.resolve()).replace("\\", "/").replace("'", "''")
+    connection.register("_legacy_active_edge_batch", edge_batch)
+    try:
+        return connection.execute(f"""
+            WITH ordered_nodes AS (
+                SELECT e.edge_key, edge_node.node_sequence, n.x, n.y,
+                       CASE WHEN e.highway = 'steps' THEN n.elevation_m
+                            ELSE list_extract(
+                                e.node_elevations_m, edge_node.node_sequence
+                            ) END AS elevation_m,
+                       lag(n.x) OVER edge_order AS previous_x,
+                       lag(n.y) OVER edge_order AS previous_y,
+                       lag(CASE WHEN e.highway = 'steps' THEN n.elevation_m
+                                ELSE list_extract(
+                                    e.node_elevations_m, edge_node.node_sequence
+                                ) END) OVER edge_order AS previous_elevation_m
+                FROM _legacy_active_edge_batch e
+                CROSS JOIN UNNEST(e.node_ids) WITH ORDINALITY
+                    AS edge_node(node_id, node_sequence)
+                LEFT JOIN read_parquet('{node_source}') n USING (node_id)
+                WINDOW edge_order AS (
+                    PARTITION BY e.edge_key ORDER BY edge_node.node_sequence
+                )
+            )
+            SELECT * FROM ordered_nodes
+            WHERE node_sequence > 1
+            ORDER BY edge_key, node_sequence
+        """).to_arrow_table()
+    finally:
+        connection.unregister("_legacy_active_edge_batch")
+
+
+def _assert_vectorized_costs_match_legacy(
+    connection: duckdb.DuckDBPyConnection,
+    edges_path: Path,
+    nodes_path: Path,
+) -> None:
+    edge_source = str(edges_path.resolve()).replace("\\", "/").replace("'", "''")
+    node_source = str(nodes_path.resolve()).replace("\\", "/").replace("'", "''")
+    edge_batch = connection.execute(f"""
+        SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.node_elevations_m,
+               e.length_m, e.highway, e.bike_infra, e.surface, e.tracktype,
+               e.signal_count, e.stop_count, e.give_way_count, e.crossing_count,
+               e.to_degree, e.to_node_id
+        FROM read_parquet('{edge_source}') e
+        WHERE e.mode IN ('foot', 'bike')
+        ORDER BY e.edge_key
+    """).to_arrow_table().to_batches()[0]
+    nodes = active_costs._load_node_arrays(connection, nodes_path)
+    edge_batch = active_costs._add_to_node_tags(edge_batch, nodes)
+    vectorized_segments = active_costs._segments_from_edge_batch(edge_batch, nodes)
+    reference_batch = connection.execute(f"""
+        SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.node_elevations_m,
+               e.length_m, e.highway, e.bike_infra, e.surface, e.tracktype,
+               e.signal_count, e.stop_count, e.give_way_count, e.crossing_count,
+               e.to_degree, e.to_node_id,
+               to_node.tags['highway'] AS to_highway,
+               to_node.tags['crossing'] AS to_crossing
+        FROM read_parquet('{edge_source}') e
+        LEFT JOIN read_parquet('{node_source}') to_node
+            ON e.to_node_id = to_node.node_id
+        WHERE e.mode IN ('foot', 'bike')
+        ORDER BY e.edge_key
+    """).to_arrow_table().to_batches()[0]
+    legacy_segments = _legacy_segments(connection, nodes_path, reference_batch)
+    edge_keys = np.asarray(
+        reference_batch.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
+    )
+    legacy_keys = np.asarray(
+        legacy_segments.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
+    )
+    legacy_indices = np.searchsorted(edge_keys, legacy_keys).astype(np.int64)
+    legacy_segments = legacy_segments.append_column(
+        "edge_index", pa.array(legacy_indices, type=pa.int64())
+    )
+
+    energy = load_energy_config(ENERGY_PATH)
+    network = load_network_config(NETWORK_PATH)
+    timing_names = ("walk", "speed tables", "bike riding", "stops")
+    vectorized = active_costs._calculate_batch(
+        edge_batch, vectorized_segments, energy, network, {},
+        dict.fromkeys(timing_names, 0.0),
+    )[0].to_pylist()
+    legacy = active_costs._calculate_batch(
+        reference_batch, legacy_segments, energy, network, {},
+        dict.fromkeys(timing_names, 0.0),
+    )[0].to_pylist()
+    fields = ("walk_time_s", "walk_energy_kj", "bike_time_s", "bike_energy_kj")
+    legacy_by_key = {row["edge_key"]: row for row in legacy}
+    assert {row["edge_key"] for row in vectorized} == set(legacy_by_key)
+    for row in vectorized:
+        expected = legacy_by_key[row["edge_key"]]
+        for field in fields:
+            if expected[field] is None:
+                assert row[field] is None
+            else:
+                assert row[field] == pytest.approx(expected[field], rel=1e-6)
 
 
 def test_every_known_highway_and_bike_class_has_a_valid_surface_default():
@@ -230,6 +341,50 @@ def _write_tables(tmp_path: Path) -> tuple[Path, Path]:
     connection.execute("COPY nodes TO ? (FORMAT PARQUET)", [str(nodes_path)])
     connection.close()
     return edges_path, nodes_path
+
+
+def test_vectorized_active_costs_match_legacy_on_synthetic_edges(tmp_path):
+    edges_path, nodes_path = _write_tables(tmp_path)
+    connection = duckdb.connect()
+    try:
+        _assert_vectorized_costs_match_legacy(connection, edges_path, nodes_path)
+    finally:
+        connection.close()
+
+
+def test_vectorized_active_costs_match_legacy_on_monaco_fixture(tmp_path):
+    edges_path = tmp_path / "monaco_edges.parquet"
+    nodes_path = tmp_path / "monaco_nodes.parquet"
+    connection = duckdb.connect()
+    try:
+        # The Monaco fixtures lack raw node elevations; both paths use the same
+        # neutral raw values while retaining their actual edge elevation profiles.
+        connection.execute(
+            """
+            COPY (
+                SELECT node_id, lon AS x, lat AS y, 0.0::DOUBLE AS elevation_m, tags
+                FROM read_parquet(?)
+            ) TO ? (FORMAT PARQUET)
+            """,
+            [str(nodes_path), str(MONACO_NODES)],
+        )
+        connection.execute(
+            """
+            COPY (
+                SELECT e.edge_key, e.way_id, e.mode, e.node_ids,
+                       v.node_elevations_m, e.length_m, e.highway, e.bike_infra,
+                       e.surface, e.tracktype, e.signal_count, e.stop_count,
+                       e.give_way_count, e.crossing_count, e.to_degree, e.to_node_id
+                FROM read_parquet(?) e
+                JOIN read_parquet(?) v USING (edge_key)
+                WHERE e.mode IN ('foot', 'bike')
+            ) TO ? (FORMAT PARQUET)
+            """,
+            [str(edges_path), str(MONACO_EDGES), str(MONACO_ELEVATIONS)],
+        )
+        _assert_vectorized_costs_match_legacy(connection, edges_path, nodes_path)
+    finally:
+        connection.close()
 
 
 def test_sloped_edge_costs_match_energy_package_segment_by_segment(tmp_path):

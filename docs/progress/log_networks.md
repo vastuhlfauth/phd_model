@@ -3,6 +3,18 @@
 OSM extraction, directed edges, elevation, speeds and costs, graphs, O-D.
 Newest entry first. Add yours at the top.
 
+### Step 6b: vectorized active costs (2026-11-24)
+
+- Load sorted node ids, coordinates, raw elevations and endpoint tags once.
+  Map edge nodes with `numpy.searchsorted`; flatten Arrow lists and gather
+  segment endpoints without SQL windows or per-batch node-file reads.
+- Preserve the loading, walk, speed-table, bike-riding, stops and writing
+  timing logs; invalidate active/joined cost checkpoints, not car costs.
+- Legacy-query comparisons on synthetic edges and the Monaco fixtures match
+  walk/bike times and energies at 1e-6 relative tolerance.
+- Focused validation: 25 tests passed and Ruff clean. Pilot not run; rerun to
+  verify the requested walk/bike target of under 60 s and inspect timings.
+
 ### Step 6b: pilot active-cost corrections (2026-11-24)
 
 - Use the approved surface-adjusted effective grade for bike rider power;
