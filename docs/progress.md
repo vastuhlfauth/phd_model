@@ -16,6 +16,8 @@ This file holds the current state only. Search the history for your step; don't 
   - Spec: time per mode and the mobility model (2026-11-20)
   - Mode-cell report: CLI and synthetic integration (2026-11-20)
   - Mode-cell report: reference energy calculations (2026-11-20)
+- `docs/progress/log_landgrid.md`: step 3. Latest entry:
+  - Step 3 data pages and source-schema discrepancies (2026-11-25)
 - `docs/progress/decisions.md`: decisions taken while coding, all steps.
 
 At the end of a task: one dated entry of at most 25 lines at the top of your area's log,
@@ -34,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 2c | Audit of the remaining 12 excluded community GTFS resources | merged | `data/source-urls` | Checked, for each of the 12 datasets with a community-tagged excluded GTFS resource, whether that dataset keeps another producer GTFS resource; all 12 do (true duplicates), so none needed a TCL-Lyon-style override. Added a `discover_gtfs` safeguard that logs a warning if a community exclusion would ever leave a dataset with zero producer GTFS resources, so a future case is caught automatically. Ruff clean; 68 tests pass. |
 | 2d | France OSM sizes, resilient acquisition batches and reruns | merged | `fix/osm-size` | France uses HEAD sizes without MD5 sidecars; OSM discovery refreshes all 28 extracts. Failed acquisitions no longer abort the batch; summary counts/reasons and exit 1 on failures. Recorded matching files skip network requests and preserve verification/date. Tests first; Ruff clean; 81 tests pass. |
 | 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | merged | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. Offline check: 551 downloaded, 536 passing feeds, 47 expired, 15 invalid/unusable, 18 flex indicators; no files deleted. |
-| 3 | `landgrid/origins` | not started | | |
+| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Data pages added; 2022 Fichiers fonciers lacks `geomloc` and `rppo_rs`; exact spatial boundary counts remain open |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; fit stalled, calibration disabled by default; report rerun pending |
@@ -53,9 +55,17 @@ Status values: not started, in progress, review, merged.
 - [Commune contours](data/commune_contours.md) (step 6)
 - [BD ALTI 25 m elevation grids](data/bdalti.md) (step 6)
 - [OSM directed edges, elevation and active costs](data/osm_edges.md) (step 6)
+- [Fichiers fonciers](data/fichiers_fonciers.md) (step 3)
+- [Filosofi grids](data/filosofi.md) (step 3)
+- [Eurostat census grid](data/eurostat_grid.md) (step 3)
 
 ## Assumptions to check
 
+- 2026-11-25, step 3: do not substitute `X`/`Y` for missing `geomloc` or
+  `proba_rprs` for missing `rppo_rs` in 2022 Fichiers fonciers. Filosofi
+  departmental counts use the official 200 m `lcog_geo` commune-intersection
+  list; natural-cell straddlers are a lower bound, and the Eurostat join is
+  limited to linked 1 km ids.
 - 2026-11-24, step 6 OSRM: fit uses unrounded arc cruising seconds and
   directional control counts, but reported paths use Dial rounding. Standard
   errors and correlations are linearized and approximate at active bounds;
@@ -122,6 +132,10 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
+- [ ] Step 3, section 6: reconcile the absent 2022 `geomloc` and `rppo_rs`
+  fields with the occupied-stock and spatial-assignment rules before writing
+  package code. Obtain exact natural-cell straddler and Eurostat boundary
+  counts if required; the full commune-geometry scan exceeded the 60 s cap.
 - [ ] Step 6 OSRM: rerun the report with calibration disabled. Select a
   suitable reference before interpreting car holdout performance, parameter
   uncertainty or proposed values; the OSRM fit stalled. Foot strata unfilled after

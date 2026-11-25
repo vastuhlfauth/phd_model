@@ -12,6 +12,9 @@ One page per dataset, written with `/schema` before any step uses the dataset. A
 | OSM directed edges and car costs | [osm_edges.md](osm_edges.md) | 2022 and 2024 extracts | 6 |
 | Géovélo cycle infrastructure | [geovelo.md](geovelo.md) | July 2022 | 6 |
 | EMP 2019 public tables | [emp2019.md](emp2019.md) | Fieldwork 2018-2019; public release December 2021, updated November 2024 | 11 |
+| Fichiers fonciers | [fichiers_fonciers.md](fichiers_fonciers.md) | 2022 (pilot 33); schema comparison 2021 and 2024 | 3 |
+| Filosofi grids | [filosofi.md](filosofi.md) | 2019 and 2021 | 3 |
+| Eurostat census grid | [eurostat_grid.md](eurostat_grid.md) | 2021, 1 km | 3 |
 
 ## Template for a dataset page
 
