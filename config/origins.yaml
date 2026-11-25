@@ -1,0 +1,34 @@
+vintages:
+  2021:
+    parquet_pattern: "data/raw/fichiers_fonciers/ff2021/pb0010_local/ccodep={department}/part-01.parquet"
+    second_home_column: "proba_rprs"
+    second_home_code: "RS"
+  2022:
+    parquet_pattern: "data/raw/fichiers_fonciers/ff2022/pb0010_local/ccodep={department}/part-01.parquet"
+    second_home_column: "proba_rprs"
+    second_home_code: "RS"
+  2024:
+    parquet_pattern: "data/raw/fichiers_fonciers/ff2024/pb0010_local/ccodep={department}/part-01.parquet"
+    second_home_column: "rppo_rs"
+    second_home_code: "RS"
+
+dwelling:
+  logh: "t"
+vacant:
+  ccthp: "V"
+owner_occupied:
+  ccthp: "P"
+social_housing:
+  catpro2: "F1"
+recent_transfer:
+  2021: "AC"
+  2022: "AC"
+  2024: "MR"
+cleaning:
+  jannath_min: 1600
+  dniv_code_threshold: 80
+  stoth_negative_missing: true
+  nbetagemax_used: false
+
+# TODO(confirm): second-home rescaling coefficient for section 6.3, step 7.
+second_home_rescaling: null
