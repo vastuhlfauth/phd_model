@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 2c | Audit of the remaining 12 excluded community GTFS resources | merged | `data/source-urls` | Checked, for each of the 12 datasets with a community-tagged excluded GTFS resource, whether that dataset keeps another producer GTFS resource; all 12 do (true duplicates), so none needed a TCL-Lyon-style override. Added a `discover_gtfs` safeguard that logs a warning if a community exclusion would ever leave a dataset with zero producer GTFS resources, so a future case is caught automatically. Ruff clean; 68 tests pass. |
 | 2d | France OSM sizes, resilient acquisition batches and reruns | merged | `fix/osm-size` | France uses HEAD sizes without MD5 sidecars; OSM discovery refreshes all 28 extracts. Failed acquisitions no longer abort the batch; summary counts/reasons and exit 1 on failures. Recorded matching files skip network requests and preserve verification/date. Tests first; Ruff clean; 81 tests pass. |
 | 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | merged | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. Offline check: 551 downloaded, 536 passing feeds, 47 expired, 15 invalid/unusable, 18 flex indicators; no files deleted. |
-| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Aggregate checks documented; 2022 lacks `geomloc` and `rppo_rs`; no substitutes selected; exact département-33 bbox check remains open |
+| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Config, Filosofi helpers and 200 m FF builder implemented; synthetic tests pass. 2022 lacks `geomloc` and `rppo_rs`; 2022 uses `X`/`Y`; 2024 uses `rppo_rs`. Real commune checks remain pending the report commands. |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; fit stalled, calibration disabled by default; report rerun pending |
@@ -137,6 +137,8 @@ Status values: not started, in progress, review, merged.
 
 Each item stays open until a value is decided; the value goes into `config/`.
 
+- [ ] Step 3, section 6.3 step 7: second-home rescaling coefficient remains
+  unconfirmed and is set to `null` in `config/origins.yaml`.
 - [ ] Step 3, section 6: reconcile the absent 2022 `geomloc` and `rppo_rs`
   fields with the occupied-stock and spatial-assignment rules before writing
   package code. Obtain exact natural-cell straddler and Eurostat boundary

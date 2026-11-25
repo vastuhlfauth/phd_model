@@ -1,5 +1,17 @@
 # Landgrid origins
 
+## 2026-11-25 — Step 3 origins: config, natural helpers and FF cells
+
+- Added `config/origins.yaml` for 2021, 2022 and 2024 FF vintages and section
+  6.3 cleaning codes. Only the second-home rescaling coefficient is unconfirmed.
+- Added `filosofi.py` natural-cell decoding, 200 m containment and derived
+  département lists from `lcog_geo`.
+- Added `fichiers_fonciers.py` 200 m classification, cleaning, aggregation,
+  cache signatures and restricted-data diagnostics. House/flat flags use
+  `loghmais` / `loghappt`.
+- Synthetic tests pass; real FF builds and commune ratios remain deferred to
+  the commands in `docs/data/step03_origins_pilot.md`.
+
 ## 2026-11-25 — Step 3b aggregate checks
 
 - Added restricted-data aggregate checks to `docs/data/fichiers_fonciers.md`;
