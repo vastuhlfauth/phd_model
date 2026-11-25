@@ -23,7 +23,12 @@ the largest second-home gaps.
 
 ### Department 33 — 2024 FF / 2023 census
 
-The 2023 census comparison uses `P23_*` from the 2023 dossier-complet table.
+The local 2023 dossier-complet Parquet has no direct `P23_*` columns. It is
+long-form: `GEO` and `GEO_OBJECT` identify geography, while `ID_TAB`, `DS`,
+`TAB_MEASURE`, and `TIME_PERIOD` identify each measure in `OBS_VALUE`. The
+exact selectors for the four housing measures have not been verified, so no
+2023 census comparison or ratios are reported yet. Do not infer selectors
+from the 2021 field names.
 
 | Measure | Vintages side by side |
 |---|---|
@@ -57,10 +62,10 @@ builds. No conclusion was drawn from synthetic tests.
 
 ## Commands
 
-From the project terminal, run these with the project's `.venv`; they may take
-more than two minutes.
+From the project terminal with `.venv` active, these real-data builds may take
+more than two minutes. They have not been run during coding.
 
 ```powershell
-.venv\Scripts\python.exe -m landgrid.origins.fichiers_fonciers --vintage 2022 --department 17 --department 24 --department 33 --department 40 --department 47
-.venv\Scripts\python.exe -m landgrid.origins.fichiers_fonciers --vintage 2024 --department 17 --department 24 --department 33 --department 40 --department 47
+python -m landgrid.origins.fichiers_fonciers --vintage 2022 --department 17 --department 24 --department 33 --department 40 --department 47
+python -m landgrid.origins.fichiers_fonciers --vintage 2024 --department 17 --department 24 --department 33 --department 40 --department 47
 ```

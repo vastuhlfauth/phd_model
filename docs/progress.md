@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 2c | Audit of the remaining 12 excluded community GTFS resources | merged | `data/source-urls` | Checked, for each of the 12 datasets with a community-tagged excluded GTFS resource, whether that dataset keeps another producer GTFS resource; all 12 do (true duplicates), so none needed a TCL-Lyon-style override. Added a `discover_gtfs` safeguard that logs a warning if a community exclusion would ever leave a dataset with zero producer GTFS resources, so a future case is caught automatically. Ruff clean; 68 tests pass. |
 | 2d | France OSM sizes, resilient acquisition batches and reruns | merged | `fix/osm-size` | France uses HEAD sizes without MD5 sidecars; OSM discovery refreshes all 28 extracts. Failed acquisitions no longer abort the batch; summary counts/reasons and exit 1 on failures. Recorded matching files skip network requests and preserve verification/date. Tests first; Ruff clean; 81 tests pass. |
 | 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | merged | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. Offline check: 551 downloaded, 536 passing feeds, 47 expired, 15 invalid/unusable, 18 flex indicators; no files deleted. |
-| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Config, Filosofi helpers and 200 m FF builder implemented; synthetic tests pass. 2022 lacks `geomloc` and `rppo_rs`; 2022 uses `X`/`Y`; 2024 uses `rppo_rs`. Real commune checks remain pending the report commands. |
+| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Natural-cell assignment, DuckDB dwelling classification/aggregation, and pilot-derived department defaults implemented. Synthetic tests pass. Census schema page records 2021 fields and the 2023 long-form schema; exact 2023 housing selectors and the commune report remain pending. No real FF build or report run. |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; fit stalled, calibration disabled by default; report rerun pending |
@@ -58,15 +58,17 @@ Status values: not started, in progress, review, merged.
 - [Fichiers fonciers](data/fichiers_fonciers.md) (step 3)
 - [Filosofi grids](data/filosofi.md) (step 3)
 - [Eurostat census grid](data/eurostat_grid.md) (step 3)
+- [Census dossier complet](data/census_dossier_complet.md) (step 3)
 
 ## Assumptions to check
 
-- 2026-11-25, step 3: 2022 `X`/`Y` ranges and 200 m cell matches support
-  EPSG:3035; `ban_geom` EWKB carries SRID 2154. `loghvac = 't'` and
-  `ccthp = 'V'` agree in the department-33 dwelling partition. `proba_rprs`
-  was compared to 2024 `rppo_rs` as a candidate only; no replacement was
-  selected. Do not substitute `X`/`Y` for `geomloc` or `proba_rprs` for
-  `rppo_rs` in code without a decision. Exact outside-bbox share remains open
+- 2026-11-25, step 3: 2023 census housing selectors in `ID_TAB`, `DS` and
+  `TAB_MEASURE` were not established by the schema-only inspection. Do not
+  generate 2023 commune ratios until the selectors are verified.
+- 2026-11-25, step 3: sections 6.2-6.3 authorize `X`/`Y` in EPSG:3035 and
+  `proba_rprs` for 2022 versus `rppo_rs` for 2024. `ban_geom` EWKB carries
+  SRID 2154. `loghvac = 't'` and `ccthp = 'V'` agree in the department-33
+  dwelling partition. Exact outside-bbox share remains open
   because the full local commune-geometry scan exceeded one minute.
   Departmental Filosofi totals use the official 200 m `lcog_geo`
   commune-intersection list; natural-cell straddlers remain a lower bound,

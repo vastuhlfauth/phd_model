@@ -1,14 +1,17 @@
 ## Decisions taken while coding
 
+- 2026-11-25, step 3: 2023 housing observations use the long-form dossier
+  schema; do not infer `ID_TAB`/`DS`/`TAB_MEASURE` selectors from the 2021
+  `P21_*` names. Keep the 2023 commune comparison pending verified selectors.
 - 2026-11-25, step 3: keep 2021 and 2022 second-home classification in
   `proba_rprs = 'RS'`, and 2024 in `rppo_rs = 'RS'`; recent transfers remain
   main residences with `AC` or `MR` as a separate flag. Leave the section-6.3
   step-7 second-home rescaling coefficient unconfirmed in config.
+- 2026-11-25, step 3: use the Fichiers fonciers Parquet fields specified in
+  sections 6.2-6.3: `X`/`Y` in EPSG:3035 and `proba_rprs` (2022) or
+  `rppo_rs` (2024); do not substitute BAN coordinates.
 - 2026-11-25, step 3: document restricted Fichiers fonciers using aggregate
-  counts only. Do not alias `proba_rprs` to `rppo_rs` or `X`/`Y` to
-  `geomloc`; the 2022 source schema does not provide those spec fields.
-  Step 3b compared candidate fields across vintages but made no substitution
-  decision; aggregate comparisons are not approval to implement either.
+  counts only; section 6.3 defines the occupied-stock rule and field meanings.
 - 2026-11-24, step 6: disable calibration by default (`reference: none`).
   Preserve and report last values of stalled or iteration-limited fits, flag
   bounds and omit unfinished holdout metrics rather than claiming convergence.

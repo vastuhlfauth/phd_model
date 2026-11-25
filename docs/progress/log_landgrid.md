@@ -1,5 +1,20 @@
 # Landgrid origins
 
+## 2026-11-25 — Step 3c: SQL pipeline and census schemas
+
+- Moved Fichiers fonciers classification, cell assignment, cleaning
+  diagnostics and aggregation into DuckDB; synthetic results match the
+  Python reference.
+- Derived the default department set from the pilot commune list and natural
+  cells; `--department` remains an override.
+- Added the census dossier-complet schema page with the 2021 and 2023 row
+  counts. The 2023 Parquet has no `P23_*` fields and stores measures in
+  `OBS_VALUE` with dimension selectors.
+- Kept the 2023 commune comparison pending verified housing selectors; no
+  census observations or guessed selectors were added to documentation.
+- Targeted origins tests: 13 passed; Ruff passed. No real FF build or report
+  was run.
+
 ## 2026-11-25 — Step 3 origins: config, natural helpers and FF cells
 
 - Added `config/origins.yaml` for 2021, 2022 and 2024 FF vintages and section

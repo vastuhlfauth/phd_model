@@ -15,6 +15,7 @@ One page per dataset, written with `/schema` before any step uses the dataset. A
 | Fichiers fonciers | [fichiers_fonciers.md](fichiers_fonciers.md) | 2022 (pilot 33); schema comparison 2021 and 2024 | 3 |
 | Filosofi grids | [filosofi.md](filosofi.md) | 2019 and 2021 | 3 |
 | Eurostat census grid | [eurostat_grid.md](eurostat_grid.md) | 2021, 1 km | 3 |
+| Census dossier complet | [census_dossier_complet.md](census_dossier_complet.md) | 2021 and 2023, communes and larger geographies | 3 |
 
 ## Template for a dataset page
 
