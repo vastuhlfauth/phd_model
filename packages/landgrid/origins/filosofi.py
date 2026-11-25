@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 
 _INSPIRE_NATURAL = re.compile(
     r"^CRS3035RES(?P<resolution>\d+)mN(?P<northing>\d+)E(?P<easting>\d+)$"
@@ -64,26 +64,6 @@ def build_natural_cell_lookup(codes: Iterable[str]) -> NaturalCellLookup:
             raise ValueError(f"duplicate natural-level grid corner: {corner}")
         cells[corner] = code
     return lookup
-
-
-def natural_cell_for_200m_cell(
-    cell_200m_code: str,
-    lookup: Mapping[int, Mapping[tuple[int, int], str]],
-) -> str | None:
-    """Find the unique natural-level cell containing a 200 m cell corner."""
-    northing, easting, resolution = decode_natural_cell(cell_200m_code)
-    if resolution != 200:
-        raise ValueError("expected a 200 m INSPIRE cell code")
-    matches = [
-        cells[(northing // size * size, easting // size * size)]
-        for size, cells in lookup.items()
-        if (northing // size * size, easting // size * size) in cells
-    ]
-    if len(matches) > 1:
-        raise ValueError(
-            f"multiple natural-level cells contain 200 m cell {cell_200m_code!r}"
-        )
-    return matches[0] if matches else None
 
 
 def derived_departments(lcog_geo_values: Iterable[str]) -> set[str]:

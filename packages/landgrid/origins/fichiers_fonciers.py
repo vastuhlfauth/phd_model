@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import math
 import statistics
 import tempfile
+import time
 import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -18,13 +20,15 @@ import duckdb
 import pyarrow as pa
 import yaml
 from common.duckdb_io import open_connection, read_parquet, write_parquet
-from common.grid import cell_id, inspire_code
+from common.grid import cell_id
 
 from landgrid.origins.filosofi import (
     NaturalCellLookup,
     build_natural_cell_lookup,
-    natural_cell_for_200m_cell,
+    derived_departments,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -294,31 +298,6 @@ def build_ff_cells_signature(
     ).hexdigest()
 
 
-@dataclass
-class _CellAccumulator:
-    natural_cell_id: str
-    dwellings: int = 0
-    main_residences: int = 0
-    vacant: int = 0
-    second_homes: int = 0
-    recent_transfers: int = 0
-    owner_occupied_main_residences: int = 0
-    social_housing: int = 0
-    social_housing_main_residences: int = 0
-    houses: int = 0
-    flats: int = 0
-    npiece_i_values: list[int] | None = None
-    dnbniv_values: list[int] | None = None
-    stoth_values: list[int] | None = None
-    jannath_values: list[int] | None = None
-
-    def __post_init__(self) -> None:
-        self.npiece_i_values = []
-        self.dnbniv_values = []
-        self.stoth_values = []
-        self.jannath_values = []
-
-
 def _filosofi_200m_map(
     connection: duckdb.DuckDBPyConnection,
     archive: Path,
@@ -381,13 +360,200 @@ def _partition_for_department(
     return Path(pattern.format(department=department))
 
 
-def _clean_integer(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+def _quoted_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _temp_table_exists(
+    connection: duckdb.DuckDBPyConnection,
+    table_name: str,
+) -> bool:
+    return bool(
+        connection.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
+            [table_name],
+        ).fetchone()[0]
+    )
+
+
+def _register_lookup_tables(
+    connection: duckdb.DuckDBPyConnection,
+    filosofi_200m: Mapping[str, str],
+    natural_cell_lookup: NaturalCellLookup,
+) -> None:
+    if not _temp_table_exists(connection, "_filosofi_200m"):
+        connection.register(
+            "_filosofi_200m_input",
+            pa.Table.from_pydict(
+                {
+                    "cell_code": list(filosofi_200m),
+                    "lcog_geo": list(filosofi_200m.values()),
+                }
+            ),
+        )
+        try:
+            connection.execute(
+                """
+                CREATE TEMP TABLE _filosofi_200m AS
+                SELECT cell_code, lcog_geo FROM _filosofi_200m_input
+                """
+            )
+        finally:
+            connection.unregister("_filosofi_200m_input")
+
+    if not _temp_table_exists(connection, "_natural_cells"):
+        natural_rows = [
+            {
+                "natural_cell_id": code,
+                "resolution_m": resolution,
+                "northing_m": northing,
+                "easting_m": easting,
+            }
+            for resolution, cells in natural_cell_lookup.items()
+            for (northing, easting), code in cells.items()
+        ]
+        if not natural_rows:
+            raise ValueError("Filosofi natural-level file contains no cells")
+        connection.register(
+            "_natural_cells_input",
+            pa.Table.from_pylist(natural_rows),
+        )
+        try:
+            connection.execute(
+                """
+                CREATE TEMP TABLE _natural_cells AS
+                SELECT * FROM _natural_cells_input
+                """
+            )
+        finally:
+            connection.unregister("_natural_cells_input")
+
+
+def _create_natural_cell_map(
+    connection: duckdb.DuckDBPyConnection,
+    partitions: Sequence[Path],
+) -> None:
+    paths = "[" + ", ".join(
+        _sql_literal(str(path.resolve())) for path in partitions
+    ) + "]"
+    connection.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE _ff_cell_map AS
+        WITH grid_cells AS (
+            SELECT DISTINCT
+                CAST(floor(Y / 200) * 200 AS BIGINT) AS northing_m,
+                CAST(floor(X / 200) * 200 AS BIGINT) AS easting_m
+            FROM read_parquet({paths})
+            WHERE X IS NOT NULL AND Y IS NOT NULL
+                AND isfinite(X) AND isfinite(Y) AND X >= 0 AND Y >= 0
+        ),
+        matches AS (
+            SELECT
+                    CAST(floor(p.northing_m / 200) AS BIGINT)
+                    * 100000
+                    + CAST(floor(p.easting_m / 200) AS BIGINT)
+                    AS cell_id,
+                n.natural_cell_id
+            FROM grid_cells AS p
+            CROSS JOIN (
+                SELECT DISTINCT resolution_m FROM _natural_cells
+            ) AS resolutions
+            JOIN _natural_cells AS n
+              ON n.resolution_m = resolutions.resolution_m
+             AND n.northing_m = floor(p.northing_m / n.resolution_m)
+                * n.resolution_m
+             AND n.easting_m = floor(p.easting_m / n.resolution_m)
+                * n.resolution_m
+        )
+        SELECT cell_id,
+            min(natural_cell_id) AS natural_cell_id,
+            count(*) AS matching_natural_cells
+        FROM matches
+        GROUP BY cell_id
+        """
+    )
+    ambiguous = connection.execute(
+        """
+        SELECT cell_id FROM _ff_cell_map
+        WHERE matching_natural_cells > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if ambiguous is not None:
+        raise ValueError(
+            f"multiple natural-level cells match 200 m cell {ambiguous[0]}"
+        )
+
+
+def derived_departments_for_pilot(
+    connection: duckdb.DuckDBPyConnection,
+    pilot_department: str,
+) -> set[str]:
+    """Derive departments sharing natural cells reached by the pilot."""
+    rows = connection.execute(
+        """
+        WITH cells AS (
+            SELECT cell_code, lcog_geo,
+                CAST(regexp_extract(
+                    cell_code, 'RES200mN([0-9]+)E([0-9]+)', 1
+                ) AS BIGINT) AS northing_m,
+                CAST(regexp_extract(
+                    cell_code, 'RES200mN([0-9]+)E([0-9]+)', 2
+                ) AS BIGINT) AS easting_m
+            FROM _filosofi_200m
+            WHERE lcog_geo IS NOT NULL
+        ),
+        pilot_natural AS (
+            SELECT DISTINCT natural_cells.natural_cell_id
+            FROM cells
+            JOIN _natural_cells AS natural_cells
+              ON natural_cells.northing_m
+                    = floor(cells.northing_m / natural_cells.resolution_m)
+                      * natural_cells.resolution_m
+             AND natural_cells.easting_m
+                    = floor(cells.easting_m / natural_cells.resolution_m)
+                      * natural_cells.resolution_m
+            CROSS JOIN UNNEST(string_split(cells.lcog_geo, ',')) AS commune(code)
+            WHERE left(trim(commune.code), length(?)) = ?
+        ),
+        neighbor_communes AS (
+            SELECT DISTINCT trim(commune.code) AS commune_code
+            FROM cells
+            JOIN _natural_cells AS natural_cells
+              ON natural_cells.northing_m <= cells.northing_m
+             AND cells.northing_m
+                    < natural_cells.northing_m + natural_cells.resolution_m
+             AND natural_cells.easting_m <= cells.easting_m
+             AND cells.easting_m
+                    < natural_cells.easting_m + natural_cells.resolution_m
+            JOIN pilot_natural
+              ON pilot_natural.natural_cell_id = natural_cells.natural_cell_id
+            CROSS JOIN UNNEST(string_split(cells.lcog_geo, ',')) AS commune(code)
+        )
+        SELECT commune_code FROM neighbor_communes
+        """,
+        [pilot_department, pilot_department],
+    ).fetchall()
+    departments = derived_departments(str(row[0]) for row in rows)
+    if pilot_department not in departments:
+        raise ValueError(
+            f"Filosofi 200 m map does not reach pilot department "
+            f"{pilot_department!r}"
+        )
+    return departments
+
+
+def _pilot_department(path: str | Path = "config/pilot.yaml") -> str:
+    with Path(path).open(encoding="utf-8") as stream:
+        value = yaml.safe_load(stream)["department"]
+    department = str(value).strip()
+    if not department:
+        raise ValueError("config/pilot.yaml has an empty department")
+    return department
 
 
 def build_department_ff_cells(
@@ -397,21 +563,57 @@ def build_department_ff_cells(
     config: OriginsConfig,
     filosofi_200m: Mapping[str, str],
     natural_cell_lookup: NaturalCellLookup,
-) -> tuple[dict[int, _CellAccumulator], dict[str, int]]:
-    """Build synthetic 200 m dwelling aggregates for one department."""
+) -> tuple[str, dict[str, int]]:
+    """Classify one department in DuckDB and return its staging table."""
+    started = time.perf_counter()
     vintage_config = config.vintages[vintage]
     partition = _partition_for_department(config, vintage, department)
     if not partition.is_file():
         raise FileNotFoundError(partition)
 
-    columns = [
-        "idlocal",
+    _register_lookup_tables(connection, filosofi_200m, natural_cell_lookup)
+    if not _temp_table_exists(connection, "_ff_cell_map"):
+        _create_natural_cell_map(connection, [partition])
+
+    source = str(partition.resolve())
+    available = {
+        row[0]
+        for row in connection.execute(
+            "DESCRIBE SELECT * FROM read_parquet(?)",
+            [source],
+        ).fetchall()
+    }
+    vintage_config = config.vintages[vintage]
+    required = {
         "idcom",
         "X",
         "Y",
         "logh",
         "ccthp",
         vintage_config.second_home_column,
+    }
+    missing = required - available
+    if missing:
+        raise ValueError(
+            f"department {department} is missing required FF columns: "
+            + ", ".join(sorted(missing))
+        )
+
+    def field(name: str, alias: str | None = None) -> str:
+        output_name = alias or name
+        expression = (
+            f"source.{_quoted_identifier(name)}"
+            if name in available
+            else "NULL"
+        )
+        return f"{expression} AS {_quoted_identifier(output_name)}"
+
+    fields = [
+        "idlocal",
+        "X",
+        "Y",
+        "logh",
+        "ccthp",
         "catpro2",
         "npiece_i",
         "dnbniv",
@@ -420,182 +622,224 @@ def build_department_ff_cells(
         "loghmais",
         "loghappt",
     ]
-    source = str(partition.resolve()).replace("'", "''")
-    available = {
-        row[0]
-        for row in connection.execute(
-            f"DESCRIBE SELECT * FROM read_parquet('{source}')"
-        ).fetchall()
-    }
-    columns = [column for column in columns if column in available]
-    relation = connection.execute(
-        f"SELECT {', '.join(columns)} FROM read_parquet('{source}')"
+    source_fields = [field(name) for name in fields]
+    source_fields.extend(
+        [
+            field("idcom"),
+            field(vintage_config.second_home_column, "second_home_value"),
+        ]
     )
-    names = [description[0] for description in relation.description]
-
-    cells: dict[int, _CellAccumulator] = {}
+    second_value = _quoted_identifier("second_home_value")
+    logh = _sql_literal(config.logh)
+    vacant = _sql_literal(config.vacant_code)
+    owner = _sql_literal(config.owner_code)
+    social = _sql_literal(config.social_code)
+    second_home = _sql_literal(vintage_config.second_home_code)
+    recent = _sql_literal(config.recent_transfer[vintage])
+    dnbniv_threshold = config.dniv_code_threshold
+    jannath_min = config.jannath_min
+    stoth_valid = "TRY_CAST(stoth AS BIGINT) IS NOT NULL"
+    stoth_negative_diagnostic = "FALSE"
+    if config.stoth_negative_missing:
+        stoth_valid += " AND TRY_CAST(stoth AS BIGINT) >= 0"
+        stoth_negative_diagnostic = "TRY_CAST(stoth AS BIGINT) < 0"
+    cell_code = (
+        "'CRS3035RES200mN' || CAST(CAST(floor(Y / 200) * 200 AS BIGINT) AS VARCHAR)"
+        " || 'E' || CAST(CAST(floor(X / 200) * 200 AS BIGINT) AS VARCHAR)"
+    )
+    valid_location = (
+        "X IS NOT NULL AND Y IS NOT NULL AND isfinite(X) AND isfinite(Y) "
+        "AND X >= 0 AND Y >= 0"
+    )
+    table_name = f"_ff_department_{department.lower()}"
+    separator_pattern = _sql_literal(r"\s*,\s*")
+    connection.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE {_quoted_identifier(table_name)} AS
+        WITH source AS (
+            SELECT {', '.join(source_fields)}
+            FROM read_parquet(?) AS source
+        ),
+        located AS (
+            SELECT *,
+                CASE WHEN {valid_location}
+                    THEN CAST(floor(Y / 200) AS BIGINT) * 100000
+                        + CAST(floor(X / 200) AS BIGINT)
+                END AS cell_id,
+                CASE WHEN {valid_location} THEN {cell_code} END AS cell_code,
+                ({valid_location}) AS valid_location
+            FROM source
+        ),
+        classified AS (
+            SELECT location.*,
+                CASE WHEN logh = {logh} THEN 1 ELSE 0 END AS dwelling,
+                CASE WHEN logh = {logh} AND ccthp = {vacant}
+                    THEN 1 ELSE 0 END AS vacant,
+                CASE WHEN logh = {logh} AND {second_value} = {second_home}
+                    THEN 1 ELSE 0 END AS second_home,
+                CASE WHEN logh = {logh} AND {second_value} = {recent}
+                    THEN 1 ELSE 0 END AS recent_transfer,
+                CASE WHEN logh = {logh}
+                    AND ccthp IS DISTINCT FROM {vacant}
+                    AND {second_value} IS DISTINCT FROM {second_home}
+                    THEN 1 ELSE 0 END AS main_residence,
+                CASE WHEN logh = {logh}
+                    AND ccthp IS DISTINCT FROM {vacant}
+                    AND {second_value} IS DISTINCT FROM {second_home}
+                    AND ccthp = {owner}
+                    THEN 1 ELSE 0 END AS owner_occupied_main_residence,
+                CASE WHEN logh = {logh} AND catpro2 = {social}
+                    THEN 1 ELSE 0 END AS social_housing,
+                CASE WHEN logh = {logh} AND catpro2 = {social}
+                    AND ccthp IS DISTINCT FROM {vacant}
+                    AND {second_value} IS DISTINCT FROM {second_home}
+                    THEN 1 ELSE 0 END AS social_housing_main_residence,
+                CASE WHEN logh = {logh} AND loghmais = 't'
+                    THEN 1 ELSE 0 END AS house,
+                CASE WHEN logh = {logh} AND loghappt = 't'
+                    THEN 1 ELSE 0 END AS flat,
+                TRY_CAST(npiece_i AS BIGINT) AS npiece_i_clean,
+                CASE
+                    WHEN regexp_full_match(trim(CAST(dnbniv AS VARCHAR)),
+                                           '^[+-]?[0-9]+$')
+                     AND TRY_CAST(trim(CAST(dnbniv AS VARCHAR)) AS BIGINT)
+                        < {dnbniv_threshold}
+                        THEN TRY_CAST(trim(CAST(dnbniv AS VARCHAR)) AS BIGINT)
+                END AS dnbniv_clean,
+                CASE
+                    WHEN {stoth_valid}
+                        THEN TRY_CAST(stoth AS BIGINT)
+                END AS stoth_clean,
+                CASE
+                    WHEN TRY_CAST(jannath AS INTEGER) BETWEEN {jannath_min}
+                         AND {vintage}
+                        THEN TRY_CAST(jannath AS INTEGER)
+                END AS jannath_clean
+            FROM located AS location
+        )
+        SELECT classified.*,
+            nat_cell.natural_cell_id,
+            CASE WHEN classified.idcom IS NOT NULL
+                AND filosofi.lcog_geo IS NOT NULL
+                AND NOT list_contains(
+                    regexp_split_to_array(
+                        CAST(filosofi.lcog_geo AS VARCHAR), {separator_pattern}
+                    ),
+                    trim(CAST(classified.idcom AS VARCHAR))
+                )
+                THEN 1 ELSE 0 END AS idcom_commune_mismatch
+        FROM classified
+        LEFT JOIN _ff_cell_map AS nat_cell USING (cell_id)
+        LEFT JOIN _filosofi_200m AS filosofi
+          ON filosofi.cell_code = classified.cell_code
+        """,
+        [source],
+    )
+    diagnostic_keys = (
+        "premises_without_coordinates",
+        "main_residences_outside_natural_cells",
+        "dnbniv_code_values",
+        "stoth_negative_missing",
+        "jannath_below_min",
+        "jannath_above_vintage",
+        "idcom_commune_mismatch",
+    )
+    diagnostic_values = connection.execute(
+        f"""
+            SELECT
+                count(*) FILTER (WHERE NOT valid_location),
+                count(*) FILTER (WHERE dwelling = 1 AND main_residence = 1
+                    AND natural_cell_id IS NULL),
+                count(*) FILTER (WHERE main_residence = 1
+                    AND dnbniv IS NOT NULL AND dnbniv_clean IS NULL),
+                count(*) FILTER (WHERE main_residence = 1
+                    AND {stoth_negative_diagnostic}),
+                count(*) FILTER (WHERE main_residence = 1
+                    AND TRY_CAST(jannath AS INTEGER) < {jannath_min}),
+                count(*) FILTER (WHERE main_residence = 1
+                    AND TRY_CAST(jannath AS INTEGER) > {vintage}),
+                count(*) FILTER (WHERE dwelling = 1
+                    AND idcom_commune_mismatch = 1)
+            FROM {_quoted_identifier(table_name)}
+            """
+    ).fetchone()
     diagnostics = {
-        "premises_without_coordinates": 0,
-        "main_residences_outside_natural_cells": 0,
-        "dnbniv_code_values": 0,
-        "stoth_negative_missing": 0,
-        "jannath_below_min": 0,
-        "jannath_above_vintage": 0,
-        "idcom_commune_mismatch": 0,
+        key: int(value)
+        for key, value in zip(diagnostic_keys, diagnostic_values, strict=True)
     }
-    recent_code = config.recent_transfer[vintage]
-
-    for batch in relation.fetch_record_batch(rows_per_batch=100_000):
-        for row in batch.to_pylist():
-            dwelling_row = dict(zip(names, (row[name] for name in names), strict=True))
-            if dwelling_row["X"] is None or dwelling_row["Y"] is None:
-                diagnostics["premises_without_coordinates"] += 1
-                continue
-            try:
-                cell_id_value = coordinate_to_200m_cell(
-                    float(dwelling_row["X"]),
-                    float(dwelling_row["Y"]),
-                )
-            except (TypeError, ValueError):
-                diagnostics["premises_without_coordinates"] += 1
-                continue
-
-            easting = float(dwelling_row["X"])
-            northing = float(dwelling_row["Y"])
-            inspire = inspire_code(northing, easting, 200)
-            natural_id = natural_cell_for_200m_cell(inspire, natural_cell_lookup) or ""
-            commune_list = filosofi_200m.get(inspire, "")
-
-            idcom = dwelling_row.get("idcom")
-            if idcom is not None and commune_list:
-                commune_codes = {code.strip() for code in commune_list.split(",")}
-                if str(idcom).strip() not in commune_codes:
-                    diagnostics["idcom_commune_mismatch"] += 1
-
-            classified = classify_dwelling(
-                dwelling_row,
-                vintage_config.second_home_column,
-                vintage_config.second_home_code,
-                recent_code,
-                logh=config.logh,
-                vacant_code=config.vacant_code,
-                owner_code=config.owner_code,
-                social_code=config.social_code,
-            )
-            if not classified["dwelling"]:
-                continue
-            if classified["main_residence"] and not natural_id:
-                diagnostics["main_residences_outside_natural_cells"] += 1
-
-            accumulator = cells.setdefault(
-                cell_id_value,
-                _CellAccumulator(natural_cell_id=natural_id),
-            )
-            accumulator.dwellings += classified["dwelling"]
-            accumulator.main_residences += classified["main_residence"]
-            accumulator.vacant += classified["vacant"]
-            accumulator.second_homes += classified["second_home"]
-            accumulator.recent_transfers += classified["recent_transfer"]
-            accumulator.owner_occupied_main_residences += classified[
-                "owner_occupied_main_residence"
-            ]
-            accumulator.social_housing += classified["social_housing"]
-            accumulator.social_housing_main_residences += classified[
-                "social_housing_main_residence"
-            ]
-            accumulator.houses += classified["house"]
-            accumulator.flats += classified["flat"]
-
-            if classified["main_residence"]:
-                npiece = _clean_integer(dwelling_row.get("npiece_i"))
-                if npiece is not None:
-                    accumulator.npiece_i_values.append(npiece)
-
-                dnbniv = _clean_dnbniv(
-                    dwelling_row.get("dnbniv"),
-                    config.dniv_code_threshold,
-                )
-                if dnbniv is not None:
-                    accumulator.dnbniv_values.append(dnbniv)
-                elif dwelling_row.get("dnbniv") is not None:
-                    diagnostics["dnbniv_code_values"] += 1
-
-                stoth = _clean_integer(dwelling_row.get("stoth"))
-                if stoth is not None:
-                    if stoth < 0:
-                        diagnostics["stoth_negative_missing"] += 1
-                    else:
-                        accumulator.stoth_values.append(stoth)
-
-                jannath = _clean_integer(dwelling_row.get("jannath"))
-                if jannath is not None:
-                    if jannath < config.jannath_min:
-                        diagnostics["jannath_below_min"] += 1
-                    elif jannath > vintage:
-                        diagnostics["jannath_above_vintage"] += 1
-                    else:
-                        accumulator.jannath_values.append(jannath)
-
-    return cells, diagnostics
+    LOGGER.info(
+        "Fichiers fonciers vintage %s department %s classified in %.2f seconds",
+        vintage,
+        department,
+        time.perf_counter() - started,
+    )
+    return table_name, diagnostics
 
 
-def _accumulator_output_row(
+def aggregate_staged_ff_cells(
+    connection: duckdb.DuckDBPyConnection,
+    staging_tables: Sequence[str],
     vintage: int,
-    cell: int,
-    accumulator: _CellAccumulator,
-) -> dict[str, object]:
-    npiece_values = accumulator.npiece_i_values or []
-    dnbniv_values = accumulator.dnbniv_values or []
-    stoth_values = accumulator.stoth_values or []
-    jannath_values = accumulator.jannath_values or []
-    return {
-        "vintage": vintage,
-        "cell_id": cell,
-        "natural_cell_id": accumulator.natural_cell_id,
-        "dwellings": accumulator.dwellings,
-        "main_residences": accumulator.main_residences,
-        "vacant": accumulator.vacant,
-        "second_homes": accumulator.second_homes,
-        "recent_transfers": accumulator.recent_transfers,
-        "owner_occupied_main_residences": (
-            accumulator.owner_occupied_main_residences
-        ),
-        "social_housing": accumulator.social_housing,
-        "social_housing_main_residences": (
-            accumulator.social_housing_main_residences
-        ),
-        "houses": accumulator.houses,
-        "flats": accumulator.flats,
-        "npiece_i_sum": sum(npiece_values),
-        "npiece_i_sum_sq": sum(value * value for value in npiece_values),
-        "dnbniv_sum": sum(dnbniv_values),
-        "dnbniv_sum_sq": sum(value * value for value in dnbniv_values),
-        "stoth_median": statistics.median(stoth_values) if stoth_values else None,
-        "stoth_std": (
-            statistics.pstdev(stoth_values) if len(stoth_values) > 1 else 0.0
-            if stoth_values
-            else None
-        ),
-        "stoth_valid_count": len(stoth_values),
-        "jannath_median": (
-            statistics.median(jannath_values) if jannath_values else None
-        ),
-        "jannath_std": (
-            statistics.pstdev(jannath_values) if len(jannath_values) > 1 else 0.0
-            if jannath_values
-            else None
-        ),
-        "jannath_valid_count": len(jannath_values),
-    }
+) -> pa.Table:
+    """Aggregate staged premise classifications per 200 m cell in DuckDB."""
+    if not staging_tables:
+        raise ValueError("at least one staged department table is required")
+    union = " UNION ALL ".join(
+        f"SELECT * FROM {_quoted_identifier(table)}" for table in staging_tables
+    )
+    return connection.execute(
+        f"""
+        SELECT ? AS vintage, cell_id,
+            coalesce(natural_cell_id, '') AS natural_cell_id,
+            sum(dwelling) AS dwellings,
+            sum(main_residence) AS main_residences,
+            sum(vacant) AS vacant,
+            sum(second_home) AS second_homes,
+            sum(recent_transfer) AS recent_transfers,
+            sum(owner_occupied_main_residence)
+                AS owner_occupied_main_residences,
+            sum(social_housing) AS social_housing,
+            sum(social_housing_main_residence)
+                AS social_housing_main_residences,
+            sum(house) AS houses,
+            sum(flat) AS flats,
+            coalesce(sum(npiece_i_clean) FILTER (WHERE main_residence = 1), 0)
+                AS npiece_i_sum,
+            coalesce(sum(npiece_i_clean * npiece_i_clean)
+                FILTER (WHERE main_residence = 1), 0) AS npiece_i_sum_sq,
+            coalesce(sum(dnbniv_clean) FILTER (WHERE main_residence = 1), 0)
+                AS dnbniv_sum,
+            coalesce(sum(dnbniv_clean * dnbniv_clean)
+                FILTER (WHERE main_residence = 1), 0) AS dnbniv_sum_sq,
+            median(stoth_clean) FILTER (WHERE main_residence = 1)
+                AS stoth_median,
+            stddev_pop(stoth_clean) FILTER (WHERE main_residence = 1)
+                AS stoth_std,
+            count(stoth_clean) FILTER (WHERE main_residence = 1)
+                AS stoth_valid_count,
+            median(jannath_clean) FILTER (WHERE main_residence = 1)
+                AS jannath_median,
+            stddev_pop(jannath_clean) FILTER (WHERE main_residence = 1)
+                AS jannath_std,
+            count(jannath_clean) FILTER (WHERE main_residence = 1)
+                AS jannath_valid_count
+        FROM ({union}) AS staged
+        WHERE valid_location AND dwelling = 1
+        GROUP BY cell_id, natural_cell_id
+        ORDER BY cell_id
+        """,
+        [vintage],
+    ).to_arrow_table()
 
 
 def build_ff_cells(
     vintage: int,
-    departments: Sequence[str],
+    departments: Sequence[str] | None = None,
     *,
     filosofi_200m_archive: str | Path | None = None,
     filosofi_natural_archive: str | Path | None = None,
     config_path: str | Path = "config/origins.yaml",
+    pilot_config_path: str | Path = "config/pilot.yaml",
     output: str | Path = "data/interim/landgrid",
     force: bool = False,
 ) -> dict[str, object]:
@@ -618,13 +862,23 @@ def build_ff_cells(
             raise FileNotFoundError(natural_archive)
         filosofi_map = _filosofi_200m_map(connection, filosofi_archive)
         natural_cell_lookup = _filosofi_natural_ids(connection, natural_archive)
+        _register_lookup_tables(connection, filosofi_map, natural_cell_lookup)
+        if departments is None:
+            pilot_department = _pilot_department(pilot_config_path)
+            resolved_departments = sorted(
+                derived_departments_for_pilot(connection, pilot_department)
+            )
+        else:
+            resolved_departments = sorted({str(value).strip() for value in departments})
+        if not resolved_departments or any(not value for value in resolved_departments):
+            raise ValueError("at least one valid department is required")
 
         input_files = [
             filosofi_archive,
             natural_archive,
             *[
                 _partition_for_department(config, vintage, department)
-                for department in departments
+                for department in resolved_departments
             ],
         ]
         if any(not path.is_file() for path in input_files):
@@ -644,6 +898,7 @@ def build_ff_cells(
                     "output": str(output_path),
                     "cached": True,
                     "signature": signature,
+                    "departments": resolved_departments,
                     "row_count": int(
                         read_parquet(connection, output_path).aggregate(
                             "count(*)"
@@ -651,7 +906,14 @@ def build_ff_cells(
                     ),
                 }
 
-        combined: dict[int, _CellAccumulator] = {}
+        _create_natural_cell_map(
+            connection,
+            [
+                _partition_for_department(config, vintage, department)
+                for department in resolved_departments
+            ],
+        )
+
         diagnostics = {
             "premises_without_coordinates": 0,
             "main_residences_outside_natural_cells": 0,
@@ -661,8 +923,9 @@ def build_ff_cells(
             "jannath_above_vintage": 0,
             "idcom_commune_mismatch": 0,
         }
-        for department in departments:
-            department_cells, department_diagnostics = build_department_ff_cells(
+        staging_tables = []
+        for department in resolved_departments:
+            table_name, department_diagnostics = build_department_ff_cells(
                 connection,
                 vintage,
                 department,
@@ -670,41 +933,10 @@ def build_ff_cells(
                 filosofi_map,
                 natural_cell_lookup,
             )
+            staging_tables.append(table_name)
             for key, value in department_diagnostics.items():
                 diagnostics[key] += value
-            for cell, accumulator in department_cells.items():
-                target = combined.setdefault(
-                    cell,
-                    _CellAccumulator(
-                        natural_cell_id=accumulator.natural_cell_id,
-                    ),
-                )
-                target.dwellings += accumulator.dwellings
-                target.main_residences += accumulator.main_residences
-                target.vacant += accumulator.vacant
-                target.second_homes += accumulator.second_homes
-                target.recent_transfers += accumulator.recent_transfers
-                target.owner_occupied_main_residences += (
-                    accumulator.owner_occupied_main_residences
-                )
-                target.social_housing += accumulator.social_housing
-                target.social_housing_main_residences += (
-                    accumulator.social_housing_main_residences
-                )
-                target.houses += accumulator.houses
-                target.flats += accumulator.flats
-                target.npiece_i_values.extend(
-                    accumulator.npiece_i_values or []
-                )
-                target.dnbniv_values.extend(accumulator.dnbniv_values or [])
-                target.stoth_values.extend(accumulator.stoth_values or [])
-                target.jannath_values.extend(accumulator.jannath_values or [])
-
-        rows = [
-            _accumulator_output_row(vintage, cell, accumulator)
-            for cell, accumulator in sorted(combined.items())
-        ]
-        table = pa.Table.from_pylist(rows)
+        table = aggregate_staged_ff_cells(connection, staging_tables, vintage)
         connection.register("_ff_cells", table)
         try:
             temporary = output_path.with_suffix(".tmp.parquet")
@@ -730,7 +962,8 @@ def build_ff_cells(
             "output": str(output_path),
             "cached": False,
             "signature": signature,
-            "row_count": len(rows),
+            "departments": resolved_departments,
+            "row_count": table.num_rows,
             "diagnostics": diagnostics,
         }
     finally:
@@ -741,7 +974,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point for building one FF vintage."""
     parser = argparse.ArgumentParser(description="Build step-3 dwelling cells")
     parser.add_argument("--vintage", type=int, required=True)
-    parser.add_argument("--department", action="append", required=True)
+    parser.add_argument("--department", action="append")
     parser.add_argument(
         "--filosofi-200m",
         type=Path,
@@ -755,6 +988,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO)
     result = build_ff_cells(
         args.vintage,
         args.department,
