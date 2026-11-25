@@ -1,3 +1,6 @@
+filosofi:
+  200m_archive: "data/raw/filosofi/2021/Filosofi2021_carreaux_200m_csv.zip"
+  natural_archive: "data/raw/filosofi/2021/Filosofi2021_carreaux_nivNaturel_csv.zip"
 vintages:
   2021:
     parquet_pattern: "data/raw/fichiers_fonciers/ff2021/pb0010_local/ccodep={department}/part-01.parquet"

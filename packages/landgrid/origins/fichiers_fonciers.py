@@ -20,6 +20,12 @@ import yaml
 from common.duckdb_io import open_connection, read_parquet, write_parquet
 from common.grid import cell_id, inspire_code
 
+from landgrid.origins.filosofi import (
+    NaturalCellLookup,
+    build_natural_cell_lookup,
+    natural_cell_for_200m_cell,
+)
+
 
 @dataclass(frozen=True)
 class VintageConfig:
@@ -30,6 +36,8 @@ class VintageConfig:
 
 @dataclass(frozen=True)
 class OriginsConfig:
+    filosofi_200m_archive: str
+    filosofi_natural_archive: str
     vintages: dict[int, VintageConfig]
     logh: str
     vacant_code: str
@@ -56,6 +64,8 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         for vintage, value in raw["vintages"].items()
     }
     return OriginsConfig(
+        filosofi_200m_archive=raw["filosofi"]["200m_archive"],
+        filosofi_natural_archive=raw["filosofi"]["natural_archive"],
         vintages=vintages,
         logh=raw["dwelling"]["logh"],
         vacant_code=raw["vacant"]["ccthp"],
@@ -258,7 +268,7 @@ def build_ff_cells_signature(
     vintage: int,
     config: OriginsConfig,
     input_files: Sequence[Path],
-    code_version: int = 1,
+    code_version: int = 2,
 ) -> str:
     """Build the cache signature for one Fichiers fonciers vintage."""
     payload = {
@@ -312,8 +322,8 @@ class _CellAccumulator:
 def _filosofi_200m_map(
     connection: duckdb.DuckDBPyConnection,
     archive: Path,
-) -> dict[str, tuple[str, str]]:
-    """Read one Filosofi 200 m metropolitan member and map cells to natural cells."""
+) -> dict[str, str]:
+    """Read Filosofi 200 m commune intersections for location diagnostics."""
     with tempfile.TemporaryDirectory(prefix="filosofi_200m_") as directory:
         csv_path = Path(directory) / "filosofi_200m.csv"
         with zipfile.ZipFile(archive) as zipped:
@@ -326,15 +336,40 @@ def _filosofi_200m_map(
                 target.write(source.read())
         rows = connection.execute(
             """
-            SELECT idcar_200m, idcar_nat, lcog_geo
+            SELECT idcar_200m, lcog_geo
             FROM read_csv_auto(?, header=true)
             """,
             [str(csv_path)],
         ).fetchall()
     return {
-        str(cell): (str(natural), "" if commune is None else str(commune))
-        for cell, natural, commune in rows
+        str(cell): "" if commune is None else str(commune)
+        for cell, commune in rows
     }
+
+
+def _filosofi_natural_ids(
+    connection: duckdb.DuckDBPyConnection,
+    archive: Path,
+) -> NaturalCellLookup:
+    """Read and index metropolitan Filosofi natural-level cell identifiers."""
+    with tempfile.TemporaryDirectory(prefix="filosofi_natural_") as directory:
+        csv_path = Path(directory) / "filosofi_natural.csv"
+        with zipfile.ZipFile(archive) as zipped:
+            member = next(
+                name
+                for name in zipped.namelist()
+                if name.endswith("carreaux_nivNaturel_met.csv")
+            )
+            with zipped.open(member) as source, csv_path.open("wb") as target:
+                target.write(source.read())
+        rows = connection.execute(
+            """
+            SELECT DISTINCT idcar_nat
+            FROM read_csv_auto(?, header=true)
+            """,
+            [str(csv_path)],
+        ).fetchall()
+    return build_natural_cell_lookup(str(row[0]) for row in rows)
 
 
 def _partition_for_department(
@@ -360,7 +395,8 @@ def build_department_ff_cells(
     vintage: int,
     department: str,
     config: OriginsConfig,
-    filosofi_200m: Mapping[str, tuple[str, str]],
+    filosofi_200m: Mapping[str, str],
+    natural_cell_lookup: NaturalCellLookup,
 ) -> tuple[dict[int, _CellAccumulator], dict[str, int]]:
     """Build synthetic 200 m dwelling aggregates for one department."""
     vintage_config = config.vintages[vintage]
@@ -427,9 +463,8 @@ def build_department_ff_cells(
             easting = float(dwelling_row["X"])
             northing = float(dwelling_row["Y"])
             inspire = inspire_code(northing, easting, 200)
-            filosofi_match = filosofi_200m.get(inspire)
-            natural_id = filosofi_match[0] if filosofi_match is not None else ""
-            commune_list = filosofi_match[1] if filosofi_match is not None else ""
+            natural_id = natural_cell_for_200m_cell(inspire, natural_cell_lookup) or ""
+            commune_list = filosofi_200m.get(inspire, "")
 
             idcom = dwelling_row.get("idcom")
             if idcom is not None and commune_list:
@@ -558,7 +593,8 @@ def build_ff_cells(
     vintage: int,
     departments: Sequence[str],
     *,
-    filosofi_200m_archive: str | Path,
+    filosofi_200m_archive: str | Path | None = None,
+    filosofi_natural_archive: str | Path | None = None,
     config_path: str | Path = "config/origins.yaml",
     output: str | Path = "data/interim/landgrid",
     force: bool = False,
@@ -570,13 +606,22 @@ def build_ff_cells(
 
     connection = open_connection()
     try:
-        filosofi_archive = Path(filosofi_200m_archive)
+        filosofi_archive = Path(
+            filosofi_200m_archive or config.filosofi_200m_archive
+        )
+        natural_archive = Path(
+            filosofi_natural_archive or config.filosofi_natural_archive
+        )
         if not filosofi_archive.is_file():
             raise FileNotFoundError(filosofi_archive)
+        if not natural_archive.is_file():
+            raise FileNotFoundError(natural_archive)
         filosofi_map = _filosofi_200m_map(connection, filosofi_archive)
+        natural_cell_lookup = _filosofi_natural_ids(connection, natural_archive)
 
         input_files = [
             filosofi_archive,
+            natural_archive,
             *[
                 _partition_for_department(config, vintage, department)
                 for department in departments
@@ -623,6 +668,7 @@ def build_ff_cells(
                 department,
                 config,
                 filosofi_map,
+                natural_cell_lookup,
             )
             for key, value in department_diagnostics.items():
                 diagnostics[key] += value
@@ -699,8 +745,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--filosofi-200m",
         type=Path,
-        default=Path("data/raw/filosofi/2021/Filosofi2021_carreaux_200m_csv.zip"),
     )
+    parser.add_argument("--filosofi-natural", type=Path)
     parser.add_argument("--config", type=Path, default=Path("config/origins.yaml"))
     parser.add_argument(
         "--output",
@@ -713,6 +759,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.vintage,
         args.department,
         filosofi_200m_archive=args.filosofi_200m,
+        filosofi_natural_archive=args.filosofi_natural,
         config_path=args.config,
         output=args.output,
         force=args.force,

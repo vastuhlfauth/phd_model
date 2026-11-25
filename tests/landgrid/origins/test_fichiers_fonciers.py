@@ -1,11 +1,20 @@
 """Synthetic acceptance tests for Fichiers fonciers cell counts (section 6.3)."""
 
+from pathlib import Path
+
+import duckdb
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from landgrid.origins.fichiers_fonciers import (
+    VintageConfig,
     aggregate_dwelling_rows,
+    build_department_ff_cells,
     classify_dwelling,
     coordinate_to_200m_cell,
+    load_origins_config,
 )
+from landgrid.origins.filosofi import build_natural_cell_lookup
 
 
 @pytest.mark.parametrize(
@@ -119,3 +128,57 @@ def test_category_sums_preserve_dwelling_total() -> None:
         + aggregates["second_homes"]
         == aggregates["dwellings"]
     )
+
+
+def test_dwelling_without_filosofi_200m_row_gets_natural_cell(
+    tmp_path: Path,
+) -> None:
+    natural_code = "CRS3035RES1000mN2400000E4000000"
+    partition = tmp_path / "part-01.parquet"
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "idlocal": "synthetic",
+                    "idcom": "33001",
+                    "X": 4_000_210.0,
+                    "Y": 2_400_210.0,
+                    "logh": "t",
+                    "ccthp": "P",
+                    "proba_rprs": "RP",
+                    "catpro2": None,
+                    "npiece_i": 2,
+                    "dnbniv": "1",
+                    "stoth": 40,
+                    "jannath": 2000,
+                    "loghmais": None,
+                    "loghappt": None,
+                }
+            ]
+        ),
+        partition,
+    )
+    config = load_origins_config()
+    config.vintages[2022] = VintageConfig(
+        parquet_pattern=str(tmp_path / "ccodep={department}" / "part-01.parquet"),
+        second_home_column="proba_rprs",
+        second_home_code="RS",
+    )
+    department_partition = tmp_path / "ccodep=33"
+    department_partition.mkdir()
+    partition.replace(department_partition / "part-01.parquet")
+    connection = duckdb.connect()
+    try:
+        cells, _ = build_department_ff_cells(
+            connection,
+            2022,
+            "33",
+            config,
+            {},
+            build_natural_cell_lookup([natural_code]),
+        )
+    finally:
+        connection.close()
+
+    cell = coordinate_to_200m_cell(4_000_210.0, 2_400_210.0)
+    assert cells[cell].natural_cell_id == natural_code
