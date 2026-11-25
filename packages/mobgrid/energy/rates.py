@@ -124,8 +124,7 @@ class CarConfig(BaseModel):
 
 
 class BikePowerConfig(BaseModel):
-    """Force-balance power-selection parameters; null until calibrated
-    against observed commuter speeds on gradients (section 9.7)."""
+    """Force-balance power-selection parameters (section 9.7)."""
 
     model_config = ConfigDict(extra="forbid")
     p0_w: float | None = None

@@ -189,6 +189,7 @@ def _bike_ride(
         gradient, power_set["p0_w"], power_set["k"], power_set["p_max_w"],
         mass_total_kg, crr, config.bike.cda_m2, config.bike.rho_air_kg_per_m3,
         config.bike.drivetrain_efficiency, v_max_descent_m_per_s,
+        paved_rolling_resistance=config.bike.surface_crr[_SURFACE_KEY],
     )
 
 
@@ -221,6 +222,7 @@ def _ebike_ride(
         config.bike.cda_m2, config.bike.rho_air_kg_per_m3,
         config.bike.drivetrain_efficiency, assist, config.bike.ebike.motor_power_cap_w,
         speed_cap_m_per_s, v_max_descent_m_per_s,
+        paved_rolling_resistance=config.bike.surface_crr[_SURFACE_KEY],
     )
 
 

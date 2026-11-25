@@ -217,13 +217,13 @@ bike:
   # km/h, from 727 reliable cycle trips -- e-bikes can't be separated
   # in EMP 2019, whose own mode codes do not distinguish them from
   # bicycles). k and P_max are still not calibrated.
-  # TODO(confirm): [TO CONFIRM: k and P_max against Parkin & Rotheram
-  # 2010 / pilot commuter speeds], section 9.7.
+  # TODO(confirm): check k, P_max and the descent cap against observed
+  # commuter speeds, section 9.7.
   power:
     p0_w: 34.8
-    k: null
-    p_max_w: null
-    v_max_descent_kmh: null
+    k: 37.0
+    p_max_w: 200.0
+    v_max_descent_kmh: 30.0
   ebike:
     motor_power_cap_w: 250.0
     speed_cap_kmh: 25.0

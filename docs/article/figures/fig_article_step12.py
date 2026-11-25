@@ -3,8 +3,8 @@
 Usage: python fig_article_step12.py [path/to/step12_variation.md]
 Writes, next to this script:
   fig_ratio_2008_2019.{png,pdf,svg}       2019/2008 daily-time ratios (B2, B6.5)
-  fig_measurement_bridge.{png,pdf,svg}    observed change -> measurement-corrected
-                                          behavioural change (C4, B2)
+  fig_measurement_bridge.{png,pdf,svg}    observed change, measurement rows and the
+                                          report's residual ranges (C4, B2)
 Only aggregate tables of the report are read; nothing else is needed.
 """
 
@@ -181,102 +181,122 @@ def ratio_figure(text: str) -> None:
 
 
 def bridge_figure(text: str) -> None:
+    """Observed change, the measurement rows of the ledger, and the report's residual ranges.
+
+    Rounding (row a) is a pair of bounds, not an estimate, so it is drawn as a bar
+    without a point. The residuals are the report's own ranges ("Residual change"
+    table): after rows a, b, e, f, then also after g (composition). They are
+    sensitivity ranges, drawn as bars without a point.
+    """
     led = section(text, "C4. Measurement ledger")
-    keep = {
-        "a.": "Duration rounding",
+    names = {
+        "a.": "Duration rounding (bounds)",
         "b.": "Recall lag (EMP)",
         "e.": "Short trips missing in 2019",
         "f.": "Calendar mix",
         "g.": "Population composition",
     }
-    effects = []
+    bounds_col = next(
+        i for i, h in enumerate(led[0]) if h.startswith("Interval or bounds")
+    )
+    effects = {}
     for r in led[1:]:
         key = r[0][:2]
-        if key not in keep:
+        if key not in names:
             continue
-        groups = [interval(g) for g in r[4].split(";")]
+        groups = [interval(g) for g in r[bounds_col].split(";")]
         points = []
         for k, cell in enumerate(r[1:4]):
             nums = [float(x) for x in re.findall(NUM, cell)]
             lo, hi = groups[k]
-            points.append((nums[0] if len(nums) == 1 else (lo + hi) / 2, lo, hi))
-        effects.append((keep[key], points))
-    obs = section(text, "Residual change")[1]
-    observed = [float(x) for x in obs[1:4]]
+            is_bounds = len(nums) != 1  # row a prints "[lo, hi]" in the effect cell
+            points.append((None if is_bounds else nums[0], lo, hi))
+        effects[key] = points
+    res = section(text, "Residual change")
+    observed = [float(x) for x in res[1][1:4]]
+    resid_abef = [interval(c) for c in res[2][1:4]]
+    resid_g = [interval(c) for c in res[3][1:4]]
+    assert res[2][0].startswith("Residual (removing a, b, e, f)"), res[2][0]
+    assert res[3][0].startswith("Residual (also removing g"), res[3][0]
     b2 = section(text, "B2. Trips x distance x speed")
     head = b2[0]
     t_ci = interval(b2[1][head.index("Δ (min) [CI]")].split("[", 1)[1])
 
-    # Behavioural, measurement-corrected change = observed - sum(effects); ranges combine extremes.
-    resid = []
-    for k in range(3):
-        mid = observed[k] - sum(p[k][0] for _, p in effects)
-        lo = observed[k] - sum(p[k][2] for _, p in effects)
-        hi = observed[k] - sum(p[k][1] for _, p in effects)
-        resid.append((mid, lo, hi))
+    rows = [("Observed change 2008 → 2019", "obs", None)]
+    rows += [(f"minus {names[k]}", "eff", k) for k in ("a.", "b.", "e.", "f.")]
+    rows += [("= Residual after measurement rows a, b, e, f", "res", resid_abef)]
+    rows += [(f"minus {names['g.']}", "eff", "g.")]
+    rows += [("= Residual, also without composition", "res", resid_g)]
 
     titles = ["Daily time (min/day)", "Trips per day", "Minutes per trip"]
-    rows = (
-        ["Observed change 2008 to 2019"]
-        + [f"minus: {n}" for n, _ in effects]
-        + ["= Behavioural change, measurement-corrected"]
-    )
-    fig, axes = plt.subplots(1, 3, figsize=(7.0, 3.3), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(7.0, 3.6), sharey=True)
     for k, ax in enumerate(axes):
         ax.axvline(0, color=INK_2, lw=0.8)
-        vals = [(observed[k], *(t_ci if k == 0 else (observed[k], observed[k])))]
-        vals += [p[k] for _, p in effects]
-        vals += [resid[k]]
-        for y, (m, lo, hi) in enumerate(vals):
-            result = y in (0, len(vals) - 1)
-            col = INK if result else SERIES
+        fmt = "{:+.2f}" if k == 1 else "{:+.1f}"
+        span = []
+        for y, (_, kind, ref) in enumerate(rows):
+            if kind == "obs":
+                m = observed[k]
+                lo, hi = t_ci if k == 0 else (m, m)
+                col, marker = INK, "D"
+                label = fmt.format(m)
+            elif kind == "eff":
+                m, lo, hi = effects[ref][k]
+                col, marker = SERIES, "o"
+                label = (
+                    fmt.format(m)
+                    if m is not None
+                    else f"[{fmt.format(lo)}, {fmt.format(hi)}]"
+                )
+            else:
+                lo, hi = ref[k]
+                m, col, marker = None, INK, None
+                label = f"[{fmt.format(lo)}, {fmt.format(hi)}]"
+            span += [lo, hi] + ([m] if m is not None else [])
             if hi > lo:
-                ax.plot([lo, hi], [y, y], color=col, lw=2, solid_capstyle="round")
-            ax.plot(
-                m,
-                y,
-                "D" if result else "o",
-                ms=5.5,
-                color=col,
-                markeredgewidth=0,
-                zorder=3,
-            )
-            fmt = "{:+.2f}" if k == 1 else "{:+.1f}"
+                ax.plot(
+                    [lo, hi],
+                    [y, y],
+                    color=col,
+                    lw=5 if kind == "res" else 2,
+                    solid_capstyle="butt" if kind == "res" else "round",
+                    alpha=0.55 if kind == "res" else 1,
+                )
+            if m is not None:
+                ax.plot(m, y, marker, ms=5.5, color=col, markeredgewidth=0, zorder=3)
             ax.annotate(
-                fmt.format(m),
-                (max(m, hi), y),
+                label,
+                (max(hi, m if m is not None else hi), y),
                 xytext=(4, 0),
                 textcoords="offset points",
                 va="center",
-                fontsize=6.5,
+                fontsize=6.3,
                 color=INK,
             )
         ax.set_title(titles[k], fontsize=8.5, loc="left", color=INK)
         style(ax)
-        lo_all = min(v[1] for v in vals)
-        hi_all = max(v[2] for v in vals)
-        pad = 0.25 * (hi_all - lo_all)
-        ax.set_xlim(lo_all - 0.15 * pad, hi_all + pad)
-    axes[0].set_yticks(range(len(rows)), rows)
+        lo_all, hi_all = min(span), max(span)
+        width = hi_all - lo_all
+        ax.set_xlim(lo_all - 0.12 * width, hi_all + 0.95 * width)
+    axes[0].set_yticks(range(len(rows)), [r[0] for r in rows])
     axes[0].set_ylim(len(rows) - 0.5, -0.5)
     fig.text(
         0.01,
         0.01,
-        "Effects are on the measured 2008-2019 change (positive = raises the measured 2019 value);"
-        " the corrected change removes them.\n"
-        "Observed CI shown for daily time only (B2). Rounding: bounds from simulation (nearest vs"
-        " round-up); other rows: 95% household-bootstrap CIs.\n"
-        "The corrected range combines the extremes of all rows. The short-trip row assumes the whole"
-        " fall in trips under 5 min is measurement (an upper bound).\n"
-        "Residents 6+, weekdays with trips; round-trip days, destination purposes, local trips"
-        " (≤ 80 km); harmonised motives. Sources: ENTD 2008, EMP 2019.",
-        fontsize=6.3,
+        "Effects are on the measured 2008–2019 change (positive = raises the measured 2019 value). Observed: point and"
+        " 95% CI (daily time, B2).\n"
+        "Rounding: bounds from simulation (nearest vs round-up), not an estimate. Other rows: point and 95% household-bootstrap CI.\n"
+        "Residuals (wide bars): the report's sensitivity ranges, observed change minus the extreme combinations of the rows"
+        " removed; not CIs.\nThe short-trip row treats the whole fall in trips under 5 min as measurement (an upper bound)."
+        " Residents 6+, weekdays with trips;\nround-trip days, destination purposes, local trips (≤ 80 km); harmonised"
+        " motives. Sources: ENTD 2008, EMP 2019; author's calculations.",
+        fontsize=6.0,
         color=INK_2,
     )
-    fig.tight_layout(rect=(0, 0.17, 1, 1), w_pad=1.2)
+    fig.tight_layout(rect=(0, 0.2, 0.99, 1), w_pad=0.8)
     save(fig, "fig_measurement_bridge")
-    for t, (m, lo, hi), o in zip(titles, resid, observed):
-        print(f"{t}: observed {o:+.3f} -> corrected {m:+.3f} [{lo:+.3f}, {hi:+.3f}]")
+    for t, o, r1, r2 in zip(titles, observed, resid_abef, resid_g):
+        print(f"{t}: observed {o:+.3f}; residual a,b,e,f {r1}; also g {r2}")
 
 
 if __name__ == "__main__":

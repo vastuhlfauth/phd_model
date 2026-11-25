@@ -1,0 +1,76 @@
+base_url_env: OSRM_BASE_URL
+profile: driving
+prefixes:
+  car: routed-car
+  bike: routed-bike
+  foot: routed-foot
+user_agent: "phd_model, ENTPE research"
+interval_s: 1.1
+policy_minimum_interval_s: 1.0
+retry_backoff_s: 2.0
+max_attempts: 3
+timeout_s: 30
+max_snap_distance_m: 25
+sample_path: data/interim/osrm/pairs.parquet
+response_directory: data/interim/osrm/responses
+log_directory: logs
+report_path: docs/data/step06_osrm_check.md
+route_checkpoint_directory: data/interim/osrm/routing
+calibration_checkpoint_directory: data/interim/osrm/calibration
+metric_tolerances_min: [2, 5]
+car_profile_notes:
+  source_url: https://github.com/Project-OSRM/osrm-backend/blob/v5.27.1/profiles/car.lua
+  unclassified_kmh: 25
+  residential_kmh: 25
+  tertiary_kmh: 40
+  primary_kmh: 65
+  maxspeed_factor: 0.8
+  turn_penalty_s: 7.5
+  signal_penalty_s: 2
+calibration:
+  network_config: config/network.yaml
+  reference: none
+  google_reference_path: null
+  seed: 42
+  training_fraction: 0.5
+  uncertainty_fraction: 0.5
+  max_iterations: 200
+  tolerance: 0.00000001
+  max_backtracks: 30
+  arc_time_tolerance_s: 0.1
+  road_groups:
+    motorway_trunk:
+      highways: [motorway, motorway_link, trunk, trunk_link]
+      bounds: [0.80, 1.15]
+    primary_tertiary:
+      highways: [primary, primary_link, secondary, secondary_link, tertiary, tertiary_link]
+      bounds: [0.60, 1.15]
+    local:
+      highways: [unclassified, residential, road]
+      bounds: [0.40, 1.15]
+  fixed_highways: [service, living_street, track, pedestrian, footway, path, cycleway, bridleway]
+  control_bounds_s:
+    signal_s: [0, 30]
+    stop_s: [0, 15]
+    give_way_s: [0, 10]
+    mini_roundabout_s: [0, 15]
+    at_to_node_s: [0, 10]
+    crossing_s: [0, 5]
+sampling:
+  graph_directory: data/base/network/2021/pilot/graph
+  edges_path: data/base/network/2021/pilot/edges.parquet
+  edge_costs_path: data/base/network/2021/pilot/edge_costs.parquet
+  nodes_path: data/base/network/2021/pilot/nodes.parquet
+  area_path: data/interim/osm/2021/pilot/area.parquet
+  search_config: config/search.yaml
+  seed: 42
+  count_by_mode:
+    car: 1500
+    bike: 500
+    foot: 500
+  band_edges_m: [0, 2000, 5000, 10000, 20000, 40000, 80000]
+  bike_max_m: 20000
+  long_car_min_m: 20000
+  boundary_margin_m: 10000
+  context_radius_m: 500
+  attempts_per_stratum: 100

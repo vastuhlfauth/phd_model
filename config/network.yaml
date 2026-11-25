@@ -1,0 +1,450 @@
+states:
+  2021: osm-2022
+  2023: osm-2024
+contour_source_id: contours-2021
+# TODO(confirm): choose the study-area polygon simplification tolerance.
+area_simplify_tolerance_m: 10
+# TODO(confirm): validate the elevation profile smoothing window.
+elevation_smoothing_window_m: 50
+kept_tags:
+  - highway
+  - railway
+  - public_transport
+  - access
+  - motor_vehicle
+  - motorcar
+  - bicycle
+  - foot
+  - sidewalk
+  - oneway
+  - direction
+  - traffic_signals:direction
+  - oneway:bicycle
+  - junction
+  - motorroad
+  - cycleway
+  - cycleway:both
+  - cycleway:left
+  - cycleway:right
+  - cycleway:oneway
+  - cycleway:both:oneway
+  - cycleway:left:oneway
+  - cycleway:right:oneway
+  - bicycle_road
+  - busway:left
+  - busway:right
+  - busway:both
+  - maxspeed
+  - lanes
+  - busway
+  - lanes:bus
+  - lanes:psv
+  - surface
+  - smoothness
+  - bridge
+  - tunnel
+  - layer
+  - zone:traffic
+  - source:maxspeed
+  - maxspeed:type
+  - zone:maxspeed
+  - tracktype
+  - service
+  - area
+known_highways:
+  - motorway
+  - motorway_link
+  - trunk
+  - trunk_link
+  - primary
+  - primary_link
+  - secondary
+  - secondary_link
+  - tertiary
+  - tertiary_link
+  - unclassified
+  - residential
+  - living_street
+  - service
+  - track
+  - road
+  - pedestrian
+  - footway
+  - path
+  - cycleway
+  - bridleway
+  - steps
+  - corridor
+  - platform
+  - busway
+access_rules:
+  car:
+    precedence:
+      - motorcar
+      - motor_vehicle
+      - access
+    denied:
+      - "no"
+      - private
+      - agricultural
+      - forestry
+      - delivery
+      - emergency
+      - use_sidepath
+    hard_excluded_highways:
+      - platform
+      - busway
+      - steps
+      - corridor
+      - bus_stop
+      - elevator
+    excluded_highways:
+      - track
+      - footway
+      - path
+      - steps
+      - pedestrian
+      - cycleway
+      - bridleway
+    mode_specific_only_highways:
+      - footway
+      - path
+      - pedestrian
+      - cycleway
+      - bridleway
+    explicit_allowed_values:
+      - "yes"
+      - destination
+      - permissive
+      - designated
+      - customers
+    default_allowed: true
+  bike:
+    precedence:
+      - bicycle
+      - access
+    denied:
+      - "no"
+      - private
+      - agricultural
+      - forestry
+      - delivery
+      - emergency
+      - use_sidepath
+    excluded_highways:
+      - motorway
+      - motorway_link
+      - footway
+      - steps
+    mode_specific_only_highways:
+      - footway
+      - steps
+    default_allowed: true
+  foot:
+    precedence:
+      - foot
+      - access
+    denied:
+      - "no"
+      - private
+      - agricultural
+      - forestry
+      - delivery
+      - emergency
+      - use_sidepath
+    excluded_highways:
+      - motorway
+      - motorway_link
+    included_highways:
+      - footway
+      - path
+      - steps
+      - pedestrian
+      - living_street
+    sidewalk_values:
+      - "yes"
+      - both
+      - left
+      - right
+      - separate
+    default_allowed: true
+oneway_yes:
+  - "yes"
+  - "1"
+  - "true"
+oneway_no:
+  - "no"
+  - "0"
+  - "false"
+oneway_reverse:
+  - "-1"
+control_highways:
+  - traffic_signals
+  - stop
+  - give_way
+  - crossing
+  - mini_roundabout
+signal_highways:
+  - traffic_signals
+maxspeed_tokens_kmh:
+  FR:urban: 50
+  FR:rural: 80
+  FR:zone30: 30
+  FR:motorway: 130
+  # TODO(confirm): map the symbolic walking speed to 5 km/h.
+  walk: 5
+  none: null
+speed_context_tags:
+  - zone:traffic
+  - source:maxspeed
+  - maxspeed:type
+  - zone:maxspeed
+speed_context_values:
+  FR:urban: urban
+  FR:rural: rural
+  FR:zone30: zone30
+  FR:motorway: motorway
+car_speed:
+  # TODO(confirm): validate these class/context defaults against the pilot.
+  defaults_kmh_by_context:
+    urban: 50
+    rural: 80
+    zone30: 30
+    motorway: 130
+  # TODO(confirm): validate the class-specific overrides against the pilot.
+  class_overrides_kmh_by_context:
+    urban:
+      motorway: 130
+      motorway_link: 80
+      trunk: 90
+      trunk_link: 80
+    rural:
+      motorway: 130
+      motorway_link: 80
+      trunk: 80
+      trunk_link: 80
+      primary: 80
+      primary_link: 80
+  # TODO(confirm): default-only caps for low-speed ways.
+  default_caps_kmh_by_highway:
+    living_street: 20
+    service: 20
+    track: 20
+    residential: 50
+    footway: 20
+    path: 20
+    cycleway: 20
+    pedestrian: 20
+    bridleway: 20
+  # TODO(confirm): rural trunk and primary with explicit oneway=yes.
+  rural_oneway_speed_kmh_by_highway:
+    trunk: 110
+    primary: 110
+  # TODO(confirm): calibrate realism factors by class at R4.
+  realism_factor_by_highway:
+    motorway: 1.0
+    motorway_link: 1.0
+    trunk: 1.0
+    trunk_link: 1.0
+    primary: 1.0
+    primary_link: 1.0
+    secondary: 1.0
+    secondary_link: 1.0
+    tertiary: 1.0
+    tertiary_link: 1.0
+    unclassified: 1.0
+    residential: 1.0
+    living_street: 1.0
+    service: 1.0
+    track: 1.0
+    road: 1.0
+    pedestrian: 1.0
+    footway: 1.0
+    path: 1.0
+    cycleway: 1.0
+    bridleway: 1.0
+    steps: 1.0
+    corridor: 1.0
+    platform: 1.0
+    busway: 1.0
+    default: 1.0
+  urban_density:
+    # TODO(confirm): calibrate the focal-disc radius on the pilot.
+    radius_m: 500
+    # TODO(confirm): validate grid resolution and tagged-edge agreement on the pilot.
+    grid_cell_m: 50
+    # TODO(confirm): use only when tagged urban/rural labels cannot fit a threshold.
+    fallback_threshold_km: 1.0
+  delays:
+    # TODO(confirm): calibrate fixed delays per directional control.
+    signal_s: 15
+    stop_s: 5
+    give_way_s: 2
+    mini_roundabout_s: 3
+    crossing_s: 0
+    # TODO(confirm): calibrate the smaller delay at complex to-nodes.
+    at_to_node_s: 2
+    # TODO(confirm): confirm the degree threshold for a complex to-node.
+    degree_threshold: 3
+  # TODO(confirm): confirm speed-limit buckets for scenario time splits.
+  speed_limit_bucket_upper_bounds_kmh:
+    - 30
+    - 50
+    - 80
+    - 110
+mph_to_kmh: 1.609344
+busway_values:
+  - lane
+  - opposite_lane
+  - shared_lane
+  - opposite_share_busway
+bike_classes:
+  separated_track_path:
+    - highway=cycleway
+    - cycleway=track
+    - cycleway:left=track
+    - cycleway:right=track
+    - cycleway:both=track
+    - highway=path+bicycle=designated
+  painted_lane:
+    - cycleway=lane
+    - cycleway:left=lane
+    - cycleway:right=lane
+    - cycleway:both=lane
+  bus_lane:
+    - cycleway=share_busway
+    - cycleway:left=share_busway
+    - cycleway:right=share_busway
+    - busway+cycling_access
+  low_speed:
+    - highway=living_street
+    - maxspeed<=30
+    - bicycle_road=yes
+  mixed_traffic:
+    - other_bike_accessible_roads
+# TODO(confirm): validate bike class/highway caps and interpolation accuracy.
+bike_speed_table:
+  grade_min: -0.20
+  grade_max: 0.20
+  grade_step: 0.005
+  clipped_grade_report_limit: 20
+  speed_tolerance_kmh: 0.1
+  energy_relative_tolerance: 0.01
+  class_cap_kmh:
+    separated_track_path: 25
+    low_speed: 25
+    painted_lane: 30
+    bus_lane: 30
+    mixed_traffic: 30
+  highway_cap_kmh:
+    living_street: 20
+    footway: 10
+    pedestrian: 10
+# TODO(confirm): validate bike stop probabilities and OSM surface defaults.
+bike_edge_costs:
+  stop_sign_probability: 1.0
+  give_way_probability: 0.5
+  uncontrolled_junction_probability_by_class:
+    separated_track_path: 0.3
+    low_speed: 0.1
+    painted_lane: 0.1
+    bus_lane: 0.1
+    mixed_traffic: 0.1
+  crossing_probability_by_class:
+    separated_track_path: 0.5
+    low_speed: 0.0
+    painted_lane: 0.0
+    bus_lane: 0.0
+    mixed_traffic: 0.0
+  surface_aliases:
+    asphalt: asphalt_concrete_paved_default
+    concrete: asphalt_concrete_paved_default
+    paved: asphalt_concrete_paved_default
+    concrete:plates: concrete_plates_lanes
+    concrete:lanes: concrete_plates_lanes
+    paving_stones: paving_stones
+    compacted: compacted
+    fine_gravel: fine_gravel
+    sett: sett_cobblestone
+    cobblestone: sett_cobblestone
+    unhewn_cobblestone: sett_cobblestone
+    gravel: gravel_unpaved_ground_dirt_earth
+    pebblestone: gravel_unpaved_ground_dirt_earth
+    unpaved: gravel_unpaved_ground_dirt_earth
+    ground: gravel_unpaved_ground_dirt_earth
+    dirt: gravel_unpaved_ground_dirt_earth
+    earth: gravel_unpaved_ground_dirt_earth
+    grass: grass_sand
+    sand: grass_sand
+  surface_by_tracktype:
+    grade1: compacted
+    grade2: fine_gravel
+    grade3: gravel_unpaved_ground_dirt_earth
+    grade4: gravel_unpaved_ground_dirt_earth
+    grade5: grass_sand
+  surface_default_by_highway:
+    motorway: asphalt_concrete_paved_default
+    motorway_link: asphalt_concrete_paved_default
+    trunk: asphalt_concrete_paved_default
+    trunk_link: asphalt_concrete_paved_default
+    primary: asphalt_concrete_paved_default
+    primary_link: asphalt_concrete_paved_default
+    secondary: asphalt_concrete_paved_default
+    secondary_link: asphalt_concrete_paved_default
+    tertiary: asphalt_concrete_paved_default
+    tertiary_link: asphalt_concrete_paved_default
+    unclassified: asphalt_concrete_paved_default
+    residential: asphalt_concrete_paved_default
+    living_street: asphalt_concrete_paved_default
+    service: asphalt_concrete_paved_default
+    road: asphalt_concrete_paved_default
+    cycleway: asphalt_concrete_paved_default
+    busway: asphalt_concrete_paved_default
+    pedestrian: paving_stones
+    footway: asphalt_concrete_paved_default
+    path: compacted
+    track: gravel_unpaved_ground_dirt_earth
+    bridleway: gravel_unpaved_ground_dirt_earth
+    steps: asphalt_concrete_paved_default
+    corridor: asphalt_concrete_paved_default
+    platform: asphalt_concrete_paved_default
+  surface_default_by_bike_class:
+    separated_track_path: asphalt_concrete_paved_default
+    painted_lane: asphalt_concrete_paved_default
+    bus_lane: asphalt_concrete_paved_default
+    low_speed: asphalt_concrete_paved_default
+    mixed_traffic: asphalt_concrete_paved_default
+geovelo_report:
+  source_ids_by_state:
+    2021: geovelo-2022
+  amenagement_families:
+    PISTE CYCLABLE: separated_track_path
+    VOIE VERTE: separated_track_path
+    AMENAGEMENT MIXTE PIETON VELO HORS VOIE VERTE: separated_track_path
+    BANDE CYCLABLE: painted_lane
+    ACCOTEMENT REVETU HORS CVCB: painted_lane
+    CHAUSSEE A VOIE CENTRALE BANALISEE: painted_lane
+    COULOIR BUS+VELO: bus_lane
+    VELO RUE: low_speed
+    DOUBLE SENS CYCLABLE: low_speed
+    DOUBLE SENS CYCLABLE NON MATERIALISE: low_speed
+    DOUBLE SENS CYCLABLE BANDE: painted_lane
+    DOUBLE SENS CYCLABLE PISTE: separated_track_path
+    AUCUN: null
+    AUTRE: null
+    GOULOTTE: null
+  osm_cycleway_families:
+    track: separated_track_path
+    opposite_track: separated_track_path
+    lane: painted_lane
+    opposite_lane: painted_lane
+    share_busway: bus_lane
+    opposite: low_speed
+  osm_generic_cycleway_side_counts:
+    lane: 2
+  osm_unmarked_contraflow_rules:
+    - oneway=yes+oneway:bicycle=no
+    - oneway=-1+oneway:bicycle=no
+  match_tolerance_m: 15
+  match_sample_spacing_m: 5
+tile_size_m: 50000

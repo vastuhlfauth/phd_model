@@ -1,0 +1,490 @@
+import json
+from pathlib import Path
+
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pytest
+from mobgrid.graph.csr import csr_from_indexed_edges, save_graph
+from mobgrid.validation import osrm, osrm_report
+from mobgrid.validation.osrm_calibration import (
+    CONTROL_NAMES,
+    CalibrationFit,
+    factor_highways,
+)
+from mobgrid.validation.osrm_report import calculate_metrics, route_pairs
+from mobgrid.validation.osrm_sample import SampleSettings
+
+
+def test_metrics_use_signed_model_minus_osrm_and_inclusive_thresholds():
+    rows = [
+        {
+            "model_time_s": 120,
+            "reference_time_s": 120,
+            "model_distance_m": 1200,
+            "reference_distance_m": 1000,
+        },
+        {
+            "model_time_s": 420,
+            "reference_time_s": 300,
+            "model_distance_m": 1600,
+            "reference_distance_m": 2000,
+        },
+        {
+            "model_time_s": 600,
+            "reference_time_s": 900,
+            "model_distance_m": 2700,
+            "reference_distance_m": 3000,
+        },
+    ]
+    result = calculate_metrics(rows, (2, 5))
+    assert result["count"] == 3
+    assert result["bias_min"] == pytest.approx(-1)
+    assert result["median_absolute_error_min"] == pytest.approx(2)
+    assert result["within_first"] == pytest.approx(2 / 3)
+    assert result["within_second"] == pytest.approx(1)
+    assert result["relative_error"] == pytest.approx((0 + 0.4 - 1 / 3) / 3)
+    assert result["distance_bias_m"] == pytest.approx(-500 / 3)
+    assert result["distance_median_absolute_error_m"] == pytest.approx(300)
+
+
+def test_routes_use_dial_distance_and_report_unreached_nodes():
+    graph = csr_from_indexed_edges(
+        "foot",
+        np.array([10, 20, 30], dtype=np.int64),
+        np.array([0, 1, 0]),
+        np.array([1, 2, 2]),
+        {
+            "time_s": np.array([10.04, 10.04, 40], dtype=np.float32),
+            "distance_m": np.array([100, 200, 80], dtype=np.float32),
+        },
+        reference_mass_kg=74,
+        bike_mass_kg=15,
+    )
+    pairs = [
+        {"pair_id": "a", "origin_node_id": 10, "destination_node_id": 30},
+        {"pair_id": "b", "origin_node_id": 30, "destination_node_id": 10},
+    ]
+    actual = route_pairs(graph, pairs, cutoff_s=30, resolution_s=0.1)
+    assert actual[0]["model_time_s"] == pytest.approx(20)
+    assert actual[0]["model_distance_m"] == pytest.approx(300)
+    assert actual[1]["model_time_s"] is None
+    assert actual[1]["model_distance_m"] is None
+
+
+def test_missing_nodes_raise_instead_of_silently_excluding():
+    graph = csr_from_indexed_edges(
+        "foot",
+        np.array([10, 20], dtype=np.int64),
+        np.array([0]),
+        np.array([1]),
+        {
+            "time_s": np.array([10], dtype=np.float32),
+            "distance_m": np.array([1], dtype=np.float32),
+        },
+        reference_mass_kg=74,
+        bike_mass_kg=15,
+    )
+    with pytest.raises(ValueError, match="node"):
+        route_pairs(
+            graph,
+            [{"pair_id": "a", "origin_node_id": 10, "destination_node_id": 99}],
+            cutoff_s=20,
+            resolution_s=0.1,
+        )
+
+
+def test_report_joins_dated_responses_and_resumes_routing(tmp_path, monkeypatch):
+    from mobgrid.validation import osrm_calibration
+
+    graphs = tmp_path / "graphs"
+    graphs.mkdir()
+    pairs = []
+    for mode in ("car", "bike", "foot"):
+        graph = csr_from_indexed_edges(
+            mode,
+            np.array([10, 20, 30], dtype=np.int64),
+            np.array([0, 1]),
+            np.array([1, 0]),
+            {
+                "time_s": np.array([120, 120], dtype=np.float32),
+                "distance_m": np.array([1000, 1000], dtype=np.float32),
+            },
+            reference_mass_kg=74,
+            bike_mass_kg=15,
+        )
+        save_graph(graph, graphs / f"{mode}.npz")
+        pairs.append(
+            {
+                "pair_id": f"{mode}-1",
+                "mode": mode,
+                "origin_node_id": 10,
+                "destination_node_id": 20,
+                "origin_lon": 1.0,
+                "origin_lat": 45.0,
+                "destination_lon": 1.01,
+                "destination_lat": 45.01,
+                "context": "urban",
+                "context_method": "tagged",
+                "band_min_m": 0.0,
+                "band_max_m": 2000.0,
+            }
+        )
+    pairs.extend({**pairs[0], "pair_id": f"car-{i}"} for i in range(2, 7))
+    pairs.append({**pairs[0], "pair_id": "car-7", "destination_node_id": 30})
+    pq.write_table(
+        pa.table(
+            {
+                "edge_key": ["a", "b"],
+                "mode": ["car", "car"],
+                "from_node_id": [10, 20],
+                "to_node_id": [20, 10],
+                "highway": ["primary", "primary"],
+                "signal_count": [0, 0],
+                "stop_count": [0, 0],
+                "give_way_count": [0, 0],
+                "mini_roundabout_count": [0, 0],
+                "crossing_count": [0, 0],
+                "to_degree": [2, 2],
+            }
+        ),
+        tmp_path / "edges.parquet",
+    )
+    pq.write_table(
+        pa.table({"edge_key": ["a", "b"], "car_time_s": [120.0, 120.0]}),
+        tmp_path / "costs.parquet",
+    )
+    sample_path = tmp_path / "pairs.parquet"
+    pq.write_table(pa.Table.from_pylist(pairs), sample_path)
+    search_path = tmp_path / "search.yaml"
+    search_path.write_text(
+        "queue: dial\ndial_resolution_s: 0.1\ntime_bin_s: 60\n"
+        "distance_bin_m: 250\nenergy_bin_kj: 10\nnearest_extra: 2\n"
+        "benchmark_seed: 42\nbenchmark_log_directory: logs\n"
+        "cutoff_s_by_mode: {car: 300, bike: 300, foot: 300}\n",
+        encoding="utf-8",
+    )
+    sample = SampleSettings(
+        graph_directory=graphs,
+        edges_path=tmp_path / "edges.parquet",
+        edge_costs_path=tmp_path / "costs.parquet",
+        nodes_path=tmp_path / "nodes.parquet",
+        area_path=tmp_path / "area.parquet",
+        search_config=search_path,
+        seed=42,
+        count_by_mode={"car": 7, "bike": 1, "foot": 1},
+        band_edges_m=[0, 2000, 20000],
+        bike_max_m=2000,
+        long_car_min_m=20000,
+        boundary_margin_m=10000,
+        context_radius_m=500,
+        attempts_per_stratum=100,
+    )
+    settings = osrm.QuerySettings(
+        base_url_env="OSRM_BASE_URL",
+        profile="driving",
+        prefixes={"car": "routed-car", "bike": "routed-bike", "foot": "routed-foot"},
+        user_agent="phd_model, ENTPE research",
+        interval_s=1.1,
+        policy_minimum_interval_s=1,
+        retry_backoff_s=2,
+        max_attempts=3,
+        timeout_s=10,
+        sample_path=sample_path,
+        response_directory=tmp_path / "responses",
+        log_directory=tmp_path / "logs",
+        sampling=sample,
+        report_path=tmp_path / "report.md",
+        route_checkpoint_directory=tmp_path / "routing",
+        calibration_checkpoint_directory=tmp_path / "calibration",
+        metric_tolerances_min=(2, 5),
+        max_snap_distance_m=25,
+        car_profile_notes=osrm.load_query_settings(
+            Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
+        ).car_profile_notes,
+        calibration=osrm.load_query_settings(
+            Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
+        ).calibration,
+    )
+    monkeypatch.setenv("OSRM_BASE_URL", "https://example.invalid")
+    assert settings.calibration.reference == "none"
+    key_a = osrm_report._calibration_cache_key(settings, 300, 0.1, ["car-1"])
+    key_b = osrm_report._calibration_cache_key(settings, 300, 0.1, ["car-2"])
+    assert key_a != key_b
+    for pair in pairs:
+        url = osrm._request_url(pair, settings, "https://example.invalid")
+        key = osrm._key(pair, url)
+        path = settings.response_directory / "2026-01-01" / f"{key}_test.json"
+        osrm._write_json(
+            path,
+            {
+                "request_key": key,
+                "http_status": 400 if pair["pair_id"] in ("car-5", "foot-1") else 200,
+                "response_date": "2026-01-01T00:00:00+00:00",
+                "response": (
+                    {"code": "NoRoute" if pair["mode"] == "car" else "NoSegment"}
+                    if pair["pair_id"] in ("car-5", "foot-1")
+                    else {
+                        "code": "Ok",
+                        "routes": [{"duration": 120, "distance": 900}],
+                        "waypoints": [
+                            {"distance": 25.0 if pair["mode"] == "bike" else 1.0},
+                            {"distance": 25.01 if pair["pair_id"] == "car-6" else 2.0},
+                        ],
+                    }
+                ),
+            },
+        )
+    osrm_report.generate_report(settings, "2026-01-01")
+    report = settings.report_path.read_text(encoding="utf-8")
+    assert "Calibration skipped" in report and "reference is none" in report
+    assert not settings.calibration_checkpoint_directory.exists()
+    settings = settings.model_copy(
+        update={
+            "calibration": settings.calibration.model_copy(update={"reference": "osrm"})
+        }
+    )
+    osrm_report.generate_report(settings, "2026-01-01")
+    report = settings.report_path.read_text(encoding="utf-8")
+    assert "2026-01-01" in report
+    assert all(mode in report for mode in ("car", "bike", "foot"))
+    assert "0.00 | 0.00 | 100.0% | 100.0% | 0.0% | 100 | 100" in report
+    assert "calibration" in report.lower()
+    assert "### Holdout metrics" in report
+    assert "First fit: parameter correlations" in report
+    assert "Training pairs: 2; holdout pairs: 2" in report
+    assert "Calibration reference: OSRM" in report
+    assert "Provisional cutoff exclusions: 1" in report
+    assert "not as a speed reference" in report
+    assert "unclassified and residential: 25 km/h" in report
+    assert "tertiary: 40 km/h" in report and "primary: 65 km/h" in report
+    assert "7.5 s" in report and "2 s" in report
+    assert "v5.27.1/profiles/car.lua" in report
+    assert "NoRoute" in report and "NoSegment" in report
+    assert "car-5" in report and "foot-1" in report
+    assert "25.01" in report and "snapping" in report.lower()
+    assert "120.0" in report
+    assert "| car | 0-2 | urban | 4 | 1 | 1 | 0 | 1 |" in report
+    assert "| bike | 0-2 | urban | 1 | 0 | 0 | 0 | 0 |" in report
+    assert "| foot | 0-2 | urban | 0 | 0 | 0 | 1 | 0 |" in report
+    assert (
+        "| car-5 | car | 0-2 | urban | NoRoute | 1.0, 45.0 | 1.01, 45.01 | 120.0 |"
+        in report
+    )
+    changed = {**pairs[0], "destination_lon": 2.0}
+    with pytest.raises(ValueError, match="missing valid OSRM responses"):
+        osrm_report._responses(settings, [changed])
+    trace_routes = osrm_calibration.trace_routes
+    monkeypatch.setattr(
+        osrm_report, "route_pairs", lambda *args, **kwargs: pytest.fail("not resumed")
+    )
+    monkeypatch.setattr(
+        "mobgrid.validation.osrm_calibration.trace_routes",
+        lambda *args, **kwargs: pytest.fail("calibration was not resumed"),
+    )
+    osrm_report.generate_report(settings, "2026-01-01")
+
+    monkeypatch.setattr(osrm_calibration, "trace_routes", trace_routes)
+    reference_path = tmp_path / "reference.parquet"
+    pq.write_table(
+        pa.table(
+            {
+                "pair_id": [f"car-{i}" for i in range(1, 8)],
+                "duration_s": [120.0] * 7,
+                "distance_m": [880.0] * 7,
+            }
+        ),
+        reference_path,
+    )
+    other_settings = settings.model_copy(
+        update={
+            "calibration": settings.calibration.model_copy(
+                update={"reference": "google", "google_reference_path": reference_path}
+            )
+        }
+    )
+    osrm_report.generate_report(other_settings, "2026-01-01")
+    other_report = settings.report_path.read_text(encoding="utf-8")
+    assert "Calibration reference: Google Routes" in other_report
+    assert "Training pairs: 3; holdout pairs: 3" in other_report
+    assert "Provisional cutoff exclusions: 1" in other_report
+    assert "120 | 120" in other_report
+
+    def stalled(cruise, controls, fixed, observed, lower, upper, values, *args):
+        last = values.copy()
+        last[0] = lower[0]
+        last[1] = upper[1]
+        return last, "stalled"
+
+    original_optimise = osrm_calibration._optimise
+    monkeypatch.setattr(osrm_calibration, "_optimise", stalled)
+    osrm_report.generate_report(settings, "2026-01-01")
+    stalled_report = settings.report_path.read_text(encoding="utf-8")
+    assert "stalled" in stalled_report
+    assert "lower bound" in stalled_report and "upper bound" in stalled_report
+    assert "### Holdout metrics" not in stalled_report
+    assert "stalled" in (
+        settings.log_directory / "2026-01-01_osrm_report_summary.md"
+    ).read_text(encoding="utf-8")
+
+    monkeypatch.setattr(osrm_calibration, "_optimise", original_optimise)
+    original_fit = osrm_calibration.fit_log_time_ratios
+    fit_calls = []
+
+    def stalled_refit(*args, **kwargs):
+        fit_calls.append(1)
+        if len(fit_calls) == 1:
+            return original_fit(*args, **kwargs)
+        values = args[6].copy()
+        values[0] = args[5][0]
+        count = len(values)
+        return CalibrationFit(
+            values,
+            np.full(count, np.nan),
+            np.full((count, count), np.nan),
+            np.zeros(count, dtype=bool),
+            np.full(count, np.nan),
+            status="stalled",
+        )
+
+    monkeypatch.setattr(osrm_calibration, "fit_log_time_ratios", stalled_refit)
+    osrm_report.generate_report(settings, "2026-01-01")
+    refit_report = settings.report_path.read_text(encoding="utf-8")
+    assert "refit stalled" in refit_report
+    assert "### First fit: parameters" in refit_report
+    assert "### Refit: parameters" in refit_report
+    assert "upper bound" in refit_report and "### Holdout metrics" not in refit_report
+
+    url = osrm._request_url(pairs[0], settings, "https://example.invalid")
+    path = (
+        settings.response_directory
+        / "2026-01-01"
+        / f"{osrm._key(pairs[0], url)}_test.json"
+    )
+    saved = path.read_text(encoding="utf-8")
+    record = json.loads(saved)
+    del record["response"]["waypoints"]
+    osrm._write_json(path, record)
+    with pytest.raises(ValueError, match="snapping distances"):
+        osrm_report.generate_report(settings, "2026-01-01")
+    path.write_text(saved, encoding="utf-8")
+
+    def fail_calibration(*args, **kwargs):
+        raise ValueError("synthetic calibration failure")
+
+    monkeypatch.setattr(osrm_report, "_car_calibration", fail_calibration)
+    with pytest.raises(ValueError, match="synthetic calibration failure"):
+        osrm_report.generate_report(settings, "2026-01-01")
+    failure_report = settings.report_path.read_text(encoding="utf-8")
+    assert "Failed: synthetic calibration failure" in failure_report
+    assert "Within 2 min" in failure_report
+
+
+def test_car_calibration_report_has_holdout_fits_and_correlations():
+    settings = osrm.load_query_settings(
+        Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
+    )
+    calibration = settings.calibration
+    assert calibration is not None
+    settings = settings.model_copy(
+        update={"calibration": calibration.model_copy(update={"reference": "osrm"})}
+    )
+    names = [*factor_highways(calibration), *CONTROL_NAMES]
+    count = len(names)
+    fixed = np.zeros(count, dtype=bool)
+    fixed[1] = True
+    fixed_errors = np.full(count, np.nan)
+    fixed_errors[1] = np.inf
+    values = np.ones(count)
+    values[:2] = [0, 30]
+    fit = CalibrationFit(
+        values=values,
+        standard_errors=np.where(fixed, np.nan, 0.01),
+        correlations=np.eye(count),
+        fixed=fixed,
+        fixed_standard_errors=fixed_errors,
+    )
+    result = {
+        "first_fit": fit,
+        "refit": fit,
+        "training_count": 2,
+        "refit_training_count": 2,
+        "fitted_cutoff_training": 0,
+        "fitted_cutoff_holdout": 0,
+        "changed_share": 0.25,
+        "holdout": [
+            {
+                "pair_id": "p",
+                "provisional_time_s": 80,
+                "provisional_distance_m": 1000,
+                "first_time_s": 90,
+                "first_distance_m": 900,
+                "refit_time_s": 100,
+                "refit_distance_m": 900,
+                "path_changed": True,
+            }
+        ],
+    }
+    rows = [
+        {
+            "pair_id": "p",
+            "context": "urban",
+            "band_min_m": 0,
+            "band_max_m": 2000,
+            "reference_time_s": 100,
+            "reference_distance_m": 900,
+        }
+    ]
+    text = osrm_report.render_calibration(
+        result, names, np.zeros(count), np.ones(count) * 30, rows, settings, 0, 0
+    )
+    assert "25.0%" in text
+    assert "fixed" in text
+    assert "unidentifiable" in text
+    assert "lower bound" in text and "upper bound" in text
+    assert "correlation" in text.lower()
+    assert all(stage in text for stage in ("Provisional", "First fit", "Refit"))
+
+
+def test_parquet_reference_joins_pair_ids_and_rejects_bad_values(tmp_path):
+    settings = osrm.load_query_settings(
+        Path(__file__).resolve().parents[3] / "config" / "osrm.yaml"
+    )
+    assert settings.calibration is not None
+    path = tmp_path / "references.parquet"
+    settings = settings.model_copy(
+        update={
+            "calibration": settings.calibration.model_copy(
+                update={"reference": "google", "google_reference_path": path}
+            )
+        }
+    )
+    rows = [{"pair_id": "a"}, {"pair_id": "b"}]
+    pq.write_table(
+        pa.table(
+            {
+                "pair_id": ["b", "a", "other"],
+                "duration_s": [20, 10, 30],
+                "distance_m": [200, 100, 300],
+            }
+        ),
+        path,
+    )
+    assert osrm_report._calibration_references(rows, settings) == {
+        "a": (10, 100),
+        "b": (20, 200),
+    }
+    pq.write_table(
+        pa.table(
+            {"pair_id": ["a", "a"], "duration_s": [10, 20], "distance_m": [100, 200]}
+        ),
+        path,
+    )
+    with pytest.raises(ValueError, match="duplicate calibration reference"):
+        osrm_report._calibration_references(rows, settings)
+    pq.write_table(
+        pa.table({"pair_id": ["a"], "duration_s": [0.0], "distance_m": [100.0]}),
+        path,
+    )
+    with pytest.raises(ValueError, match="invalid calibration reference"):
+        osrm_report._calibration_references(rows, settings)

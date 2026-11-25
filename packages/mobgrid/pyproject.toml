@@ -9,6 +9,7 @@ dependencies = [
     "numba",
     "numpy",
     "pyarrow",
+    "shapely>=2.0",
 ]
 
 [build-system]

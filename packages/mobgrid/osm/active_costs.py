@@ -1,0 +1,884 @@
+"""Directional walking and cycling edge costs for sections 9.3 and 9.7."""
+
+from __future__ import annotations
+
+import logging
+import math
+import time
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
+
+import duckdb
+import numpy as np
+import numpy.typing as npt
+import pyarrow as pa
+import pyarrow.compute as pc
+from common.duckdb_io import write_parquet
+
+from mobgrid.energy.rates import (
+    GRAVITY_M_S2,
+    MET_MINUTE_KJ_PER_KG,
+    EnergyConfig,
+)
+from mobgrid.osm.bike_speed_table import BikeSpeedTable
+from mobgrid.osm.config import NetworkConfig
+
+FloatArray = npt.NDArray[np.float64]
+IntArray = npt.NDArray[np.int64]
+logger = logging.getLogger(__name__)
+_EDGE_BATCH_SIZE = 25_000
+_CONTROLLED_HIGHWAYS = {"traffic_signals", "stop", "give_way", "mini_roundabout"}
+
+
+@dataclass(frozen=True)
+class _NodeArrays:
+    """Section 9.3/9.7 node coordinates/elevations in metres, sorted by id."""
+
+    node_ids: IntArray
+    x: FloatArray
+    y: FloatArray
+    elevation_m: FloatArray
+    tags: pa.Array
+
+
+@dataclass(frozen=True)
+class ActiveCostSummary:
+    """Counts for one active-mode edge-cost enrichment."""
+
+    edge_count: int
+    incomplete_profile_count: int
+    unknown_surface_count: int
+    unknown_surface_values: dict[str, int]
+    zero_speed_segment_count: int
+    zero_speed_by_class: tuple[tuple[str, str, str, float, float, float, int], ...]
+    clipped_segments_by_class: dict[tuple[str, str], tuple[int, float]]
+    longest_clipped_edges: tuple[tuple[str, int, str, str, float, float], ...]
+
+
+def _summarize_clipped_grades(
+    connection: duckdb.DuckDBPyConnection, table: str, limit: int
+) -> tuple[
+    dict[tuple[str, str], tuple[int, float]],
+    tuple[tuple[str, int, str, str, float, float], ...],
+]:
+    name = '"' + table.replace('"', '""') + '"'
+    by_class = {
+        (mode, highway): (int(count), float(length))
+        for mode, highway, count, length in connection.execute(f"""
+            SELECT mode, highway, count(*), sum(segment_length_m)
+            FROM {name} GROUP BY mode, highway ORDER BY mode, highway
+        """).fetchall()
+    }
+    longest = tuple(connection.execute(f"""
+        SELECT edge_key, way_id, mode, highway, max(edge_length_m),
+               arg_max(grade, abs(grade))
+        FROM {name}
+        GROUP BY edge_key, way_id, mode, highway
+        ORDER BY max(edge_length_m) DESC, edge_key LIMIT ?
+    """, [limit]).fetchall())
+    return by_class, longest
+
+
+def _grade_report_lines(
+    by_class: dict[tuple[str, str], tuple[int, float]],
+    longest: tuple[tuple[str, int, str, str, float, float], ...],
+) -> list[str]:
+    lines = [
+        "Lengths are metres; grades are the original signed segment grades.",
+        "Classes are OSM highway classes, separated by directed travel mode.",
+        "",
+        "| Mode | Highway class | Segments | Length (m) |",
+        "|---|---|---:|---:|",
+    ]
+    for (mode, highway), (count, length) in by_class.items():
+        lines.append(f"| {mode} | {highway} | {count} | {length:.1f} |")
+    lines.extend([
+        "",
+        "| Edge key | Way id | Mode | Highway class | Edge length (m) | Grade |",
+        "|---|---:|---|---|---:|---:|",
+    ])
+    for edge_key, way_id, mode, highway, length, grade in longest:
+        lines.append(
+            f"| {edge_key} | {way_id} | {mode} | {highway} | "
+            f"{length:.1f} | {grade:.3f} |"
+        )
+    return lines
+
+
+def _sql_path(path: str | Path) -> str:
+    return str(Path(path).resolve()).replace("\\", "/").replace("'", "''")
+
+
+def _float_column(table: pa.Table, name: str) -> FloatArray:
+    return np.asarray(
+        table.column(name).to_numpy(zero_copy_only=False), dtype=np.float64
+    )
+
+
+def _text_column(table: pa.Table, name: str) -> npt.NDArray[np.str_]:
+    values = pc.fill_null(table.column(name), "").to_numpy(zero_copy_only=False)
+    return np.char.lower(np.char.strip(np.asarray(values, dtype=str)))
+
+
+def _load_node_arrays(
+    connection: duckdb.DuckDBPyConnection, nodes_path: str | Path
+) -> _NodeArrays:
+    """Load section 9.3/9.7 coordinates, raw metre elevations and tags once."""
+    source = _sql_path(nodes_path)
+    table = connection.execute(f"""
+        SELECT node_id, x, y, elevation_m, tags
+        FROM read_parquet('{source}')
+    """).to_arrow_table()
+    node_ids = np.asarray(
+        table.column("node_id").to_numpy(zero_copy_only=False), dtype=np.int64
+    )
+    order = np.argsort(node_ids, kind="stable")
+    node_ids = node_ids[order]
+    if np.any(np.diff(node_ids) == 0):
+        raise ValueError("node table contains duplicate node ids")
+    tags = pc.take(table.column("tags"), pa.array(order, type=pa.int64()))
+    return _NodeArrays(
+        node_ids=node_ids,
+        x=np.asarray(
+            table.column("x").to_numpy(zero_copy_only=False), dtype=np.float64
+        )[order],
+        y=np.asarray(
+            table.column("y").to_numpy(zero_copy_only=False), dtype=np.float64
+        )[order],
+        elevation_m=np.asarray(
+            table.column("elevation_m").to_numpy(zero_copy_only=False),
+            dtype=np.float64,
+        )[order],
+        tags=tags.combine_chunks(),
+    )
+
+
+def _node_positions(
+    node_ids: IntArray, requested_ids: IntArray
+) -> tuple[IntArray, npt.NDArray[np.bool_]]:
+    """Map node ids to sorted array positions, marking ids absent from the table."""
+    positions = np.searchsorted(node_ids, requested_ids).astype(np.int64)
+    found = positions < len(node_ids)
+    valid_rows = np.flatnonzero(found)
+    found[valid_rows] = node_ids[positions[valid_rows]] == requested_ids[valid_rows]
+    return np.minimum(positions, max(0, len(node_ids) - 1)), found
+
+
+def _flat_list_column(
+    batch: pa.RecordBatch, name: str, dtype: npt.DTypeLike
+) -> tuple[IntArray, npt.NDArray]:
+    """Return normalized Arrow list offsets and their flattened values."""
+    column = batch.column(batch.schema.get_field_index(name))
+    if not pa.types.is_list(column.type) or column.null_count:
+        raise ValueError(f"{name} must contain non-null list values")
+    offsets = np.asarray(
+        column.offsets.to_numpy(zero_copy_only=False), dtype=np.int64
+    )
+    offsets -= offsets[0]
+    values = np.asarray(
+        column.flatten().to_numpy(zero_copy_only=False), dtype=dtype
+    )
+    return offsets, values
+
+
+def _add_to_node_tags(batch: pa.RecordBatch, nodes: _NodeArrays) -> pa.RecordBatch:
+    """Add section 9.7 endpoint tags without rereading node parquet."""
+    to_node_ids = np.asarray(
+        batch.column(batch.schema.get_field_index("to_node_id")).to_numpy(
+            zero_copy_only=False
+        ),
+        dtype=np.int64,
+    )
+    if len(nodes.node_ids):
+        positions, found = _node_positions(nodes.node_ids, to_node_ids)
+        tags = pc.take(nodes.tags, pa.array(positions, type=pa.int64()))
+        highway = pc.map_lookup(tags, "highway", occurrence="last")
+        crossing = pc.map_lookup(tags, "crossing", occurrence="last")
+        found_mask = pa.array(found)
+        highway = pc.if_else(found_mask, highway, pa.scalar(None, type=pa.string()))
+        crossing = pc.if_else(found_mask, crossing, pa.scalar(None, type=pa.string()))
+    else:
+        highway = crossing = pa.nulls(batch.num_rows, type=pa.string())
+    return pa.RecordBatch.from_arrays(
+        [*batch.columns, highway, crossing],
+        names=[*batch.schema.names, "to_highway", "to_crossing"],
+    )
+
+
+def _segments_from_edge_batch(
+    batch: pa.RecordBatch, nodes: _NodeArrays
+) -> pa.Table:
+    """Build section 9.3/9.7 segments with metre coordinates/elevations."""
+    node_offsets, flat_node_ids = _flat_list_column(batch, "node_ids", np.int64)
+    elevation_offsets, flat_profile_elevations = _flat_list_column(
+        batch, "node_elevations_m", np.float64
+    )
+    if not np.array_equal(node_offsets, elevation_offsets):
+        raise ValueError("edge node ids and elevation profiles are misaligned")
+    node_counts = np.diff(node_offsets)
+    if np.any(node_counts < 2):
+        raise ValueError("an active edge has fewer than two nodes")
+    segment_counts = node_counts - 1
+    edge_indices = np.repeat(np.arange(batch.num_rows, dtype=np.int64), segment_counts)
+    segment_offsets = np.cumsum(segment_counts) - segment_counts
+    start_indices = (
+        np.repeat(node_offsets[:-1], segment_counts)
+        + np.arange(int(segment_counts.sum()), dtype=np.int64)
+        - np.repeat(segment_offsets, segment_counts)
+    )
+    end_indices = start_indices + 1
+
+    start_positions, start_found = _node_positions(
+        nodes.node_ids, flat_node_ids[start_indices]
+    )
+    end_positions, end_found = _node_positions(
+        nodes.node_ids, flat_node_ids[end_indices]
+    )
+
+    def gather(
+        values: FloatArray, positions: IntArray, found: np.ndarray
+    ) -> FloatArray:
+        result = np.full(len(positions), np.nan, dtype=np.float64)
+        result[found] = values[positions[found]]
+        return result
+
+    previous_x = gather(nodes.x, start_positions, start_found)
+    previous_y = gather(nodes.y, start_positions, start_found)
+    x = gather(nodes.x, end_positions, end_found)
+    y = gather(nodes.y, end_positions, end_found)
+    previous_elevation = flat_profile_elevations[start_indices].copy()
+    elevation = flat_profile_elevations[end_indices].copy()
+    stairs = _text_column(batch, "highway") == "steps"
+    stair_segments = stairs[edge_indices]
+    previous_elevation[stair_segments] = gather(
+        nodes.elevation_m, start_positions[stair_segments], start_found[stair_segments]
+    )
+    elevation[stair_segments] = gather(
+        nodes.elevation_m, end_positions[stair_segments], end_found[stair_segments]
+    )
+    return pa.table({
+        "edge_index": pa.array(edge_indices, type=pa.int64()),
+        "x": pa.array(x, type=pa.float64()),
+        "y": pa.array(y, type=pa.float64()),
+        "elevation_m": pa.array(elevation, type=pa.float64()),
+        "previous_x": pa.array(previous_x, type=pa.float64()),
+        "previous_y": pa.array(previous_y, type=pa.float64()),
+        "previous_elevation_m": pa.array(previous_elevation, type=pa.float64()),
+    })
+
+
+def _sum_by_edge(values: FloatArray, groups: npt.NDArray[np.int64]) -> FloatArray:
+    return np.bincount(groups, weights=values, minlength=int(groups.max()) + 1)
+
+
+def _calculate_batch(
+    edge_batch: pa.RecordBatch,
+    segments: pa.Table,
+    energy: EnergyConfig,
+    network: NetworkConfig,
+    speed_tables: dict[tuple[str, float], BikeSpeedTable],
+    timings: dict[str, float],
+) -> tuple[pa.Table, int, Counter[str], int, pa.Table, pa.Table]:
+    stage = time.perf_counter()
+    batch_keys = np.asarray(
+        edge_batch.column("edge_key").to_numpy(zero_copy_only=False), dtype=str
+    )
+    unique_keys = batch_keys
+    groups = np.asarray(
+        segments.column("edge_index").to_numpy(zero_copy_only=False), dtype=np.int64
+    )
+    if not len(groups):
+        raise ValueError("active edge batch has no ordered node segments")
+    group_count = len(batch_keys)
+    if np.any(groups >= group_count) or np.any(groups < 0):
+        raise ValueError("segment rows do not align with edge rows")
+    if np.any(np.bincount(groups, minlength=group_count) == 0):
+        raise ValueError("an active edge has no ordered node segments")
+    metadata_indices = np.arange(group_count, dtype=np.int64)
+    edge_modes = _text_column(edge_batch, "mode")[metadata_indices]
+    highways = _text_column(edge_batch, "highway")[metadata_indices]
+    bike_classes = _text_column(edge_batch, "bike_infra")[metadata_indices]
+    edge_lengths = _float_column(edge_batch, "length_m")[metadata_indices]
+    signal_counts = _float_column(edge_batch, "signal_count")[metadata_indices]
+    stop_counts = _float_column(edge_batch, "stop_count")[metadata_indices]
+    give_way_counts = _float_column(edge_batch, "give_way_count")[metadata_indices]
+    crossing_counts = _float_column(edge_batch, "crossing_count")[metadata_indices]
+    to_degrees = _float_column(edge_batch, "to_degree")[metadata_indices]
+    to_highways = _text_column(edge_batch, "to_highway")[metadata_indices]
+    to_crossings = _text_column(edge_batch, "to_crossing")[metadata_indices]
+    foot_edges = edge_modes == "foot"
+    bike_edges = edge_modes == "bike"
+    stair_edges = highways == "steps"
+    riding_edges = bike_edges & ~stair_edges
+
+    x = _float_column(segments, "x")
+    y = _float_column(segments, "y")
+    elevation = _float_column(segments, "elevation_m")
+    previous_x = _float_column(segments, "previous_x")
+    previous_y = _float_column(segments, "previous_y")
+    previous_elevation = _float_column(segments, "previous_elevation_m")
+    horizontal = np.hypot(x - previous_x, y - previous_y)
+    height_change = elevation - previous_elevation
+    projected_edge_lengths = _sum_by_edge(horizontal, groups)
+    scale = np.divide(
+        edge_lengths,
+        projected_edge_lengths,
+        out=np.zeros(group_count, dtype=np.float64),
+        where=projected_edge_lengths > 0,
+    )
+    segment_lengths = horizontal * scale[groups]
+    grades = np.divide(
+        height_change,
+        horizontal,
+        out=np.zeros_like(height_change),
+        where=horizontal > 0,
+    )
+    complete_segment = (
+        np.isfinite(x) & np.isfinite(y) & np.isfinite(elevation)
+        & np.isfinite(previous_x) & np.isfinite(previous_y)
+        & np.isfinite(previous_elevation)
+    )
+    complete_edges = np.bincount(
+        groups, weights=(~complete_segment).astype(np.int64), minlength=group_count
+    ) == 0
+    complete_edges &= projected_edge_lengths > 0
+
+    mass = energy.reference_mass_kg
+    c0 = energy.walking.c0_j_per_kg_m[energy.rate_set]
+    walking_lowwater, walking_highwater = energy.walking.gradient_valid_range
+    non_stair_walk = foot_edges & (highways != "steps")
+    walking_grades = np.clip(grades, walking_lowwater, walking_highwater)
+    bike_grades = np.clip(
+        grades, network.bike_speed_table.grade_min, network.bike_speed_table.grade_max
+    )
+    clipped = complete_edges[groups] & (
+        (non_stair_walk[groups] & (grades != walking_grades))
+        | (riding_edges[groups] & (grades != bike_grades))
+    )
+    clipped_groups = groups[clipped]
+    way_ids = np.asarray(
+        edge_batch.column("way_id").to_numpy(zero_copy_only=False), dtype=np.int64
+    )[metadata_indices]
+    diagnostics = pa.table({
+        "edge_key": pa.array(unique_keys[clipped_groups], type=pa.string()),
+        "way_id": pa.array(way_ids[clipped_groups], type=pa.int64()),
+        "mode": pa.array(edge_modes[clipped_groups], type=pa.string()),
+        "highway": pa.array(highways[clipped_groups], type=pa.string()),
+        "edge_length_m": pa.array(edge_lengths[clipped_groups], type=pa.float64()),
+        "segment_length_m": pa.array(segment_lengths[clipped], type=pa.float64()),
+        "grade": pa.array(grades[clipped], type=pa.float64()),
+    })
+
+    walking_v0 = energy.walking.v0_kmh / 3.6
+    walking_speed = walking_v0 * np.exp(
+        -3.5 * np.abs(walking_grades + 0.05)
+    ) / math.exp(-0.175)
+    coefficients = np.asarray(
+        energy.walking.gradient_polynomial_j_per_kg_m, dtype=np.float64
+    )
+    gradient_cost = np.polyval(coefficients, walking_grades) / np.polyval(
+        coefficients, 0.0
+    )
+    walk_time_segment = np.divide(
+        segment_lengths, walking_speed, out=np.zeros_like(segment_lengths),
+        where=walking_speed > 0,
+    )
+    walk_energy_segment = mass * c0 * segment_lengths * gradient_cost / 1000.0
+    stair = stair_edges[groups]
+    stair_height = np.abs(height_change)
+    stair_time_segment = np.where(
+        height_change >= 0,
+        stair_height / energy.stairs.up_speed_m_per_s,
+        stair_height / energy.stairs.down_speed_m_per_s,
+    )
+    stair_energy_segment = np.where(
+        height_change >= 0,
+        mass * GRAVITY_M_S2 * stair_height / energy.stairs.up_efficiency / 1000.0,
+        mass * GRAVITY_M_S2 * stair_height
+        / energy.stairs.up_efficiency
+        * energy.stairs.down_to_up_energy_ratio
+        / 1000.0,
+    )
+    walk_time_segment = np.where(stair, stair_time_segment, walk_time_segment)
+    walk_energy_segment = np.where(stair, stair_energy_segment, walk_energy_segment)
+    walk_time = _sum_by_edge(walk_time_segment, groups)
+    walk_energy = _sum_by_edge(walk_energy_segment, groups)
+    walk_time = np.where(
+        stair_edges, np.maximum(walk_time, edge_lengths / walking_v0), walk_time
+    )
+    timings["walk"] += time.perf_counter() - stage
+    stage = time.perf_counter()
+
+    bike_segment = riding_edges[groups] & complete_edges[groups]
+    raw_surfaces = _text_column(edge_batch, "surface")[metadata_indices]
+    raw_tracktypes = _text_column(edge_batch, "tracktype")[metadata_indices]
+    raw_surfaces = raw_surfaces.astype(str)
+    raw_tracktypes = raw_tracktypes.astype(str)
+    resolved_surfaces = np.full(group_count, "", dtype=object)
+    unknown_surfaces: Counter[str] = Counter()
+    for surface_alias, resolved in network.bike_edge_costs.surface_aliases.items():
+        resolved_surfaces[bike_edges & (raw_surfaces == surface_alias)] = resolved
+    no_surface = bike_edges & (raw_surfaces == "")
+    for tracktype, resolved in network.bike_edge_costs.surface_by_tracktype.items():
+        resolved_surfaces[
+            no_surface & (raw_tracktypes == tracktype)
+        ] = resolved
+    unknown_surface = bike_edges & (raw_surfaces != "") & (resolved_surfaces == "")
+    if unknown_surface.any():
+        unknown_values, unknown_counts = np.unique(
+            raw_surfaces[unknown_surface], return_counts=True
+        )
+        unknown_surfaces.update(
+            dict(zip(unknown_values.tolist(), unknown_counts.tolist(), strict=True))
+        )
+    needs_default = bike_edges & (resolved_surfaces == "")
+    for highway, resolved in (
+        network.bike_edge_costs.surface_default_by_highway.items()
+    ):
+        resolved_surfaces[needs_default & (highways == highway)] = resolved
+    for bike_class, resolved in (
+        network.bike_edge_costs.surface_default_by_bike_class.items()
+    ):
+        resolved_surfaces[
+            bike_edges & (resolved_surfaces == "") & (bike_classes == bike_class)
+        ] = resolved
+    unresolved_surface = bike_edges & (resolved_surfaces == "")
+    if unresolved_surface.any():
+        index = int(np.flatnonzero(unresolved_surface)[0])
+        raise ValueError(
+            f"no configured bike surface default for highway={highways[index]!r}"
+        )
+    unknown_key = bike_edges & ~np.isin(
+        resolved_surfaces, tuple(energy.bike.surface_crr)
+    )
+    if unknown_key.any():
+        index = int(np.flatnonzero(unknown_key)[0])
+        raise ValueError(
+            f"bike surface mapping resolves to unknown Crr: "
+            f"{resolved_surfaces[index]!r}"
+        )
+
+    class_caps = network.bike_speed_table.class_cap_kmh
+    cap_by_edge = np.full(group_count, np.inf, dtype=np.float64)
+    for bike_class, cap in class_caps.items():
+        cap_by_edge[bike_classes == bike_class] = cap
+    invalid_class = bike_edges & ~np.isfinite(cap_by_edge)
+    if invalid_class.any():
+        index = int(np.flatnonzero(invalid_class)[0])
+        raise ValueError(
+            f"bike edge {unique_keys[index]} has unconfigured infrastructure "
+            f"class {bike_classes[index]!r}"
+        )
+    for highway, cap in network.bike_speed_table.highway_cap_kmh.items():
+        cap_by_edge[(bike_edges) & (highways == highway)] = np.minimum(
+            cap_by_edge[bike_edges & (highways == highway)], cap
+        )
+
+    speeds = np.zeros(len(groups), dtype=np.float64)
+    bike_work_per_kg_segment = np.zeros(len(groups), dtype=np.float64)
+    bike_drag_segment = np.zeros(len(groups), dtype=np.float64)
+    bike_pedalled_time_segment = np.zeros(len(groups), dtype=np.float64)
+    bike = energy.bike
+    table_seconds = 0.0
+    for surface in np.unique(resolved_surfaces[riding_edges]):
+        surface_edges = riding_edges & (resolved_surfaces == surface)
+        for cap in np.unique(cap_by_edge[surface_edges]):
+            selected = (
+                bike_segment
+                & (resolved_surfaces[groups] == surface)
+                & (cap_by_edge[groups] == cap)
+            )
+            table = speed_tables.get((surface, cap))
+            if table is None:
+                table_started = time.perf_counter()
+                table = BikeSpeedTable(
+                    energy,
+                    network.bike_speed_table,
+                    energy.bike.surface_crr[surface],
+                    cap,
+                )
+                speed_tables[(surface, cap)] = table
+                table_seconds += time.perf_counter() - table_started
+            group_speeds, group_powers = table.lookup(bike_grades[selected])
+            speeds[selected] = group_speeds
+            crr = energy.bike.surface_crr[surface]
+            angle_cosine = 1.0 / np.sqrt(1.0 + bike_grades[selected] ** 2)
+            rolling = GRAVITY_M_S2 * crr * angle_cosine * segment_lengths[selected]
+            climbing = (
+                GRAVITY_M_S2
+                * bike_grades[selected]
+                / np.sqrt(1.0 + bike_grades[selected] ** 2)
+                * segment_lengths[selected]
+            )
+            pedalled = group_powers > 0
+            separated = bike_classes[groups[selected]] == "separated_track_path"
+            calmer_factor = np.where(
+                separated, bike.separated_infra_factor, 1.0
+            )
+            bike_work_per_kg_segment[selected] = np.where(
+                pedalled,
+                (rolling + climbing)
+                / bike.gross_muscular_efficiency
+                * calmer_factor
+                / 1000.0,
+                0.0,
+            )
+            drag = (
+                0.5 * bike.rho_air_kg_per_m3 * bike.cda_m2
+                * group_speeds**2 * segment_lengths[selected]
+            )
+            bike_drag_segment[selected] = np.where(
+                pedalled,
+                drag / bike.gross_muscular_efficiency
+                * calmer_factor / 1000.0,
+                0.0,
+            )
+            bike_pedalled_time_segment[selected] = np.divide(
+                segment_lengths[selected],
+                group_speeds,
+                out=np.zeros_like(group_speeds),
+                where=pedalled & (group_speeds > 0),
+            )
+
+    if np.any(bike_segment & (~np.isfinite(speeds) | (speeds < 0))):
+        raise ValueError(
+            "bike speed calculation produced a negative or non-finite speed"
+        )
+    zero_speed = bike_segment & (segment_lengths > 0) & (speeds == 0)
+    zero_counts = np.bincount(groups[zero_speed], minlength=group_count)
+    zero_groups = groups[zero_speed]
+    zero_diagnostics = pa.table({
+        "highway": pa.array(highways[zero_groups], type=pa.string()),
+        "bike_class": pa.array(bike_classes[zero_groups], type=pa.string()),
+        "surface": pa.array(resolved_surfaces[zero_groups], type=pa.string()),
+        "cap_kmh": pa.array(cap_by_edge[zero_groups], type=pa.float64()),
+        "grade": pa.array(grades[zero_speed], type=pa.float64()),
+    })
+    bike_time_ride = _sum_by_edge(
+        np.divide(
+            segment_lengths, speeds, out=np.zeros_like(segment_lengths),
+            where=bike_segment & (speeds > 0),
+        ),
+        groups,
+    )
+    bike_work_per_kg = _sum_by_edge(bike_work_per_kg_segment, groups)
+    bike_drag = _sum_by_edge(bike_drag_segment, groups)
+    bike_pedalled_time = _sum_by_edge(bike_pedalled_time_segment, groups)
+    bike_pedalling_energy = (
+        mass * bike.pedalling_unloaded_net_met
+        * MET_MINUTE_KJ_PER_KG * bike_pedalled_time / 60.0
+    )
+    total_mass = mass + bike.bike_mass_kg
+    edge_average_speed = np.divide(
+        edge_lengths,
+        bike_time_ride,
+        out=np.zeros(group_count, dtype=np.float64),
+        where=bike_time_ride > 0,
+    )
+    timings["speed tables"] += table_seconds
+    timings["bike riding"] += time.perf_counter() - stage - table_seconds
+    stage = time.perf_counter()
+    stops = bike.stops
+    signal_probability = stops.red_time_s / stops.signal_cycle_s
+    if signal_probability > 1:
+        raise ValueError("configured bike red time exceeds the signal cycle")
+    expected_signal_wait = stops.red_time_s**2 / (2.0 * stops.signal_cycle_s)
+    controlled = np.isin(to_highways, tuple(_CONTROLLED_HIGHWAYS))
+    controlled |= to_crossings == "traffic_signals"
+    junction_count = (to_degrees >= 3) & ~controlled & bike_edges
+    junction_probability = np.zeros(group_count, dtype=np.float64)
+    crossing_probability = np.zeros(group_count, dtype=np.float64)
+    for bike_class, probability in (
+        network.bike_edge_costs.uncontrolled_junction_probability_by_class.items()
+    ):
+        class_mask = bike_classes == bike_class
+        junction_probability[class_mask] = probability
+    for bike_class, probability in (
+        network.bike_edge_costs.crossing_probability_by_class.items()
+    ):
+        crossing_probability[bike_classes == bike_class] = probability
+    expected_stops = (
+        signal_counts * signal_probability
+        + stop_counts * network.bike_edge_costs.stop_sign_probability
+        + give_way_counts * network.bike_edge_costs.give_way_probability
+        + junction_count * junction_probability
+        + crossing_counts * crossing_probability
+    )
+    bike_stop_time = (
+        edge_average_speed / (2 * stops.deceleration_m_per_s2)
+        + edge_average_speed / (2 * stops.acceleration_m_per_s2)
+    ) * expected_stops + signal_counts * expected_signal_wait
+    separated_edges = riding_edges & (bike_classes == "separated_track_path")
+    bike_stop_work_per_kg = (
+        expected_stops * 0.5 * edge_average_speed**2
+        / bike.gross_muscular_efficiency / 1000.0
+        * np.where(separated_edges, bike.separated_infra_factor, 1.0)
+    )
+
+    bike_work_per_kg += bike_stop_work_per_kg
+    bike_energy = np.where(
+        stair_edges, walk_energy,
+        bike_work_per_kg * total_mass + bike_drag + bike_pedalling_energy,
+    )
+    bike_time = np.where(stair_edges, walk_time, bike_time_ride + bike_stop_time)
+    timings["stops"] += time.perf_counter() - stage
+
+    climb_segment = np.maximum(height_change, 0.0)
+    climb = _sum_by_edge(climb_segment, groups)
+    incomplete_count = int(np.count_nonzero(~complete_edges))
+    valid_walk = foot_edges & complete_edges
+    valid_bike = bike_edges & complete_edges & (zero_counts == 0)
+
+    def nullable(values: FloatArray, mask: npt.NDArray[np.bool_]) -> pa.Array:
+        return pa.array(values, mask=~mask, type=pa.float64())
+
+    result = pa.table(
+        {
+            "edge_key": pa.array(unique_keys, type=pa.string()),
+            "walk_time_s": nullable(walk_time, valid_walk),
+            "walk_energy_kj": nullable(walk_energy, valid_walk),
+            "bike_time_s": nullable(bike_time, valid_bike),
+            "bike_energy_kj": nullable(bike_energy, valid_bike),
+            "bike_energy_per_kg_kj_per_kg": nullable(
+                bike_work_per_kg, valid_bike & ~stair_edges
+            ),
+            "bike_energy_drag_kj": nullable(bike_drag, valid_bike & ~stair_edges),
+            "bike_pedalling_energy_kj": nullable(
+                bike_pedalling_energy, valid_bike & ~stair_edges
+            ),
+            "climb_m": nullable(climb, complete_edges),
+            "separated_length_m": pa.array(
+                np.where(separated_edges, edge_lengths, 0.0),
+                type=pa.float64(),
+            ),
+            "bike_zero_speed_segments": pa.array(
+                zero_counts, mask=~bike_edges, type=pa.int32()
+            ),
+        }
+    )
+    return (
+        result, incomplete_count, unknown_surfaces, group_count, diagnostics,
+        zero_diagnostics,
+    )
+
+
+def enrich_active_edge_costs(
+    connection: duckdb.DuckDBPyConnection,
+    edges_path: str | Path,
+    nodes_path: str | Path,
+    output_path: str | Path,
+    *,
+    energy: EnergyConfig,
+    network: NetworkConfig,
+) -> ActiveCostSummary:
+    """Write section 9.3/9.7 costs for directed foot and bike edges.
+
+    Stair elevations use raw node samples; other profiles use smoothed way elevations.
+    Elevations, coordinates and lengths are metres, grades are dimensionless,
+    times are seconds, and energies are kJ. Inputs are
+    existing OSM edge and node Parquet tables; this function is intended to
+    be called by the later B2 stage, not as a standalone command.
+    """
+    edges = Path(edges_path)
+    nodes = Path(nodes_path)
+    output = Path(output_path)
+    for path in (edges, nodes):
+        if not path.is_file():
+            raise FileNotFoundError(path)
+    if output.resolve() in (edges.resolve(), nodes.resolve()):
+        raise ValueError("active costs must be written separately from input tables")
+    if energy.bike.power.p0_w is None or energy.bike.power.k is None \
+            or energy.bike.power.p_max_w is None \
+            or energy.bike.power.v_max_descent_kmh is None:
+        raise ValueError("bike power parameters must be configured")
+
+    edge_source = _sql_path(edges)
+    node_source = _sql_path(nodes)
+    node_columns = {
+        row[0] for row in connection.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{node_source}')"
+        ).fetchall()
+    }
+    missing_node_columns = {"node_id", "x", "y", "elevation_m", "tags"} - node_columns
+    if missing_node_columns:
+        raise ValueError(
+            f"node table is missing required columns: "
+            f"{sorted(missing_node_columns)}"
+        )
+    required_edges = {
+        "edge_key", "way_id", "mode", "node_ids", "node_elevations_m",
+        "length_m", "highway", "bike_infra",
+        "surface", "tracktype", "signal_count", "stop_count", "give_way_count",
+        "crossing_count", "to_degree", "to_node_id",
+    }
+    edge_columns = {
+        row[0] for row in connection.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{edge_source}')"
+        ).fetchall()
+    }
+    missing_columns = required_edges - edge_columns
+    if missing_columns:
+        raise ValueError(
+            f"edge table is missing required columns: {sorted(missing_columns)}"
+        )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_name(output.stem + ".tmp.parquet")
+    if temporary.exists():
+        temporary.unlink()
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _active_cost_result (
+            edge_key VARCHAR,
+            walk_time_s DOUBLE,
+            walk_energy_kj DOUBLE,
+            bike_time_s DOUBLE,
+            bike_energy_kj DOUBLE,
+            bike_energy_per_kg_kj_per_kg DOUBLE,
+            bike_energy_drag_kj DOUBLE,
+            bike_pedalling_energy_kj DOUBLE,
+            climb_m DOUBLE,
+            separated_length_m DOUBLE,
+            bike_zero_speed_segments INTEGER
+        )
+    """)
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _active_clipped_grades (
+            edge_key VARCHAR, way_id BIGINT, mode VARCHAR, highway VARCHAR,
+            edge_length_m DOUBLE, segment_length_m DOUBLE, grade DOUBLE
+        )
+    """)
+    connection.execute("""
+        CREATE OR REPLACE TEMP TABLE _active_zero_speeds (
+            highway VARCHAR, bike_class VARCHAR, surface VARCHAR,
+            cap_kmh DOUBLE, grade DOUBLE
+        )
+    """)
+    speed_tables: dict[tuple[str, float], BikeSpeedTable] = {}
+    unknown_surfaces: Counter[str] = Counter()
+    edge_count = 0
+    incomplete_count = 0
+    timings = dict.fromkeys(
+        ("loading", "walk", "speed tables", "bike riding", "stops", "writing"), 0.0
+    )
+    reader_connection = connection.cursor()
+    try:
+        stage = time.perf_counter()
+        node_arrays = _load_node_arrays(reader_connection, nodes)
+        timings["loading"] += time.perf_counter() - stage
+        stage = time.perf_counter()
+        edge_reader = reader_connection.execute(f"""
+            SELECT e.edge_key, e.way_id, e.mode, e.node_ids, e.node_elevations_m,
+                   e.length_m, e.highway,
+                   e.bike_infra, e.surface, e.tracktype, e.signal_count,
+                   e.stop_count, e.give_way_count, e.crossing_count,
+                   e.to_degree, e.to_node_id
+            FROM read_parquet('{edge_source}') e
+            WHERE e.mode IN ('foot', 'bike')
+        """).to_arrow_reader(batch_size=_EDGE_BATCH_SIZE)
+        timings["loading"] += time.perf_counter() - stage
+        edge_iterator = iter(edge_reader)
+        while True:
+            stage = time.perf_counter()
+            try:
+                edge_batch = next(edge_iterator)
+            except StopIteration:
+                timings["loading"] += time.perf_counter() - stage
+                break
+            edge_batch = _add_to_node_tags(edge_batch, node_arrays)
+            segments = _segments_from_edge_batch(edge_batch, node_arrays)
+            timings["loading"] += time.perf_counter() - stage
+            result, missing, batch_unknown, count, diagnostics, zeros = (
+                _calculate_batch(
+                    edge_batch, segments, energy, network, speed_tables, timings
+                )
+            )
+            stage = time.perf_counter()
+            connection.register("_active_cost_batch", result)
+            try:
+                connection.execute(
+                    "INSERT INTO _active_cost_result "
+                    "SELECT * FROM _active_cost_batch"
+                )
+            finally:
+                connection.unregister("_active_cost_batch")
+            connection.register("_active_clipped_batch", diagnostics)
+            try:
+                connection.execute(
+                    "INSERT INTO _active_clipped_grades "
+                    "SELECT * FROM _active_clipped_batch"
+                )
+            finally:
+                connection.unregister("_active_clipped_batch")
+            connection.register("_active_zero_batch", zeros)
+            try:
+                connection.execute(
+                    "INSERT INTO _active_zero_speeds SELECT * FROM _active_zero_batch"
+                )
+            finally:
+                connection.unregister("_active_zero_batch")
+            edge_count += count
+            incomplete_count += missing
+            unknown_surfaces.update(batch_unknown)
+            timings["writing"] += time.perf_counter() - stage
+
+        stage = time.perf_counter()
+        clipped_by_class, longest = _summarize_clipped_grades(
+            connection, "_active_clipped_grades",
+            network.bike_speed_table.clipped_grade_report_limit,
+        )
+        zero_by_class = tuple(connection.execute("""
+            SELECT highway, bike_class, surface, cap_kmh,
+                   min(grade), max(grade), count(*)
+            FROM _active_zero_speeds
+            GROUP BY highway, bike_class, surface, cap_kmh
+            ORDER BY highway, bike_class, surface, cap_kmh
+        """).fetchall())
+        write_parquet(connection, "SELECT * FROM _active_cost_result", temporary)
+        temporary.replace(output)
+        timings["writing"] += time.perf_counter() - stage
+    finally:
+        reader_connection.close()
+        temporary.unlink(missing_ok=True)
+
+    summary = ActiveCostSummary(
+        edge_count=edge_count,
+        incomplete_profile_count=incomplete_count,
+        unknown_surface_count=sum(unknown_surfaces.values()),
+        unknown_surface_values=dict(sorted(unknown_surfaces.items())),
+        zero_speed_segment_count=sum(row[-1] for row in zero_by_class),
+        zero_speed_by_class=zero_by_class,
+        clipped_segments_by_class=clipped_by_class,
+        longest_clipped_edges=longest,
+    )
+    stage = time.perf_counter()
+    write_active_grade_report(summary, output.with_suffix(".grades.md"))
+    timings["writing"] += time.perf_counter() - stage
+    for name, elapsed in timings.items():
+        logger.info("active %s completed in %.2f s", name, elapsed)
+    return summary
+
+
+def write_active_grade_report(summary: ActiveCostSummary, path: str | Path) -> None:
+    """Report clipped directed segments and longest affected edges (9.3, 9.7)."""
+    lines = ["# Active-mode clipped grades", ""]
+    lines.extend(_grade_report_lines(
+        summary.clipped_segments_by_class, summary.longest_clipped_edges
+    ))
+    lines.extend([
+        "",
+        "## Zero-speed bike segments",
+        "",
+        f"Error segments: {summary.zero_speed_segment_count:,}. "
+        "Affected bike costs are null.",
+        "Grades are original signed grades; cap is in km/h.",
+        "",
+        "| Highway | Bike class | Surface | Cap | Min grade | Max grade | Segments |",
+        "|---|---|---|---:|---:|---:|---:|",
+    ])
+    for row in summary.zero_speed_by_class:
+        highway, bike_class, surface, cap, low, high, count = row
+        lines.append(
+            f"| {highway} | {bike_class} | {surface} | {cap:g} | "
+            f"{low:.6f} | {high:.6f} | {count:,} |"
+        )
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
