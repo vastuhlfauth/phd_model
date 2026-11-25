@@ -1,5 +1,26 @@
 # Landgrid origins
 
+## 2026-11-25 — Step 3b aggregate checks
+
+- Added restricted-data aggregate checks to `docs/data/fichiers_fonciers.md`;
+  counts below 50 are suppressed and no row-level values are included.
+- In the 2022 département-33 partition, `X`/`Y` match EPSG:3035 ranges and
+  98.54% of dwellings match a Filosofi 200 m row. `ban_geom` EWKB records
+  SRID 2154; 35.93% of paired points fall in different 200 m cells.
+- Exact share outside the département-33 bounding box remains open; the full
+  local commune-geometry scan exceeded the one-minute limit.
+- No local Cerema documentation was found for `source_geo`, `vecteur`,
+  `ccthp` or `proba_rprs`; no code meanings or field substitutions inferred.
+- `loghvac = 't'` and `ccthp = 'V'` select exactly the same 74,847 dwellings.
+  The two candidate main-residence rules each count 782,301.
+- 774,603 candidates lie in a Filosofi 200 m row intersecting 33, against
+  735,421.1 Filosofi households. Fewer than 50 located candidates fall outside
+  every natural-level cell (0.0056%); 1,190 candidates lack `X` or `Y`.
+- Strict / combined `catpro2` containing `F1`: 111,881 / 118,658, versus
+  99,906.6 Filosofi `log_soc` in the 33 200 m rows.
+- Neighboring departments required: 17, 24, 40 and 47; all four 2022
+  `pb0010_local` partitions exist. No package code or specification changed.
+
 ## 2026-11-25 — Step 3 data pages (in progress)
 
 - Added Fichiers fonciers, Filosofi and Eurostat grid pages; indexed all three.

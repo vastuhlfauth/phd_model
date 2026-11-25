@@ -3,6 +3,8 @@
 - 2026-11-25, step 3: document restricted Fichiers fonciers using aggregate
   counts only. Do not alias `proba_rprs` to `rppo_rs` or `X`/`Y` to
   `geomloc`; the 2022 source schema does not provide those spec fields.
+  Step 3b compared candidate fields across vintages but made no substitution
+  decision; aggregate comparisons are not approval to implement either.
 - 2026-11-24, step 6: disable calibration by default (`reference: none`).
   Preserve and report last values of stalled or iteration-limited fits, flag
   bounds and omit unfinished holdout metrics rather than claiming convergence.
