@@ -64,6 +64,7 @@ class ReportConfig:
     output_directory: str
     ff_vintage_to_census: dict[int, int]
     ff_cells_pattern: str
+    ff_natural_pattern: str
     ff_communes_pattern: str
     ff_extra_codes_pattern: str
     metadata_pattern: str
@@ -113,6 +114,7 @@ class OriginsConfig:
     dniv_code_threshold: int
     stoth_negative_missing: bool
     nbetagemax_used: bool
+    construction_period_starts: tuple[int, int, int]
     second_home_rescaling: float | None
 
 
@@ -160,6 +162,11 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         for vintage, value in raw["census"].items()
     }
     report = raw["report"]
+    periods = tuple(
+        int(value) for value in raw["cleaning"]["construction_period_starts"]
+    )
+    if len(periods) != 3 or list(periods) != sorted(set(periods)):
+        raise ValueError("construction period starts must be three increasing years")
     validation = raw["validation"]
     density_thresholds = tuple(
         int(value)
@@ -187,6 +194,7 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
                 ].items()
             },
             ff_cells_pattern=report["ff_cells_pattern"],
+            ff_natural_pattern=report["ff_natural_pattern"],
             ff_communes_pattern=report["ff_communes_pattern"],
             ff_extra_codes_pattern=report["ff_extra_codes_pattern"],
             metadata_pattern=report["metadata_pattern"],
@@ -232,6 +240,7 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         dniv_code_threshold=int(raw["cleaning"]["dniv_code_threshold"]),
         stoth_negative_missing=bool(raw["cleaning"]["stoth_negative_missing"]),
         nbetagemax_used=bool(raw["cleaning"]["nbetagemax_used"]),
+        construction_period_starts=periods,
         second_home_rescaling=raw["second_home_rescaling"],
     )
 
@@ -486,7 +495,7 @@ def build_ff_cells_signature(
     vintage: int,
     config: OriginsConfig,
     input_files: Sequence[Path],
-    code_version: int = 4,
+    code_version: int = 5,
 ) -> str:
     """Build the cache signature for one Fichiers fonciers vintage."""
     payload = {
@@ -503,6 +512,7 @@ def build_ff_cells_signature(
             "dniv_code_threshold": config.dniv_code_threshold,
             "stoth_negative_missing": config.stoth_negative_missing,
             "nbetagemax_used": config.nbetagemax_used,
+            "construction_period_starts": config.construction_period_starts,
             "second_home_rescaling": config.second_home_rescaling,
             "vintage": vars(config.vintages[vintage]),
             "hybrid_vintage": (
@@ -1083,14 +1093,54 @@ def build_department_ff_cells(
     return table_name, diagnostics
 
 
+def _covariate_fields(config: OriginsConfig, cell_count: str) -> str:
+    """Return dwelling-level SQL aggregates for section 6.3."""
+    first, second, third = config.construction_period_starts
+    periods = {
+        "av45": f"jannath_clean < {first}",
+        "45_70": f"jannath_clean >= {first} AND jannath_clean < {second}",
+        "70_90": f"jannath_clean >= {second} AND jannath_clean < {third}",
+        "ap90": f"jannath_clean >= {third}",
+        "inc": "jannath_clean IS NULL",
+    }
+    fields = [
+        "sum(house * main_residence) AS main_residence_houses",
+        "sum(flat * main_residence) AS main_residence_flats",
+        "sum(house * main_residence) / nullif(sum(main_residence), 0) AS house_share",
+        "sum(owner_occupied_main_residence) / nullif(sum(main_residence), 0) "
+        "AS owner_share",
+        "sum(second_home) / nullif(sum(dwelling), 0) AS second_home_share",
+        "sum(social_housing_main_residence) / nullif(sum(main_residence), 0) "
+        "AS social_share",
+        f"sum(main_residence) / ({cell_count}) AS main_residences_per_200m",
+    ]
+    for column in ("npiece_i_clean", "dnbniv_clean"):
+        name = column.removesuffix("_clean")
+        for operation, suffix in (("avg", "mean"), ("stddev_pop", "std")):
+            fields.append(
+                f"{operation}({column}) FILTER (WHERE main_residence = 1) "
+                f"AS {name}_{suffix}"
+            )
+    for name, condition in periods.items():
+        count = f"count(*) FILTER (WHERE main_residence = 1 AND {condition})"
+        fields.extend((
+            f"{count} AS construction_{name}",
+            f"{count} / nullif(sum(main_residence), 0) AS construction_{name}_share",
+        ))
+    return ",\n".join(fields)
+
+
 def aggregate_staged_ff_cells(
     connection: duckdb.DuckDBPyConnection,
     staging_tables: Sequence[str],
     vintage: int,
+    config: OriginsConfig | None = None,
 ) -> pa.Table:
     """Aggregate staged premise classifications per 200 m cell in DuckDB."""
     if not staging_tables:
         raise ValueError("at least one staged department table is required")
+    if config is None:
+        config = load_origins_config()
     union = " UNION ALL ".join(
         f"SELECT * FROM {_quoted_identifier(table)}" for table in staging_tables
     )
@@ -1141,11 +1191,47 @@ def aggregate_staged_ff_cells(
             stddev_pop(jannath_clean) FILTER (WHERE main_residence = 1)
                 AS jannath_std,
             count(jannath_clean) FILTER (WHERE main_residence = 1)
-                AS jannath_valid_count
+                AS jannath_valid_count,
+            {_covariate_fields(config, "1.0")}
         FROM ({union}) AS staged
         WHERE valid_location AND dwelling = 1
         GROUP BY cell_id, natural_cell_id
         ORDER BY cell_id
+        """,
+        [vintage],
+    ).to_arrow_table()
+
+
+def aggregate_staged_ff_natural(
+    connection: duckdb.DuckDBPyConnection,
+    staging_tables: Sequence[str],
+    vintage: int,
+    config: OriginsConfig,
+) -> pa.Table:
+    """Aggregate dwellings directly at natural level for section 6.3."""
+    if not staging_tables:
+        raise ValueError("at least one staged department table is required")
+    union = " UNION ALL ".join(
+        f"SELECT * FROM {_quoted_identifier(table)}" for table in staging_tables
+    )
+    resolution = config.downscale.cell_resolution_m
+    cell_count = (
+        f"pow(CAST(regexp_extract(natural_cell_id, 'RES([0-9]+)mN', 1) "
+        f"AS DOUBLE) / {resolution}, 2)"
+    )
+    return connection.execute(
+        f"""
+        SELECT ? AS vintage, natural_cell_id,
+            sum(dwelling) AS dwellings, sum(main_residence) AS main_residences,
+            median(stoth_clean) FILTER (WHERE main_residence = 1) AS stoth_median,
+            stddev_pop(stoth_clean) FILTER (WHERE main_residence = 1) AS stoth_std,
+            median(jannath_clean) FILTER (WHERE main_residence = 1) AS jannath_median,
+            stddev_pop(jannath_clean) FILTER (WHERE main_residence = 1) AS jannath_std,
+            {_covariate_fields(config, cell_count)}
+        FROM ({union}) AS staged
+        WHERE valid_location AND dwelling = 1 AND natural_cell_id IS NOT NULL
+        GROUP BY natural_cell_id
+        ORDER BY natural_cell_id
         """,
         [vintage],
     ).to_arrow_table()
@@ -1323,6 +1409,9 @@ def build_ff_cells(
         output_path = output_directory / config.report.ff_cells_pattern.format(
             vintage=vintage
         )
+        natural_output_path = output_directory / (
+            config.report.ff_natural_pattern.format(vintage=vintage)
+        )
         commune_output_path = output_directory / (
             config.report.ff_communes_pattern.format(vintage=vintage)
         )
@@ -1337,6 +1426,7 @@ def build_ff_cells(
         if (
             not force
             and output_path.is_file()
+            and natural_output_path.is_file()
             and commune_output_path.is_file()
             and extra_codes_output_path.is_file()
             and metadata_path.is_file()
@@ -1345,6 +1435,7 @@ def build_ff_cells(
             if metadata.get("signature") == signature:
                 return {
                     "output": str(output_path),
+                    "natural_output": str(natural_output_path),
                     "communes_output": str(commune_output_path),
                     "extra_codes_output": str(extra_codes_output_path),
                     "cached": True,
@@ -1406,7 +1497,10 @@ def build_ff_cells(
             department_diagnostics_all[department] = department_diagnostics
             for key, value in department_diagnostics.items():
                 diagnostics[key] += value
-        table = aggregate_staged_ff_cells(connection, staging_tables, vintage)
+        table = aggregate_staged_ff_cells(connection, staging_tables, vintage, config)
+        natural_table = aggregate_staged_ff_natural(
+            connection, staging_tables, vintage, config
+        )
         commune_table = aggregate_staged_ff_communes(
             connection,
             staging_tables,
@@ -1429,10 +1523,12 @@ def build_ff_cells(
             ),
         )
         connection.register("_ff_cells", table)
+        connection.register("_ff_natural", natural_table)
         connection.register("_ff_communes", commune_table)
         connection.register("_ff_extra_codes", extra_codes_table)
         try:
             temporary = output_path.with_suffix(".tmp.parquet")
+            natural_temporary = natural_output_path.with_suffix(".tmp.parquet")
             commune_temporary = commune_output_path.with_suffix(".tmp.parquet")
             extra_codes_temporary = extra_codes_output_path.with_suffix(
                 ".tmp.parquet"
@@ -1442,6 +1538,7 @@ def build_ff_cells(
                 "SELECT * FROM _ff_cells",
                 temporary,
             )
+            write_parquet(connection, "SELECT * FROM _ff_natural", natural_temporary)
             write_parquet(
                 connection,
                 "SELECT * FROM _ff_communes",
@@ -1453,10 +1550,12 @@ def build_ff_cells(
                 extra_codes_temporary,
             )
             temporary.replace(output_path)
+            natural_temporary.replace(natural_output_path)
             commune_temporary.replace(commune_output_path)
             extra_codes_temporary.replace(extra_codes_output_path)
         finally:
             connection.unregister("_ff_cells")
+            connection.unregister("_ff_natural")
             connection.unregister("_ff_communes")
             connection.unregister("_ff_extra_codes")
 
@@ -1478,6 +1577,7 @@ def build_ff_cells(
         metadata_path.with_suffix(".tmp.json").replace(metadata_path)
         return {
             "output": str(output_path),
+            "natural_output": str(natural_output_path),
             "communes_output": str(commune_output_path),
             "extra_codes_output": str(extra_codes_output_path),
             "cached": False,

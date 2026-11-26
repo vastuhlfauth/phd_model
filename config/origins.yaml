@@ -55,6 +55,7 @@ report:
     2022: 2021
     2024: 2023
   ff_cells_pattern: "ff_cells_{vintage}.parquet"
+  ff_natural_pattern: "ff_natural_{vintage}.parquet"
   ff_communes_pattern: "ff_communes_{vintage}.parquet"
   ff_extra_codes_pattern: "ff_extra_codes_{vintage}.parquet"
   metadata_pattern: "ff_cells_{vintage}.json"
@@ -85,6 +86,7 @@ cleaning:
   dniv_code_threshold: 80
   stoth_negative_missing: true
   nbetagemax_used: false
+  construction_period_starts: [1945, 1970, 1990]
 
 # TODO(confirm): second-home rescaling coefficient for section 6.3, step 7.
 second_home_rescaling: null

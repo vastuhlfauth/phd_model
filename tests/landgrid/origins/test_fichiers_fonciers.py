@@ -22,6 +22,60 @@ from landgrid.origins.fichiers_fonciers import (
 from landgrid.origins.filosofi import build_natural_cell_lookup
 
 
+def test_covariates_are_recomputed_from_natural_cell_dwellings(
+    tmp_path: Path,
+) -> None:
+    from landgrid.origins.fichiers_fonciers import aggregate_staged_ff_natural
+
+    natural = "CRS3035RES1000mN2400000E4000000"
+    records = [
+        (4_000_010.0, 1944, 10, "t", None),
+        (4_000_010.0, 1945, 20, "t", None),
+        (4_000_210.0, 1970, 100, None, "t"),
+        (4_000_210.0, 1990, 200, None, "t"),
+        (4_000_210.0, None, 300, None, "t"),
+    ]
+    source = tmp_path / "source.parquet"
+    pq.write_table(
+        pa.Table.from_pylist([
+            {
+                "idlocal": str(index), "idcom": "33001", "X": x,
+                "Y": 2_400_010.0, "logh": "t", "ccthp": "P",
+                "proba_rprs": "RP", "jannath": year, "stoth": surface,
+                "npiece_i": 2, "dnbniv": "1", "loghmais": house,
+                "loghappt": flat, "catpro2": "F1",
+            }
+            for index, (x, year, surface, house, flat) in enumerate(records)
+        ]),
+        source,
+    )
+    config = load_origins_config()
+    config.vintages[2022] = replace(
+        config.vintages[2022], parquet_pattern=str(source), second_home_source="own"
+    )
+    with duckdb.connect() as connection:
+        stage, _ = build_department_ff_cells(
+            connection, 2022, "33", config, {}, build_natural_cell_lookup([natural])
+        )
+        cells = aggregate_staged_ff_cells(connection, [stage], 2022, config).to_pylist()
+        natural_rows = aggregate_staged_ff_natural(
+            connection, [stage], 2022, config
+        ).to_pylist()
+
+    assert len(cells) == 2
+    result = natural_rows[0]
+    assert result["natural_cell_id"] == natural
+    assert result["stoth_median"] == 100
+    assert result["stoth_std"] == pytest.approx(12224 ** 0.5)
+    assert result["house_share"] == pytest.approx(0.4)
+    assert result["main_residences_per_200m"] == pytest.approx(5 / 25)
+    assert [result[f"construction_{period}"] for period in (
+        "av45", "45_70", "70_90", "ap90", "inc"
+    )] == [1, 1, 1, 1, 1]
+    assert cells[0]["house_share"] == 1
+    assert cells[1]["main_residences_per_200m"] == 3
+
+
 @pytest.mark.parametrize(
     ("second_home_column", "second_home_value"),
     [("proba_rprs", "RS"), ("rppo_rs", "RS")],

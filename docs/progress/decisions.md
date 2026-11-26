@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-26, step 3: test direct counterpart weights and individual-offset
+  age and standard-of-living regressions as an experimental override of
+  section 6.3; retain proportional downscaling as the benchmark and leave
+  the specification unchanged pending validation.
 - 2026-11-26, step 3: for section-6.5 density, use the full 1 km² cell area
   when Eurostat `LAND_SURFACE` is null or non-positive. Retain unmatched
   200 m validation cells and matched cells with unavailable populations in

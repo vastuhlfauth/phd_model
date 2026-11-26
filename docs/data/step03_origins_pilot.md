@@ -26,6 +26,11 @@ test is stricter than the `lcog_geo` populated-cell approximation.
 
 The five pilot départements took 2 to 4 seconds each. Build products and
 diagnostics stay under `data/interim/landgrid/`.
+The build also writes `ff_natural_{vintage}.parquet`, with covariates
+aggregated directly from dwellings at the natural level. The 200 m and natural
+outputs include main-residence house and flat counts, construction-period
+counts and shares, and the density and dwelling characteristics used by the
+experimental composition method. Rebuilding invalidates older cached cells.
 
 ```powershell
 python -m landgrid.origins.fichiers_fonciers --vintage 2022 --department 17 --department 24 --department 33 --department 40 --department 47 --second-home-source own --output data\interim\landgrid\own_2022_comparison
