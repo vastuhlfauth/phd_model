@@ -1,9 +1,18 @@
 """Synthetic acceptance tests for experimental composition downscaling."""
 
+import csv
+import io
+import json
+import zipfile
+from collections.abc import Callable
+from pathlib import Path
+
 import duckdb
 import numpy as np
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
+import yaml
 
 
 def test_direct_weights_preserve_controls_and_count_household_fallbacks() -> None:
@@ -149,6 +158,9 @@ def test_fit_and_apply_composition_models_individuals_before_ages() -> None:
                 **features,
                 "main_residences_per_200m": x + j,
             })
+    ff_natural.pop()
+    natural.append({**natural[0], "idcar_nat": "outside-scope", "ind": 100000.0})
+    ff_natural.append({**ff_natural[0], "natural_cell_id": "outside-scope"})
     with duckdb.connect() as connection:
         connection.register("cells", pa.Table.from_pylist(cells))
         connection.execute(
@@ -164,6 +176,8 @@ def test_fit_and_apply_composition_models_individuals_before_ages() -> None:
         ).to_arrow_table().to_pylist()
     assert result[1]["ind"] > result[0]["ind"]
     assert result[1]["ind_0_3"] > result[0]["ind_0_3"]
+    assert reports["ind"]["training_cell_count"] == 12
+    assert reports["ind"]["training_missing_counts"]["owner_share"] == 1
     assert sum(row["ind"] for row in result[:2]) == pytest.approx(natural[0]["ind"])
     assert sum(row["ind_0_3"] for row in result[:2]) == pytest.approx(
         natural[0]["ind_0_3"]
@@ -227,3 +241,118 @@ def test_ipf_reports_nonconvergence_without_replacing_input() -> None:
         ).fetchall()
     assert failures == {"a": "IPF did not converge"}
     assert result == [(3.0,), (3.0,)]
+
+
+def test_composition_build_writes_separate_output_and_reuses_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import landgrid.origins.composition as composition
+    from landgrid.origins.composition import AGE_VARIABLES, COVARIATES
+    from landgrid.origins.fichiers_fonciers import DownscaleConfig
+
+    natural, ff_natural, cells, ff_cells = [], [], [], []
+    direct = {
+        "men_prop": 10.0, "men_mais": 10.0, "men_coll": 10.0,
+        "log_soc": 2.0, "log_av45": 2.0, "log_45_70": 3.0,
+        "log_70_90": 4.0, "log_ap90": 5.0, "log_inc": 6.0,
+    }
+    for i in range(12):
+        zone = f"zone-{i}"
+        x = i / 10
+        ind = 20 * np.exp(0.1 + 0.1 * x)
+        controls = {
+            "ind": ind, "men": 20.0, "men_1ind": 4.0, "men_5ind": 2.0,
+            "men_fmp": 1.0, "men_pauv": 3.0, "ind_snv": ind * 100,
+            **direct, **{name: ind / len(AGE_VARIABLES) for name in AGE_VARIABLES},
+        }
+        natural.append({"idcar_nat": zone, **controls})
+        features = dict.fromkeys(COVARIATES, 1.0)
+        features["main_residences_per_200m"] = x
+        ff_natural.append({"natural_cell_id": zone, **features})
+        for j in range(2):
+            cell_id = i * 2 + j
+            cells.append({
+                "cell_id": cell_id, "natural_cell_id": zone,
+                "natural_cell_size_m": 1000,
+                **{name: value / 2 for name, value in controls.items()},
+            })
+            ff_cells.append({
+                "cell_id": cell_id, **features,
+                "main_residences_per_200m": x + j,
+                "owner_occupied_main_residences": 1, "main_residence_houses": 1,
+                "main_residence_flats": 1, "social_housing_main_residences": 1,
+                "construction_av45": 1, "construction_45_70": 1,
+                "construction_70_90": 1, "construction_ap90": 1,
+                "construction_inc": 1,
+            })
+    output = tmp_path / "interim"
+    output.mkdir()
+    pq.write_table(pa.Table.from_pylist(cells), output / "origins_2021_200m.parquet")
+    pq.write_table(pa.Table.from_pylist(ff_cells), output / "ff_cells_2022.parquet")
+    pq.write_table(pa.Table.from_pylist(ff_natural), output / "ff_natural_2022.parquet")
+    (output / "ff_cells_2022.json").write_text(
+        json.dumps({"signature": "synthetic", "second_home_source": "hybrid_2024"})
+    )
+    (output / "origins_2021_200m.json").write_text(
+        json.dumps({
+            "ff_signature": "synthetic",
+            "pilot_signature": composition._file_signature(Path("config/pilot.yaml")),
+        })
+    )
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=list(natural[0]))
+    writer.writeheader()
+    writer.writerows(natural)
+    archive = tmp_path / "natural.zip"
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr("carreaux_nivNaturel_met.csv", buffer.getvalue())
+    raw = yaml.safe_load(Path("config/origins.yaml").read_text(encoding="utf-8"))
+    raw["report"]["output_directory"] = str(output)
+    raw["filosofi"]["natural_archive"] = str(archive)
+    config = tmp_path / "origins.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    baseline = (output / "origins_2021_200m.parquet").read_bytes()
+
+    original = composition.apply_models
+
+    def interrupt(
+        connection: duckdb.DuckDBPyConnection,
+        natural_input: pa.Table | Path,
+        ff_natural_input: pa.Table | Path,
+        ff_cells_input: pa.Table | Path,
+        model_config: DownscaleConfig,
+        *,
+        completed: dict[str, dict[str, object]] | None = None,
+        checkpoint: Callable[[dict[str, dict[str, object]]], None] | None = None,
+    ) -> dict[str, dict[str, object]]:
+        assert checkpoint is not None
+
+        def interrupted_checkpoint(reports: dict[str, dict[str, object]]) -> None:
+            assert checkpoint is not None
+            checkpoint(reports)
+            raise RuntimeError("simulated interruption")
+
+        return original(
+            connection, natural_input, ff_natural_input, ff_cells_input, model_config,
+            completed=completed, checkpoint=interrupted_checkpoint,
+        )
+
+    monkeypatch.setattr(composition, "apply_models", interrupt)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        composition.build_composition(config_path=config)
+    state = json.loads(
+        (output / "composition_2021_checkpoint" / "state.json").read_text()
+    )
+    assert list(state["reports"]) == ["ind"]
+    monkeypatch.setattr(composition, "apply_models", original)
+    result = composition.build_composition(config_path=config)
+    assert Path(result["output"]).is_file()
+    assert (output / "origins_2021_200m.parquet").read_bytes() == baseline
+    result_again = composition.build_composition(config_path=config)
+    assert result_again["cached"] is True
+    built = pq.read_table(result["output"]).to_pylist()
+    assert built[0]["ind"] != built[1]["ind"]
+    assert sum(built[0][name] for name in AGE_VARIABLES) == pytest.approx(
+        built[0]["ind"], rel=1e-8
+    )

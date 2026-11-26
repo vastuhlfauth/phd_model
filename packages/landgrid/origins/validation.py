@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import shutil
@@ -14,12 +15,13 @@ from typing import Any
 
 import duckdb
 import pyarrow as pa
-from common.duckdb_io import open_connection
 
 from landgrid.origins.fichiers_fonciers import (
+    _file_signature,
     _pilot_department,
     load_origins_config,
 )
+from landgrid.origins.job import open_restricted_connection
 from landgrid.origins.report import _load_department_boundary
 
 LOGGER = logging.getLogger(__name__)
@@ -179,10 +181,18 @@ def calculate_validation_metrics(
                 FULL JOIN {composition_relation} c USING (cell_id)
                 WHERE d.cell_id IS NULL OR c.cell_id IS NULL
                     OR d.natural_cell_id IS DISTINCT FROM c.natural_cell_id
+                    OR d.natural_cell_size_m IS DISTINCT FROM c.natural_cell_size_m
                 """
             ).fetchone()[0]
             if mismatch:
                 raise ValueError("composition and benchmark cell scopes differ")
+            for relation in (downscaled_relation, composition_relation):
+                duplicates = connection.execute(
+                    f"SELECT count(*) FROM (SELECT cell_id FROM {relation} "
+                    "GROUP BY cell_id HAVING count(*) > 1)"
+                ).fetchone()[0]
+                if duplicates:
+                    raise ValueError("composition validation has duplicate cell ids")
 
         northing = (
             f"CAST(floor(cell_id / 100000) AS BIGINT) * {cell_resolution_m}"
@@ -845,18 +855,43 @@ def build_validation_report(
     composition_path = output_directory / downscale.composition_output_pattern.format(
         year=downscale.output_year
     )
+    composition_metadata_path = output_directory / (
+        downscale.composition_metadata_pattern.format(year=downscale.output_year)
+    )
     ff_cells_path = output_directory / report.ff_cells_pattern.format(
+        vintage=downscale.ff_vintage
+    )
+    ff_natural_path = output_directory / report.ff_natural_pattern.format(
         vintage=downscale.ff_vintage
     )
     ff_metadata_path = output_directory / report.metadata_pattern.format(
         vintage=downscale.ff_vintage
     )
-    for path in (downscaled_path, composition_path, ff_cells_path, ff_metadata_path):
+    for path in (
+        downscaled_path, composition_path, composition_metadata_path,
+        ff_cells_path, ff_natural_path, ff_metadata_path,
+    ):
         if not path.is_file():
             raise FileNotFoundError(path)
     metadata = json.loads(ff_metadata_path.read_text(encoding="utf-8"))
     if metadata.get("second_home_source") != "hybrid_2024":
         raise ValueError("validation requires adopted hybrid Fichiers fonciers")
+    composition_metadata = json.loads(
+        composition_metadata_path.read_text(encoding="utf-8")
+    )
+    from landgrid.origins.composition import composition_input_signature
+
+    expected_signature = composition_input_signature((
+        Path(config_path), Path(pilot_config_path),
+        Path(config.filosofi_natural_archive),
+        ff_cells_path, ff_natural_path, ff_metadata_path, downscaled_path,
+    ))
+    if (
+        not composition_metadata.get("completed")
+        or composition_metadata.get("ff_signature") != metadata.get("signature")
+        or composition_metadata.get("signature") != expected_signature
+    ):
+        raise ValueError("composition output is incomplete or stale")
     eurostat_path = Path(validation.eurostat_grid)
     if not eurostat_path.is_file():
         raise FileNotFoundError(eurostat_path)
@@ -865,35 +900,65 @@ def build_validation_report(
         year=downscale.output_year
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
-
-    connection = open_connection()
-    try:
-        _load_department_boundary(
-            connection, Path(report.contours_2021), department
-        )
-        with tempfile.TemporaryDirectory(
-            prefix="filosofi_validation_", dir=output_directory
-        ) as directory:
-            insee_path = _extract_filosofi_200m(
-                Path(config.filosofi_200m_archive), Path(directory)
+    checkpoint_path = output_directory / validation.checkpoint_pattern.format(
+        year=downscale.output_year
+    )
+    signature = hashlib.sha256(json.dumps({
+        "version": 1,
+        "inputs": [
+            _file_signature(path) for path in (
+                Path(config_path), Path(pilot_config_path), downscaled_path,
+                composition_path, composition_metadata_path, ff_cells_path,
+                ff_metadata_path, eurostat_path, Path(config.filosofi_200m_archive),
+                Path(report.contours_2021),
             )
-            metrics_200m, metrics_1km, eurostat_reasons = calculate_validation_metrics(
-                connection,
-                downscaled_path,
-                insee_path,
-                ff_cells_path,
-                eurostat_path,
-                composition=composition_path,
-                department=department,
-                cell_resolution_m=downscale.cell_resolution_m,
-                eurostat_resolution_m=validation.eurostat_resolution_m,
-                density_thresholds_population_km2=(
-                    validation.density_thresholds_population_km2
-                ),
-                within_tolerance_fraction=validation.within_tolerance_fraction,
+        ],
+    }, sort_keys=True).encode("utf-8")).hexdigest()
+    checkpoint = {}
+    if checkpoint_path.is_file():
+        checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    if checkpoint.get("signature") == signature:
+        metrics_200m = checkpoint["metrics_200m"]
+        metrics_1km = checkpoint["metrics_1km"]
+        eurostat_reasons = checkpoint["eurostat_reasons"]
+    else:
+        connection, spill = open_restricted_connection(output_directory)
+        try:
+            _load_department_boundary(
+                connection, Path(report.contours_2021), department
             )
-    finally:
-        connection.close()
+            with tempfile.TemporaryDirectory(
+                prefix="filosofi_validation_", dir=output_directory
+            ) as directory:
+                insee_path = _extract_filosofi_200m(
+                    Path(config.filosofi_200m_archive), Path(directory)
+                )
+                metrics_200m, metrics_1km, eurostat_reasons = (
+                    calculate_validation_metrics(
+                        connection,
+                        downscaled_path,
+                        insee_path,
+                        ff_cells_path,
+                        eurostat_path,
+                        composition=composition_path,
+                        department=department,
+                        cell_resolution_m=downscale.cell_resolution_m,
+                        eurostat_resolution_m=validation.eurostat_resolution_m,
+                        density_thresholds_population_km2=(
+                            validation.density_thresholds_population_km2
+                        ),
+                        within_tolerance_fraction=validation.within_tolerance_fraction,
+                    )
+                )
+        finally:
+            connection.close()
+            spill.cleanup()
+        temporary_checkpoint = checkpoint_path.with_suffix(".tmp.json")
+        temporary_checkpoint.write_text(json.dumps({
+            "signature": signature, "metrics_200m": metrics_200m,
+            "metrics_1km": metrics_1km, "eurostat_reasons": eurostat_reasons,
+        }, indent=2, sort_keys=True), encoding="utf-8")
+        temporary_checkpoint.replace(checkpoint_path)
 
     content = render_validation_report(
         downscale.output_year,
@@ -922,10 +987,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
-    report_path = build_validation_report(
-        config_path=args.config,
-        pilot_config_path=args.pilot_config,
-    )
+    from landgrid.origins.job import logged_job
+
+    config = load_origins_config(args.config)
+    with logged_job(
+        Path(config.jobs.log_directory), config.jobs.validation_task,
+        [
+            config.filosofi_200m_archive, config.validation.eurostat_grid,
+            config.report.output_directory,
+        ],
+        config.report.count_suppression_threshold,
+    ) as job:
+        report_path = build_validation_report(
+            config_path=args.config,
+            pilot_config_path=args.pilot_config,
+        )
+        job.outputs.append(str(report_path))
     print(json.dumps({"report": str(report_path)}, indent=2))
     return 0
 

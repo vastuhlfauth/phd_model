@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import math
+import shutil
 import statistics
 import sys
 import tempfile
@@ -20,7 +21,7 @@ from typing import Any
 import duckdb
 import pyarrow as pa
 import yaml
-from common.duckdb_io import open_connection, read_parquet, write_parquet
+from common.duckdb_io import read_parquet, write_parquet
 from common.grid import cell_id
 
 from landgrid.origins.filosofi import (
@@ -28,6 +29,7 @@ from landgrid.origins.filosofi import (
     build_natural_cell_lookup,
     derived_departments,
 )
+from landgrid.origins.job import open_restricted_connection
 
 LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +67,9 @@ class ReportConfig:
     ff_vintage_to_census: dict[int, int]
     ff_cells_pattern: str
     ff_natural_pattern: str
+    ff_checkpoint_pattern: str
+    ff_checkpoint_data_pattern: str
+    ff_checkpoint_metadata_pattern: str
     ff_communes_pattern: str
     ff_extra_codes_pattern: str
     metadata_pattern: str
@@ -86,6 +91,12 @@ class DownscaleConfig:
     metadata_pattern: str
     composition_output_pattern: str
     composition_report_pattern: str
+    composition_model_pattern: str
+    composition_metadata_pattern: str
+    composition_failures_pattern: str
+    composition_checkpoint_pattern: str
+    composition_stage_pattern: str
+    composition_checkpoint_state: str
     poisson_folds: int
     poisson_seed: int
     poisson_tolerance: float
@@ -101,6 +112,15 @@ class ValidationConfig:
     density_thresholds_population_km2: tuple[int, int]
     within_tolerance_fraction: float
     report_pattern: str
+    checkpoint_pattern: str
+
+
+@dataclass(frozen=True)
+class JobConfig:
+    log_directory: str
+    ff_task_pattern: str
+    composition_task: str
+    validation_task: str
 
 
 @dataclass(frozen=True)
@@ -112,6 +132,7 @@ class OriginsConfig:
     report: ReportConfig
     downscale: DownscaleConfig
     validation: ValidationConfig
+    jobs: JobConfig
     logh: str
     vacant_code: str
     owner_code: str
@@ -212,6 +233,9 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             },
             ff_cells_pattern=report["ff_cells_pattern"],
             ff_natural_pattern=report["ff_natural_pattern"],
+            ff_checkpoint_pattern=report["ff_checkpoint_pattern"],
+            ff_checkpoint_data_pattern=report["ff_checkpoint_data_pattern"],
+            ff_checkpoint_metadata_pattern=report["ff_checkpoint_metadata_pattern"],
             ff_communes_pattern=report["ff_communes_pattern"],
             ff_extra_codes_pattern=report["ff_extra_codes_pattern"],
             metadata_pattern=report["metadata_pattern"],
@@ -237,6 +261,16 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             metadata_pattern=raw["downscale"]["metadata_pattern"],
             composition_output_pattern=raw["downscale"]["composition_output_pattern"],
             composition_report_pattern=raw["downscale"]["composition_report_pattern"],
+            composition_model_pattern=raw["downscale"]["composition_model_pattern"],
+            composition_metadata_pattern=raw["downscale"]["composition_metadata_pattern"],
+            composition_failures_pattern=raw["downscale"]["composition_failures_pattern"],
+            composition_checkpoint_pattern=raw["downscale"][
+                "composition_checkpoint_pattern"
+            ],
+            composition_stage_pattern=raw["downscale"]["composition_stage_pattern"],
+            composition_checkpoint_state=raw["downscale"][
+                "composition_checkpoint_state"
+            ],
             poisson_folds=int(raw["downscale"]["poisson_folds"]),
             poisson_seed=int(raw["downscale"]["poisson_seed"]),
             poisson_tolerance=float(raw["downscale"]["poisson_tolerance"]),
@@ -252,7 +286,9 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
                 validation["within_tolerance_fraction"]
             ),
             report_pattern=validation["report_pattern"],
+            checkpoint_pattern=validation["checkpoint_pattern"],
         ),
+        jobs=JobConfig(**raw["jobs"]),
         logh=raw["dwelling"]["logh"],
         vacant_code=raw["vacant"]["ccthp"],
         owner_code=raw["owner_occupied"]["ccthp"],
@@ -556,9 +592,12 @@ def build_ff_cells_signature(
 def _filosofi_200m_map(
     connection: duckdb.DuckDBPyConnection,
     archive: Path,
+    temporary_directory: Path,
 ) -> dict[str, str]:
     """Read Filosofi 200 m commune intersections for location diagnostics."""
-    with tempfile.TemporaryDirectory(prefix="filosofi_200m_") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="filosofi_200m_", dir=temporary_directory
+    ) as directory:
         csv_path = Path(directory) / "filosofi_200m.csv"
         with zipfile.ZipFile(archive) as zipped:
             member = next(
@@ -567,7 +606,7 @@ def _filosofi_200m_map(
                 if name.endswith("carreaux_200m_met.csv")
             )
             with zipped.open(member) as source, csv_path.open("wb") as target:
-                target.write(source.read())
+                shutil.copyfileobj(source, target)
         rows = connection.execute(
             """
             SELECT idcar_200m, lcog_geo
@@ -584,9 +623,12 @@ def _filosofi_200m_map(
 def _filosofi_natural_ids(
     connection: duckdb.DuckDBPyConnection,
     archive: Path,
+    temporary_directory: Path,
 ) -> NaturalCellLookup:
     """Read and index metropolitan Filosofi natural-level cell identifiers."""
-    with tempfile.TemporaryDirectory(prefix="filosofi_natural_") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="filosofi_natural_", dir=temporary_directory
+    ) as directory:
         csv_path = Path(directory) / "filosofi_natural.csv"
         with zipfile.ZipFile(archive) as zipped:
             member = next(
@@ -595,7 +637,7 @@ def _filosofi_natural_ids(
                 if name.endswith("carreaux_nivNaturel_met.csv")
             )
             with zipped.open(member) as source, csv_path.open("wb") as target:
-                target.write(source.read())
+                shutil.copyfileobj(source, target)
         rows = connection.execute(
             """
             SELECT DISTINCT idcar_nat
@@ -1387,7 +1429,9 @@ def build_ff_cells(
     ):
         raise ValueError("the own comparison requires a separate output directory")
 
-    connection = open_connection()
+    output_directory = Path(output or config.report.output_directory)
+    output_directory.mkdir(parents=True, exist_ok=True)
+    connection, spill = open_restricted_connection(output_directory)
     try:
         filosofi_archive = Path(
             filosofi_200m_archive or config.filosofi_200m_archive
@@ -1399,8 +1443,12 @@ def build_ff_cells(
             raise FileNotFoundError(filosofi_archive)
         if not natural_archive.is_file():
             raise FileNotFoundError(natural_archive)
-        filosofi_map = _filosofi_200m_map(connection, filosofi_archive)
-        natural_cell_lookup = _filosofi_natural_ids(connection, natural_archive)
+        filosofi_map = _filosofi_200m_map(
+            connection, filosofi_archive, output_directory
+        )
+        natural_cell_lookup = _filosofi_natural_ids(
+            connection, natural_archive, output_directory
+        )
         _register_lookup_tables(connection, filosofi_map, natural_cell_lookup)
         if departments is None:
             pilot_department = _pilot_department(pilot_config_path)
@@ -1429,8 +1477,6 @@ def build_ff_cells(
             missing = [str(path) for path in input_files if not path.is_file()]
             raise FileNotFoundError("; ".join(missing))
 
-        output_directory = Path(output or config.report.output_directory)
-        output_directory.mkdir(parents=True, exist_ok=True)
         output_path = output_directory / config.report.ff_cells_pattern.format(
             vintage=vintage
         )
@@ -1509,15 +1555,56 @@ def build_ff_cells(
             })
         department_diagnostics_all = {}
         staging_tables = []
+        checkpoint_directory = output_directory / (
+            config.report.ff_checkpoint_pattern.format(vintage=vintage)
+        )
+        checkpoint_directory.mkdir(parents=True, exist_ok=True)
         for department in resolved_departments:
-            table_name, department_diagnostics = build_department_ff_cells(
-                connection,
-                vintage,
-                department,
-                config,
-                filosofi_map,
-                natural_cell_lookup,
+            stage_path = checkpoint_directory / (
+                config.report.ff_checkpoint_data_pattern.format(department=department)
             )
+            stage_metadata_path = checkpoint_directory / (
+                config.report.ff_checkpoint_metadata_pattern.format(
+                    department=department
+                )
+            )
+            stage_metadata = {}
+            if not force and stage_path.is_file() and stage_metadata_path.is_file():
+                stage_metadata = json.loads(
+                    stage_metadata_path.read_text(encoding="utf-8")
+                )
+            if stage_metadata.get("signature") == signature:
+                table_name = f"_ff_department_{department.lower()}"
+                connection.execute(
+                    f"CREATE TEMP VIEW {_quoted_identifier(table_name)} AS "
+                    f"SELECT * FROM read_parquet({_sql_literal(str(stage_path))})"
+                )
+                department_diagnostics = stage_metadata["diagnostics"]
+                LOGGER.info("Reused FF department %s checkpoint", department)
+            else:
+                table_name, department_diagnostics = build_department_ff_cells(
+                    connection,
+                    vintage,
+                    department,
+                    config,
+                    filosofi_map,
+                    natural_cell_lookup,
+                )
+                temporary_stage = stage_path.with_suffix(".tmp.parquet")
+                write_parquet(
+                    connection,
+                    f"SELECT * FROM {_quoted_identifier(table_name)}",
+                    temporary_stage,
+                )
+                temporary_stage.replace(stage_path)
+                temporary_metadata = stage_metadata_path.with_suffix(".tmp.json")
+                temporary_metadata.write_text(
+                    json.dumps({
+                        "signature": signature, "diagnostics": department_diagnostics
+                    }, sort_keys=True),
+                    encoding="utf-8",
+                )
+                temporary_metadata.replace(stage_metadata_path)
             staging_tables.append(table_name)
             department_diagnostics_all[department] = department_diagnostics
             for key, value in department_diagnostics.items():
@@ -1615,6 +1702,7 @@ def build_ff_cells(
         }
     finally:
         connection.close()
+        spill.cleanup()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1647,17 +1735,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--second-home-source", choices=("own", "hybrid_2024"))
     args = parser.parse_args(arguments)
     logging.basicConfig(level=logging.INFO)
-    result = build_ff_cells(
-        args.vintage,
-        args.department,
-        filosofi_200m_archive=args.filosofi_200m,
-        filosofi_natural_archive=args.filosofi_natural,
-        config_path=args.config,
-        output=args.output,
-        force=args.force,
-        second_home_source=args.second_home_source,
-    )
-    threshold = load_origins_config(args.config).report.count_suppression_threshold
+    from landgrid.origins.job import logged_job
+
+    config = load_origins_config(args.config)
+    threshold = config.report.count_suppression_threshold
+    with logged_job(
+        Path(config.jobs.log_directory),
+        config.jobs.ff_task_pattern.format(vintage=args.vintage),
+        [
+            str(args.filosofi_200m or config.filosofi_200m_archive),
+            str(args.filosofi_natural or config.filosofi_natural_archive),
+            config.vintages[args.vintage].parquet_pattern,
+        ],
+        threshold,
+    ) as job:
+        result = build_ff_cells(
+            args.vintage,
+            args.department,
+            filosofi_200m_archive=args.filosofi_200m,
+            filosofi_natural_archive=args.filosofi_natural,
+            config_path=args.config,
+            output=args.output,
+            force=args.force,
+            second_home_source=args.second_home_source,
+        )
+        job.outputs.extend(
+            str(result[name]) for name in (
+                "output", "natural_output", "communes_output", "extra_codes_output"
+            )
+        )
+        for key in ("row_count", "commune_row_count", "extra_codes_row_count"):
+            job.counts[key] = int(result[key])
     displayed = dict(result)
     for key in ("row_count", "commune_row_count", "extra_codes_row_count"):
         value = displayed.get(key)

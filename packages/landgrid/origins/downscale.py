@@ -13,14 +13,16 @@ from typing import Any
 
 import duckdb
 import pyarrow as pa
-from common.duckdb_io import open_connection, write_parquet
+from common.duckdb_io import write_parquet
 
 from landgrid.origins.fichiers_fonciers import (
     DownscaleConfig,
+    _file_signature,
     _pilot_department,
     _quoted_identifier,
     load_origins_config,
 )
+from landgrid.origins.job import open_restricted_connection
 
 _NUMERIC_TYPES = {
     "BIGINT",
@@ -445,9 +447,11 @@ def build_origins_2021_200m(
     output_dir.mkdir(parents=True, exist_ok=True)
     metadata_path.unlink(missing_ok=True)
 
-    connection = open_connection()
+    connection, spill = open_restricted_connection(output_dir)
     try:
-        with tempfile.TemporaryDirectory(prefix="filosofi_downscale_") as folder:
+        with tempfile.TemporaryDirectory(
+            prefix="filosofi_downscale_", dir=output_dir
+        ) as folder:
             directory = Path(folder)
             natural_csv = _extract_archive_member(
                 natural_archive, "carreaux_nivNaturel_met.csv", directory
@@ -498,6 +502,8 @@ def build_origins_2021_200m(
                     "output_year": downscale.output_year,
                     "fichiers_fonciers_vintage": downscale.ff_vintage,
                     "second_home_source": metadata["second_home_source"],
+                    "ff_signature": metadata["signature"],
+                    "pilot_signature": _file_signature(Path(pilot_config_path)),
                     "natural_cell_count": len(natural_cell_ids),
                     "fallback_summary": fallback_summary,
                     "output": str(output_path),
@@ -516,6 +522,7 @@ def build_origins_2021_200m(
         }
     finally:
         connection.close()
+        spill.cleanup()
 
 
 def _suppressed_summary(

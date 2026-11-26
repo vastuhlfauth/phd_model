@@ -1,5 +1,9 @@
 """Synthetic acceptance tests for section-6.5 validation."""
 
+import json
+from dataclasses import replace
+from pathlib import Path
+
 import duckdb
 import pyarrow as pa
 import pytest
@@ -56,6 +60,14 @@ def test_composition_comparison_and_eurostat_age_ratios() -> None:
             density_thresholds_population_km2=(300, 1500),
             within_tolerance_fraction=0.2,
         )
+        duplicate = pa.concat_tables([origins, origins.slice(0, 1)])
+        with pytest.raises(ValueError, match="duplicate cell ids"):
+            calculate_validation_metrics(
+                connection, origins, insee, ff, eurostat, composition=duplicate,
+                department="33", cell_resolution_m=200, eurostat_resolution_m=1000,
+                density_thresholds_population_km2=(300, 1500),
+                within_tolerance_fraction=0.2,
+            )
     assert {
         (row["method"], row["variable"]) for row in metrics
     } >= {
@@ -76,6 +88,82 @@ def test_composition_comparison_and_eurostat_age_ratios() -> None:
     assert "information only" in report
     assert "ind_0_3" in report
     assert "CRS3035" not in report
+
+
+def test_validation_reuses_aggregate_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import landgrid.origins.validation as validation
+    from landgrid.origins.composition import composition_input_signature
+    from landgrid.origins.fichiers_fonciers import load_origins_config
+
+    output = tmp_path / "interim"
+    output.mkdir()
+    config = load_origins_config()
+    archive = tmp_path / "filosofi.zip"
+    natural = tmp_path / "natural.zip"
+    eurostat = tmp_path / "eurostat.parquet"
+    boundary = tmp_path / "boundary.geojson"
+    config_path = tmp_path / "config.yaml"
+    pilot = tmp_path / "pilot.yaml"
+    for path in (archive, natural, eurostat, boundary, config_path):
+        path.write_text("synthetic")
+    pilot.write_text('department: "33"\n')
+    config = replace(
+        config, filosofi_200m_archive=str(archive),
+        filosofi_natural_archive=str(natural),
+        report=replace(
+            config.report, output_directory=str(output), contours_2021=str(boundary)
+        ),
+        validation=replace(config.validation, eurostat_grid=str(eurostat)),
+    )
+    for name in (
+        "origins_2021_200m.parquet", "origins_2021_200m_composition.parquet",
+        "ff_cells_2022.parquet", "ff_natural_2022.parquet",
+    ):
+        (output / name).write_text("synthetic")
+    (output / "ff_cells_2022.json").write_text(json.dumps({
+        "second_home_source": "hybrid_2024", "signature": "synthetic",
+    }))
+    (output / "origins_2021_composition.json").write_text(json.dumps({
+        "completed": True, "ff_signature": "synthetic",
+        "signature": composition_input_signature((
+            config_path, pilot, natural, output / "ff_cells_2022.parquet",
+            output / "ff_natural_2022.parquet", output / "ff_cells_2022.json",
+            output / "origins_2021_200m.parquet",
+        )),
+    }))
+    monkeypatch.setattr(validation, "load_origins_config", lambda *args: config)
+    monkeypatch.setattr(validation, "_load_department_boundary", lambda *args: None)
+    monkeypatch.setattr(validation, "_extract_filosofi_200m", lambda *args: archive)
+    calls = []
+
+    def metrics(
+        *args: object, **kwargs: object
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
+        calls.append(1)
+        return ([{
+            "method": "composition", "variable": "individuals",
+            "natural_cell_size_m": 1000, "density_class": "<300",
+            "cell_count": 1, "positive_reference_count": 1,
+            "mean_absolute_error": 1.0, "median_absolute_relative_error": 0.1,
+            "share_within_tolerance": 1.0,
+        }], [], {})
+
+    monkeypatch.setattr(validation, "calculate_validation_metrics", metrics)
+    first = validation.build_validation_report(
+        config_path=config_path, pilot_config_path=pilot
+    )
+    second = validation.build_validation_report(
+        config_path=config_path, pilot_config_path=pilot
+    )
+    assert first == second and first.is_file()
+    assert len(calls) == 1
+    natural.write_text("changed synthetic input")
+    with pytest.raises(ValueError, match="stale"):
+        validation.build_validation_report(
+            config_path=config_path, pilot_config_path=pilot
+        )
 
 
 def test_validation_reports_errors_and_suppresses_small_counts() -> None:

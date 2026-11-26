@@ -1,5 +1,8 @@
 """Synthetic acceptance tests for Fichiers fonciers cell counts (section 6.3)."""
 
+import json
+import zipfile
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -7,7 +10,9 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import yaml
 from landgrid.origins.fichiers_fonciers import (
+    OriginsConfig,
     VintageConfig,
     aggregate_dwelling_rows,
     aggregate_staged_ff_cells,
@@ -19,7 +24,7 @@ from landgrid.origins.fichiers_fonciers import (
     derived_departments_for_pilot,
     load_origins_config,
 )
-from landgrid.origins.filosofi import build_natural_cell_lookup
+from landgrid.origins.filosofi import NaturalCellLookup, build_natural_cell_lookup
 
 
 def test_covariates_are_recomputed_from_natural_cell_dwellings(
@@ -74,6 +79,66 @@ def test_covariates_are_recomputed_from_natural_cell_dwellings(
     )] == [1, 1, 1, 1, 1]
     assert cells[0]["house_share"] == 1
     assert cells[1]["main_residences_per_200m"] == 3
+
+
+def test_ff_build_resumes_completed_departments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import landgrid.origins.fichiers_fonciers as ff
+
+    natural = "CRS3035RES1000mN2400000E4000000"
+    for index, department in enumerate(("33", "34")):
+        source = tmp_path / f"ff_{department}.parquet"
+        pq.write_table(pa.Table.from_pylist([{
+            "idlocal": department, "idcom": department + "001",
+            "X": 4_000_010.0 + index * 200, "Y": 2_400_010.0,
+            "logh": "t", "ccthp": "P", "rppo_rs": "RPPO",
+        }]), source)
+    natural_zip = tmp_path / "natural.zip"
+    with zipfile.ZipFile(natural_zip, "w") as archive:
+        archive.writestr("carreaux_nivNaturel_met.csv", f"idcar_nat\n{natural}\n")
+    cells_zip = tmp_path / "cells.zip"
+    with zipfile.ZipFile(cells_zip, "w") as archive:
+        archive.writestr(
+            "carreaux_200m_met.csv",
+            "idcar_200m,lcog_geo\n"
+            "CRS3035RES200mN2400000E4000000,33001\n"
+            "CRS3035RES200mN2400000E4000200,34001\n",
+        )
+    raw = yaml.safe_load(Path("config/origins.yaml").read_text(encoding="utf-8"))
+    raw["report"]["output_directory"] = str(tmp_path / "interim")
+    raw["filosofi"]["natural_archive"] = str(natural_zip)
+    raw["filosofi"]["200m_archive"] = str(cells_zip)
+    raw["vintages"][2024]["parquet_pattern"] = str(
+        tmp_path / "ff_{department}.parquet"
+    )
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    original = ff.build_department_ff_cells
+    calls = []
+
+    def interrupt(
+        connection: duckdb.DuckDBPyConnection,
+        vintage: int,
+        department: str,
+        config: OriginsConfig,
+        cells: Mapping[str, str],
+        lookup: NaturalCellLookup,
+    ) -> tuple[str, dict[str, int]]:
+        calls.append(department)
+        if department == "34" and calls.count("34") == 1:
+            raise RuntimeError("interrupted")
+        return original(connection, vintage, department, config, cells, lookup)
+
+    monkeypatch.setattr(ff, "build_department_ff_cells", interrupt)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        ff.build_ff_cells(2024, ["33", "34"], config_path=config_path)
+    result = ff.build_ff_cells(2024, ["33", "34"], config_path=config_path)
+    assert calls == ["33", "34", "34"]
+    assert Path(result["natural_output"]).is_file()
+    assert json.loads(
+        (tmp_path / "interim" / "ff_cells_2024.json").read_text()
+    )["signature"]
 
 
 @pytest.mark.parametrize(
@@ -320,19 +385,25 @@ def test_hybrid_defaults_and_own_comparison_requires_separate_output() -> None:
 
 def test_cli_suppresses_small_build_counts(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     from landgrid.origins import fichiers_fonciers
 
+    config = load_origins_config()
+    config = replace(config, jobs=replace(config.jobs, log_directory=str(tmp_path)))
+    monkeypatch.setattr(fichiers_fonciers, "load_origins_config", lambda *args: config)
     monkeypatch.setattr(
         fichiers_fonciers, "build_ff_cells",
         lambda *args, **kwargs: {
+            "output": "cells", "natural_output": "natural",
+            "communes_output": "communes", "extra_codes_output": "extra",
             "row_count": 4,
             "commune_row_count": 50,
+            "extra_codes_row_count": 0,
             "diagnostics": {"hybrid_fallback": 2, "hybrid_settled_rs": 60},
         },
     )
     assert fichiers_fonciers.main(["--vintage", "2022"]) == 0
-    import json
     result = json.loads(capsys.readouterr().out)
     assert result["row_count"] == "<50"
     assert result["commune_row_count"] == 50

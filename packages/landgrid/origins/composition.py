@@ -1,5 +1,11 @@
 """Experimental section-6.3 composition weights."""
 
+import argparse
+import hashlib
+import json
+import logging
+import tempfile
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,9 +13,20 @@ import duckdb
 import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
+from common.duckdb_io import write_parquet
 
-from landgrid.origins.downscale import _relation
-from landgrid.origins.fichiers_fonciers import DownscaleConfig, _quoted_identifier
+from landgrid.origins.downscale import (
+    _extract_archive_member,
+    _relation,
+    build_origins_2021_200m,
+)
+from landgrid.origins.fichiers_fonciers import (
+    DownscaleConfig,
+    _file_signature,
+    _quoted_identifier,
+    load_origins_config,
+)
+from landgrid.origins.job import open_restricted_connection
 
 DIRECT_WEIGHTS = {
     "men_prop": "owner_occupied_main_residences",
@@ -37,6 +54,7 @@ COVARIATES = (
 )
 
 FloatArray = npt.NDArray[np.float64]
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -273,6 +291,9 @@ def apply_models(
     ff_natural: pa.Table | Path,
     ff_cells: pa.Table | Path,
     config: DownscaleConfig,
+    *,
+    completed: dict[str, dict[str, object]] | None = None,
+    checkpoint: Callable[[dict[str, dict[str, object]]], None] | None = None,
 ) -> dict[str, dict[str, object]]:
     """Fit natural-cell models and apply them to 200 m cells (section 6.3)."""
     sources = []
@@ -308,7 +329,9 @@ def apply_models(
             f"""
             SELECT {controls}, {features}
             FROM {natural_relation} n
-            JOIN {ff_natural_relation} f ON n.idcar_nat = f.natural_cell_id
+            JOIN (SELECT DISTINCT natural_cell_id FROM _composition_origins) scope
+              ON n.idcar_nat = scope.natural_cell_id
+            LEFT JOIN {ff_natural_relation} f ON n.idcar_nat = f.natural_cell_id
             ORDER BY n.idcar_nat
             """
         ).to_arrow_table()
@@ -330,8 +353,12 @@ def apply_models(
         ]).astype(float)
         households = np.asarray(train["men"].to_numpy(), dtype=float)
         individuals = np.asarray(train["ind"].to_numpy(), dtype=float)
-        reports: dict[str, dict[str, object]] = {}
+        reports: dict[str, dict[str, object]] = dict(completed or {})
         for variable in variables:
+            if variable in reports:
+                LOGGER.info("Reused composition model %s", variable)
+                continue
+            LOGGER.info("Fitting composition model %s", variable)
             y = np.asarray(train[variable].to_numpy(zero_copy_only=False), dtype=float)
             denominator = "ind" if variable in (*age_variables, "ind_snv") else "men"
             exposure = individuals if denominator == "ind" else households
@@ -353,6 +380,8 @@ def apply_models(
                         f"no positive training observations for {variable}"
                     )
                 reports[variable] = {"status": "all training and output controls zero"}
+                if checkpoint is not None:
+                    checkpoint(reports)
                 continue
             model = fit_poisson(
                 train_x[valid], y[valid], exposure[valid], households[valid],
@@ -386,6 +415,8 @@ def apply_models(
                 },
                 "training_cell_count": int(valid.sum()),
             }
+            if checkpoint is not None:
+                checkpoint(reports)
         return reports
     finally:
         for name in registered:
@@ -410,7 +441,7 @@ def balance_age_groups(
     if cells.num_rows == 0:
         raise ValueError("age IPF requires at least one cell")
     ids, groups = np.unique(
-        np.asarray(cells["natural_cell_id"].to_pylist()), return_inverse=True
+        cells["natural_cell_id"].to_numpy(zero_copy_only=False), return_inverse=True
     )
     individuals = np.asarray(cells["ind"].to_numpy(), dtype=float)
     matrix = np.column_stack([
@@ -578,3 +609,310 @@ def apply_direct_weights(
     finally:
         if registered:
             connection.unregister("_composition_ff_input")
+
+
+def _write_json(path: Path, value: object) -> None:
+    temporary = path.with_suffix(".tmp.json")
+    temporary.write_text(json.dumps(value, indent=2, sort_keys=True), encoding="utf-8")
+    temporary.replace(path)
+
+
+def composition_input_signature(inputs: Sequence[Path]) -> str:
+    """Fingerprint composition inputs to reject stale checkpoints and outputs."""
+    return hashlib.sha256(json.dumps(
+        {"version": 1, "inputs": [_file_signature(path) for path in inputs]},
+        sort_keys=True,
+    ).encode("utf-8")).hexdigest()
+
+
+def _render_composition_report(
+    reports: dict[str, dict[str, object]],
+    fallbacks: dict[str, int],
+    failures: dict[str, str],
+    threshold: int,
+) -> str:
+    def count(value: int) -> str:
+        return f"<{threshold}" if value < threshold else str(value)
+
+    lines = [
+        "# Experimental composition models",
+        "",
+        "Poisson rates use household-weighted natural-cell observations; "
+        "covariates are standardised and missing values use the weighted training "
+        "mean with a missing indicator. Cross-validation uses configured folds, "
+        "with household-weighted mean absolute error per natural cell.",
+        "",
+        "## Direct-weight household fallbacks",
+        "",
+        "| Variable | Natural cells |",
+        "|---|---:|",
+    ]
+    lines.extend(f"| {name} | {count(value)} |" for name, value in fallbacks.items())
+    lines.extend([
+        "",
+        f"Age IPF failures: {count(len(failures))}. Cell identifiers and reasons "
+        "are in the restricted interim failure Parquet.",
+    ])
+    for variable, report in reports.items():
+        lines.extend(["", f"## {variable}", ""])
+        if "status" in report:
+            lines.append(str(report["status"]))
+            continue
+        lines.append(f"Training cells: {count(int(report['training_cell_count']))}")
+        lines.append(f"Deviance explained: {float(report['deviance_explained']):.6g}")
+        lines.append(
+            "Cross-validation weighted MAE by fold: "
+            + ", ".join(f"{float(value):.6g}" for value in report[
+                "cross_validation_weighted_mae"
+            ])
+        )
+        lines.extend(
+            ["", "| Feature | Coefficient | Standard error |", "|---|---:|---:|"]
+        )
+        for name, coefficient, error in zip(
+            report["feature_names"], report["coefficients"], report["standard_errors"],
+            strict=True,
+        ):
+            lines.append(f"| {name} | {float(coefficient):.6g} | {float(error):.6g} |")
+        for key in ("training_missing_counts", "prediction_missing_counts"):
+            lines.extend(["", f"Missing values ({key}):", ""])
+            lines.extend(
+                f"- {name}: {count(int(value))}"
+                for name, value in report[key].items()
+            )
+    return "\n".join([*lines, ""])
+
+
+def _check_composition_totals(
+    connection: duckdb.DuckDBPyConnection, benchmark: Path, tolerance: float
+) -> None:
+    columns = [
+        str(row[0]) for row in connection.execute(
+            "DESCRIBE SELECT * FROM _composition_origins"
+        ).fetchall()
+        if str(row[1]).upper() in {
+            "DOUBLE", "FLOAT", "DECIMAL", "REAL", "BIGINT", "INTEGER", "HUGEINT"
+        } and row[0] not in {"cell_id", "natural_cell_size_m"}
+    ]
+    checks = " OR ".join(
+        f"abs(sum(d.{_quoted_identifier(name)}) - sum(b.{_quoted_identifier(name)})) "
+        f"> {tolerance} * greatest(1.0, abs(sum(b.{_quoted_identifier(name)})))"
+        for name in columns
+    )
+    mismatch = connection.execute(
+        f"""
+        SELECT count(*) FROM (
+            SELECT d.natural_cell_id FROM _composition_origins d
+            JOIN read_parquet(?) b USING (cell_id)
+            GROUP BY d.natural_cell_id HAVING {checks}
+        )
+        """,
+        [str(benchmark)],
+    ).fetchone()[0]
+    if mismatch:
+        raise RuntimeError("composition does not preserve benchmark natural totals")
+
+
+def build_composition(
+    *,
+    config_path: str | Path = "config/origins.yaml",
+    pilot_config_path: str | Path = "config/pilot.yaml",
+) -> dict[str, object]:
+    """Build the experimental 200 m composition product under interim."""
+    config = load_origins_config(config_path)
+    options = config.downscale
+    output = Path(config.report.output_directory)
+    output.mkdir(parents=True, exist_ok=True)
+    year = options.output_year
+    vintage = options.ff_vintage
+    ff_cells = output / config.report.ff_cells_pattern.format(vintage=vintage)
+    ff_natural = output / config.report.ff_natural_pattern.format(vintage=vintage)
+    ff_metadata = output / config.report.metadata_pattern.format(vintage=vintage)
+    for path in (ff_cells, ff_natural, ff_metadata):
+        if not path.is_file():
+            raise FileNotFoundError(path)
+    ff_info = json.loads(ff_metadata.read_text(encoding="utf-8"))
+    if (
+        ff_info.get("second_home_source") != "hybrid_2024"
+        or not ff_info.get("signature")
+    ):
+        raise ValueError("composition requires a signed hybrid FF build")
+    benchmark = output / options.output_pattern.format(year=year)
+    benchmark_metadata = output / options.metadata_pattern.format(year=year)
+    pilot_signature = _file_signature(Path(pilot_config_path))
+    benchmark_info = (
+        json.loads(benchmark_metadata.read_text(encoding="utf-8"))
+        if benchmark_metadata.is_file() else {}
+    )
+    if (
+        not benchmark.is_file()
+        or benchmark_info.get("ff_signature") != ff_info["signature"]
+        or benchmark_info.get("pilot_signature") != pilot_signature
+    ):
+        build_origins_2021_200m(
+            config_path=config_path, pilot_config_path=pilot_config_path
+        )
+    archive = Path(config.filosofi_natural_archive)
+    inputs = (
+        Path(config_path), Path(pilot_config_path), archive, ff_cells,
+        ff_natural, ff_metadata, benchmark,
+    )
+    signature = composition_input_signature(inputs)
+    result_path = output / options.composition_output_pattern.format(year=year)
+    report_path = output / options.composition_report_pattern.format(year=year)
+    model_path = output / options.composition_model_pattern.format(year=year)
+    metadata_path = output / options.composition_metadata_pattern.format(year=year)
+    failure_path = output / options.composition_failures_pattern.format(year=year)
+    checkpoint_dir = output / options.composition_checkpoint_pattern.format(year=year)
+    state_path = checkpoint_dir / options.composition_checkpoint_state
+    if metadata_path.is_file():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if (
+            metadata.get("signature") == signature and metadata.get("completed")
+            and all(path.is_file() for path in (result_path, report_path, model_path))
+        ):
+            return {
+                "output": str(result_path), "report": str(report_path), "cached": True,
+                "natural_cells": metadata["natural_cells"], "ipf_failures": 0,
+            }
+    _write_json(metadata_path, {
+        "signature": signature, "ff_signature": ff_info["signature"], "completed": False
+    })
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    state: dict[str, object] = {}
+    if state_path.is_file():
+        previous = json.loads(state_path.read_text(encoding="utf-8"))
+        if previous.get("signature") == signature:
+            state = previous
+    connection, spill = open_restricted_connection(output)
+    try:
+        reports = dict(state.get("reports", {}))
+        fallbacks = dict(state.get("fallbacks", {}))
+        stage = checkpoint_dir / options.composition_stage_pattern.format(
+            index=len(reports)
+        )
+        if state and stage.is_file():
+            connection.execute(
+                "CREATE TEMP TABLE _composition_origins AS "
+                "SELECT * FROM read_parquet(?)",
+                [str(stage)],
+            )
+        else:
+            reports = {}
+            connection.execute(
+                "CREATE TEMP TABLE _composition_origins AS "
+                "SELECT * FROM read_parquet(?)",
+                [str(benchmark)],
+            )
+            fallbacks = apply_direct_weights(
+                connection, ff_cells, options.cell_resolution_m
+            )
+
+        def checkpoint(current: dict[str, dict[str, object]]) -> None:
+            stage_path = checkpoint_dir / options.composition_stage_pattern.format(
+                index=len(current)
+            )
+            temporary = stage_path.with_suffix(".tmp.parquet")
+            write_parquet(connection, "SELECT * FROM _composition_origins", temporary)
+            temporary.replace(stage_path)
+            _write_json(state_path, {
+                "signature": signature, "reports": current, "fallbacks": fallbacks
+            })
+            if current:
+                previous_stage = checkpoint_dir / (
+                    options.composition_stage_pattern.format(index=len(current) - 1)
+                )
+                previous_stage.unlink(missing_ok=True)
+
+        if not state or not stage.is_file():
+            checkpoint(reports)
+        with tempfile.TemporaryDirectory(
+            prefix="filosofi_composition_", dir=output
+        ) as directory:
+            natural_csv = _extract_archive_member(
+                archive, "carreaux_nivNaturel_met.csv", Path(directory)
+            )
+            reports = apply_models(
+                connection, natural_csv, ff_natural, ff_cells, options,
+                completed=reports, checkpoint=checkpoint,
+            )
+        output_columns = {
+            row[0] for row in connection.execute(
+                "DESCRIBE SELECT * FROM _composition_origins"
+            ).fetchall()
+        }
+        age_variables = tuple(name for name in AGE_VARIABLES if name in output_columns)
+        failures = balance_age_groups(
+            connection, age_variables, tolerance=options.ipf_tolerance,
+            max_iterations=options.ipf_max_iterations,
+        )
+        failure_table = pa.Table.from_pylist(
+            [{"natural_cell_id": name, "reason": reason}
+             for name, reason in failures.items()],
+            schema=pa.schema([
+                ("natural_cell_id", pa.string()), ("reason", pa.string())
+            ]),
+        )
+        connection.register("_composition_failures", failure_table)
+        try:
+            temporary = failure_path.with_suffix(".tmp.parquet")
+            write_parquet(connection, "SELECT * FROM _composition_failures", temporary)
+            temporary.replace(failure_path)
+        finally:
+            connection.unregister("_composition_failures")
+        report_path.write_text(_render_composition_report(
+            reports, fallbacks, failures, config.report.count_suppression_threshold
+        ), encoding="utf-8")
+        _write_json(model_path, reports)
+        if failures:
+            raise RuntimeError(f"age consistency failed; see {failure_path}")
+        _check_composition_totals(connection, benchmark, options.ipf_tolerance)
+        natural_cell_count = int(connection.execute(
+            "SELECT count(DISTINCT natural_cell_id) FROM _composition_origins"
+        ).fetchone()[0])
+        temporary = result_path.with_suffix(".tmp.parquet")
+        write_parquet(connection, "SELECT * FROM _composition_origins", temporary)
+        temporary.replace(result_path)
+        _write_json(metadata_path, {
+            "signature": signature, "ff_signature": ff_info["signature"],
+            "completed": True, "natural_cells": natural_cell_count,
+        })
+        return {
+            "output": str(result_path), "report": str(report_path), "cached": False,
+            "natural_cells": natural_cell_count, "ipf_failures": 0,
+        }
+    finally:
+        connection.close()
+        spill.cleanup()
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the experimental section-6.3 composition build."""
+    parser = argparse.ArgumentParser(description="Build composition origins")
+    parser.add_argument("--config", type=Path, default=Path("config/origins.yaml"))
+    parser.add_argument("--pilot-config", type=Path, default=Path("config/pilot.yaml"))
+    args = parser.parse_args(argv)
+    from landgrid.origins.job import logged_job
+
+    logging.basicConfig(level=logging.INFO)
+    config = load_origins_config(args.config)
+    with logged_job(
+        Path(config.jobs.log_directory), config.jobs.composition_task,
+        [config.filosofi_natural_archive, config.report.output_directory],
+        config.report.count_suppression_threshold,
+    ) as job:
+        result = build_composition(
+            config_path=args.config, pilot_config_path=args.pilot_config
+        )
+        job.outputs.extend((str(result["output"]), str(result["report"])))
+        for key in ("natural_cells", "ipf_failures"):
+            job.counts[key] = int(result[key])
+    for key in ("natural_cells", "ipf_failures"):
+        if int(result[key]) < config.report.count_suppression_threshold:
+            result[key] = f"<{config.report.count_suppression_threshold}"
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

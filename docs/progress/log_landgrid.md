@@ -1,5 +1,22 @@
 # Landgrid origins
 
+## 2026-11-26 — Step 3 experimental composition and age consistency
+
+- Added dwelling-level natural and 200 m FF covariates and direct counterpart
+  weights, with household fallbacks and the proportional benchmark retained.
+- Added standardised household-weighted Poisson models, five-fold validation,
+  individual-first age/income weights and natural-cell age IPF with `ind_inc`.
+- Extended section-6.5 three-method validation and Eurostat age comparisons;
+  under-11 and under-18 ratios to under-15 are informational only.
+- Restricted products, model diagnostics and cell failures remain in interim.
+  FF departments, models and validation metrics have resumable checkpoints;
+  the three commands write dated logs and aggregate summaries.
+- Synthetic touched-module tests and Ruff pass; no real data was run.
+- Real-data performance, model convergence and age-margin compatibility remain
+  open. Commands are in `docs/data/step03_origins_pilot.md`.
+- Existing cleaning applies the floor-code threshold to `dnbniv`; section
+  6.3 names `dniv`. The discrepancy remains open before model interpretation.
+
 ## 2026-11-26 — Step 3: Eurostat validation missing-data handling
 
 - Count non-imputed 200 m validation cells by Eurostat match, unavailable

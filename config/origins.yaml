@@ -1,6 +1,11 @@
 filosofi:
   200m_archive: "data/raw/filosofi/2021/Filosofi2021_carreaux_200m_csv.zip"
   natural_archive: "data/raw/filosofi/2021/Filosofi2021_carreaux_nivNaturel_csv.zip"
+jobs:
+  log_directory: "logs"
+  ff_task_pattern: "ff_cells_{vintage}"
+  composition_task: "origins_composition"
+  validation_task: "origins_validation"
 vintages:
   2021:
     parquet_pattern: "data/raw/fichiers_fonciers/ff2021/pb0010_local/ccodep={department}/part-01.parquet"
@@ -56,6 +61,9 @@ report:
     2024: 2023
   ff_cells_pattern: "ff_cells_{vintage}.parquet"
   ff_natural_pattern: "ff_natural_{vintage}.parquet"
+  ff_checkpoint_pattern: "ff_{vintage}_checkpoint"
+  ff_checkpoint_data_pattern: "department_{department}.parquet"
+  ff_checkpoint_metadata_pattern: "department_{department}.json"
   ff_communes_pattern: "ff_communes_{vintage}.parquet"
   ff_extra_codes_pattern: "ff_extra_codes_{vintage}.parquet"
   metadata_pattern: "ff_cells_{vintage}.json"
@@ -99,6 +107,12 @@ downscale:
   metadata_pattern: "origins_{year}_200m.json"
   composition_output_pattern: "origins_{year}_200m_composition.parquet"
   composition_report_pattern: "origins_{year}_composition_report.md"
+  composition_model_pattern: "origins_{year}_composition_models.json"
+  composition_metadata_pattern: "origins_{year}_composition.json"
+  composition_failures_pattern: "origins_{year}_composition_ipf_failures.parquet"
+  composition_checkpoint_pattern: "composition_{year}_checkpoint"
+  composition_stage_pattern: "stage_{index}.parquet"
+  composition_checkpoint_state: "state.json"
   poisson_folds: 5
   poisson_seed: 17
   poisson_tolerance: 1.0e-8
@@ -112,3 +126,4 @@ validation:
   density_thresholds_population_km2: [300, 1500]
   within_tolerance_fraction: 0.2
   report_pattern: "origins_{year}_validation.md"
+  checkpoint_pattern: "origins_{year}_validation_checkpoint.json"

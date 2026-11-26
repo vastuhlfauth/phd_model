@@ -1,8 +1,14 @@
 """Synthetic acceptance tests for Filosofi natural-cell downscaling."""
 
+import json
+import zipfile
+from pathlib import Path
+
 import duckdb
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
+import yaml
 from landgrid.origins.downscale import downscale_natural_cells
 
 
@@ -143,3 +149,44 @@ def test_downscales_totals_and_uses_each_weight_fallback() -> None:
     assert fallback_by_method["dwellings"]["households"] == pytest.approx(8)
     assert fallback_by_method["filosofi_households"]["cell_count"] == 25
     assert fallback_by_method["filosofi_households"]["households"] == pytest.approx(6)
+
+
+def test_benchmark_metadata_tracks_ff_signature(tmp_path: Path) -> None:
+    from landgrid.origins.downscale import build_origins_2021_200m
+
+    natural = "CRS3035RES200mN2400000E4000000"
+    output = tmp_path / "interim"
+    output.mkdir()
+    pq.write_table(pa.Table.from_pylist([{
+        "cell_id": _cell_id(2_400_000, 4_000_000),
+        "main_residences": 2, "dwellings": 2,
+    }]), output / "ff_cells_2022.parquet")
+    (output / "ff_cells_2022.json").write_text(json.dumps({
+        "second_home_source": "hybrid_2024", "signature": "synthetic"
+    }))
+    natural_zip = tmp_path / "natural.zip"
+    with zipfile.ZipFile(natural_zip, "w") as archive:
+        archive.writestr(
+            "carreaux_nivNaturel_met.csv",
+            f"idcar_nat,tmaille,ind,men\n{natural},200,4,2\n",
+        )
+    cells_zip = tmp_path / "cells.zip"
+    with zipfile.ZipFile(cells_zip, "w") as archive:
+        archive.writestr(
+            "carreaux_200m_met.csv",
+            f"idcar_200m,idcar_nat,lcog_geo,men\n{natural},{natural},33001,2\n",
+        )
+    raw = yaml.safe_load(Path("config/origins.yaml").read_text(encoding="utf-8"))
+    raw["report"]["output_directory"] = str(output)
+    raw["filosofi"]["natural_archive"] = str(natural_zip)
+    raw["filosofi"]["200m_archive"] = str(cells_zip)
+    config = tmp_path / "config.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    pilot = tmp_path / "pilot.yaml"
+    pilot.write_text('department: "33"\n', encoding="utf-8")
+
+    result = build_origins_2021_200m(config_path=config, pilot_config_path=pilot)
+    metadata = json.loads(Path(result["metadata"]).read_text(encoding="utf-8"))
+    assert metadata["ff_signature"] == "synthetic"
+    assert metadata["pilot_signature"]["path"] == str(pilot.resolve())
+    assert Path(result["output"]).is_file()

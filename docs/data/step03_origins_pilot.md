@@ -136,7 +136,58 @@ Reports contain aggregate totals and error statistics only; every displayed
 count or population total below 50 is `<50`. The report and downscaled
 products remain under `data/interim/landgrid/`.
 
+### Experimental composition
+
+The separate composition product keeps the proportional product unchanged.
+Direct FF counterparts weight owner households, house/flat households, social
+housing and construction periods; a zero natural-cell counterpart falls back
+to downscaled households. The report counts those fallbacks.
+
+The other requested variables use household-weighted Poisson models fitted on
+the reached natural cells. Covariates are standardised using the
+household-weighted training mean and deviation; missing covariates use that
+mean and have missing indicators. Five-fold cross-validation refits the
+preprocessing in each training fold and reports household-weighted mean
+absolute error per natural cell. Linearly dependent features are omitted
+from the fitted coefficient table. Individuals are allocated first; predicted
+individuals are the exposure for age and `ind_snv`.
+
+Age IPF includes `ind_inc` when present. Its tolerance and iteration limit
+are configured. If age and individual margins disagree or IPF does not
+converge, the composition command fails without publishing a new composition
+product. The interim IPF failure Parquet identifies the natural cells and
+reasons; its report displays only suppressed aggregate counts. Fitted model
+coefficients, standard errors, explained deviances, fold errors and missing
+counts are written to the interim composition report and model JSON.
+
+The section-6.5 report compares composition, proportional and equal split on
+the same non-imputed 200 m cells, including the requested household, housing
+and income variables. At 1 km, it compares age 65+ directly with Eurostat.
+Under-11 (`ind_0_3`, `ind_4_5`, `ind_6_10`) and under-18 (also `ind_11_17`)
+ratios to Eurostat under-15 are informational, not validation errors.
+Eurostat's negative age codes are excluded.
+
+Builds resume FF departments and composition models from interim checkpoints;
+validation caches aggregate metrics there. The commands below log to dated
+files and write summaries under `logs/`. Restricted tables, models, detailed
+failure identifiers and temporary extracts stay under `data/interim/landgrid/`.
+No real-data build or validation was run during implementation.
+Existing cleaning applies the configured floor-code threshold to `dnbniv`,
+where section 6.3 names `dniv`; resolve this discrepancy before interpreting
+the models.
+
 ## Commands
+
+For the composition experiment, run in order:
+
+```powershell
+python -m landgrid.origins.fichiers_fonciers --vintage 2022
+python -m landgrid.origins.composition
+python -m landgrid.origins.validation
+```
+
+The composition command rebuilds the proportional benchmark if its FF
+signature is stale. For the other existing checks:
 
 ```powershell
 python -m landgrid.origins.fichiers_fonciers --vintage 2021
@@ -145,5 +196,4 @@ python -m landgrid.origins.fichiers_fonciers --vintage 2024
 python -m landgrid.origins.fichiers_fonciers report --vintage 2022 --department 33
 python -m landgrid.origins.fichiers_fonciers report --vintage 2024 --department 33
 python -m landgrid.origins.downscale
-python -m landgrid.origins.validation
 ```
