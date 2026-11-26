@@ -1,5 +1,15 @@
 # Landgrid origins
 
+## 2026-11-26 — Step 3: Eurostat validation missing-data handling
+
+- Count non-imputed 200 m validation cells by Eurostat match, unavailable
+  population, and null, zero or negative land surface; counts may overlap.
+- Fall back to the full 1 km² area for missing or non-positive land surface.
+  Retain unmatched and unavailable-population cells in separate density classes.
+- Exclude unavailable population from 1 km comparison totals; do not abort when
+  no valid 1 km comparison remains.
+- Synthetic validation tests and Ruff pass; no real-data validation was run.
+
 ## 2026-11-26 — Step 3: household downscaling and section 6.5 validation
 
 - Added 2021 Filosofi natural-cell downscaling to 200 m using hybrid 2022

@@ -17,6 +17,7 @@ This file holds the current state only. Search the history for your step; don't 
   - Mode-cell report: CLI and synthetic integration (2026-11-20)
   - Mode-cell report: reference energy calculations (2026-11-20)
 - `docs/progress/log_landgrid.md`: step 3. Latest entries:
+  - Step 3 Eurostat validation missing-data handling (2026-11-26)
   - Step 3 household downscaling and section 6.5 validation (2026-11-26)
   - Step 3 adopting the 2021/2022 hybrid (2026-11-26)
 - `docs/progress/decisions.md`: decisions taken while coding, all steps.
@@ -37,7 +38,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 2c | Audit of the remaining 12 excluded community GTFS resources | merged | `data/source-urls` | Checked, for each of the 12 datasets with a community-tagged excluded GTFS resource, whether that dataset keeps another producer GTFS resource; all 12 do (true duplicates), so none needed a TCL-Lyon-style override. Added a `discover_gtfs` safeguard that logs a warning if a community exclusion would ever leave a dataset with zero producer GTFS resources, so a future case is caught automatically. Ruff clean; 68 tests pass. |
 | 2d | France OSM sizes, resilient acquisition batches and reruns | merged | `fix/osm-size` | France uses HEAD sizes without MD5 sidecars; OSM discovery refreshes all 28 extracts. Failed acquisitions no longer abort the batch; summary counts/reasons and exit 1 on failures. Recorded matching files skip network requests and preserve verification/date. Tests first; Ruff clean; 81 tests pass. |
 | 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | merged | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. Offline check: 551 downloaded, 536 passing feeds, 47 expired, 15 invalid/unusable, 18 flex indicators; no files deleted. |
-| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Adopted the 2024-status hybrid for 2021/2022; 2024 remains own. Added broader second-home/occasional-dwelling comparisons, Filosofi household downscaling, and section 6.5 validation reporting. Synthetic tests pass; no restricted-data build or report was run. |
+| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Hybrid, broader dwelling comparisons, downscaling and section 6.5 validation implemented. Validation now reports missing Eurostat inputs and falls back to 1 km² for non-positive or missing land surface; rerun the pilot validation. |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; fit stalled, calibration disabled by default; report rerun pending |
@@ -70,9 +71,9 @@ Status values: not started, in progress, review, merged.
   category as second homes plus disjoint non-vacant dwellings whose `ccthp`
   is neither `P` nor `L`; report both including- and excluding-null variants.
 - 2026-11-26, step 3: validation density classes use Eurostat 2021 `T` divided
-  by `LAND_SURFACE`; median relative errors omit zero-reference cells, while
-  the within-tolerance share includes them and accepts only exact zero
-  predictions for zero references.
+  by positive `LAND_SURFACE`, or 1 km² otherwise. Unmatched and unavailable
+  populations have separate classes; median relative errors omit zero-reference
+  cells, while the within-tolerance share accepts only exact zero predictions.
 - 2026-11-25, step 3: verified 2023 census selectors are configured in
   `config/origins.yaml`. For department 33, three housing totals differ from
   2021 by at most 3.39%; second homes differ by +6.35%, which remains an

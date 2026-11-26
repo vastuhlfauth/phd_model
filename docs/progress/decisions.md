@@ -1,7 +1,11 @@
 ## Decisions taken while coding
 
+- 2026-11-26, step 3: for section-6.5 density, use the full 1 km² cell area
+  when Eurostat `LAND_SURFACE` is null or non-positive. Retain unmatched
+  200 m validation cells and matched cells with unavailable populations in
+  separate density classes; exclude unavailable population from 1 km totals.
 - 2026-11-26, step 3: section-6.5 density strata use Eurostat population
-  divided by `LAND_SURFACE`; median absolute relative errors omit zero
+  divided by `LAND_SURFACE` when positive; median absolute relative errors omit zero
   references, but the tolerance share includes them and requires exact zero
   predictions. The equal-split baseline predicts zero when no main-residence
   cell exists in a natural-level cell.

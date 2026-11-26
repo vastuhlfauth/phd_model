@@ -109,10 +109,15 @@ larger than 200 m. It reports mean absolute error, median absolute relative
 error, and the share within the configured ±20% tolerance for households,
 individuals, under-18s (`ind_0_3` through `ind_11_17`) and people aged 65+
 (`ind_65_79` plus `ind_80p`), by natural-cell size and Eurostat density class.
-Density is Eurostat population divided by `LAND_SURFACE` in km²; classes are
-under 300, 300 to under 1,500, and 1,500 or more people per km². The median
-relative error excludes zero-reference cells; the tolerance share includes
-them, counting only exact zero predictions as within tolerance.
+Density is Eurostat population divided by `LAND_SURFACE` in km² when positive;
+otherwise the 1 km² cell area is used. Classes are under 300, 300 to under
+1,500, and 1,500 or more people per km². The report counts 200 m validation
+cells without a matching Eurostat row, with null or negative population, and
+with null, zero, or negative land surface; reasons may overlap. Unmatched
+cells and cells with unavailable population retain their 200 m error
+statistics in separate density classes. The median relative error excludes
+zero-reference cells; the tolerance share includes them, counting only exact
+zero predictions as within tolerance.
 
 The naive baseline equally splits each natural-cell total among 200 m cells
 with at least one main residence, assigning zero to the other cells; if none
@@ -120,6 +125,8 @@ qualify, all subcells receive zero. The Eurostat comparison sums downscaled
 individuals to 1 km cells wholly covered by the department-33 boundary and
 reports totals and median absolute relative error by Eurostat density class.
 Zero Eurostat reference populations are excluded from relative-error medians.
+Cells with null or negative Eurostat populations are excluded from the 1 km
+Eurostat comparison.
 Reports contain aggregate totals and error statistics only; every displayed
 count or population total below 50 is `<50`. The report and downscaled
 products remain under `data/interim/landgrid/`.

@@ -105,7 +105,7 @@ def test_validation_reports_errors_and_suppresses_small_counts() -> None:
             "ST_GeomFromText('POLYGON ((4000000 2400000,4001000 2400000,"
             "4001000 2401000,4000000 2401000,4000000 2400000))') AS geom"
         )
-        metrics_200m, metrics_1km = calculate_validation_metrics(
+        metrics_200m, metrics_1km, eurostat_reasons = calculate_validation_metrics(
             connection,
             downscaled,
             insee,
@@ -150,8 +150,155 @@ def test_validation_reports_errors_and_suppresses_small_counts() -> None:
     ]
 
     report = render_validation_report(
-        2021, "33", metrics_200m, metrics_1km, 50, 0.2
+        2021, "33", metrics_200m, metrics_1km, eurostat_reasons, 50, 0.2
     )
     assert "| proportional | individuals | 1000 | <300 | <50 | <50 |" in report
     assert "| <300 | <50 | <50 | 250.0 | <50 |" in report
+    assert "| no_match | <50 |" in report
     assert "CRS3035" not in report
+
+
+@pytest.mark.parametrize(
+    ("population", "surface", "matched", "reasons_expected", "density"),
+    [
+        (None, None, False, ("no_match",), "unmatched"),
+        (-9999, 1.0, True, ("population_unavailable",), "population unavailable"),
+        (None, 1.0, True, ("population_unavailable",), "population unavailable"),
+        (400, None, True, ("land_surface_null",), "300-<1500"),
+        (400, 0.0, True, ("land_surface_zero",), "300-<1500"),
+        (400, -1.0, True, ("land_surface_negative",), "300-<1500"),
+        (None, None, True, ("population_unavailable", "land_surface_null"),
+         "population unavailable"),
+        (400, 0.2, True, (), ">=1500"),
+    ],
+)
+def test_eurostat_missing_data_reasons_and_density(
+    population: int | None,
+    surface: float | None,
+    matched: bool,
+    reasons_expected: tuple[str, ...],
+    density: str,
+) -> None:
+    codes = [
+        "CRS3035RES1000mN2400000E4000000",
+        "CRS3035RES1000mN2400000E4001000",
+    ]
+    counts = {
+        "ind": 10.0,
+        "men": 5.0,
+        "ind_0_3": 1.0,
+        "ind_4_5": 1.0,
+        "ind_6_10": 1.0,
+        "ind_11_17": 1.0,
+        "ind_65_79": 1.0,
+        "ind_80p": 1.0,
+    }
+    downscaled = pa.Table.from_pylist([
+        {
+            "cell_id": _cell_id(2_400_000, 4_000_000 + i * 1000),
+            "natural_cell_id": code,
+            "natural_cell_size_m": 1000,
+            **counts,
+        }
+        for i, code in enumerate(codes)
+    ])
+    insee = pa.Table.from_pylist([
+        {
+            "idcar_200m": f"CRS3035RES200mN2400000E{4_000_000 + i * 1000}",
+            "idcar_1km": code,
+            "idcar_nat": code,
+            "lcog_geo": "33001",
+            "i_est_200": 0,
+            **counts,
+        }
+        for i, code in enumerate(codes)
+    ])
+    ff_cells = pa.Table.from_pylist([
+        {
+            "cell_id": _cell_id(2_400_000, 4_000_000 + i * 1000),
+            "main_residences": 1,
+        }
+        for i in range(2)
+    ])
+    eurostat_rows = [{"GRD_ID": codes[0], "T": 100, "LAND_SURFACE": 1.0}]
+    if matched:
+        eurostat_rows.append(
+            {"GRD_ID": codes[1], "T": population, "LAND_SURFACE": surface}
+        )
+    connection = duckdb.connect()
+    try:
+        connection.execute("LOAD spatial")
+        connection.execute(
+            "CREATE TEMP TABLE department_boundary AS SELECT "
+            "ST_GeomFromText('POLYGON ((4000000 2400000,4002000 2400000,"
+            "4002000 2401000,4000000 2401000,4000000 2400000))') AS geom"
+        )
+        metrics_200m, metrics_1km, reasons = calculate_validation_metrics(
+            connection,
+            downscaled,
+            insee,
+            ff_cells,
+            pa.Table.from_pylist(eurostat_rows),
+            department="33",
+            cell_resolution_m=200,
+            eurostat_resolution_m=1000,
+            density_thresholds_population_km2=(300, 1500),
+            within_tolerance_fraction=0.2,
+        )
+        if not matched:
+            empty_eurostat = pa.Table.from_pylist([
+                {"GRD_ID": "FR_unallocated", "T": 1, "LAND_SURFACE": 1.0}
+            ])
+            all_unmatched, no_1km, all_reasons = calculate_validation_metrics(
+                connection,
+                downscaled,
+                insee,
+                ff_cells,
+                empty_eurostat,
+                department="33",
+                cell_resolution_m=200,
+                eurostat_resolution_m=1000,
+                density_thresholds_population_km2=(300, 1500),
+                within_tolerance_fraction=0.2,
+            )
+            assert no_1km == []
+            assert all_reasons["no_match"] == 2
+            empty_report = render_validation_report(
+                2021, "33", all_unmatched, no_1km, all_reasons, 1, 0.2
+            )
+            assert "No Eurostat cells with valid population" in empty_report
+    finally:
+        connection.close()
+
+    expected_reasons = {
+        "no_match": 0,
+        "population_unavailable": 0,
+        "land_surface_null": 0,
+        "land_surface_zero": 0,
+        "land_surface_negative": 0,
+    }
+    for reason in reasons_expected:
+        expected_reasons[reason] = 1
+    assert reasons == expected_reasons
+    row = next(
+        row for row in metrics_200m
+        if row["method"] == "proportional"
+        and row["variable"] == "individuals"
+        and row["density_class"] == density
+    )
+    assert row["cell_count"] == 1
+    assert row["mean_absolute_error"] == pytest.approx(0.0)
+    if population is not None and population >= 0 and matched:
+        assert any(
+            row["density_class"] == density
+            and row["eurostat_individuals"] == population
+            for row in metrics_1km
+        )
+    else:
+        assert sum(row["cell_count"] for row in metrics_1km) == 1
+    report = render_validation_report(
+        2021, "33", metrics_200m, metrics_1km, reasons, 1, 0.2
+    )
+    for reason in reasons_expected:
+        assert f"| {reason} | 1 |" in report
+    assert "otherwise 1 km²" in report

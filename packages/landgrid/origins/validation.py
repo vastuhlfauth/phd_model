@@ -68,7 +68,7 @@ def calculate_validation_metrics(
     eurostat_resolution_m: int,
     density_thresholds_population_km2: tuple[int, int],
     within_tolerance_fraction: float,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
     """Calculate aggregate-only 200 m and 1 km checks for section 6.5."""
     if cell_resolution_m <= 0 or eurostat_resolution_m <= 0:
         raise ValueError("validation cell resolutions must be positive")
@@ -160,10 +160,17 @@ def calculate_validation_metrics(
         third_density_label = f">={density_thresholds_population_km2[1]}"
         density_expression = f"""
             CASE
-                WHEN CAST(T AS DOUBLE) / LAND_SURFACE
+                WHEN T IS NULL OR T < 0 THEN 'population unavailable'
+                WHEN CAST(T AS DOUBLE) / CASE
+                    WHEN LAND_SURFACE > 0 THEN LAND_SURFACE
+                    ELSE pow({eurostat_resolution_m} / 1000.0, 2)
+                END
                     < {density_thresholds_population_km2[0]}
                     THEN '{first_density_label}'
-                WHEN CAST(T AS DOUBLE) / LAND_SURFACE
+                WHEN CAST(T AS DOUBLE) / CASE
+                    WHEN LAND_SURFACE > 0 THEN LAND_SURFACE
+                    ELSE pow({eurostat_resolution_m} / 1000.0, 2)
+                END
                     < {density_thresholds_population_km2[1]}
                     THEN '{second_density_label}'
                 ELSE '{third_density_label}'
@@ -176,7 +183,6 @@ def calculate_validation_metrics(
                 CAST(LAND_SURFACE AS DOUBLE) AS land_surface,
                 {density_expression} AS density_class
             FROM {eurostat_relation}
-            WHERE T >= 0 AND LAND_SURFACE > 0
             """
         )
         connection.execute(
@@ -221,32 +227,6 @@ def calculate_validation_metrics(
                 "non-imputed INSEE cells in the validation scope are missing "
                 "from the downscaled output"
             )
-        missing_density = connection.execute(
-            f"""
-            SELECT count(*)
-            FROM {insee_relation} i
-            JOIN _validation_downscaled d
-              ON d.cell_code = i.idcar_200m
-            LEFT JOIN _validation_eurostat e ON e.GRD_ID = i.idcar_1km
-            WHERE i.i_est_200 = 0
-                AND d.natural_cell_size_m > {cell_resolution_m}
-                AND EXISTS (
-                    SELECT 1
-                    FROM UNNEST(string_split(
-                        CAST(i.lcog_geo AS VARCHAR), ','
-                    )) AS commune(code)
-                    WHERE left(trim(commune.code), length(?)) = ?
-                )
-                AND e.GRD_ID IS NULL
-            """,
-            [department, department],
-        ).fetchone()[0]
-        if missing_density:
-            raise ValueError(
-                "Eurostat 1 km population or land surface is missing for "
-                "non-imputed INSEE validation cells"
-            )
-
         connection.execute(
             """
             CREATE OR REPLACE TEMP TABLE _validation_natural_totals AS
@@ -275,7 +255,9 @@ def calculate_validation_metrics(
             f"""
             CREATE OR REPLACE TEMP TABLE _validation_200m AS
             SELECT i.idcar_200m, d.natural_cell_id,
-                d.natural_cell_size_m, e.density_class,
+                d.natural_cell_size_m,
+                coalesce(e.density_class, 'unmatched') AS density_class,
+                e.GRD_ID AS eurostat_grid_id, e.population, e.land_surface,
                 d.ind AS predicted_individuals, i.ind AS reference_individuals,
                 d.men AS predicted_households, i.men AS reference_households,
                 d.ind_0_3 + d.ind_4_5 + d.ind_6_10 + d.ind_11_17
@@ -293,7 +275,7 @@ def calculate_validation_metrics(
             FROM {insee_relation} i
             JOIN _validation_downscaled d
               ON d.cell_code = i.idcar_200m
-            JOIN _validation_eurostat e ON e.GRD_ID = i.idcar_1km
+            LEFT JOIN _validation_eurostat e ON e.GRD_ID = i.idcar_1km
             JOIN _validation_natural_totals n
               ON n.natural_cell_id = d.natural_cell_id
             JOIN _validation_main_cells m
@@ -311,6 +293,37 @@ def calculate_validation_metrics(
             """,
             [department, department],
         )
+        reason_row = connection.execute(
+            """
+            SELECT
+                count(*) FILTER (WHERE eurostat_grid_id IS NULL),
+                count(*) FILTER (
+                    WHERE eurostat_grid_id IS NOT NULL
+                    AND (population IS NULL OR population < 0)
+                ),
+                count(*) FILTER (
+                    WHERE eurostat_grid_id IS NOT NULL AND land_surface IS NULL
+                ),
+                count(*) FILTER (
+                    WHERE eurostat_grid_id IS NOT NULL AND land_surface = 0
+                ),
+                count(*) FILTER (
+                    WHERE eurostat_grid_id IS NOT NULL AND land_surface < 0
+                )
+            FROM _validation_200m
+            """
+        ).fetchone()
+        reasons = dict(zip(
+            (
+                "no_match",
+                "population_unavailable",
+                "land_surface_null",
+                "land_surface_zero",
+                "land_surface_negative",
+            ),
+            reason_row,
+            strict=True,
+        ))
 
         value_rows = []
         variable_fields = (
@@ -413,7 +426,8 @@ def calculate_validation_metrics(
             FROM _validation_eurostat e
             LEFT JOIN _validation_1km_predictions p ON p.grid_id = e.GRD_ID
             CROSS JOIN department_boundary b
-            WHERE regexp_matches(
+            WHERE e.population >= 0
+                AND regexp_matches(
                 e.GRD_ID,
                 '^CRS3035RES{eurostat_resolution_m}mN[0-9]+E[0-9]+$'
             )
@@ -460,9 +474,9 @@ def calculate_validation_metrics(
             .to_arrow_table()
             .to_pylist()
         )
-        if not metrics_200m or not metrics_1km:
-            raise ValueError("section-6.5 validation scope is empty")
-        return metrics_200m, metrics_1km
+        if not metrics_200m:
+            raise ValueError("section-6.5 INSEE validation scope is empty")
+        return metrics_200m, metrics_1km, reasons
     finally:
         for name in registered:
             connection.unregister(name)
@@ -483,6 +497,7 @@ def render_validation_report(
     department: str,
     metrics_200m: list[dict[str, Any]],
     metrics_1km: list[dict[str, Any]],
+    eurostat_reasons: dict[str, int],
     count_suppression_threshold: int,
     within_tolerance_fraction: float,
 ) -> str:
@@ -498,8 +513,19 @@ def render_validation_report(
         "The median absolute relative error excludes zero-reference cells; "
         f"the ±{within_tolerance_fraction:.0%} share includes them and counts "
         "an exact zero prediction "
-        "as within range. Density uses Eurostat population divided by land "
-        "surface (km²).",
+        "as within range. Density uses Eurostat population divided by "
+        "LAND_SURFACE when positive, otherwise 1 km². A missing Eurostat row "
+        "is unmatched; a null or negative population is population unavailable.",
+        "",
+        "Eurostat input issues among the 200 m validation cells "
+        "(reasons can overlap; unmatched cells are not counted as null fields):",
+        "",
+        "| Reason | 200 m cells |",
+        "|---|---:|",
+        *[
+            f"| {reason} | {_format_count(count, count_suppression_threshold)} |"
+            for reason, count in eurostat_reasons.items()
+        ],
         "",
         "| Method | Variable | Natural cell (m) | Density | Cells | "
         "Positive reference | Mean absolute error | Median absolute "
@@ -538,6 +564,11 @@ def render_validation_report(
             "|---|---:|---:|---:|---:|---:|",
         ]
     )
+    if not metrics_1km:
+        lines.append(
+            "| No Eurostat cells with valid population in the department "
+            "| — | — | — | — | — |"
+        )
     for row in metrics_1km:
         median = row["median_absolute_relative_error"]
         lines.append(
@@ -632,7 +663,7 @@ def build_validation_report(
             insee_path = _extract_filosofi_200m(
                 Path(config.filosofi_200m_archive), Path(directory)
             )
-            metrics_200m, metrics_1km = calculate_validation_metrics(
+            metrics_200m, metrics_1km, eurostat_reasons = calculate_validation_metrics(
                 connection,
                 downscaled_path,
                 insee_path,
@@ -654,6 +685,7 @@ def build_validation_report(
         department,
         metrics_200m,
         metrics_1km,
+        eurostat_reasons,
         report.count_suppression_threshold,
         validation.within_tolerance_fraction,
     )
