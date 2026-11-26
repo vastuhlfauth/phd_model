@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import statistics
+import sys
 import tempfile
 import time
 import zipfile
@@ -39,10 +40,44 @@ class VintageConfig:
 
 
 @dataclass(frozen=True)
+class CensusVintageConfig:
+    format: str
+    path: str
+    geography_column: str
+    measures: dict[str, str]
+    member: str | None = None
+    delimiter: str | None = None
+    geography_type_column: str | None = None
+    geography_type: str | None = None
+    time_period_column: str | None = None
+    time_period: str | None = None
+    table_column: str | None = None
+    table_id: str | None = None
+    dataset_column: str | None = None
+    dataset_id: str | None = None
+    measure_column: str | None = None
+
+
+@dataclass(frozen=True)
+class ReportConfig:
+    output_directory: str
+    ff_vintage_to_census: dict[int, int]
+    ff_cells_pattern: str
+    ff_communes_pattern: str
+    metadata_pattern: str
+    report_pattern: str
+    count_suppression_threshold: int
+    top_second_home_gaps: int
+    ratio_quantiles: tuple[float, ...]
+
+
+@dataclass(frozen=True)
 class OriginsConfig:
     filosofi_200m_archive: str
     filosofi_natural_archive: str
     vintages: dict[int, VintageConfig]
+    census: dict[int, CensusVintageConfig]
+    report: ReportConfig
     logh: str
     vacant_code: str
     owner_code: str
@@ -67,10 +102,52 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         )
         for vintage, value in raw["vintages"].items()
     }
+    census = {
+        int(vintage): CensusVintageConfig(
+            format=value["format"],
+            path=value["path"],
+            geography_column=value["geography_column"],
+            measures=value["measures"],
+            member=value.get("member"),
+            delimiter=value.get("delimiter"),
+            geography_type_column=value.get("geography_type_column"),
+            geography_type=value.get("geography_type"),
+            time_period_column=value.get("time_period_column"),
+            time_period=value.get("time_period"),
+            table_column=value.get("table_column"),
+            table_id=value.get("table_id"),
+            dataset_column=value.get("dataset_column"),
+            dataset_id=value.get("dataset_id"),
+            measure_column=value.get("measure_column"),
+        )
+        for vintage, value in raw["census"].items()
+    }
+    report = raw["report"]
     return OriginsConfig(
         filosofi_200m_archive=raw["filosofi"]["200m_archive"],
         filosofi_natural_archive=raw["filosofi"]["natural_archive"],
         vintages=vintages,
+        census=census,
+        report=ReportConfig(
+            output_directory=report["output_directory"],
+            ff_vintage_to_census={
+                int(vintage): int(census_vintage)
+                for vintage, census_vintage in report[
+                    "ff_vintage_to_census"
+                ].items()
+            },
+            ff_cells_pattern=report["ff_cells_pattern"],
+            ff_communes_pattern=report["ff_communes_pattern"],
+            metadata_pattern=report["metadata_pattern"],
+            report_pattern=report["report_pattern"],
+            count_suppression_threshold=int(
+                report["count_suppression_threshold"]
+            ),
+            top_second_home_gaps=int(report["top_second_home_gaps"]),
+            ratio_quantiles=tuple(
+                float(value) for value in report["ratio_quantiles"]
+            ),
+        ),
         logh=raw["dwelling"]["logh"],
         vacant_code=raw["vacant"]["ccthp"],
         owner_code=raw["owner_occupied"]["ccthp"],
@@ -111,9 +188,17 @@ def classify_dwelling(
     is_vacant = is_dwelling and row.get("ccthp") == vacant_code
     second_value = row.get(second_home_column)
     is_second_home = is_dwelling and second_value == second_home_code
-    is_recent_transfer = is_dwelling and second_value == recent_transfer_code
+    is_recent_transfer = (
+        is_dwelling
+        and not is_vacant
+        and second_value == recent_transfer_code
+    )
     is_main = is_dwelling and not is_vacant and not is_second_home
     is_owner = is_main and row.get("ccthp") == owner_code
+    is_owner_second_home = is_second_home and row.get("ccthp") == owner_code
+    is_owner_recent_transfer = (
+        is_recent_transfer and row.get("ccthp") == owner_code
+    )
     is_social = is_dwelling and row.get("catpro2") == social_code
     is_social_main = is_social and is_main
     house = is_dwelling and row.get("loghmais") == "t"
@@ -125,6 +210,8 @@ def classify_dwelling(
         "main_residence": int(is_main),
         "recent_transfer": int(is_recent_transfer),
         "owner_occupied_main_residence": int(is_owner),
+        "owner_occupied_second_home": int(is_owner_second_home),
+        "owner_occupied_recent_transfer": int(is_owner_recent_transfer),
         "social_housing": int(is_social),
         "social_housing_main_residence": int(is_social_main),
         "house": int(house),
@@ -162,6 +249,8 @@ def aggregate_dwelling_rows(
         "second_homes": 0,
         "recent_transfers": 0,
         "owner_occupied_main_residences": 0,
+        "owner_occupied_second_homes": 0,
+        "owner_occupied_recent_transfers": 0,
         "social_housing": 0,
         "social_housing_main_residences": 0,
         "houses": 0,
@@ -194,6 +283,12 @@ def aggregate_dwelling_rows(
         totals["recent_transfers"] += classified["recent_transfer"]
         totals["owner_occupied_main_residences"] += classified[
             "owner_occupied_main_residence"
+        ]
+        totals["owner_occupied_second_homes"] += classified[
+            "owner_occupied_second_home"
+        ]
+        totals["owner_occupied_recent_transfers"] += classified[
+            "owner_occupied_recent_transfer"
         ]
         totals["social_housing"] += classified["social_housing"]
         totals["social_housing_main_residences"] += classified[
@@ -272,7 +367,7 @@ def build_ff_cells_signature(
     vintage: int,
     config: OriginsConfig,
     input_files: Sequence[Path],
-    code_version: int = 2,
+    code_version: int = 3,
 ) -> str:
     """Build the cache signature for one Fichiers fonciers vintage."""
     payload = {
@@ -677,7 +772,8 @@ def build_department_ff_cells(
                     THEN 1 ELSE 0 END AS vacant,
                 CASE WHEN logh = {logh} AND {second_value} = {second_home}
                     THEN 1 ELSE 0 END AS second_home,
-                CASE WHEN logh = {logh} AND {second_value} = {recent}
+                CASE WHEN logh = {logh} AND ccthp IS DISTINCT FROM {vacant}
+                    AND {second_value} = {recent}
                     THEN 1 ELSE 0 END AS recent_transfer,
                 CASE WHEN logh = {logh}
                     AND ccthp IS DISTINCT FROM {vacant}
@@ -688,6 +784,15 @@ def build_department_ff_cells(
                     AND {second_value} IS DISTINCT FROM {second_home}
                     AND ccthp = {owner}
                     THEN 1 ELSE 0 END AS owner_occupied_main_residence,
+                CASE WHEN logh = {logh}
+                    AND {second_value} = {second_home}
+                    AND ccthp = {owner}
+                    THEN 1 ELSE 0 END AS owner_occupied_second_home,
+                CASE WHEN logh = {logh}
+                    AND ccthp IS DISTINCT FROM {vacant}
+                    AND {second_value} = {recent}
+                    AND ccthp = {owner}
+                    THEN 1 ELSE 0 END AS owner_occupied_recent_transfer,
                 CASE WHEN logh = {logh} AND catpro2 = {social}
                     THEN 1 ELSE 0 END AS social_housing,
                 CASE WHEN logh = {logh} AND catpro2 = {social}
@@ -798,6 +903,9 @@ def aggregate_staged_ff_cells(
             sum(recent_transfer) AS recent_transfers,
             sum(owner_occupied_main_residence)
                 AS owner_occupied_main_residences,
+            sum(owner_occupied_second_home) AS owner_occupied_second_homes,
+            sum(owner_occupied_recent_transfer)
+                AS owner_occupied_recent_transfers,
             sum(social_housing) AS social_housing,
             sum(social_housing_main_residence)
                 AS social_housing_main_residences,
@@ -832,6 +940,43 @@ def aggregate_staged_ff_cells(
     ).to_arrow_table()
 
 
+def aggregate_staged_ff_communes(
+    connection: duckdb.DuckDBPyConnection,
+    staging_tables: Sequence[str],
+    vintage: int,
+) -> pa.Table:
+    """Aggregate section-6.5 dwelling counts by FF commune code."""
+    if not staging_tables:
+        raise ValueError("at least one staged department table is required")
+    union = " UNION ALL ".join(
+        f"SELECT * FROM {_quoted_identifier(table)}" for table in staging_tables
+    )
+    return connection.execute(
+        f"""
+        SELECT ? AS vintage,
+            trim(CAST(idcom AS VARCHAR)) AS commune_code,
+            sum(dwelling) AS dwellings,
+            sum(main_residence) AS main_residences,
+            sum(vacant) AS vacant,
+            sum(second_home) AS second_homes,
+            sum(recent_transfer) AS recent_transfers,
+            sum(owner_occupied_main_residence)
+                AS owner_occupied_main_residences,
+            sum(owner_occupied_second_home) AS owner_occupied_second_homes,
+            sum(owner_occupied_recent_transfer)
+                AS owner_occupied_recent_transfers,
+            sum(social_housing_main_residence)
+                AS social_housing_main_residences
+        FROM ({union}) AS staged
+        WHERE dwelling = 1 AND idcom IS NOT NULL
+            AND trim(CAST(idcom AS VARCHAR)) <> ''
+        GROUP BY commune_code
+        ORDER BY commune_code
+        """,
+        [vintage],
+    ).to_arrow_table()
+
+
 def build_ff_cells(
     vintage: int,
     departments: Sequence[str] | None = None,
@@ -840,7 +985,7 @@ def build_ff_cells(
     filosofi_natural_archive: str | Path | None = None,
     config_path: str | Path = "config/origins.yaml",
     pilot_config_path: str | Path = "config/pilot.yaml",
-    output: str | Path = "data/interim/landgrid",
+    output: str | Path | None = None,
     force: bool = False,
 ) -> dict[str, object]:
     """Build or reuse combined department 200 m dwelling cells."""
@@ -885,17 +1030,30 @@ def build_ff_cells(
             missing = [str(path) for path in input_files if not path.is_file()]
             raise FileNotFoundError("; ".join(missing))
 
-        output_directory = Path(output)
+        output_directory = Path(output or config.report.output_directory)
         output_directory.mkdir(parents=True, exist_ok=True)
-        output_path = output_directory / f"ff_cells_{vintage}.parquet"
-        metadata_path = output_directory / f"ff_cells_{vintage}.json"
+        output_path = output_directory / config.report.ff_cells_pattern.format(
+            vintage=vintage
+        )
+        commune_output_path = output_directory / (
+            config.report.ff_communes_pattern.format(vintage=vintage)
+        )
+        metadata_path = output_directory / config.report.metadata_pattern.format(
+            vintage=vintage
+        )
         signature = build_ff_cells_signature(vintage, config, input_files)
 
-        if not force and output_path.is_file() and metadata_path.is_file():
+        if (
+            not force
+            and output_path.is_file()
+            and commune_output_path.is_file()
+            and metadata_path.is_file()
+        ):
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             if metadata.get("signature") == signature:
                 return {
                     "output": str(output_path),
+                    "communes_output": str(commune_output_path),
                     "cached": True,
                     "signature": signature,
                     "departments": resolved_departments,
@@ -904,8 +1062,14 @@ def build_ff_cells(
                             "count(*)"
                         ).fetchone()[0]
                     ),
+                    "commune_row_count": int(
+                        read_parquet(connection, commune_output_path).aggregate(
+                            "count(*)"
+                        ).fetchone()[0]
+                    ),
                 }
 
+        metadata_path.unlink(missing_ok=True)
         _create_natural_cell_map(
             connection,
             [
@@ -937,21 +1101,39 @@ def build_ff_cells(
             for key, value in department_diagnostics.items():
                 diagnostics[key] += value
         table = aggregate_staged_ff_cells(connection, staging_tables, vintage)
+        commune_table = aggregate_staged_ff_communes(
+            connection,
+            staging_tables,
+            vintage,
+        )
         connection.register("_ff_cells", table)
+        connection.register("_ff_communes", commune_table)
         try:
             temporary = output_path.with_suffix(".tmp.parquet")
+            commune_temporary = commune_output_path.with_suffix(".tmp.parquet")
             write_parquet(
                 connection,
                 "SELECT * FROM _ff_cells",
                 temporary,
             )
+            write_parquet(
+                connection,
+                "SELECT * FROM _ff_communes",
+                commune_temporary,
+            )
             temporary.replace(output_path)
+            commune_temporary.replace(commune_output_path)
         finally:
             connection.unregister("_ff_cells")
+            connection.unregister("_ff_communes")
 
         metadata_path.with_suffix(".tmp.json").write_text(
             json.dumps(
-                {"signature": signature, "diagnostics": diagnostics},
+                {
+                    "signature": signature,
+                    "diagnostics": diagnostics,
+                    "commune_row_count": commune_table.num_rows,
+                },
                 indent=2,
                 sort_keys=True,
             ),
@@ -960,10 +1142,12 @@ def build_ff_cells(
         metadata_path.with_suffix(".tmp.json").replace(metadata_path)
         return {
             "output": str(output_path),
+            "communes_output": str(commune_output_path),
             "cached": False,
             "signature": signature,
             "departments": resolved_departments,
             "row_count": table.num_rows,
+            "commune_row_count": commune_table.num_rows,
             "diagnostics": diagnostics,
         }
     finally:
@@ -972,7 +1156,18 @@ def build_ff_cells(
 
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point for building one FF vintage."""
-    parser = argparse.ArgumentParser(description="Build step-3 dwelling cells")
+    arguments = list(argv) if argv is not None else sys.argv[1:]
+    if arguments and arguments[0] == "report":
+        from landgrid.origins.report import main as report_main
+
+        return report_main(arguments[1:])
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Build step-3 dwelling cells; use the report command for "
+            "commune validation"
+        )
+    )
     parser.add_argument("--vintage", type=int, required=True)
     parser.add_argument("--department", action="append")
     parser.add_argument(
@@ -984,10 +1179,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/interim/landgrid"),
     )
     parser.add_argument("--force", action="store_true")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
     logging.basicConfig(level=logging.INFO)
     result = build_ff_cells(
         args.vintage,

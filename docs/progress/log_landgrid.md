@@ -1,5 +1,19 @@
 # Landgrid origins
 
+## 2026-11-25 — Step 3d: census selectors and commune report
+
+- Verified 2023 commune housing selectors in the public long-form census file:
+  `LOG_T1` / `DS_RP_SERIE_HISTORIQUE` and four housing `TAB_MEASURE` values.
+- Added the dimension-value row-count inventory and documented the selected
+  periods, selectors, and department-33 comparison. Three measures are within
+  3.4% of 2021; second homes differ by +6.35%.
+- Added `ff_communes_{vintage}.parquet` beside the cell aggregate, including
+  owner-occupied inputs for the recent-transfer sensitivity cases.
+- Added the `report` subcommand with matched-commune ratios/deciles, three
+  transfer interpretations, top second-home gaps, Filosofi `log_soc`, and
+  suppressed small counts.
+- Synthetic origins tests and Ruff pass. No real FF build or report was run.
+
 ## 2026-11-25 — Step 3c: SQL pipeline and census schemas
 
 - Moved Fichiers fonciers classification, cell assignment, cleaning

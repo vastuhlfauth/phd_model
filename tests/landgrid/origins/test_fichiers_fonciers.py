@@ -10,6 +10,7 @@ from landgrid.origins.fichiers_fonciers import (
     VintageConfig,
     aggregate_dwelling_rows,
     aggregate_staged_ff_cells,
+    aggregate_staged_ff_communes,
     build_department_ff_cells,
     classify_dwelling,
     coordinate_to_200m_cell,
@@ -52,6 +53,19 @@ def test_nulls_count_as_neither_vacant_nor_second_home() -> None:
     assert result["vacant"] == 0
     assert result["second_home"] == 0
     assert result["main_residence"] == 1
+
+
+def test_vacant_recent_transfer_is_not_counted_as_main_or_recent() -> None:
+    result = classify_dwelling(
+        {"logh": "t", "ccthp": "V", "proba_rprs": "AC"},
+        "proba_rprs",
+        "RS",
+        "AC",
+    )
+
+    assert result["vacant"] == 1
+    assert result["main_residence"] == 0
+    assert result["recent_transfer"] == 0
 
 
 def test_floor_rule_on_exact_grid_multiples() -> None:
@@ -130,6 +144,34 @@ def test_category_sums_preserve_dwelling_total() -> None:
         + aggregates["second_homes"]
         == aggregates["dwellings"]
     )
+
+
+def test_owner_occupied_classification_tracks_recent_transfers() -> None:
+    rows = [
+        {"logh": "t", "ccthp": "P", "proba_rprs": "RP"},
+        {"logh": "t", "ccthp": "P", "proba_rprs": "RS"},
+        {"logh": "t", "ccthp": "P", "proba_rprs": "AC"},
+    ]
+
+    aggregates = aggregate_dwelling_rows(rows, "proba_rprs", "RS", "AC")
+
+    assert aggregates["owner_occupied_main_residences"] == 2
+    assert aggregates["owner_occupied_second_homes"] == 1
+    assert aggregates["owner_occupied_recent_transfers"] == 1
+
+
+def test_origins_config_has_verified_census_selectors() -> None:
+    config = load_origins_config()
+
+    assert config.census[2023].table_id == "LOG_T1"
+    assert config.census[2023].dataset_id == "DS_RP_SERIE_HISTORIQUE"
+    assert config.census[2023].measures == {
+        "dwellings": "DWELLINGS",
+        "main_residences": "DWELLINGS_OCS_DW_MAIN",
+        "second_homes": "DWELLINGS_OCS_DW_SEC_DW_OCC",
+        "vacant": "DWELLINGS_OCS_DW_VAC",
+    }
+    assert config.report.ff_vintage_to_census == {2022: 2021, 2024: 2023}
 
 
 def test_dwelling_without_filosofi_200m_row_gets_natural_cell(
@@ -355,6 +397,11 @@ def test_department_cells_match_python_classification_and_ignore_other_idcoms(
             [staging_table],
             2022,
         ).to_pylist()
+        communes = aggregate_staged_ff_communes(
+            connection,
+            [staging_table],
+            2022,
+        ).to_pylist()
     finally:
         connection.close()
 
@@ -389,6 +436,34 @@ def test_department_cells_match_python_classification_and_ignore_other_idcoms(
     ]
     assert cell["social_housing_main_residences"] == expected[
         "social_housing_main_residences"
+    ]
+    assert communes == [
+        {
+            "vintage": 2022,
+            "commune_code": "33001",
+            "dwellings": 6,
+            "main_residences": 4,
+            "vacant": 1,
+            "second_homes": 1,
+            "recent_transfers": 0,
+            "owner_occupied_main_residences": 1,
+            "owner_occupied_second_homes": 1,
+            "owner_occupied_recent_transfers": 0,
+            "social_housing_main_residences": 1,
+        },
+        {
+            "vintage": 2022,
+            "commune_code": "33002",
+            "dwellings": 1,
+            "main_residences": 1,
+            "vacant": 0,
+            "second_homes": 0,
+            "recent_transfers": 1,
+            "owner_occupied_main_residences": 1,
+            "owner_occupied_second_homes": 0,
+            "owner_occupied_recent_transfers": 1,
+            "social_housing_main_residences": 1,
+        },
     ]
     assert cell["npiece_i_sum"] == expected["npiece_i_sum"]
     assert cell["npiece_i_sum_sq"] == expected["npiece_i_sum_sq"]

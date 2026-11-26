@@ -15,6 +15,50 @@ vintages:
     second_home_column: "rppo_rs"
     second_home_code: "RS"
 
+census:
+  2021:
+    format: "zip_csv"
+    path: "data/raw/census/2021/dossier_complet_31_12_2024.zip"
+    member: "dossier_complet.csv"
+    delimiter: ";"
+    geography_column: "CODGEO"
+    measures:
+      dwellings: "P21_LOG"
+      main_residences: "P21_RP"
+      second_homes: "P21_RSECOCC"
+      vacant: "P21_LOGVAC"
+  2023:
+    format: "parquet"
+    path: "data/raw/census/2023/dossier_complet.parquet"
+    geography_column: "GEO"
+    geography_type_column: "GEO_OBJECT"
+    geography_type: "COM"
+    time_period_column: "TIME_PERIOD"
+    time_period: "2023"
+    table_column: "ID_TAB"
+    table_id: "LOG_T1"
+    dataset_column: "DS"
+    dataset_id: "DS_RP_SERIE_HISTORIQUE"
+    measure_column: "TAB_MEASURE"
+    measures:
+      dwellings: "DWELLINGS"
+      main_residences: "DWELLINGS_OCS_DW_MAIN"
+      second_homes: "DWELLINGS_OCS_DW_SEC_DW_OCC"
+      vacant: "DWELLINGS_OCS_DW_VAC"
+
+report:
+  output_directory: "data/interim/landgrid"
+  ff_vintage_to_census:
+    2022: 2021
+    2024: 2023
+  ff_cells_pattern: "ff_cells_{vintage}.parquet"
+  ff_communes_pattern: "ff_communes_{vintage}.parquet"
+  metadata_pattern: "ff_cells_{vintage}.json"
+  report_pattern: "ff_commune_report_{vintage}.md"
+  count_suppression_threshold: 50
+  top_second_home_gaps: 10
+  ratio_quantiles: [0.1, 0.5, 0.9]
+
 dwelling:
   logh: "t"
 vacant:
