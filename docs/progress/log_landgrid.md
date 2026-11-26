@@ -10,6 +10,9 @@
   pilot départements took 2–4 seconds each.
 - Focused synthetic hybrid tests pass (3 cases); Ruff passes. No real-data
   build was run.
+- Recorded the broader second-home/occasional-dwelling commune and
+  natural-cell comparisons, including both null-`ccthp` variants; synthetic
+  report tests pass. No broader-category report was run on restricted data.
 
 ## 2026-11-26 — Step 3: experimental 2022 hybrid comparison
 

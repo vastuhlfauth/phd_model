@@ -53,6 +53,17 @@ class ReportSummary:
     top_second_home_gaps: list[dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class BroaderMetricSummary:
+    census_total: float | None
+    ff_total: float | None
+    matched_census_total: float | None
+    matched_ff_total: float | None
+    total_ratio: float | None
+    quantiles: list[float | None]
+    top_gaps: list[dict[str, Any]]
+
+
 def _extract_zip_member(archive: Path, member: str, target: Path) -> None:
     """Stream one configured public CSV member into a temporary file."""
     with zipfile.ZipFile(archive) as zipped:
@@ -455,6 +466,192 @@ def calculate_report_summary(
         )
     finally:
         connection.close()
+
+
+def calculate_broader_metrics(
+    census: pa.Table,
+    ff_communes: pa.Table,
+    quantiles: tuple[float, ...],
+    top_count: int,
+) -> dict[str, dict[str, BroaderMetricSummary]]:
+    """Compare the broader section-6.5 dwelling categories by commune."""
+    if not quantiles or any(not 0 <= value <= 1 for value in quantiles):
+        raise ValueError("report quantiles must be between zero and one")
+    if top_count < 0:
+        raise ValueError("top second-home gap count cannot be negative")
+    connection = duckdb.connect()
+    try:
+        connection.register("_broad_census", census)
+        connection.register("_broad_ff", ff_communes)
+        metrics = {
+            "second_homes": "second_homes",
+            "main_residences": "main_residences",
+        }
+        variants = {
+            "including_null": "",
+            "excluding_null": "_without_null",
+        }
+        result: dict[str, dict[str, BroaderMetricSummary]] = {}
+        for variant, suffix in variants.items():
+            result[variant] = {}
+            for metric, census_column in metrics.items():
+                ff_column = _quoted_identifier(f"broad_{metric}{suffix}")
+                census_field = _quoted_identifier(census_column)
+                joined = connection.execute(
+                    f"""
+                    SELECT coalesce(c.commune_code, f.commune_code) AS commune_code,
+                        c.{census_field} AS census_value,
+                        f.{ff_column} AS ff_value
+                    FROM _broad_census c
+                    FULL OUTER JOIN _broad_ff f USING (commune_code)
+                    """
+                ).to_arrow_table()
+                connection.register("_broad_joined", joined)
+                try:
+                    totals = connection.execute(
+                        f"""
+                        SELECT
+                            (SELECT sum({census_field}) FROM _broad_census),
+                            (SELECT sum({ff_column}) FROM _broad_ff),
+                            sum(census_value) FILTER (
+                                WHERE census_value IS NOT NULL
+                                    AND ff_value IS NOT NULL
+                            ),
+                            sum(ff_value) FILTER (
+                                WHERE census_value IS NOT NULL
+                                    AND ff_value IS NOT NULL
+                            ),
+                            sum(ff_value) FILTER (
+                                WHERE census_value IS NOT NULL
+                                    AND ff_value IS NOT NULL
+                            ) / NULLIF(sum(census_value) FILTER (
+                                WHERE census_value IS NOT NULL
+                                    AND ff_value IS NOT NULL
+                            ), 0),
+                            quantile_cont(
+                                ff_value / NULLIF(census_value, 0), ?::DOUBLE[]
+                            )
+                        FROM _broad_joined
+                        """,
+                        [list(quantiles)],
+                    ).fetchone()
+                    top_gaps = (
+                        connection.execute(
+                            """
+                            SELECT commune_code, census_value, ff_value,
+                                ff_value - census_value AS signed_gap
+                            FROM _broad_joined
+                            WHERE census_value IS NOT NULL AND ff_value IS NOT NULL
+                            ORDER BY abs(ff_value - census_value) DESC,
+                                commune_code
+                            LIMIT ?
+                            """,
+                            [top_count],
+                        )
+                        .to_arrow_table()
+                        .to_pylist()
+                        if metric == "second_homes"
+                        else []
+                    )
+                finally:
+                    connection.unregister("_broad_joined")
+                result[variant][metric] = BroaderMetricSummary(
+                    census_total=None if totals[0] is None else float(totals[0]),
+                    ff_total=None if totals[1] is None else float(totals[1]),
+                    matched_census_total=(
+                        None if totals[2] is None else float(totals[2])
+                    ),
+                    matched_ff_total=(
+                        None if totals[3] is None else float(totals[3])
+                    ),
+                    total_ratio=None if totals[4] is None else float(totals[4]),
+                    quantiles=[
+                        None if value is None else float(value)
+                        for value in (totals[5] or [])
+                    ],
+                    top_gaps=top_gaps,
+                )
+        return result
+    finally:
+        connection.close()
+
+
+def calculate_broader_natural_cell_ratios(
+    connection: duckdb.DuckDBPyConnection,
+    natural: pa.Table | Path,
+    ff_cells: pa.Table | Path,
+    quantiles: tuple[float, ...],
+) -> list[dict[str, Any]]:
+    """Compare broader main residences with Filosofi households by natural cell."""
+    if not quantiles or any(not 0 <= value <= 1 for value in quantiles):
+        raise ValueError("cell ratio quantiles must be between zero and one")
+    registered = []
+    sources = []
+    for name, value in (("natural", natural), ("ff_cells", ff_cells)):
+        if isinstance(value, pa.Table):
+            relation = f"_broader_{name}"
+            connection.register(relation, value)
+            registered.append(relation)
+        else:
+            reader = "read_csv_auto" if name == "natural" else "read_parquet"
+            relation = f"{reader}({_sql_string(str(value))})"
+        sources.append(relation)
+    try:
+        return (
+            connection.execute(
+                f"""
+                WITH natural_input AS (
+                    SELECT idcar_nat AS natural_cell_id,
+                        CAST(tmaille AS BIGINT) AS size_m,
+                        CAST(men AS DOUBLE) AS households,
+                        CAST(regexp_extract(
+                            idcar_nat, 'mN([0-9]+)E', 1
+                        ) AS BIGINT) AS n,
+                        CAST(regexp_extract(
+                            idcar_nat, 'E([0-9]+)$', 1
+                        ) AS BIGINT) AS e
+                    FROM {sources[0]}
+                ),
+                ff_natural AS (
+                    SELECT natural_cell_id,
+                        sum(broad_main_residences) AS main_with_null,
+                        sum(broad_main_residences_without_null) AS main_without_null
+                    FROM {sources[1]}
+                    GROUP BY natural_cell_id
+                ),
+                ratios AS (
+                    SELECT n.size_m,
+                        coalesce(f.main_with_null, 0) / n.households
+                            AS with_null,
+                        coalesce(f.main_without_null, 0) / n.households
+                            AS without_null
+                    FROM natural_input n
+                    LEFT JOIN ff_natural f USING (natural_cell_id)
+                    CROSS JOIN department_boundary b
+                    WHERE n.households > 0
+                        AND n.e >= ST_XMin(b.geom)
+                        AND n.n >= ST_YMin(b.geom)
+                        AND n.e + n.size_m <= ST_XMax(b.geom)
+                        AND n.n + n.size_m <= ST_YMax(b.geom)
+                        AND ST_Covers(b.geom, ST_MakeEnvelope(
+                            n.e, n.n, n.e + n.size_m, n.n + n.size_m
+                        ))
+                )
+                SELECT size_m, count(*) AS cells,
+                    quantile_cont(with_null, ?::DOUBLE[]) AS including_null,
+                    quantile_cont(without_null, ?::DOUBLE[]) AS excluding_null
+                FROM ratios
+                GROUP BY size_m
+                ORDER BY size_m
+                """,
+                [list(quantiles), list(quantiles)],
+            )
+            .to_arrow_table()
+            .to_pylist()
+        )
+    finally:
+        for relation in registered:
+            connection.unregister(relation)
 
 
 def _extract_filosofi_200m(
@@ -930,6 +1127,10 @@ def render_commune_report(
     diagnostics: dict[str, int],
     social_totals: tuple[float | None, float | None],
     suppression_threshold: int,
+    broader_summary: dict[str, dict[str, BroaderMetricSummary]] | None = None,
+    extra_code_rows: list[dict[str, Any]] | None = None,
+    broader_cell_rows: list[dict[str, Any]] | None = None,
+    broader_cell_quantiles: tuple[float, ...] | None = None,
 ) -> str:
     """Render section-6.5 aggregate counts with configured suppression."""
     quantile_keys = [f"q{int(round(quantile * 100))}" for quantile in quantiles]
@@ -1096,6 +1297,128 @@ def render_commune_report(
             f"| {name.replace('_', ' ')} | "
             f"{_format_count(value, suppression_threshold)} |"
         )
+    if broader_summary is not None:
+        lines.extend(
+            [
+                "",
+                "## Broader second-home and occasional-dwelling category",
+                "",
+                "The broader category is second homes plus other non-vacant "
+                "dwellings that are neither owner-occupied (`ccthp=P`) nor "
+                "let (`ccthp=L`). The extra category is disjoint from "
+                "second homes. Both variants are shown, with and without "
+                "dwellings whose `ccthp` is null.",
+                "",
+                "| Measure | Null `ccthp` | Census total | FF total | "
+                "Matched census | Matched FF | Total ratio | "
+                f"{' | '.join(quantile_headers)} |",
+                (
+                    "|---|---|"
+                    + "|".join("---:" for _ in range(5 + len(quantile_keys)))
+                    + "|"
+                ),
+            ]
+        )
+        for metric, label in (
+            ("second_homes", "Broader second homes and occasional dwellings"),
+            ("main_residences", "Main residences under broader category"),
+        ):
+            for variant, null_label in (
+                ("including_null", "included"),
+                ("excluding_null", "excluded"),
+            ):
+                summary = broader_summary[variant][metric]
+                quantile_values = " | ".join(
+                    _format_ratio(value) for value in summary.quantiles
+                )
+                census_total = _format_count(
+                    summary.census_total, suppression_threshold
+                )
+                ff_total = _format_count(summary.ff_total, suppression_threshold)
+                matched_census = _format_count(
+                    summary.matched_census_total, suppression_threshold
+                )
+                matched_ff = _format_count(
+                    summary.matched_ff_total, suppression_threshold
+                )
+                lines.append(
+                    f"| {label} | {null_label} | {census_total} | {ff_total} | "
+                    f"{matched_census} | {matched_ff} | "
+                    f"{_format_ratio(summary.total_ratio)} | {quantile_values} |"
+                )
+        lines.extend(
+            [
+                "",
+                "### Ten largest broader-category gaps",
+                "",
+                "| Null `ccthp` | Commune | Census second homes and "
+                "occasional dwellings | FF broader category | FF minus census |",
+                "|---|---|---:|---:|---:|",
+            ]
+        )
+        for variant, null_label in (
+            ("including_null", "included"),
+            ("excluding_null", "excluded"),
+        ):
+            for row in broader_summary[variant]["second_homes"].top_gaps:
+                lines.append(
+                    f"| {null_label} | {row['commune_code']} | "
+                    f"{_format_count(row['census_value'], suppression_threshold)} | "
+                    f"{_format_count(row['ff_value'], suppression_threshold)} | "
+                    f"{_format_count(row['signed_gap'], suppression_threshold)} |"
+                )
+        lines.extend(
+            [
+                "",
+                "### Extra-dwelling counts by source code",
+                "",
+                "| Code field | Code | Including null `ccthp` | "
+                "Excluding null `ccthp` |",
+                "|---|---|---:|---:|",
+            ]
+        )
+        for row in extra_code_rows or []:
+            lines.append(
+                f"| {row['code_type']} | {row['code']} | "
+                f"{_format_count(row['extra_with_null'], suppression_threshold)} | "
+                f"{_format_count(row['extra_without_null'], suppression_threshold)} |"
+            )
+        if broader_cell_rows is not None:
+            if broader_cell_quantiles is None:
+                raise ValueError("broader-cell quantiles must be configured")
+            cell_quantile_headers = [
+                "Median" if quantile == 0.5 else f"P{int(round(quantile * 100))}"
+                for quantile in broader_cell_quantiles
+            ]
+            lines.extend(
+                [
+                    "",
+                    "### Main residences / Filosofi households by natural cell",
+                    "",
+                    "Natural squares must be completely covered by the "
+                    "dissolved 2021 department boundary; zero-household cells "
+                    "are excluded. Filosofi household totals are from 2021.",
+                    "",
+                    f"| Size (m) | Cells | Null `ccthp` | "
+                    f"{' | '.join(cell_quantile_headers)} |",
+                    "|---:|---:|---|" + "|".join(
+                        "---:" for _ in cell_quantile_headers
+                    ) + "|",
+                ]
+            )
+            for row in broader_cell_rows:
+                for key, label in (
+                    ("including_null", "included"),
+                    ("excluding_null", "excluded"),
+                ):
+                    values = " | ".join(
+                        _format_ratio(value) for value in row[key]
+                    )
+                    lines.append(
+                        f"| {row['size_m']} | "
+                        f"{_format_count(row['cells'], suppression_threshold)} | "
+                        f"{label} | {values} |"
+                    )
     lines.extend(
         [
             "",
@@ -1140,6 +1463,44 @@ def build_commune_report(
             output_directory,
             config,
         )
+        broader_summary = calculate_broader_metrics(
+            census,
+            ff_communes,
+            config.report.ratio_quantiles,
+            config.report.top_second_home_gaps,
+        )
+        extra_codes_path = output_directory / (
+            config.report.ff_extra_codes_pattern.format(vintage=vintage)
+        )
+        if not extra_codes_path.is_file():
+            raise FileNotFoundError(
+                f"missing extra dwelling code aggregate {extra_codes_path}; "
+                "rebuild this FF vintage first"
+            )
+        extra_code_rows = (
+            connection.execute(
+                "SELECT * FROM read_parquet(?) ORDER BY code_type, code",
+                [str(extra_codes_path)],
+            )
+            .to_arrow_table()
+            .to_pylist()
+        )
+        _load_department_boundary(
+            connection, Path(config.report.contours_2021), department
+        )
+        with tempfile.TemporaryDirectory(
+            prefix="filosofi_natural_broader_report_"
+        ) as directory:
+            natural_path = _extract_filosofi_natural(
+                Path(config.filosofi_natural_archive), Path(directory)
+            )
+            broader_cell_rows = calculate_broader_natural_cell_ratios(
+                connection,
+                natural_path,
+                output_directory
+                / config.report.ff_cells_pattern.format(vintage=vintage),
+                config.report.cell_ratio_quantiles,
+            )
         summary = calculate_report_summary(
             census,
             ff_communes,
@@ -1184,6 +1545,10 @@ def build_commune_report(
         diagnostics,
         social_totals,
         config.report.count_suppression_threshold,
+        broader_summary,
+        extra_code_rows,
+        broader_cell_rows,
+        config.report.cell_ratio_quantiles,
     )
     temporary = report_path.with_suffix(".tmp.md")
     temporary.write_text(content, encoding="utf-8")

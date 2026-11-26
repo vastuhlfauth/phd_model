@@ -57,6 +57,94 @@ def test_nulls_count_as_neither_vacant_nor_second_home() -> None:
     assert result["main_residence"] == 1
 
 
+@pytest.mark.parametrize(
+    ("vintage", "code_column"),
+    [(2022, "proba_rprs"), (2024, "rppo_rs")],
+)
+def test_broader_second_home_category_counts_extra_codes_and_nulls(
+    vintage: int,
+    code_column: str,
+    tmp_path: Path,
+) -> None:
+    from landgrid.origins.fichiers_fonciers import (
+        aggregate_staged_ff_cells,
+        aggregate_staged_ff_communes,
+        aggregate_staged_ff_extra_codes,
+    )
+
+    rows = [
+        {"idlocal": "other", "ccthp": "B", code_column: "NO"},
+        {"idlocal": "null", "ccthp": None, code_column: "NO"},
+        {"idlocal": "owner", "ccthp": "P", code_column: "NO"},
+        {"idlocal": "let", "ccthp": "L", code_column: "NO"},
+        {"idlocal": "vacant", "ccthp": "V", code_column: "NO"},
+        {"idlocal": "second", "ccthp": "P", code_column: "RS"},
+    ]
+    source = tmp_path / "source.parquet"
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    **row,
+                    "idcom": "33001",
+                    "X": 4_000_010.0,
+                    "Y": 2_400_010.0,
+                    "logh": "t",
+                }
+                for row in rows
+            ]
+        ),
+        source,
+    )
+    config = load_origins_config()
+    config.vintages[vintage] = replace(
+        config.vintages[vintage],
+        parquet_pattern=str(source),
+        second_home_source="own",
+    )
+    connection = duckdb.connect()
+    try:
+        stage, _ = build_department_ff_cells(
+            connection,
+            vintage,
+            "33",
+            config,
+            {},
+            build_natural_cell_lookup(["CRS3035RES200mN2400000E4000000"]),
+        )
+        cells = aggregate_staged_ff_cells(connection, [stage], 2024).to_pylist()
+        communes = aggregate_staged_ff_communes(
+            connection, [stage], 2024
+        ).to_pylist()
+        codes = aggregate_staged_ff_extra_codes(
+            connection, [stage], code_column
+        )
+    finally:
+        connection.close()
+
+    cell = cells[0]
+    commune = communes[0]
+    assert cell["extra_dwellings"] == 2
+    assert cell["extra_dwellings_without_null"] == 1
+    assert cell["broad_second_homes"] == 3
+    assert cell["broad_second_homes_without_null"] == 2
+    assert cell["broad_main_residences"] == 2
+    assert cell["broad_main_residences_without_null"] == 3
+    assert commune["broad_second_homes"] == 3
+    assert commune["broad_main_residences"] == 2
+    ccthp_null = next(
+        row for row in codes if row["code_type"] == "ccthp" and row["code"] == "(null)"
+    )
+    assert ccthp_null["extra_with_null"] == 1
+    assert ccthp_null["extra_without_null"] == 0
+    residence_no = next(
+        row
+        for row in codes
+        if row["code_type"] == code_column and row["code"] == "NO"
+    )
+    assert residence_no["extra_with_null"] == 2
+
+
 @pytest.mark.parametrize("vintage", [2021, 2022])
 def test_hybrid_sql_matches_reference_for_each_status_and_missing_match(
     vintage: int,
@@ -589,6 +677,12 @@ def test_department_cells_match_python_classification_and_ignore_other_idcoms(
             "main_residences": 4,
             "vacant": 1,
             "second_homes": 1,
+            "extra_dwellings": 1,
+            "extra_dwellings_without_null": 0,
+            "broad_second_homes": 2,
+            "broad_second_homes_without_null": 1,
+            "broad_main_residences": 3,
+            "broad_main_residences_without_null": 4,
             "recent_transfers": 0,
             "owner_occupied_main_residences": 1,
             "owner_occupied_second_homes": 1,
@@ -602,6 +696,12 @@ def test_department_cells_match_python_classification_and_ignore_other_idcoms(
             "main_residences": 1,
             "vacant": 0,
             "second_homes": 0,
+            "extra_dwellings": 0,
+            "extra_dwellings_without_null": 0,
+            "broad_second_homes": 0,
+            "broad_second_homes_without_null": 0,
+            "broad_main_residences": 1,
+            "broad_main_residences_without_null": 1,
             "recent_transfers": 1,
             "owner_occupied_main_residences": 1,
             "owner_occupied_second_homes": 0,

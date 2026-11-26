@@ -56,6 +56,7 @@ report:
     2024: 2023
   ff_cells_pattern: "ff_cells_{vintage}.parquet"
   ff_communes_pattern: "ff_communes_{vintage}.parquet"
+  ff_extra_codes_pattern: "ff_extra_codes_{vintage}.parquet"
   metadata_pattern: "ff_cells_{vintage}.json"
   report_pattern: "ff_commune_report_{vintage}.md"
   comparison_report_pattern: "ff_commune_comparison_{vintage}.md"
@@ -71,6 +72,8 @@ vacant:
   ccthp: "V"
 owner_occupied:
   ccthp: "P"
+let:
+  ccthp: "L"
 social_housing:
   catpro2: "F1"
 recent_transfer:

@@ -49,6 +49,14 @@ Report for 2022: median and decile ratios of Fichiers fonciers to
 department 33. Report the 33 total for each measure and the ten communes with
 the largest second-home gaps.
 
+The broader category is the adopted second-home count plus disjoint extra
+dwellings that are non-vacant and neither owner-occupied (`ccthp=P`) nor let
+(`ccthp=L`). Report both variants, including and excluding null `ccthp`, with
+the same commune totals, ratios, and ten largest gaps as second homes. The
+extra-dwelling counts by `ccthp` and `proba_rprs` are in the report. Broad
+main residences are compared with `P21_RP` by commune and with Filosofi 2021
+households by fully contained natural-level cell.
+
 ### Department 33 — 2024 FF / 2023 census
 
 The 2023 Parquet has no direct `P23_*` columns; the verified selectors and the
@@ -57,6 +65,10 @@ department-33 comparison against 2021 are recorded in
 `TIME_PERIOD=2023`, `ID_TAB=LOG_T1`, `DS=DS_RP_SERIE_HISTORIQUE`, and the four
 housing measure identifiers in `TAB_MEASURE`. The selected dataset has 534
 department-33 communes per measure. FF results remain pending the real build.
+
+Use the same broader-category and main-residence comparisons as for 2022,
+with `DWELLINGS_OCS_DW_SEC_DW_OCC` as the census second-home-and-occasional
+measure and `rppo_rs` for extra-dwelling code counts.
 
 ### Three residence interpretations
 

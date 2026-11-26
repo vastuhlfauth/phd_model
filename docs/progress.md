@@ -36,7 +36,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 2c | Audit of the remaining 12 excluded community GTFS resources | merged | `data/source-urls` | Checked, for each of the 12 datasets with a community-tagged excluded GTFS resource, whether that dataset keeps another producer GTFS resource; all 12 do (true duplicates), so none needed a TCL-Lyon-style override. Added a `discover_gtfs` safeguard that logs a warning if a community exclusion would ever leave a dataset with zero producer GTFS resources, so a future case is caught automatically. Ruff clean; 68 tests pass. |
 | 2d | France OSM sizes, resilient acquisition batches and reruns | merged | `fix/osm-size` | France uses HEAD sizes without MD5 sidecars; OSM discovery refreshes all 28 extracts. Failed acquisitions no longer abort the batch; summary counts/reasons and exit 1 on failures. Recorded matching files skip network requests and preserve verification/date. Tests first; Ruff clean; 81 tests pass. |
 | 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | merged | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. Offline check: 551 downloaded, 536 passing feeds, 47 expired, 15 invalid/unusable, 18 flex indicators; no files deleted. |
-| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Adopted the 2024-status hybrid for 2021/2022; 2024 remains own. Broader category, household downscaling, and section 6.5 pilot validation are in progress. |
+| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Adopted the 2024-status hybrid for 2021/2022; 2024 remains own. Added broader second-home/occasional-dwelling comparisons for both null-`ccthp` variants. Household downscaling and section 6.5 pilot validation remain. |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; fit stalled, calibration disabled by default; report rerun pending |
@@ -65,6 +65,9 @@ Status values: not started, in progress, review, merged.
 - 2026-11-26, step 3: use the section 6.3 adopted hybrid for 2021/2022;
   2024 remains `own`. Fully contained natural cells are defined against the
   dissolved 2021 commune contours in EPSG:3035.
+- 2026-11-26, step 3: test the broader second-home/occasional-dwelling
+  category as second homes plus disjoint non-vacant dwellings whose `ccthp`
+  is neither `P` nor `L`; report both including- and excluding-null variants.
 - 2026-11-25, step 3: verified 2023 census selectors are configured in
   `config/origins.yaml`. For department 33, three housing totals differ from
   2021 by at most 3.39%; second homes differ by +6.35%, which remains an
@@ -145,10 +148,6 @@ Each item stays open until a value is decided; the value goes into `config/`.
 
 - [ ] Step 3, section 6.3 step 7: second-home rescaling coefficient remains
   unconfirmed and is set to `null` in `config/origins.yaml`.
-- [ ] Step 3, section 6: reconcile the absent 2022 `geomloc` and `rppo_rs`
-  fields with the occupied-stock and spatial-assignment rules before writing
-  package code. Obtain exact natural-cell straddler and Eurostat boundary
-  counts if required; the full commune-geometry scan exceeded the 60 s cap.
 - [ ] Step 6 OSRM: rerun the report with calibration disabled. Select a
   suitable reference before interpreting car holdout performance, parameter
   uncertainty or proposed values; the OSRM fit stalled. Foot strata unfilled after

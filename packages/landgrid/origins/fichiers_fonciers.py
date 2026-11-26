@@ -65,6 +65,7 @@ class ReportConfig:
     ff_vintage_to_census: dict[int, int]
     ff_cells_pattern: str
     ff_communes_pattern: str
+    ff_extra_codes_pattern: str
     metadata_pattern: str
     report_pattern: str
     count_suppression_threshold: int
@@ -85,6 +86,7 @@ class OriginsConfig:
     logh: str
     vacant_code: str
     owner_code: str
+    let_code: str
     social_code: str
     recent_transfer: dict[int, str]
     jannath_min: int
@@ -153,6 +155,7 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             },
             ff_cells_pattern=report["ff_cells_pattern"],
             ff_communes_pattern=report["ff_communes_pattern"],
+            ff_extra_codes_pattern=report["ff_extra_codes_pattern"],
             metadata_pattern=report["metadata_pattern"],
             report_pattern=report["report_pattern"],
             count_suppression_threshold=int(
@@ -171,6 +174,7 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         logh=raw["dwelling"]["logh"],
         vacant_code=raw["vacant"]["ccthp"],
         owner_code=raw["owner_occupied"]["ccthp"],
+        let_code=raw["let"]["ccthp"],
         social_code=raw["social_housing"]["catpro2"],
         recent_transfer={
             int(vintage): code for vintage, code in raw["recent_transfer"].items()
@@ -201,6 +205,7 @@ def classify_dwelling(
     logh: str = "t",
     vacant_code: str = "V",
     owner_code: str = "P",
+    let_code: str = "L",
     social_code: str = "F1",
     second_home_source: str = "own",
 ) -> dict[str, int]:
@@ -216,6 +221,15 @@ def classify_dwelling(
         and later_status in {"RS", "RPPO"} else second_value
     )
     is_second_home = is_dwelling and effective_second == second_home_code
+    is_extra_dwelling = (
+        is_dwelling
+        and not is_vacant
+        and not is_second_home
+        and row.get("ccthp") not in {owner_code, let_code}
+    )
+    is_extra_dwelling_without_null = (
+        is_extra_dwelling and row.get("ccthp") is not None
+    )
     is_recent_transfer = (
         is_dwelling
         and not is_vacant
@@ -237,6 +251,16 @@ def classify_dwelling(
         "vacant": int(is_vacant),
         "second_home": int(is_second_home),
         "main_residence": int(is_main),
+        "extra_dwellings": int(is_extra_dwelling),
+        "extra_dwellings_without_null": int(is_extra_dwelling_without_null),
+        "broad_second_homes": int(is_second_home or is_extra_dwelling),
+        "broad_second_homes_without_null": int(
+            is_second_home or is_extra_dwelling_without_null
+        ),
+        "broad_main_residences": int(is_main and not is_extra_dwelling),
+        "broad_main_residences_without_null": int(
+            is_main and not is_extra_dwelling_without_null
+        ),
         "recent_transfer": int(is_recent_transfer),
         "owner_occupied_main_residence": int(is_owner),
         "owner_occupied_second_home": int(is_owner_second_home),
@@ -268,6 +292,7 @@ def aggregate_dwelling_rows(
     logh: str = "t",
     vacant_code: str = "V",
     owner_code: str = "P",
+    let_code: str = "L",
     social_code: str = "F1",
 ) -> dict[str, int | float | None]:
     """Aggregate a synthetic list of premises into one 200 m cell summary."""
@@ -276,6 +301,12 @@ def aggregate_dwelling_rows(
         "main_residences": 0,
         "vacant": 0,
         "second_homes": 0,
+        "extra_dwellings": 0,
+        "extra_dwellings_without_null": 0,
+        "broad_second_homes": 0,
+        "broad_second_homes_without_null": 0,
+        "broad_main_residences": 0,
+        "broad_main_residences_without_null": 0,
         "recent_transfers": 0,
         "owner_occupied_main_residences": 0,
         "owner_occupied_second_homes": 0,
@@ -301,6 +332,7 @@ def aggregate_dwelling_rows(
             logh=logh,
             vacant_code=vacant_code,
             owner_code=owner_code,
+            let_code=let_code,
             social_code=social_code,
         )
         if not classified["dwelling"]:
@@ -309,6 +341,15 @@ def aggregate_dwelling_rows(
         totals["main_residences"] += classified["main_residence"]
         totals["vacant"] += classified["vacant"]
         totals["second_homes"] += classified["second_home"]
+        for key in (
+            "extra_dwellings",
+            "extra_dwellings_without_null",
+            "broad_second_homes",
+            "broad_second_homes_without_null",
+            "broad_main_residences",
+            "broad_main_residences_without_null",
+        ):
+            totals[key] += classified[key]
         totals["recent_transfers"] += classified["recent_transfer"]
         totals["owner_occupied_main_residences"] += classified[
             "owner_occupied_main_residence"
@@ -396,7 +437,7 @@ def build_ff_cells_signature(
     vintage: int,
     config: OriginsConfig,
     input_files: Sequence[Path],
-    code_version: int = 3,
+    code_version: int = 4,
 ) -> str:
     """Build the cache signature for one Fichiers fonciers vintage."""
     payload = {
@@ -406,6 +447,7 @@ def build_ff_cells_signature(
             "dwelling": config.logh,
             "vacant": config.vacant_code,
             "owner": config.owner_code,
+            "let": config.let_code,
             "social": config.social_code,
             "recent_transfer": config.recent_transfer[vintage],
             "jannath_min": config.jannath_min,
@@ -798,6 +840,7 @@ def build_department_ff_cells(
     logh = _sql_literal(config.logh)
     vacant = _sql_literal(config.vacant_code)
     owner = _sql_literal(config.owner_code)
+    let = _sql_literal(config.let_code)
     social = _sql_literal(config.social_code)
     second_home = _sql_literal(vintage_config.second_home_code)
     recent = _sql_literal(config.recent_transfer[vintage])
@@ -854,6 +897,19 @@ def build_department_ff_cells(
                 CASE WHEN logh = {logh}
                     AND ccthp IS DISTINCT FROM {vacant}
                     AND {second_value} IS DISTINCT FROM {second_home}
+                    AND ccthp IS DISTINCT FROM {owner}
+                    AND ccthp IS DISTINCT FROM {let}
+                    THEN 1 ELSE 0 END AS extra_dwellings,
+                CASE WHEN logh = {logh}
+                    AND ccthp IS DISTINCT FROM {vacant}
+                    AND {second_value} IS DISTINCT FROM {second_home}
+                    AND ccthp IS DISTINCT FROM {owner}
+                    AND ccthp IS DISTINCT FROM {let}
+                    AND ccthp IS NOT NULL
+                    THEN 1 ELSE 0 END AS extra_dwellings_without_null,
+                CASE WHEN logh = {logh}
+                    AND ccthp IS DISTINCT FROM {vacant}
+                    AND {second_value} IS DISTINCT FROM {second_home}
                     AND ccthp = {owner}
                     THEN 1 ELSE 0 END AS owner_occupied_main_residence,
                 CASE WHEN logh = {logh}
@@ -894,22 +950,32 @@ def build_department_ff_cells(
                         THEN TRY_CAST(jannath AS INTEGER)
                 END AS jannath_clean
             FROM located AS location
+        ),
+        categorized AS (
+            SELECT classified.*,
+                second_home + extra_dwellings AS broad_second_homes,
+                second_home + extra_dwellings_without_null
+                    AS broad_second_homes_without_null,
+                main_residence - extra_dwellings AS broad_main_residences,
+                main_residence - extra_dwellings_without_null
+                    AS broad_main_residences_without_null
+            FROM classified
         )
-        SELECT classified.*,
+        SELECT categorized.*,
             nat_cell.natural_cell_id,
-            CASE WHEN classified.idcom IS NOT NULL
+            CASE WHEN categorized.idcom IS NOT NULL
                 AND filosofi.lcog_geo IS NOT NULL
                 AND NOT list_contains(
                     regexp_split_to_array(
                         CAST(filosofi.lcog_geo AS VARCHAR), {separator_pattern}
                     ),
-                    trim(CAST(classified.idcom AS VARCHAR))
+                    trim(CAST(categorized.idcom AS VARCHAR))
                 )
                 THEN 1 ELSE 0 END AS idcom_commune_mismatch
-        FROM classified
+        FROM categorized
         LEFT JOIN _ff_cell_map AS nat_cell USING (cell_id)
         LEFT JOIN _filosofi_200m AS filosofi
-          ON filosofi.cell_code = classified.cell_code
+          ON filosofi.cell_code = categorized.cell_code
         """,
         parameters,
     )
@@ -987,6 +1053,15 @@ def aggregate_staged_ff_cells(
             sum(main_residence) AS main_residences,
             sum(vacant) AS vacant,
             sum(second_home) AS second_homes,
+            sum(extra_dwellings) AS extra_dwellings,
+            sum(extra_dwellings_without_null)
+                AS extra_dwellings_without_null,
+            sum(broad_second_homes) AS broad_second_homes,
+            sum(broad_second_homes_without_null)
+                AS broad_second_homes_without_null,
+            sum(broad_main_residences) AS broad_main_residences,
+            sum(broad_main_residences_without_null)
+                AS broad_main_residences_without_null,
             sum(recent_transfer) AS recent_transfers,
             sum(owner_occupied_main_residence)
                 AS owner_occupied_main_residences,
@@ -1046,6 +1121,15 @@ def aggregate_staged_ff_communes(
             sum(main_residence) AS main_residences,
             sum(vacant) AS vacant,
             sum(second_home) AS second_homes,
+            sum(extra_dwellings) AS extra_dwellings,
+            sum(extra_dwellings_without_null)
+                AS extra_dwellings_without_null,
+            sum(broad_second_homes) AS broad_second_homes,
+            sum(broad_second_homes_without_null)
+                AS broad_second_homes_without_null,
+            sum(broad_main_residences) AS broad_main_residences,
+            sum(broad_main_residences_without_null)
+                AS broad_main_residences_without_null,
             sum(recent_transfer) AS recent_transfers,
             sum(owner_occupied_main_residence)
                 AS owner_occupied_main_residences,
@@ -1062,6 +1146,46 @@ def aggregate_staged_ff_communes(
         """,
         [vintage],
     ).to_arrow_table()
+
+
+def aggregate_staged_ff_extra_codes(
+    connection: duckdb.DuckDBPyConnection,
+    staging_tables: Sequence[str],
+    residence_code_column: str,
+) -> list[dict[str, int | str]]:
+    """Aggregate additional dwelling counts by occupancy and residence code."""
+    if not staging_tables:
+        raise ValueError("at least one staged department table is required")
+    if residence_code_column not in {"proba_rprs", "rppo_rs"}:
+        raise ValueError(f"unsupported residence code column: {residence_code_column}")
+    union = " UNION ALL ".join(
+        f"SELECT * FROM {_quoted_identifier(table)}" for table in staging_tables
+    )
+    return (
+        connection.execute(
+            f"""
+            WITH staged AS ({union})
+            SELECT 'ccthp' AS code_type,
+                coalesce(CAST(ccthp AS VARCHAR), '(null)') AS code,
+                sum(extra_dwellings) AS extra_with_null,
+                sum(extra_dwellings_without_null) AS extra_without_null
+            FROM staged
+            WHERE dwelling = 1 AND extra_dwellings = 1
+            GROUP BY ccthp
+            UNION ALL
+            SELECT '{residence_code_column}' AS code_type,
+                coalesce(CAST(second_home_value AS VARCHAR), '(null)') AS code,
+                sum(extra_dwellings) AS extra_with_null,
+                sum(extra_dwellings_without_null) AS extra_without_null
+            FROM staged
+            WHERE dwelling = 1 AND extra_dwellings = 1
+            GROUP BY second_home_value
+            ORDER BY code_type, code
+            """
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
 
 
 def build_ff_cells(
@@ -1153,6 +1277,9 @@ def build_ff_cells(
         commune_output_path = output_directory / (
             config.report.ff_communes_pattern.format(vintage=vintage)
         )
+        extra_codes_output_path = output_directory / (
+            config.report.ff_extra_codes_pattern.format(vintage=vintage)
+        )
         metadata_path = output_directory / config.report.metadata_pattern.format(
             vintage=vintage
         )
@@ -1162,6 +1289,7 @@ def build_ff_cells(
             not force
             and output_path.is_file()
             and commune_output_path.is_file()
+            and extra_codes_output_path.is_file()
             and metadata_path.is_file()
         ):
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -1169,6 +1297,7 @@ def build_ff_cells(
                 return {
                     "output": str(output_path),
                     "communes_output": str(commune_output_path),
+                    "extra_codes_output": str(extra_codes_output_path),
                     "cached": True,
                     "signature": signature,
                     "departments": resolved_departments,
@@ -1179,6 +1308,11 @@ def build_ff_cells(
                     ),
                     "commune_row_count": int(
                         read_parquet(connection, commune_output_path).aggregate(
+                            "count(*)"
+                        ).fetchone()[0]
+                    ),
+                    "extra_codes_row_count": int(
+                        read_parquet(connection, extra_codes_output_path).aggregate(
                             "count(*)"
                         ).fetchone()[0]
                     ),
@@ -1229,11 +1363,31 @@ def build_ff_cells(
             staging_tables,
             vintage,
         )
+        extra_codes = aggregate_staged_ff_extra_codes(
+            connection,
+            staging_tables,
+            config.vintages[vintage].second_home_column,
+        )
+        extra_codes_table = pa.Table.from_pylist(
+            extra_codes,
+            schema=pa.schema(
+                [
+                    ("code_type", pa.string()),
+                    ("code", pa.string()),
+                    ("extra_with_null", pa.int64()),
+                    ("extra_without_null", pa.int64()),
+                ]
+            ),
+        )
         connection.register("_ff_cells", table)
         connection.register("_ff_communes", commune_table)
+        connection.register("_ff_extra_codes", extra_codes_table)
         try:
             temporary = output_path.with_suffix(".tmp.parquet")
             commune_temporary = commune_output_path.with_suffix(".tmp.parquet")
+            extra_codes_temporary = extra_codes_output_path.with_suffix(
+                ".tmp.parquet"
+            )
             write_parquet(
                 connection,
                 "SELECT * FROM _ff_cells",
@@ -1244,11 +1398,18 @@ def build_ff_cells(
                 "SELECT * FROM _ff_communes",
                 commune_temporary,
             )
+            write_parquet(
+                connection,
+                "SELECT * FROM _ff_extra_codes",
+                extra_codes_temporary,
+            )
             temporary.replace(output_path)
             commune_temporary.replace(commune_output_path)
+            extra_codes_temporary.replace(extra_codes_output_path)
         finally:
             connection.unregister("_ff_cells")
             connection.unregister("_ff_communes")
+            connection.unregister("_ff_extra_codes")
 
         metadata_path.with_suffix(".tmp.json").write_text(
             json.dumps(
@@ -1269,11 +1430,13 @@ def build_ff_cells(
         return {
             "output": str(output_path),
             "communes_output": str(commune_output_path),
+            "extra_codes_output": str(extra_codes_output_path),
             "cached": False,
             "signature": signature,
             "departments": resolved_departments,
             "row_count": table.num_rows,
             "commune_row_count": commune_table.num_rows,
+            "extra_codes_row_count": extra_codes_table.num_rows,
             "diagnostics": diagnostics,
         }
     finally:
@@ -1322,7 +1485,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     threshold = load_origins_config(args.config).report.count_suppression_threshold
     displayed = dict(result)
-    for key in ("row_count", "commune_row_count"):
+    for key in ("row_count", "commune_row_count", "extra_codes_row_count"):
         value = displayed.get(key)
         if isinstance(value, int) and value < threshold:
             displayed[key] = f"<{threshold}"

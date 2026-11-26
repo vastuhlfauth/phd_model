@@ -450,9 +450,67 @@ def test_report_scenarios_compare_matched_communes_and_suppress_small_counts() -
     assert "COM-33001" not in report
 
 
+def test_broader_commune_metrics_compare_both_null_variants() -> None:
+    from landgrid.origins.report import calculate_broader_metrics
+
+    census = pa.Table.from_pylist(
+        [
+            {
+                "commune_code": "33001",
+                "main_residences": 80.0,
+                "second_homes": 20.0,
+            }
+        ]
+    )
+    ff_communes = pa.Table.from_pylist(
+        [
+            {
+                "commune_code": "33001",
+                "broad_main_residences": 82,
+                "broad_main_residences_without_null": 83,
+                "broad_second_homes": 35,
+                "broad_second_homes_without_null": 32,
+            }
+        ]
+    )
+    summary = calculate_broader_metrics(
+        census,
+        ff_communes,
+        (0.1, 0.5, 0.9),
+        10,
+    )
+
+    including = summary["including_null"]["second_homes"]
+    excluding = summary["excluding_null"]["second_homes"]
+    assert including.total_ratio == pytest.approx(1.75)
+    assert excluding.total_ratio == pytest.approx(1.6)
+    assert including.quantiles == pytest.approx([1.75, 1.75, 1.75])
+    assert including.top_gaps[0]["signed_gap"] == pytest.approx(15)
+    assert summary["including_null"]["main_residences"].total_ratio == pytest.approx(
+        1.025
+    )
+    assert summary["excluding_null"]["main_residences"].total_ratio == pytest.approx(
+        1.0375
+    )
+
+
 def test_build_commune_report_includes_social_housing_aggregates(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from landgrid.origins import report as report_module
+
+    def boundary(
+        connection: duckdb.DuckDBPyConnection, path: Path, department: str
+    ) -> None:
+        connection.execute("LOAD spatial")
+        connection.execute(
+            "CREATE TEMP TABLE department_boundary AS SELECT ST_GeomFromText("
+            "'POLYGON ((4000000 2400000,4000200 2400000,4000200 2400200,"
+            "4000000 2400200,4000000 2400000))') AS geom"
+        )
+
+    monkeypatch.setattr(report_module, "_load_department_boundary", boundary)
     config_values = yaml.safe_load(
         Path("config/origins.yaml").read_text(encoding="utf-8")
     )
@@ -496,6 +554,10 @@ def test_build_commune_report_includes_social_housing_aggregates(
                     "main_residences": 90,
                     "vacant": 15,
                     "second_homes": 15,
+                    "broad_second_homes": 18,
+                    "broad_second_homes_without_null": 17,
+                    "broad_main_residences": 82,
+                    "broad_main_residences_without_null": 83,
                     "recent_transfers": 10,
                     "owner_occupied_main_residences": 50,
                     "owner_occupied_second_homes": 10,
@@ -512,11 +574,35 @@ def test_build_commune_report_includes_social_housing_aggregates(
             [
                 {
                     "cell_id": 1_200_020_000,
+                    "natural_cell_id": (
+                        "CRS3035RES200mN2400000E4000000"
+                    ),
+                    "broad_main_residences": 40,
+                    "broad_main_residences_without_null": 42,
                     "social_housing_main_residences": 60,
                 }
             ]
         ),
         output_directory / "ff_cells_2024.parquet",
+    )
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "code_type": "ccthp",
+                    "code": "B",
+                    "extra_with_null": 60,
+                    "extra_without_null": 60,
+                },
+                {
+                    "code_type": "rppo_rs",
+                    "code": "NO",
+                    "extra_with_null": 60,
+                    "extra_without_null": 60,
+                },
+            ]
+        ),
+        output_directory / "ff_extra_codes_2024.parquet",
     )
     (output_directory / "ff_cells_2024.json").write_text(
         json.dumps({"diagnostics": {"premises_without_coordinates": 4}}),
@@ -528,7 +614,15 @@ def test_build_commune_report_includes_social_housing_aggregates(
             "carreaux_200m_met.csv",
             "idcar_200m,lcog_geo,log_soc\nCRS3035RES200mN2400000E4000000,33001,70\n",
         )
+    natural_archive = tmp_path / "natural.zip"
+    with zipfile.ZipFile(natural_archive, "w") as archive:
+        archive.writestr(
+            "carreaux_nivNaturel_met.csv",
+            "idcar_nat,tmaille,men\n"
+            "CRS3035RES200mN2400000E4000000,200,100\n",
+        )
     config_values["filosofi"]["200m_archive"] = str(filosofi_archive)
+    config_values["filosofi"]["natural_archive"] = str(natural_archive)
     config_path = tmp_path / "origins.yaml"
     config_path.write_text(
         yaml.safe_dump(config_values, sort_keys=False),
@@ -546,3 +640,6 @@ def test_build_commune_report_includes_social_housing_aggregates(
     assert "FF social main residences: 60.0" in content
     assert "Filosofi `log_soc`: 70.0" in content
     assert "Closest under the stated error metric:" in content
+    assert "Broader second-home and occasional-dwelling category" in content
+    assert "Extra-dwelling counts by source code" in content
+    assert "Main residences / Filosofi households by natural cell" in content
