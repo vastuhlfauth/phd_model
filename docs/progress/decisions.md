@@ -1,8 +1,10 @@
 ## Decisions taken while coding
 
-- 2026-11-26, step 3: test `hybrid_2024` as an opt-in experimental 2022
-  classification, not an adopted method. The default remains the section-6.3
-  `proba_rprs` rule; hybrid outputs must use a separate directory.
+- 2026-11-26, step 3: adopt `hybrid_2024` for 2021 and 2022 under section 6.3.
+  Join 2024 `rppo_rs` by `idlocal`; settled `RS`/`RPPO` override the earlier
+  status and other/missing statuses use the vintage's own `proba_rprs`.
+  Default hybrid builds use `data/interim/landgrid`; `own` comparisons use a
+  separate output directory. 2024 remains `own`.
 - 2026-11-25, step 3: use the verified 2023 census selectors in
   `config/origins.yaml`: commune historical series `LOG_T1` /
   `DS_RP_SERIE_HISTORIQUE`, with the four `TAB_MEASURE` mappings documented

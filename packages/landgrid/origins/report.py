@@ -614,7 +614,8 @@ def render_comparison_report(
         "# 2022 second-home classification comparison",
         "",
         f"- Department `{department}`; 2021 census.",
-        "- `own` is the specified default; `hybrid_2024` is experimental.",
+        "- `hybrid_2024` is adopted by section 6.3; `own` is retained "
+        "for comparison.",
         "- Hybrid uses settled 2024 RS/RPPO, otherwise 2022 proba_rprs; "
         "vacancy and recent-transfer indicators use 2022.",
         "- Ratios and scenario comparisons use matched communes only.",

@@ -1,5 +1,16 @@
 # Landgrid origins
 
+## 2026-11-26 — Step 3: adopting the 2021/2022 hybrid
+
+- Adopted `hybrid_2024` as the configured 2021 and 2022 rule under section 6.3;
+  2024 remains `own`, and own comparisons require a separate output directory.
+- Extended the `idlocal` join to 2021 and kept the default hybrid output at
+  `data/interim/landgrid/`.
+- Updated comparison wording and removed the obsolete build warning; the five
+  pilot départements took 2–4 seconds each.
+- Focused synthetic hybrid tests pass (3 cases); Ruff passes. No real-data
+  build was run.
+
 ## 2026-11-26 — Step 3: experimental 2022 hybrid comparison
 
 - Added opt-in `hybrid_2024`; the default remains `own` and hybrid builds

@@ -57,7 +57,9 @@ def test_nulls_count_as_neither_vacant_nor_second_home() -> None:
     assert result["main_residence"] == 1
 
 
+@pytest.mark.parametrize("vintage", [2021, 2022])
 def test_hybrid_sql_matches_reference_for_each_status_and_missing_match(
+    vintage: int,
     tmp_path: Path,
 ) -> None:
     statuses = ["RS", "RPPO", "MR", "NO", "PM", "INCONNU", None, "missing"]
@@ -79,23 +81,23 @@ def test_hybrid_sql_matches_reference_for_each_status_and_missing_match(
         for status in statuses if status != "missing"
         for own in ("RS", "RP", "AC")
     ]
-    for year, values in ((2022, rows), (2024, later)):
+    for year, values in ((vintage, rows), (2024, later)):
         partition = tmp_path / str(year) / "ccodep=33" / "part.parquet"
         partition.parent.mkdir(parents=True)
         pq.write_table(pa.Table.from_pylist(values), partition)
     config = load_origins_config()
-    for year in (2022, 2024):
+    for year in (2021, 2022, 2024):
         config.vintages[year] = replace(
             config.vintages[year],
             parquet_pattern=str(
                 tmp_path / str(year) / "ccodep={department}" / "part.parquet"
             ),
-            second_home_source="hybrid_2024" if year == 2022 else "own",
+            second_home_source="hybrid_2024" if year in {2021, 2022} else "own",
         )
     connection = duckdb.connect()
     try:
         table, diagnostics = build_department_ff_cells(
-            connection, 2022, "33", config, {},
+            connection, vintage, "33", config, {},
             build_natural_cell_lookup(["CRS3035RES1000mN2400000E4000000"]),
         )
         actual = connection.execute(
@@ -162,9 +164,14 @@ def test_hybrid_rejects_duplicate_2024_identifiers(tmp_path: Path) -> None:
         connection.close()
 
 
-def test_hybrid_refuses_default_output_before_reading_sources() -> None:
-    with pytest.raises(ValueError, match="separate output"):
-        build_ff_cells(2022, second_home_source="hybrid_2024")
+def test_hybrid_defaults_and_own_comparison_requires_separate_output() -> None:
+    config = load_origins_config()
+    assert config.vintages[2021].second_home_source == "hybrid_2024"
+    assert config.vintages[2022].second_home_source == "hybrid_2024"
+    assert config.vintages[2024].second_home_source == "own"
+    for vintage in (2021, 2022):
+        with pytest.raises(ValueError, match="own comparison requires"):
+            build_ff_cells(vintage, second_home_source="own")
     with pytest.raises(ValueError, match="only available"):
         build_ff_cells(2024, second_home_source="hybrid_2024")
 

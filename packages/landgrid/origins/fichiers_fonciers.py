@@ -110,8 +110,13 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
     for vintage, vintage_config in vintages.items():
         if vintage_config.second_home_source not in {"own", "hybrid_2024"}:
             raise ValueError(f"invalid second_home_source for vintage {vintage}")
-        if vintage_config.second_home_source == "hybrid_2024" and vintage != 2022:
-            raise ValueError("hybrid_2024 is only available for vintage 2022")
+        if vintage_config.second_home_source == "hybrid_2024" and vintage not in {
+            2021,
+            2022,
+        }:
+            raise ValueError(
+                "hybrid_2024 is only available for vintages 2021 and 2022"
+            )
     census = {
         int(vintage): CensusVintageConfig(
             format=value["format"],
@@ -718,8 +723,10 @@ def build_department_ff_cells(
     }
     hybrid = vintage_config.second_home_source == "hybrid_2024"
     if hybrid:
-        if vintage != 2022:
-            raise ValueError("hybrid_2024 is only available for vintage 2022")
+        if vintage not in {2021, 2022}:
+            raise ValueError(
+                "hybrid_2024 is only available for vintages 2021 and 2022"
+            )
         required.add("idlocal")
     missing = required - available
     if missing:
@@ -1073,6 +1080,7 @@ def build_ff_cells(
     config = load_origins_config(config_path)
     if vintage not in config.vintages:
         raise ValueError(f"unsupported origins vintage: {vintage}")
+    configured_source = config.vintages[vintage].second_home_source
     if second_home_source is not None:
         if second_home_source not in {"own", "hybrid_2024"}:
             raise ValueError(f"invalid second_home_source: {second_home_source}")
@@ -1080,13 +1088,20 @@ def build_ff_cells(
             config.vintages[vintage], second_home_source=second_home_source
         )
     hybrid = config.vintages[vintage].second_home_source == "hybrid_2024"
-    if hybrid and vintage != 2022:
-        raise ValueError("hybrid_2024 is only available for vintage 2022")
-    if hybrid and (
-        output is None
-        or Path(output).resolve() == Path(config.report.output_directory).resolve()
+    if hybrid and vintage not in {2021, 2022}:
+        raise ValueError(
+            "hybrid_2024 is only available for vintages 2021 and 2022"
+        )
+    if (
+        not hybrid
+        and configured_source == "hybrid_2024"
+        and (
+            output is None
+            or Path(output).resolve()
+            == Path(config.report.output_directory).resolve()
+        )
     ):
-        raise ValueError("hybrid_2024 requires a separate output directory")
+        raise ValueError("the own comparison requires a separate output directory")
 
     connection = open_connection()
     try:
