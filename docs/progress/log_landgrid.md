@@ -1,5 +1,12 @@
 # Landgrid origins
 
+## 2026-11-26 — Step 3 validation checkpoint serialization
+
+- Fixed positive-reference counts returned by DuckDB as decimals, which caused
+  the aggregate JSON checkpoint to fail during the user's validation run.
+- Synthetic tests cover JSON serialization for both validation paths; no
+  real-data validation was rerun. Rerun `python -m landgrid.origins.validation`.
+
 ## 2026-11-26 — Step 3 experimental composition and age consistency
 
 - Added dwelling-level natural and 200 m FF covariates and direct counterpart

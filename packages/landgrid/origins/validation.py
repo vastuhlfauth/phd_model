@@ -470,7 +470,7 @@ def calculate_validation_metrics(
                 f"""
                 SELECT method, variable, natural_cell_size_m, density_class,
                     count(*) AS cell_count,
-                    sum(CASE WHEN reference > 0 THEN 1 ELSE 0 END)
+                    count(*) FILTER (WHERE reference > 0)
                         AS positive_reference_count,
                     avg(abs(predicted - reference)) AS mean_absolute_error,
                     quantile_cont(
@@ -544,7 +544,7 @@ def calculate_validation_metrics(
                 SELECT density_class, count(*) AS cell_count,
                     sum(predicted_individuals) AS downscaled_individuals,
                     sum(population) AS eurostat_individuals,
-                    sum(CASE WHEN population > 0 THEN 1 ELSE 0 END)
+                    count(*) FILTER (WHERE population > 0)
                         AS positive_reference_count,
                     quantile_cont(
                         abs(predicted_individuals - population)
@@ -656,7 +656,7 @@ def _composition_eurostat_metrics(
         )
         SELECT method, variable, density_class, count(*) AS cell_count,
             sum(predicted) AS downscaled_total, sum(reference) AS reference_total,
-            sum(CASE WHEN reference > 0 THEN 1 ELSE 0 END) AS positive_reference_count,
+            count(*) FILTER (WHERE reference > 0) AS positive_reference_count,
             sum(predicted) / nullif(sum(reference), 0) AS ratio,
             CASE WHEN variable LIKE '%_ratio' THEN NULL ELSE
                 quantile_cont(abs(predicted - reference) / nullif(reference, 0), 0.5)

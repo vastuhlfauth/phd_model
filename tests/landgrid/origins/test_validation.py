@@ -84,6 +84,11 @@ def test_composition_comparison_and_eurostat_age_ratios() -> None:
         row["method"] == "composition" and row["variable"] == "under_11_ratio"
     ))
     assert young["ratio"] == pytest.approx(2)
+    checkpoint = json.loads(json.dumps({
+        "metrics_200m": metrics, "metrics_1km": ages, "eurostat_reasons": reasons
+    }))
+    assert checkpoint["metrics_200m"][0]["positive_reference_count"] == 2
+    assert checkpoint["metrics_1km"][0]["positive_reference_count"] == 1
     report = render_validation_report(2021, "33", metrics, ages, reasons, 50, 0.2)
     assert "information only" in report
     assert "ind_0_3" in report
@@ -301,6 +306,11 @@ def test_validation_reports_errors_and_suppresses_small_counts() -> None:
             "median_absolute_relative_error": pytest.approx(0.96),
         }
     ]
+    json.dumps({
+        "metrics_200m": metrics_200m,
+        "metrics_1km": metrics_1km,
+        "eurostat_reasons": eurostat_reasons,
+    })
 
     report = render_validation_report(
         2021, "33", metrics_200m, metrics_1km, eurostat_reasons, 50, 0.2
