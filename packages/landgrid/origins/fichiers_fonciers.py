@@ -77,12 +77,22 @@ class ReportConfig:
 
 
 @dataclass(frozen=True)
+class DownscaleConfig:
+    output_year: int
+    ff_vintage: int
+    cell_resolution_m: int
+    output_pattern: str
+    metadata_pattern: str
+
+
+@dataclass(frozen=True)
 class OriginsConfig:
     filosofi_200m_archive: str
     filosofi_natural_archive: str
     vintages: dict[int, VintageConfig]
     census: dict[int, CensusVintageConfig]
     report: ReportConfig
+    downscale: DownscaleConfig
     logh: str
     vacant_code: str
     owner_code: str
@@ -170,6 +180,13 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             cell_ratio_quantiles=tuple(
                 float(value) for value in report["cell_ratio_quantiles"]
             ),
+        ),
+        downscale=DownscaleConfig(
+            output_year=int(raw["downscale"]["output_year"]),
+            ff_vintage=int(raw["downscale"]["ff_vintage"]),
+            cell_resolution_m=int(raw["downscale"]["cell_resolution_m"]),
+            output_pattern=raw["downscale"]["output_pattern"],
+            metadata_pattern=raw["downscale"]["metadata_pattern"],
         ),
         logh=raw["dwelling"]["logh"],
         vacant_code=raw["vacant"]["ccthp"],

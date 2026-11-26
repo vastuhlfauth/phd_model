@@ -88,3 +88,10 @@ cleaning:
 
 # TODO(confirm): second-home rescaling coefficient for section 6.3, step 7.
 second_home_rescaling: null
+
+downscale:
+  output_year: 2021
+  ff_vintage: 2022
+  cell_resolution_m: 200
+  output_pattern: "origins_{year}_200m.parquet"
+  metadata_pattern: "origins_{year}_200m.json"
