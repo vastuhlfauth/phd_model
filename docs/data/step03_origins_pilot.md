@@ -7,6 +7,36 @@ No real FF build or report was run during coding. The commands below are the
 only commands that may read the restricted partitions. All displayed aggregate
 counts below 50 are suppressed as `<50`; no row-level FF output is included.
 
+### Experimental 2022 hybrid comparison
+
+The default remains `own`. For `hybrid_2024`, join each 2022 partition to the
+same department's 2024 partition by `idlocal`; 2024 `RS` and `RPPO` override
+the 2022 second-home status, while all other or missing statuses fall back to
+`proba_rprs`. Vacancy always uses 2022 `ccthp`. A 2022 recent-transfer
+indicator is counted only if the hybrid rule leaves the dwelling a main
+residence. The hybrid is experimental, not adopted.
+
+The comparison reports both classifications' housing totals, commune ratios,
+transfer scenarios, and separately ranked top gaps. It counts all dwellings in
+the department's three hybrid branches, including unlocated dwellings.
+Natural-cell ratios use whole natural squares covered by the dissolved 2021
+commune contours in EPSG:3035 and exclude zero-household cells. This geometric
+test is stricter than the `lcog_geo` populated-cell approximation.
+
+The existing build caches completed outputs, but does **not** checkpoint an
+interrupted department build or automatically write job logs and summaries.
+The commands below are therefore not yet compliant with the project's
+long-running-job requirements; do not run them until that limitation is fixed.
+
+```powershell
+python -m landgrid.origins.fichiers_fonciers --vintage 2022 --department 17 --department 24 --department 33 --department 40 --department 47 --second-home-source own --output data\interim\landgrid\own_2022_comparison
+python -m landgrid.origins.fichiers_fonciers --vintage 2022 --department 17 --department 24 --department 33 --department 40 --department 47 --second-home-source hybrid_2024 --output data\interim\landgrid\hybrid_2022
+python -m landgrid.origins.fichiers_fonciers report --vintage 2022 --department 33 --compare-own data\interim\landgrid\own_2022_comparison --compare-hybrid data\interim\landgrid\hybrid_2022 --output data\interim\landgrid
+```
+
+The separate own build also leaves the existing default cells untouched. The
+comparison report is `data/interim/landgrid/ff_commune_comparison_2022.md`.
+
 ### Department 33 — 2022 FF / 2021 census
 
 The 2021 census comparison fields are `P21_LOG`, `P21_RP`,

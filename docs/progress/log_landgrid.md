@@ -1,5 +1,18 @@
 # Landgrid origins
 
+## 2026-11-26 — Step 3: experimental 2022 hybrid comparison
+
+- Added opt-in `hybrid_2024`; the default remains `own` and hybrid builds
+  require a separate output directory. 2022 vacancy remains unchanged.
+- Added SQL/Python synthetic branch tests, duplicate-key rejection and
+  suppressed CLI counts; settled 2024 RS transfers are not main residences.
+- Added a side-by-side census comparison, hybrid branch counts and natural-cell
+  household-ratio deciles using complete geometric department containment.
+- Synthetic origins tests: 26 passed; Ruff passed. No real data was read.
+- Real-data commands are documented in `docs/data/step03_origins_pilot.md`,
+  but interrupted builds lack checkpoints and automatic logs/summaries.
+- Hybrid adoption and the real-data comparison remain open.
+
 ## 2026-11-25 — Step 3d: census selectors and commune report
 
 - Verified 2023 commune housing selectors in the public long-form census file:
