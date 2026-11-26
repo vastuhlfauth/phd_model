@@ -1,5 +1,6 @@
 """Synthetic acceptance tests for Fichiers fonciers cell counts (section 6.3)."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import duckdb
@@ -12,6 +13,7 @@ from landgrid.origins.fichiers_fonciers import (
     aggregate_staged_ff_cells,
     aggregate_staged_ff_communes,
     build_department_ff_cells,
+    build_ff_cells,
     classify_dwelling,
     coordinate_to_200m_cell,
     derived_departments_for_pilot,
@@ -53,6 +55,85 @@ def test_nulls_count_as_neither_vacant_nor_second_home() -> None:
     assert result["vacant"] == 0
     assert result["second_home"] == 0
     assert result["main_residence"] == 1
+
+
+def test_hybrid_sql_matches_reference_for_each_status_and_missing_match(
+    tmp_path: Path,
+) -> None:
+    statuses = ["RS", "RPPO", "MR", "NO", "PM", "INCONNU", None, "missing"]
+    rows = [
+        {
+            "idlocal": f"{status}-{own}",
+            "idcom": "33001",
+            "X": 4_000_010.0,
+            "Y": 2_400_010.0,
+            "logh": "t",
+            "ccthp": vacancy,
+            "proba_rprs": own,
+        }
+        for status in statuses
+        for own, vacancy in [("RS", "P"), ("RP", "V"), ("AC", "P")]
+    ]
+    later = [
+        {"idlocal": f"{status}-{own}", "rppo_rs": status}
+        for status in statuses if status != "missing"
+        for own in ("RS", "RP", "AC")
+    ]
+    for year, values in ((2022, rows), (2024, later)):
+        partition = tmp_path / str(year) / "ccodep=33" / "part.parquet"
+        partition.parent.mkdir(parents=True)
+        pq.write_table(pa.Table.from_pylist(values), partition)
+    config = load_origins_config()
+    for year in (2022, 2024):
+        config.vintages[year] = replace(
+            config.vintages[year],
+            parquet_pattern=str(
+                tmp_path / str(year) / "ccodep={department}" / "part.parquet"
+            ),
+            second_home_source="hybrid_2024" if year == 2022 else "own",
+        )
+    connection = duckdb.connect()
+    try:
+        table, diagnostics = build_department_ff_cells(
+            connection, 2022, "33", config, {},
+            build_natural_cell_lookup(["CRS3035RES1000mN2400000E4000000"]),
+        )
+        actual = connection.execute(
+            f'SELECT idlocal, dwelling, vacant, second_home, main_residence, '
+            f'recent_transfer FROM "{table}" ORDER BY idlocal'
+        ).to_arrow_table().to_pylist()
+    finally:
+        connection.close()
+    later_by_id = {row["idlocal"]: row["rppo_rs"] for row in later}
+    for result in actual:
+        source = next(row for row in rows if row["idlocal"] == result["idlocal"])
+        reference = classify_dwelling(
+            {**source, "rppo_rs_2024": later_by_id.get(source["idlocal"])},
+            "proba_rprs", "RS", "AC", second_home_source="hybrid_2024",
+        )
+        for key in (
+            "dwelling", "vacant", "second_home", "main_residence", "recent_transfer"
+        ):
+            assert result[key] == reference[key], (source, key)
+        status = later_by_id.get(source["idlocal"])
+        expected_second = status == "RS" if status in {"RS", "RPPO"} else (
+            source["proba_rprs"] == "RS"
+        )
+        assert result["second_home"] == expected_second
+        assert result["vacant"] == (source["ccthp"] == "V")
+        assert result["main_residence"] == (
+            source["ccthp"] != "V" and not expected_second
+        )
+    assert diagnostics["hybrid_settled_rs"] == 3
+    assert diagnostics["hybrid_settled_rppo"] == 3
+    assert diagnostics["hybrid_fallback"] == 18
+
+
+def test_hybrid_refuses_default_output_before_reading_sources() -> None:
+    with pytest.raises(ValueError, match="separate output"):
+        build_ff_cells(2022, second_home_source="hybrid_2024")
+    with pytest.raises(ValueError, match="only available"):
+        build_ff_cells(2024, second_home_source="hybrid_2024")
 
 
 def test_vacant_recent_transfer_is_not_counted_as_main_or_recent() -> None:

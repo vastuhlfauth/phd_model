@@ -13,7 +13,7 @@ import tempfile
 import time
 import zipfile
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +37,7 @@ class VintageConfig:
     parquet_pattern: str
     second_home_column: str
     second_home_code: str
+    second_home_source: str = "own"
 
 
 @dataclass(frozen=True)
@@ -99,9 +100,15 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             parquet_pattern=value["parquet_pattern"],
             second_home_column=value["second_home_column"],
             second_home_code=value["second_home_code"],
+            second_home_source=value.get("second_home_source", "own"),
         )
         for vintage, value in raw["vintages"].items()
     }
+    for vintage, vintage_config in vintages.items():
+        if vintage_config.second_home_source not in {"own", "hybrid_2024"}:
+            raise ValueError(f"invalid second_home_source for vintage {vintage}")
+        if vintage_config.second_home_source == "hybrid_2024" and vintage != 2022:
+            raise ValueError("hybrid_2024 is only available for vintage 2022")
     census = {
         int(vintage): CensusVintageConfig(
             format=value["format"],
@@ -182,15 +189,24 @@ def classify_dwelling(
     vacant_code: str = "V",
     owner_code: str = "P",
     social_code: str = "F1",
+    second_home_source: str = "own",
 ) -> dict[str, int]:
     """Classify one Fichiers fonciers dwelling row (section 6.3)."""
     is_dwelling = row.get("logh") == logh
     is_vacant = is_dwelling and row.get("ccthp") == vacant_code
     second_value = row.get(second_home_column)
-    is_second_home = is_dwelling and second_value == second_home_code
+    if second_home_source not in {"own", "hybrid_2024"}:
+        raise ValueError(f"invalid second_home_source: {second_home_source}")
+    later_status = row.get("rppo_rs_2024")
+    effective_second = (
+        later_status if second_home_source == "hybrid_2024"
+        and later_status in {"RS", "RPPO"} else second_value
+    )
+    is_second_home = is_dwelling and effective_second == second_home_code
     is_recent_transfer = (
         is_dwelling
         and not is_vacant
+        and not is_second_home
         and second_value == recent_transfer_code
     )
     is_main = is_dwelling and not is_vacant and not is_second_home
@@ -385,6 +401,11 @@ def build_ff_cells_signature(
             "nbetagemax_used": config.nbetagemax_used,
             "second_home_rescaling": config.second_home_rescaling,
             "vintage": vars(config.vintages[vintage]),
+            "hybrid_vintage": (
+                vars(config.vintages[2024])
+                if config.vintages[vintage].second_home_source == "hybrid_2024"
+                else None
+            ),
         },
         "inputs": [_file_signature(path) for path in input_files],
     }
@@ -687,6 +708,11 @@ def build_department_ff_cells(
         "ccthp",
         vintage_config.second_home_column,
     }
+    hybrid = vintage_config.second_home_source == "hybrid_2024"
+    if hybrid:
+        if vintage != 2022:
+            raise ValueError("hybrid_2024 is only available for vintage 2022")
+        required.add("idlocal")
     missing = required - available
     if missing:
         raise ValueError(
@@ -724,7 +750,36 @@ def build_department_ff_cells(
             field(vintage_config.second_home_column, "second_home_value"),
         ]
     )
-    second_value = _quoted_identifier("second_home_value")
+    join_sql = ""
+    parameters = [source]
+    if hybrid:
+        later_partition = _partition_for_department(config, 2024, department)
+        if not later_partition.is_file():
+            raise FileNotFoundError(later_partition)
+        later_source = str(later_partition.resolve())
+        duplicate = connection.execute(
+            "SELECT count(*) FROM (SELECT idlocal FROM read_parquet(?) "
+            "WHERE idlocal IS NOT NULL GROUP BY idlocal HAVING count(*) > 1)",
+            [later_source],
+        ).fetchone()[0]
+        if duplicate:
+            raise ValueError(
+                f"duplicate 2024 idlocal values in department {department}"
+            )
+        source_fields.append("later.rppo_rs AS rppo_rs_2024")
+        join_sql = (
+            "LEFT JOIN read_parquet(?) AS later "
+            "ON source.idlocal = later.idlocal"
+        )
+        parameters.append(later_source)
+    else:
+        source_fields.append("NULL AS rppo_rs_2024")
+    second_value = (
+        "CASE WHEN rppo_rs_2024 IN ('RS', 'RPPO') THEN rppo_rs_2024 "
+        "ELSE second_home_value END"
+        if hybrid else _quoted_identifier("second_home_value")
+    )
+    original_value = _quoted_identifier("second_home_value")
     logh = _sql_literal(config.logh)
     vacant = _sql_literal(config.vacant_code)
     owner = _sql_literal(config.owner_code)
@@ -754,6 +809,7 @@ def build_department_ff_cells(
         WITH source AS (
             SELECT {', '.join(source_fields)}
             FROM read_parquet(?) AS source
+            {join_sql}
         ),
         located AS (
             SELECT *,
@@ -773,7 +829,8 @@ def build_department_ff_cells(
                 CASE WHEN logh = {logh} AND {second_value} = {second_home}
                     THEN 1 ELSE 0 END AS second_home,
                 CASE WHEN logh = {logh} AND ccthp IS DISTINCT FROM {vacant}
-                    AND {second_value} = {recent}
+                    AND {original_value} = {recent}
+                    AND ({second_value}) IS DISTINCT FROM {second_home}
                     THEN 1 ELSE 0 END AS recent_transfer,
                 CASE WHEN logh = {logh}
                     AND ccthp IS DISTINCT FROM {vacant}
@@ -790,7 +847,8 @@ def build_department_ff_cells(
                     THEN 1 ELSE 0 END AS owner_occupied_second_home,
                 CASE WHEN logh = {logh}
                     AND ccthp IS DISTINCT FROM {vacant}
-                    AND {second_value} = {recent}
+                    AND {original_value} = {recent}
+                    AND ({second_value}) IS DISTINCT FROM {second_home}
                     AND ccthp = {owner}
                     THEN 1 ELSE 0 END AS owner_occupied_recent_transfer,
                 CASE WHEN logh = {logh} AND catpro2 = {social}
@@ -838,7 +896,7 @@ def build_department_ff_cells(
         LEFT JOIN _filosofi_200m AS filosofi
           ON filosofi.cell_code = classified.cell_code
         """,
-        [source],
+        parameters,
     )
     diagnostic_keys = (
         "premises_without_coordinates",
@@ -872,6 +930,20 @@ def build_department_ff_cells(
         key: int(value)
         for key, value in zip(diagnostic_keys, diagnostic_values, strict=True)
     }
+    if hybrid:
+        branch_counts = connection.execute(
+            f"""
+            SELECT count(*) FILTER (WHERE rppo_rs_2024 = 'RS'),
+                count(*) FILTER (WHERE rppo_rs_2024 = 'RPPO'),
+                count(*) FILTER (WHERE rppo_rs_2024 IS NULL
+                    OR rppo_rs_2024 NOT IN ('RS', 'RPPO'))
+            FROM {_quoted_identifier(table_name)} WHERE dwelling = 1
+            """
+        ).fetchone()
+        diagnostics.update(dict(zip(
+            ("hybrid_settled_rs", "hybrid_settled_rppo", "hybrid_fallback"),
+            map(int, branch_counts), strict=True,
+        )))
     LOGGER.info(
         "Fichiers fonciers vintage %s department %s classified in %.2f seconds",
         vintage,
@@ -987,11 +1059,26 @@ def build_ff_cells(
     pilot_config_path: str | Path = "config/pilot.yaml",
     output: str | Path | None = None,
     force: bool = False,
+    second_home_source: str | None = None,
 ) -> dict[str, object]:
     """Build or reuse combined department 200 m dwelling cells."""
     config = load_origins_config(config_path)
     if vintage not in config.vintages:
         raise ValueError(f"unsupported origins vintage: {vintage}")
+    if second_home_source is not None:
+        if second_home_source not in {"own", "hybrid_2024"}:
+            raise ValueError(f"invalid second_home_source: {second_home_source}")
+        config.vintages[vintage] = replace(
+            config.vintages[vintage], second_home_source=second_home_source
+        )
+    hybrid = config.vintages[vintage].second_home_source == "hybrid_2024"
+    if hybrid and vintage != 2022:
+        raise ValueError("hybrid_2024 is only available for vintage 2022")
+    if hybrid and (
+        output is None
+        or Path(output).resolve() == Path(config.report.output_directory).resolve()
+    ):
+        raise ValueError("hybrid_2024 requires a separate output directory")
 
     connection = open_connection()
     try:
@@ -1026,6 +1113,11 @@ def build_ff_cells(
                 for department in resolved_departments
             ],
         ]
+        if hybrid:
+            input_files.extend(
+                _partition_for_department(config, 2024, department)
+                for department in resolved_departments
+            )
         if any(not path.is_file() for path in input_files):
             missing = [str(path) for path in input_files if not path.is_file()]
             raise FileNotFoundError("; ".join(missing))
@@ -1087,6 +1179,13 @@ def build_ff_cells(
             "jannath_above_vintage": 0,
             "idcom_commune_mismatch": 0,
         }
+        if hybrid:
+            diagnostics.update({
+                "hybrid_settled_rs": 0,
+                "hybrid_settled_rppo": 0,
+                "hybrid_fallback": 0,
+            })
+        department_diagnostics_all = {}
         staging_tables = []
         for department in resolved_departments:
             table_name, department_diagnostics = build_department_ff_cells(
@@ -1098,6 +1197,7 @@ def build_ff_cells(
                 natural_cell_lookup,
             )
             staging_tables.append(table_name)
+            department_diagnostics_all[department] = department_diagnostics
             for key, value in department_diagnostics.items():
                 diagnostics[key] += value
         table = aggregate_staged_ff_cells(connection, staging_tables, vintage)
@@ -1132,6 +1232,9 @@ def build_ff_cells(
                 {
                     "signature": signature,
                     "diagnostics": diagnostics,
+                    "department_diagnostics": department_diagnostics_all,
+                    "second_home_source": config.vintages[vintage].second_home_source,
+                    "departments": resolved_departments,
                     "commune_row_count": commune_table.num_rows,
                 },
                 indent=2,
@@ -1181,6 +1284,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
     )
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--second-home-source", choices=("own", "hybrid_2024"))
     args = parser.parse_args(arguments)
     logging.basicConfig(level=logging.INFO)
     result = build_ff_cells(
@@ -1191,6 +1295,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         config_path=args.config,
         output=args.output,
         force=args.force,
+        second_home_source=args.second_home_source,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

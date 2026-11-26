@@ -6,14 +6,17 @@ vintages:
     parquet_pattern: "data/raw/fichiers_fonciers/ff2021/pb0010_local/ccodep={department}/part-01.parquet"
     second_home_column: "proba_rprs"
     second_home_code: "RS"
+    second_home_source: "own"
   2022:
     parquet_pattern: "data/raw/fichiers_fonciers/ff2022/pb0010_local/ccodep={department}/part-01.parquet"
     second_home_column: "proba_rprs"
     second_home_code: "RS"
+    second_home_source: "own"
   2024:
     parquet_pattern: "data/raw/fichiers_fonciers/ff2024/pb0010_local/ccodep={department}/part-01.parquet"
     second_home_column: "rppo_rs"
     second_home_code: "RS"
+    second_home_source: "own"
 
 census:
   2021:
