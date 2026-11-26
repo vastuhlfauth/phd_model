@@ -95,3 +95,10 @@ downscale:
   cell_resolution_m: 200
   output_pattern: "origins_{year}_200m.parquet"
   metadata_pattern: "origins_{year}_200m.json"
+
+validation:
+  eurostat_grid: "data/raw/eurostat_grid/Eurostat_Census-GRID_2021_V3/ESTAT_Census_2021_V3.parquet"
+  eurostat_resolution_m: 1000
+  density_thresholds_population_km2: [300, 1500]
+  within_tolerance_fraction: 0.2
+  report_pattern: "origins_{year}_validation.md"

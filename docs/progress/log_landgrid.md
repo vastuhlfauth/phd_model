@@ -1,5 +1,20 @@
 # Landgrid origins
 
+## 2026-11-26 — Step 3: household downscaling and section 6.5 validation
+
+- Added 2021 Filosofi natural-cell downscaling to 200 m using hybrid 2022
+  Fichiers fonciers main residences, with dwelling and Filosofi-household
+  fallbacks; 200 m natural cells are copied.
+- Added the aggregate-only validation report against non-imputed INSEE 200 m
+  cells and the Eurostat 1 km grid, including natural-cell/density strata and
+  the equal-split baseline.
+- Added synthetic coverage for zone-total preservation, fallback selection,
+  error statistics, 1 km containment and suppression of counts below 50.
+- Targeted origins tests: 32 passed; Ruff passed. No restricted-data build or
+  report was run.
+- Rebuild, commune-report, downscale and validation commands are documented
+  in `docs/data/step03_origins_pilot.md`.
+
 ## 2026-11-26 — Step 3: adopting the 2021/2022 hybrid
 
 - Adopted `hybrid_2024` as the configured 2021 and 2022 rule under section 6.3;

@@ -1,5 +1,10 @@
 ## Decisions taken while coding
 
+- 2026-11-26, step 3: section-6.5 density strata use Eurostat population
+  divided by `LAND_SURFACE`; median absolute relative errors omit zero
+  references, but the tolerance share includes them and requires exact zero
+  predictions. The equal-split baseline predicts zero when no main-residence
+  cell exists in a natural-level cell.
 - 2026-11-26, step 3: adopt `hybrid_2024` for 2021 and 2022 under section 6.3.
   Join 2024 `rppo_rs` by `idlocal`; settled `RS`/`RPPO` override the earlier
   status and other/missing statuses use the vintage's own `proba_rprs`.

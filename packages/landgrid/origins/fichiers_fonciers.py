@@ -86,6 +86,15 @@ class DownscaleConfig:
 
 
 @dataclass(frozen=True)
+class ValidationConfig:
+    eurostat_grid: str
+    eurostat_resolution_m: int
+    density_thresholds_population_km2: tuple[int, int]
+    within_tolerance_fraction: float
+    report_pattern: str
+
+
+@dataclass(frozen=True)
 class OriginsConfig:
     filosofi_200m_archive: str
     filosofi_natural_archive: str
@@ -93,6 +102,7 @@ class OriginsConfig:
     census: dict[int, CensusVintageConfig]
     report: ReportConfig
     downscale: DownscaleConfig
+    validation: ValidationConfig
     logh: str
     vacant_code: str
     owner_code: str
@@ -150,6 +160,19 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         for vintage, value in raw["census"].items()
     }
     report = raw["report"]
+    validation = raw["validation"]
+    density_thresholds = tuple(
+        int(value)
+        for value in validation["density_thresholds_population_km2"]
+    )
+    if (
+        len(density_thresholds) != 2
+        or density_thresholds[0] <= 0
+        or density_thresholds[0] >= density_thresholds[1]
+    ):
+        raise ValueError(
+            "validation density thresholds must be two increasing positive values"
+        )
     return OriginsConfig(
         filosofi_200m_archive=raw["filosofi"]["200m_archive"],
         filosofi_natural_archive=raw["filosofi"]["natural_archive"],
@@ -187,6 +210,15 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             cell_resolution_m=int(raw["downscale"]["cell_resolution_m"]),
             output_pattern=raw["downscale"]["output_pattern"],
             metadata_pattern=raw["downscale"]["metadata_pattern"],
+        ),
+        validation=ValidationConfig(
+            eurostat_grid=validation["eurostat_grid"],
+            eurostat_resolution_m=int(validation["eurostat_resolution_m"]),
+            density_thresholds_population_km2=density_thresholds,
+            within_tolerance_fraction=float(
+                validation["within_tolerance_fraction"]
+            ),
+            report_pattern=validation["report_pattern"],
         ),
         logh=raw["dwelling"]["logh"],
         vacant_code=raw["vacant"]["ccthp"],

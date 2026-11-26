@@ -95,12 +95,43 @@ synthetic fixtures.
   `data/interim/landgrid/ff_cells_{vintage}.json` and suppressed as needed in
   the aggregate-only report.
 
+## Section 6.5 — 2021 downscaling validation
+
+The 2021 Filosofi natural-level counts are distributed to 200 m cells using
+the adopted 2022 hybrid Fichiers fonciers main-residence counts. If a natural
+cell has no main-residence weight, use all dwellings, then Filosofi 200 m
+households; natural cells already at 200 m are copied. The output is
+`data/interim/landgrid/origins_2021_200m.parquet`, with each cell's natural
+cell id, natural-cell size, downscaled variables and selected fallback.
+
+The INSEE 200 m comparison uses only `i_est_200 = 0` records in natural cells
+larger than 200 m. It reports mean absolute error, median absolute relative
+error, and the share within the configured ±20% tolerance for households,
+individuals, under-18s (`ind_0_3` through `ind_11_17`) and people aged 65+
+(`ind_65_79` plus `ind_80p`), by natural-cell size and Eurostat density class.
+Density is Eurostat population divided by `LAND_SURFACE` in km²; classes are
+under 300, 300 to under 1,500, and 1,500 or more people per km². The median
+relative error excludes zero-reference cells; the tolerance share includes
+them, counting only exact zero predictions as within tolerance.
+
+The naive baseline equally splits each natural-cell total among 200 m cells
+with at least one main residence, assigning zero to the other cells; if none
+qualify, all subcells receive zero. The Eurostat comparison sums downscaled
+individuals to 1 km cells wholly covered by the department-33 boundary and
+reports totals and median absolute relative error by Eurostat density class.
+Zero Eurostat reference populations are excluded from relative-error medians.
+Reports contain aggregate totals and error statistics only; every displayed
+count or population total below 50 is `<50`. The report and downscaled
+products remain under `data/interim/landgrid/`.
+
 ## Commands
 
 ```powershell
-python -m landgrid.origins.fichiers_fonciers --vintage 2021 --department 17 --department 24 --department 33 --department 40 --department 47
-python -m landgrid.origins.fichiers_fonciers --vintage 2022 --department 17 --department 24 --department 33 --department 40 --department 47
-python -m landgrid.origins.fichiers_fonciers --vintage 2024 --department 17 --department 24 --department 33 --department 40 --department 47
+python -m landgrid.origins.fichiers_fonciers --vintage 2021
+python -m landgrid.origins.fichiers_fonciers --vintage 2022
+python -m landgrid.origins.fichiers_fonciers --vintage 2024
 python -m landgrid.origins.fichiers_fonciers report --vintage 2022 --department 33
 python -m landgrid.origins.fichiers_fonciers report --vintage 2024 --department 33
+python -m landgrid.origins.downscale
+python -m landgrid.origins.validation
 ```
