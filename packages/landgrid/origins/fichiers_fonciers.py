@@ -70,6 +70,9 @@ class ReportConfig:
     count_suppression_threshold: int
     top_second_home_gaps: int
     ratio_quantiles: tuple[float, ...]
+    comparison_report_pattern: str
+    contours_2021: str
+    cell_ratio_quantiles: tuple[float, ...]
 
 
 @dataclass(frozen=True)
@@ -153,6 +156,11 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             top_second_home_gaps=int(report["top_second_home_gaps"]),
             ratio_quantiles=tuple(
                 float(value) for value in report["ratio_quantiles"]
+            ),
+            comparison_report_pattern=report["comparison_report_pattern"],
+            contours_2021=report["contours_2021"],
+            cell_ratio_quantiles=tuple(
+                float(value) for value in report["cell_ratio_quantiles"]
             ),
         ),
         logh=raw["dwelling"]["logh"],
@@ -1297,7 +1305,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         force=args.force,
         second_home_source=args.second_home_source,
     )
-    print(json.dumps(result, indent=2, sort_keys=True))
+    threshold = load_origins_config(args.config).report.count_suppression_threshold
+    displayed = dict(result)
+    for key in ("row_count", "commune_row_count"):
+        value = displayed.get(key)
+        if isinstance(value, int) and value < threshold:
+            displayed[key] = f"<{threshold}"
+    diagnostics = displayed.get("diagnostics")
+    if isinstance(diagnostics, dict):
+        displayed["diagnostics"] = {
+            key: f"<{threshold}" if value < threshold else value
+            for key, value in diagnostics.items()
+        }
+    print(json.dumps(displayed, indent=2, sort_keys=True))
     return 0
 
 

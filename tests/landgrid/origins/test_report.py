@@ -21,6 +21,227 @@ from landgrid.origins.report import (
 )
 
 
+def test_comparison_natural_cells_require_full_geometric_containment() -> None:
+    from landgrid.origins.report import calculate_natural_cell_ratios
+
+    natural = pa.Table.from_pylist(
+        [
+            {
+                "idcar_nat": "CRS3035RES200mN2400000E4000000",
+                "tmaille": 200,
+                "men": 100.0,
+            },
+            {
+                "idcar_nat": "CRS3035RES200mN2400000E4000200",
+                "tmaille": 200,
+                "men": 100.0,
+            },
+            {
+                "idcar_nat": "CRS3035RES200mN2400000E4000400",
+                "tmaille": 200,
+                "men": 100.0,
+            },
+        ]
+    )
+    own = pa.Table.from_pylist(
+        [
+            {"natural_cell_id": natural["idcar_nat"][0].as_py(), "main_residences": 80},
+            {
+                "natural_cell_id": natural["idcar_nat"][1].as_py(),
+                "main_residences": 200,
+            },
+        ]
+    )
+    hybrid = pa.Table.from_pylist(
+        [
+            {
+                "natural_cell_id": natural["idcar_nat"][0].as_py(),
+                "main_residences": 120,
+            },
+            {
+                "natural_cell_id": natural["idcar_nat"][1].as_py(),
+                "main_residences": 200,
+            },
+        ]
+    )
+    connection = duckdb.connect()
+    try:
+        connection.execute("LOAD spatial")
+        connection.execute(
+            "CREATE TEMP TABLE department_boundary AS "
+            "SELECT ST_GeomFromText(?) AS geom",
+            [
+                "POLYGON ((4000000 2400000,4000300 2400000,4000300 2400200,"
+                "4000000 2400200,4000000 2400000))"
+            ],
+        )
+        rows = calculate_natural_cell_ratios(connection, natural, own, hybrid)
+    finally:
+        connection.close()
+    assert len(rows) == 1
+    assert rows[0]["cells"] == 1
+    assert rows[0]["own"][4] == pytest.approx(0.8)
+    assert rows[0]["hybrid"][4] == pytest.approx(1.2)
+
+
+def test_department_boundary_reads_and_transforms_synthetic_contours(
+    tmp_path: Path,
+) -> None:
+    from landgrid.origins.report import _load_department_boundary
+
+    path = tmp_path / "communes.geojson"
+    path.write_text(
+        json.dumps({
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {"departement": "33"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [-0.7, 44.7], [-0.5, 44.7], [-0.5, 44.9],
+                        [-0.7, 44.9], [-0.7, 44.7],
+                    ]],
+                },
+            }],
+        }),
+        encoding="utf-8",
+    )
+    connection = duckdb.connect()
+    try:
+        _load_department_boundary(connection, path, "33")
+        contained = connection.execute(
+            "SELECT ST_Covers(geom, ST_Transform(ST_Point(-0.6, 44.8), "
+            "'EPSG:4326', 'EPSG:3035', true)) FROM department_boundary"
+        ).fetchone()[0]
+        assert contained
+        with pytest.raises(ValueError, match="no commune contours"):
+            connection.execute("DROP TABLE department_boundary")
+            _load_department_boundary(connection, path, "34")
+    finally:
+        connection.close()
+
+
+def test_comparison_report_builds_from_two_synthetic_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from landgrid.origins import report as report_module
+
+    def boundary(
+        connection: duckdb.DuckDBPyConnection, path: Path, department: str
+    ) -> None:
+        connection.execute("LOAD spatial")
+        connection.execute(
+            "CREATE TEMP TABLE department_boundary AS SELECT ST_GeomFromText("
+            "'POLYGON ((4000000 2400000,4000200 2400000,4000200 2400200,"
+            "4000000 2400200,4000000 2400000))') AS geom"
+        )
+
+    monkeypatch.setattr(report_module, "_load_department_boundary", boundary)
+    config = yaml.safe_load(Path("config/origins.yaml").read_text(encoding="utf-8"))
+    census = tmp_path / "census.zip"
+    with zipfile.ZipFile(census, "w") as archive:
+        archive.writestr(
+            "dossier_complet.csv",
+            "CODGEO;P21_LOG;P21_RP;P21_RSECOCC;P21_LOGVAC\n33001;150;100;30;20\n",
+        )
+    natural = tmp_path / "natural.zip"
+    with zipfile.ZipFile(natural, "w") as archive:
+        archive.writestr(
+            "carreaux_nivNaturel_met.csv",
+            "idcar_nat,tmaille,men\nCRS3035RES200mN2400000E4000000,200,100\n",
+        )
+    config["census"][2021]["path"] = str(census)
+    config["filosofi"]["natural_archive"] = str(natural)
+    config_path = tmp_path / "origins.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    for label, main, second in (("own", 80, 50), ("hybrid_2024", 100, 30)):
+        folder = tmp_path / label
+        folder.mkdir()
+        pq.write_table(
+            pa.Table.from_pylist(
+                [
+                    {
+                        "commune_code": "33001",
+                        "dwellings": 150,
+                        "main_residences": main,
+                        "second_homes": second,
+                        "vacant": 20,
+                        "recent_transfers": 10,
+                        "owner_occupied_main_residences": main,
+                        "owner_occupied_second_homes": second,
+                        "owner_occupied_recent_transfers": 10,
+                    }
+                ]
+            ),
+            folder / "ff_communes_2022.parquet",
+        )
+        pq.write_table(
+            pa.Table.from_pylist(
+                [
+                    {
+                        "natural_cell_id": "CRS3035RES200mN2400000E4000000",
+                        "main_residences": main,
+                    }
+                ]
+            ),
+            folder / "ff_cells_2022.parquet",
+        )
+        (folder / "ff_cells_2022.json").write_text(
+            json.dumps(
+                {
+                    "second_home_source": label,
+                    "departments": ["33"],
+                    "department_diagnostics": {
+                        "33": {
+                            "hybrid_settled_rs": 60,
+                            "hybrid_settled_rppo": 80,
+                            "hybrid_fallback": 10,
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+    result = report_module.build_comparison_report(
+        "33",
+        tmp_path / "own",
+        tmp_path / "hybrid_2024",
+        config_path=config_path,
+        output=tmp_path,
+    )
+    text = result.read_text(encoding="utf-8")
+    assert "own" in text and "hybrid_2024" in text
+    assert "80.0%" in text and "100.0%" in text
+    assert "hybrid fallback | <50" in text
+    assert "Largest" in text and "Recent-transfer interpretations" in text
+    assert result.name == "ff_commune_comparison_2022.md"
+
+
+def test_comparison_cli_uses_separate_input_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from landgrid.origins import report
+
+    calls = []
+
+    def build(department: str, own: Path, hybrid: Path, **options: object) -> Path:
+        calls.append((department, own, hybrid, options["output"]))
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr(report, "build_comparison_report", build)
+    assert report.main([
+        "--vintage", "2022", "--department", "33",
+        "--compare-own", str(tmp_path / "own"),
+        "--compare-hybrid", str(tmp_path / "hybrid"),
+        "--output", str(tmp_path / "reports"),
+    ]) == 0
+    assert calls == [(
+        "33", tmp_path / "own", tmp_path / "hybrid", tmp_path / "reports"
+    )]
+
+
 def test_loads_2023_housing_observations_with_configured_selectors(
     tmp_path: Path,
 ) -> None:
@@ -209,8 +430,7 @@ def test_report_scenarios_compare_matched_communes_and_suppress_small_counts() -
     split_main = next(
         row
         for row in summary.statistics
-        if row["scenario"] == "split_recent"
-        and row["metric"] == "main_residences"
+        if row["scenario"] == "split_recent" and row["metric"] == "main_residences"
     )
     assert split_main["matched_ff_total"] == pytest.approx(
         176.8888888889,
@@ -218,9 +438,11 @@ def test_report_scenarios_compare_matched_communes_and_suppress_small_counts() -
     )
     closest = min(
         summary.scenario_nmae,
-        key=lambda scenario: summary.scenario_nmae[scenario]
-        if summary.scenario_nmae[scenario] is not None
-        else float("inf"),
+        key=lambda scenario: (
+            summary.scenario_nmae[scenario]
+            if summary.scenario_nmae[scenario] is not None
+            else float("inf")
+        ),
     )
     assert closest == "split_recent", summary.scenario_nmae
     assert "<50" in report
@@ -304,8 +526,7 @@ def test_build_commune_report_includes_social_housing_aggregates(
     with zipfile.ZipFile(filosofi_archive, "w") as archive:
         archive.writestr(
             "carreaux_200m_met.csv",
-            "idcar_200m,lcog_geo,log_soc\n"
-            "CRS3035RES200mN2400000E4000000,33001,70\n",
+            "idcar_200m,lcog_geo,log_soc\nCRS3035RES200mN2400000E4000000,33001,70\n",
         )
     config_values["filosofi"]["200m_archive"] = str(filosofi_archive)
     config_path = tmp_path / "origins.yaml"

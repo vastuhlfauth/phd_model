@@ -127,6 +127,39 @@ def test_hybrid_sql_matches_reference_for_each_status_and_missing_match(
     assert diagnostics["hybrid_settled_rs"] == 3
     assert diagnostics["hybrid_settled_rppo"] == 3
     assert diagnostics["hybrid_fallback"] == 18
+    changed_transfer = next(row for row in actual if row["idlocal"] == "RS-AC")
+    assert changed_transfer["second_home"] == 1
+    assert changed_transfer["recent_transfer"] == 0
+
+
+def test_hybrid_rejects_duplicate_2024_identifiers(tmp_path: Path) -> None:
+    for year, rows in (
+        (2022, [{"idlocal": "x", "idcom": "33001", "X": 4_000_000.0,
+                 "Y": 2_400_000.0, "logh": "t", "ccthp": "P", "proba_rprs": "RS"}]),
+        (2024, [{"idlocal": "x", "rppo_rs": "RS"},
+                {"idlocal": "x", "rppo_rs": "RPPO"}]),
+    ):
+        folder = tmp_path / str(year) / "ccodep=33"
+        folder.mkdir(parents=True)
+        pq.write_table(pa.Table.from_pylist(rows), folder / "part.parquet")
+    config = load_origins_config()
+    for year in (2022, 2024):
+        config.vintages[year] = replace(
+            config.vintages[year],
+            parquet_pattern=str(
+                tmp_path / str(year) / "ccodep={department}" / "part.parquet"
+            ),
+            second_home_source="hybrid_2024" if year == 2022 else "own",
+        )
+    connection = duckdb.connect()
+    try:
+        with pytest.raises(ValueError, match="duplicate 2024 idlocal"):
+            build_department_ff_cells(
+                connection, 2022, "33", config, {},
+                build_natural_cell_lookup(["CRS3035RES1000mN2400000E4000000"]),
+            )
+    finally:
+        connection.close()
 
 
 def test_hybrid_refuses_default_output_before_reading_sources() -> None:
@@ -134,6 +167,29 @@ def test_hybrid_refuses_default_output_before_reading_sources() -> None:
         build_ff_cells(2022, second_home_source="hybrid_2024")
     with pytest.raises(ValueError, match="only available"):
         build_ff_cells(2024, second_home_source="hybrid_2024")
+
+
+def test_cli_suppresses_small_build_counts(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    from landgrid.origins import fichiers_fonciers
+
+    monkeypatch.setattr(
+        fichiers_fonciers, "build_ff_cells",
+        lambda *args, **kwargs: {
+            "row_count": 4,
+            "commune_row_count": 50,
+            "diagnostics": {"hybrid_fallback": 2, "hybrid_settled_rs": 60},
+        },
+    )
+    assert fichiers_fonciers.main(["--vintage", "2022"]) == 0
+    import json
+    result = json.loads(capsys.readouterr().out)
+    assert result["row_count"] == "<50"
+    assert result["commune_row_count"] == 50
+    assert result["diagnostics"] == {
+        "hybrid_fallback": "<50", "hybrid_settled_rs": 60
+    }
 
 
 def test_vacant_recent_transfer_is_not_counted_as_main_or_recent() -> None:

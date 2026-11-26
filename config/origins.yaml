@@ -58,6 +58,9 @@ report:
   ff_communes_pattern: "ff_communes_{vintage}.parquet"
   metadata_pattern: "ff_cells_{vintage}.json"
   report_pattern: "ff_commune_report_{vintage}.md"
+  comparison_report_pattern: "ff_commune_comparison_{vintage}.md"
+  contours_2021: "data/raw/contours/2021/communes-5m.geojson.gz"
+  cell_ratio_quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
   count_suppression_threshold: 50
   top_second_home_gaps: 10
   ratio_quantiles: [0.1, 0.5, 0.9]
