@@ -84,6 +84,14 @@ class DownscaleConfig:
     cell_resolution_m: int
     output_pattern: str
     metadata_pattern: str
+    composition_output_pattern: str
+    composition_report_pattern: str
+    poisson_folds: int
+    poisson_seed: int
+    poisson_tolerance: float
+    poisson_max_iterations: int
+    ipf_tolerance: float
+    ipf_max_iterations: int
 
 
 @dataclass(frozen=True)
@@ -167,6 +175,15 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
     )
     if len(periods) != 3 or list(periods) != sorted(set(periods)):
         raise ValueError("construction period starts must be three increasing years")
+    downscale = raw["downscale"]
+    if (
+        int(downscale["poisson_folds"]) < 2
+        or float(downscale["poisson_tolerance"]) <= 0
+        or int(downscale["poisson_max_iterations"]) <= 0
+        or float(downscale["ipf_tolerance"]) <= 0
+        or int(downscale["ipf_max_iterations"]) <= 0
+    ):
+        raise ValueError("invalid composition model or IPF configuration")
     validation = raw["validation"]
     density_thresholds = tuple(
         int(value)
@@ -218,6 +235,14 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             cell_resolution_m=int(raw["downscale"]["cell_resolution_m"]),
             output_pattern=raw["downscale"]["output_pattern"],
             metadata_pattern=raw["downscale"]["metadata_pattern"],
+            composition_output_pattern=raw["downscale"]["composition_output_pattern"],
+            composition_report_pattern=raw["downscale"]["composition_report_pattern"],
+            poisson_folds=int(raw["downscale"]["poisson_folds"]),
+            poisson_seed=int(raw["downscale"]["poisson_seed"]),
+            poisson_tolerance=float(raw["downscale"]["poisson_tolerance"]),
+            poisson_max_iterations=int(raw["downscale"]["poisson_max_iterations"]),
+            ipf_tolerance=float(raw["downscale"]["ipf_tolerance"]),
+            ipf_max_iterations=int(raw["downscale"]["ipf_max_iterations"]),
         ),
         validation=ValidationConfig(
             eurostat_grid=validation["eurostat_grid"],

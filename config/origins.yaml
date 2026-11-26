@@ -97,6 +97,14 @@ downscale:
   cell_resolution_m: 200
   output_pattern: "origins_{year}_200m.parquet"
   metadata_pattern: "origins_{year}_200m.json"
+  composition_output_pattern: "origins_{year}_200m_composition.parquet"
+  composition_report_pattern: "origins_{year}_composition_report.md"
+  poisson_folds: 5
+  poisson_seed: 17
+  poisson_tolerance: 1.0e-8
+  poisson_max_iterations: 100
+  ipf_tolerance: 1.0e-9
+  ipf_max_iterations: 1000
 
 validation:
   eurostat_grid: "data/raw/eurostat_grid/Eurostat_Census-GRID_2021_V3/ESTAT_Census_2021_V3.parquet"
