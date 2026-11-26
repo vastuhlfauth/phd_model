@@ -172,3 +172,58 @@ def test_fit_and_apply_composition_models_individuals_before_ages() -> None:
         "ind", "men_1ind", "men_5ind", "men_fmp", "men_pauv", "ind_snv",
         *AGE_VARIABLES,
     }
+
+
+def test_ipf_balances_both_margins_and_reports_infeasible_cells() -> None:
+    from landgrid.origins.composition import balance_age_groups
+
+    cells = pa.Table.from_pylist([
+        {"cell_id": 1, "natural_cell_id": "valid", "ind": 8.0,
+         "ind_0_3": 3.0, "ind_inc": 1.0},
+        {"cell_id": 2, "natural_cell_id": "valid", "ind": 2.0,
+         "ind_0_3": 3.0, "ind_inc": 3.0},
+        {"cell_id": 3, "natural_cell_id": "invalid", "ind": 10.0,
+         "ind_0_3": 6.0, "ind_inc": 1.0},
+    ])
+    with duckdb.connect() as connection:
+        connection.register("cells", cells)
+        connection.execute(
+            "CREATE TEMP TABLE _composition_origins AS SELECT * FROM cells"
+        )
+        failures = balance_age_groups(
+            connection, ("ind_0_3", "ind_inc"), tolerance=1e-10,
+            max_iterations=1000,
+        )
+        rows = connection.execute(
+            "SELECT * FROM _composition_origins ORDER BY cell_id"
+        ).to_arrow_table().to_pylist()
+    assert failures == {"invalid": "inconsistent age and individual totals"}
+    assert rows[0]["ind_0_3"] + rows[0]["ind_inc"] == pytest.approx(8)
+    assert rows[1]["ind_0_3"] + rows[1]["ind_inc"] == pytest.approx(2)
+    assert rows[0]["ind_0_3"] + rows[1]["ind_0_3"] == pytest.approx(6)
+    assert rows[0]["ind_inc"] + rows[1]["ind_inc"] == pytest.approx(4)
+    assert rows[2]["ind_0_3"] == 6
+
+
+def test_ipf_reports_nonconvergence_without_replacing_input() -> None:
+    from landgrid.origins.composition import balance_age_groups
+
+    cells = pa.Table.from_pylist([
+        {"cell_id": 1, "natural_cell_id": "a", "ind": 8.0,
+         "ind_0_3": 3.0, "ind_inc": 1.0},
+        {"cell_id": 2, "natural_cell_id": "a", "ind": 2.0,
+         "ind_0_3": 3.0, "ind_inc": 3.0},
+    ])
+    with duckdb.connect() as connection:
+        connection.register("cells", cells)
+        connection.execute(
+            "CREATE TEMP TABLE _composition_origins AS SELECT * FROM cells"
+        )
+        failures = balance_age_groups(
+            connection, ("ind_0_3", "ind_inc"), tolerance=1e-12, max_iterations=1
+        )
+        result = connection.execute(
+            "SELECT ind_0_3 FROM _composition_origins ORDER BY cell_id"
+        ).fetchall()
+    assert failures == {"a": "IPF did not converge"}
+    assert result == [(3.0,), (3.0,)]

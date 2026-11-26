@@ -392,6 +392,117 @@ def apply_models(
             connection.unregister(name)
 
 
+def balance_age_groups(
+    connection: duckdb.DuckDBPyConnection,
+    age_variables: tuple[str, ...],
+    *,
+    tolerance: float,
+    max_iterations: int,
+) -> dict[str, str]:
+    """Balance 200 m individual and natural age totals using IPF (section 6.3)."""
+    if not age_variables or tolerance <= 0 or max_iterations <= 0:
+        raise ValueError("invalid age IPF parameters")
+    columns = ", ".join(_quoted_identifier(name) for name in age_variables)
+    cells = connection.execute(
+        f"SELECT cell_id, natural_cell_id, ind, {columns} FROM _composition_origins "
+        "ORDER BY natural_cell_id, cell_id"
+    ).to_arrow_table()
+    if cells.num_rows == 0:
+        raise ValueError("age IPF requires at least one cell")
+    ids, groups = np.unique(
+        np.asarray(cells["natural_cell_id"].to_pylist()), return_inverse=True
+    )
+    individuals = np.asarray(cells["ind"].to_numpy(), dtype=float)
+    matrix = np.column_stack([
+        cells[name].to_numpy(zero_copy_only=False) for name in age_variables
+    ]).astype(float)
+    if (
+        not np.isfinite(individuals).all() or not np.isfinite(matrix).all()
+        or np.any(individuals < 0) or np.any(matrix < 0)
+    ):
+        raise ValueError("invalid age IPF inputs")
+    original = matrix.copy()
+    group_count = len(ids)
+
+    def totals(values: FloatArray) -> FloatArray:
+        return np.column_stack([
+            np.bincount(groups, weights=values[:, col], minlength=group_count)
+            for col in range(values.shape[1])
+        ])
+
+    age_totals = totals(matrix)
+    individual_totals = np.bincount(
+        groups, weights=individuals, minlength=group_count
+    )
+    mismatch = np.abs(age_totals.sum(axis=1) - individual_totals) > (
+        tolerance * np.maximum(1, individual_totals)
+    )
+    unsupported_rows = (individuals > 0) & (matrix.sum(axis=1) == 0)
+    unsupported = np.bincount(
+        groups, weights=unsupported_rows.astype(float), minlength=group_count
+    ) > 0
+    active = ~(mismatch | unsupported)
+    active_rows = active[groups]
+    converged = ~active
+    for _ in range(max_iterations):
+        row_sum = matrix.sum(axis=1)
+        row_factors = np.ones(len(individuals))
+        np.divide(
+            individuals, row_sum, out=row_factors,
+            where=active_rows & (row_sum > 0),
+        )
+        matrix *= row_factors[:, None]
+        current_totals = totals(matrix)
+        column_factors = np.ones_like(age_totals)
+        np.divide(
+            age_totals, current_totals, out=column_factors,
+            where=active[:, None] & (current_totals > 0),
+        )
+        matrix *= column_factors[groups]
+        row_error = np.abs(matrix.sum(axis=1) - individuals) / np.maximum(
+            1, individuals
+        )
+        group_row_error = np.zeros(group_count)
+        np.maximum.at(group_row_error, groups, row_error)
+        group_column_error = np.max(
+            np.abs(totals(matrix) - age_totals) / np.maximum(1, age_totals), axis=1
+        )
+        converged = (~active) | (
+            (group_row_error <= tolerance) & (group_column_error <= tolerance)
+        )
+        if converged.all():
+            break
+    failed = ~converged
+    matrix[(mismatch | unsupported | failed)[groups]] = original[
+        (mismatch | unsupported | failed)[groups]
+    ]
+    reasons = {
+        str(ids[index]): (
+            "inconsistent age and individual totals" if mismatch[index]
+            else "no age support for a populated cell" if unsupported[index]
+            else "IPF did not converge"
+        )
+        for index in np.flatnonzero(mismatch | unsupported | failed)
+    }
+    balanced = pa.table({
+        "cell_id": cells["cell_id"],
+        **{name: matrix[:, index] for index, name in enumerate(age_variables)},
+    })
+    connection.register("_composition_balanced_ages", balanced)
+    try:
+        assignments = ", ".join(
+            f"{_quoted_identifier(name)} = src.{_quoted_identifier(name)}"
+            for name in age_variables
+        )
+        connection.execute(
+            f"UPDATE _composition_origins AS dst SET {assignments} "
+            "FROM _composition_balanced_ages src WHERE dst.cell_id = src.cell_id"
+        )
+    finally:
+        connection.unregister("_composition_balanced_ages")
+    return reasons
+
+
 def apply_direct_weights(
     connection: duckdb.DuckDBPyConnection,
     ff_cells: pa.Table | Path,
