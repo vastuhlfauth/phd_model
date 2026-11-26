@@ -23,7 +23,7 @@ One table per state with, for each 200 m cell of metropolitan France: individual
 | `dteloc` | Type of premises: house, apartment, commercial or industrial premises | Dwellings vs activity premises; houses vs apartments |
 | `logh` | Dwelling indicator ('t' for a dwelling; the same premises as `dteloc` '1' or '2') | Dwelling stock |
 | `ccthp` | Occupancy: 'P' owner-occupied, 'L' rented, 'V' vacant (the same dwellings as `loghvac` = 't' in 2022) | Occupied stock, hence households; owner-occupiers |
-| `proba_rprs` (2022), `rppo_rs` (2024) | Main or secondary residence of owner-occupied dwellings ('RS' for a second home). The two classifications differ: in Gironde, 90,942 dwellings are 'RS' in 2022 and 57,883 in 2024; of the 2022 'RS' dwellings still present in 2024, 44% are 'RS' and 34% main residences (`RPPO`) | Occupied stock; share of second homes |
+| `proba_rprs` (2021, 2022), `rppo_rs` (2024) | Status of owner-occupied dwellings: 'RS' second home; `RP` (2022) or `RPPO` (2024) main residence; `AC` (2022) or `MR` (2024) recent transfer, a change of owner in the two years before the reference date; `NO` not owner-occupied; `PM` owned by a legal person. `proba_rprs` is Cerema's experimental estimate (main residence when the dwelling's address is the one where the owner receives the tax notice), `rppo_rs` the owners' declaration. In Gironde, 90,942 dwellings are 'RS' in 2022 and 57,883 in 2024; of the 2022 'RS' dwellings still present in 2024, 44% are 'RS' and 34% `RPPO`. Both fields classify only dwellings owned by a natural person and occupied by the owner: a dwelling held by a legal person, SCIs included (`PM`), let or vacant (`NO`) is never a second home. The census classes dwellings by their use, whoever owns them, and its second homes include furnished tourist lets; its published count (`P21_RSECOCC`) also adds occasional dwellings, used part of the year for work. The 2024 'RS' count is 67% of these census second homes and occasional dwellings of 2023, with the largest gaps in Bordeaux and the coastal resorts. A broader category, second homes plus the non-vacant dwellings neither owner-occupied nor let (`ccthp` other than 'P', 'L', 'V'), is tested against the census [TO CONFIRM: after the test] | Occupied stock; share of second homes |
 | `catpro2` | Owner category ('F1' social housing organisation) | Social housing |
 | `npiece_i` | Number of rooms, INSEE definition | Household size model |
 | `stoth` | Living surface | Household size model |
@@ -40,10 +40,21 @@ One table per state with, for each 200 m cell of metropolitan France: individual
 
 ```text
 logh = 't'  AND  ccthp ≠ 'V'  AND  RS ≠ 'RS'
-RS = proba_rprs (2022) or rppo_rs (2024); null codes count as neither vacant nor second home
+RS = rppo_rs (2024)
+RS = rppo_rs of the same idlocal in 2024 when it is 'RS' or 'RPPO', else proba_rprs   (2021, 2022)
+null codes count as neither vacant nor second home; recent transfers (AC, MR) are main residences
 ```
 
-The earlier expression, NOT (vacant AND second home), excluded almost no dwelling (correction of 25 November 2026). In Gironde in 2022 the rule gives 782,301 main residences against 735,421 Filosofi households (106%); in the 1 km natural-level cells entirely within the département, the ratio has a median of 0.99 and deciles of 0.76 and 1.12 (`docs/data/fichiers_fonciers.md`).
+The earlier expression, NOT (vacant AND second home), excluded almost no dwelling (correction of 25 November 2026). For 2021 and 2022, a dwelling with a settled owner-occupied status (`RS` or `RPPO`) in 2024 takes that declared status; recent transfers and dwellings not owner-occupied in 2024 keep their own estimate (decision of 26 November 2026). The 2024 status describes the dwelling two or three years later, but changes of owner in between appear as `MR` and keep the earlier estimate. In Gironde in 2022, 57,074 dwellings take the 2024 'RS', 382,335 the 2024 `RPPO`, and 508,681 keep `proba_rprs`.
+
+Against census 2021, by commune (`data/interim/landgrid/ff_commune_comparison_2022.md`):
+
+| 2022 classification | Main residences, total | Main residences, P10–P90 of commune ratios | Second homes, total | Second homes, median commune ratio |
+|---|---:|---:|---:|---:|
+| `proba_rprs` alone | 100.9% | 77.9–107.9% | 111.4% | 228.9% |
+| with the 2024 status | 103.1% | 94.2–108.9% | 94.2% | 184.7% |
+
+Main residences against Filosofi households, per natural-level cell wholly inside Gironde (first decile, median, ninth decile): 1 km cells 75.6%, 98.9%, 111.4% with `proba_rprs` alone, 93.4%, 101.3%, 113.1% with the 2024 status; 2 km cells 80.2%, 100.0%, 114.1% against 94.9%, 103.3%, 114.2%. Splitting recent transfers between main residences and second homes in each commune's ratio barely improves the fit (scenario error 20.8% against 21.7%), so they stay main residences.
 
 3. **Households.** One occupied dwelling is one household. Within each natural-level cell R, households are scaled so that their total equals Filosofi: H(c) = H_Filosofi(R) × D(c) / Σ_{c' in R} D(c'), where D is the number of occupied dwellings.
 4. **Weights from regressions.** Household counts come from the Fichiers fonciers (step 3); regressions supply the relative composition of households, so that the downscaling follows meso-scale patterns while the sums stay exactly those of Filosofi:
@@ -54,7 +65,7 @@ The earlier expression, NOT (vacant AND second home), excluded almost no dwellin
     - The same regressions produce the 200 m grid of 2021 and the Filosofi-like grid of 2023 (step 7). Simple proportional downscaling on households is kept as the benchmark.
 5. **Consistency** within each 200 m cell (age groups summing to individuals, for example) with iterative proportional fitting; optional integer rounding that preserves totals.
 6. **Gaps.** Occupied dwellings that fall outside every Filosofi natural-level cell are dropped, so that totals always equal INSEE's (fewer than 50 main residences in Gironde in 2022).
-7. **Filosofi-like 2023.** The regressions of step 4, estimated on Filosofi 2021 with the Fichiers fonciers 2022, are applied to the Fichiers fonciers 2024 and scaled to the 2023 commune data (census population, households, age groups). Since second homes change classification between 2022 and 2024 (section 6.2), the commune shares of second homes from both vintages are first compared with the census of 2021 and 2023; if they diverge, the 2024 shares are rescaled by commune to the 2022 classification [TO CONFIRM: after the comparison]. The mean standard of living is tested in the same way; otherwise income is left to the economic model.
+7. **Filosofi-like 2023.** The regressions of step 4, estimated on Filosofi 2021 with the Fichiers fonciers 2022, are applied to the Fichiers fonciers 2024 and scaled to the 2023 commune data (census population, households, age groups). Both vintages take second homes from the 2024 declared status where it is settled (step 2), so no rescaling between them is needed. The mean standard of living is tested in the same way; otherwise income is left to the economic model.
 
 ## 6.4 Car ownership
 
@@ -67,7 +78,7 @@ The earlier expression, NOT (vacant AND second home), excluded almost no dwellin
 ## 6.5 Validation
 
 - Against INSEE's own 200 m product on cells published without imputation, and against the Eurostat 1 km grid, which does not use the Fichiers fonciers; errors reported by density class and size of the natural-level cell.
-- **Housing stock by commune:** main residences, second homes and vacant dwellings from the Fichiers fonciers against the census (dossier complet, 2021 and 2023), with both classifications of second homes; social housing (`catpro2` = 'F1') against Filosofi `log_soc` (112% in Gironde in 2022 over all dwellings, before vacant ones are removed).
+- **Housing stock by commune:** main residences, second homes and vacant dwellings from the Fichiers fonciers against the census (dossier complet, 2021 and 2023); results for the classification of second homes in step 2. Vacant dwellings exceed the census (133% in 2022, 150% in 2024: tax vacancy on 1 January includes short vacancies), and so do dwellings (104%, 103%), so main residences stay close (103% in both years). Social housing among main residences (`catpro2` = 'F1') is 103% of Filosofi `log_soc` in 2022 and 102% in 2024.
 - Regression weights against the simple downscaling, on the same metrics.
 - **Temporal test of the 2023 model:** train on Filosofi 2019 with Fichiers fonciers 2021, predict 2021 from Fichiers fonciers 2022, and compare with Filosofi 2021.
 - Car ownership: modelled totals against observed ones, aggregated to NUTS3 and to France.
