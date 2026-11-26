@@ -24,6 +24,10 @@ from landgrid.origins.report import _load_department_boundary
 
 LOGGER = logging.getLogger(__name__)
 
+COMPOSITION_VALIDATION_VARIABLES = (
+    "men_1ind", "men_5ind", "men_prop", "men_mais", "log_soc", "ind_snv",
+)
+
 
 def _sql_string(value: str) -> str:
     """Escape a filesystem path for a DuckDB relation expression."""
@@ -63,6 +67,7 @@ def calculate_validation_metrics(
     ff_cells: pa.Table | Path,
     eurostat: pa.Table | Path,
     *,
+    composition: pa.Table | Path | None = None,
     department: str,
     cell_resolution_m: int,
     eurostat_resolution_m: int,
@@ -98,6 +103,13 @@ def calculate_validation_metrics(
 
     downscaled_relation, insee_relation, ff_relation, eurostat_relation = sources
     try:
+        composition_relation = None
+        if composition is not None:
+            composition_relation, was_registered = _source_relation(
+                connection, "_validation_composition_input", composition
+            )
+            if was_registered:
+                registered.append("_validation_composition_input")
         required_columns = (
             (
                 downscaled_relation,
@@ -144,6 +156,34 @@ def calculate_validation_metrics(
                     + ", ".join(sorted(missing))
                 )
 
+        if composition_relation is not None:
+            additional = set(COMPOSITION_VALIDATION_VARIABLES)
+            for relation in (downscaled_relation, insee_relation, composition_relation):
+                missing = additional - _columns(connection, relation)
+                if missing:
+                    raise ValueError(
+                        "composition validation input lacks columns: "
+                        + ", ".join(sorted(missing))
+                    )
+            missing_eurostat = {"Y_LT15", "Y_GE65"} - _columns(
+                connection, eurostat_relation
+            )
+            if missing_eurostat:
+                raise ValueError(
+                    "Eurostat input lacks age columns: "
+                    + ", ".join(sorted(missing_eurostat))
+                )
+            mismatch = connection.execute(
+                f"""
+                SELECT count(*) FROM {downscaled_relation} d
+                FULL JOIN {composition_relation} c USING (cell_id)
+                WHERE d.cell_id IS NULL OR c.cell_id IS NULL
+                    OR d.natural_cell_id IS DISTINCT FROM c.natural_cell_id
+                """
+            ).fetchone()[0]
+            if mismatch:
+                raise ValueError("composition and benchmark cell scopes differ")
+
         northing = (
             f"CAST(floor(cell_id / 100000) AS BIGINT) * {cell_resolution_m}"
         )
@@ -181,6 +221,9 @@ def calculate_validation_metrics(
             CREATE OR REPLACE TEMP TABLE _validation_eurostat AS
             SELECT GRD_ID, CAST(T AS DOUBLE) AS population,
                 CAST(LAND_SURFACE AS DOUBLE) AS land_surface,
+                {("CAST(Y_LT15 AS DOUBLE) AS under_15, "
+                  "CAST(Y_GE65 AS DOUBLE) AS age_65_plus,")
+                 if composition_relation is not None else ""}
                 {density_expression} AS density_class
             FROM {eurostat_relation}
             """
@@ -227,14 +270,18 @@ def calculate_validation_metrics(
                 "non-imputed INSEE cells in the validation scope are missing "
                 "from the downscaled output"
             )
+        extra_natural = "".join(
+            f", sum({name}) AS {name}" for name in COMPOSITION_VALIDATION_VARIABLES
+        ) if composition_relation is not None else ""
         connection.execute(
-            """
+            f"""
             CREATE OR REPLACE TEMP TABLE _validation_natural_totals AS
             SELECT natural_cell_id,
                 sum(ind) AS individuals,
                 sum(men) AS households,
+                sum(ind_0_3 + ind_4_5 + ind_6_10) AS under_11,
                 sum(ind_0_3 + ind_4_5 + ind_6_10 + ind_11_17) AS under_18,
-                sum(ind_65_79 + ind_80p) AS age_65_plus
+                sum(ind_65_79 + ind_80p) AS age_65_plus {extra_natural}
             FROM _validation_downscaled
             GROUP BY natural_cell_id
             """
@@ -251,6 +298,24 @@ def calculate_validation_metrics(
             GROUP BY d.natural_cell_id
             """
         )
+        extra_select = ""
+        composition_join = ""
+        if composition_relation is not None:
+            extra_select = ", " + ", ".join(
+                f"d.{name} AS predicted_{name}, i.{name} AS reference_{name}, "
+                f"n.{name} AS natural_{name}, c.{name} AS composition_{name}"
+                for name in COMPOSITION_VALIDATION_VARIABLES
+            )
+            extra_select += (
+                ", c.ind AS composition_individuals, "
+                "c.men AS composition_households, "
+                "c.ind_0_3 + c.ind_4_5 + c.ind_6_10 + c.ind_11_17 "
+                "AS composition_under_18, "
+                "c.ind_65_79 + c.ind_80p AS composition_age_65_plus"
+            )
+            composition_join = (
+                f"JOIN {composition_relation} c ON c.cell_id = d.cell_id"
+            )
         connection.execute(
             f"""
             CREATE OR REPLACE TEMP TABLE _validation_200m AS
@@ -271,7 +336,7 @@ def calculate_validation_metrics(
                 n.households AS natural_households,
                 n.under_18 AS natural_under_18,
                 n.age_65_plus AS natural_age_65_plus,
-                m.occupied_cell_count
+                m.occupied_cell_count {extra_select}
             FROM {insee_relation} i
             JOIN _validation_downscaled d
               ON d.cell_code = i.idcar_200m
@@ -280,7 +345,8 @@ def calculate_validation_metrics(
               ON n.natural_cell_id = d.natural_cell_id
             JOIN _validation_main_cells m
               ON m.natural_cell_id = d.natural_cell_id
-            LEFT JOIN _validation_ff f USING (cell_id)
+            {composition_join}
+            LEFT JOIN _validation_ff f ON f.cell_id = d.cell_id
             WHERE i.i_est_200 = 0
                 AND d.natural_cell_size_m > {cell_resolution_m}
                 AND EXISTS (
@@ -326,7 +392,7 @@ def calculate_validation_metrics(
         ))
 
         value_rows = []
-        variable_fields = (
+        variable_fields = [
             (
                 "individuals",
                 "predicted_individuals",
@@ -351,7 +417,12 @@ def calculate_validation_metrics(
                 "reference_age_65_plus",
                 "natural_age_65_plus",
             ),
-        )
+        ]
+        if composition_relation is not None:
+            variable_fields.extend(
+                (name, f"predicted_{name}", f"reference_{name}", f"natural_{name}")
+                for name in COMPOSITION_VALIDATION_VARIABLES
+            )
         for variable, prediction, reference, natural_total in variable_fields:
             value_rows.extend(
                 (
@@ -370,6 +441,14 @@ def calculate_validation_metrics(
                     FROM _validation_200m""",
                 )
             )
+            if composition_relation is not None:
+                value_rows.append(
+                    f"""SELECT 'composition' AS method, '{variable}' AS variable,
+                        natural_cell_size_m, density_class,
+                        composition_{variable} AS predicted,
+                        {reference} AS reference
+                    FROM _validation_200m"""
+                )
         connection.execute(
             """
             CREATE OR REPLACE TEMP TABLE _validation_values AS
@@ -474,12 +553,109 @@ def calculate_validation_metrics(
             .to_arrow_table()
             .to_pylist()
         )
+        if composition_relation is not None:
+            metrics_1km = _composition_eurostat_metrics(
+                connection, composition_relation, eurostat_resolution_m
+            )
         if not metrics_200m:
             raise ValueError("section-6.5 INSEE validation scope is empty")
         return metrics_200m, metrics_1km, reasons
     finally:
         for name in registered:
             connection.unregister(name)
+
+
+def _composition_eurostat_metrics(
+    connection: duckdb.DuckDBPyConnection,
+    composition_relation: str,
+    resolution_m: int,
+) -> list[dict[str, Any]]:
+    """Compare complete 1 km cells with Eurostat population and age totals."""
+    grid_id = (
+        f"'CRS3035RES{resolution_m}mN' || "
+        f"CAST(CAST(floor(d.northing_m / {resolution_m}) * {resolution_m} "
+        f"AS BIGINT) AS VARCHAR) || 'E' || "
+        f"CAST(CAST(floor(d.easting_m / {resolution_m}) * {resolution_m} "
+        f"AS BIGINT) AS VARCHAR)"
+    )
+    expressions = {
+        "individuals": "ind",
+        "under_11_ratio": "ind_0_3 + {alias}.ind_4_5 + {alias}.ind_6_10",
+        "under_18_ratio": (
+            "ind_0_3 + {alias}.ind_4_5 + {alias}.ind_6_10 + {alias}.ind_11_17"
+        ),
+        "age_65_plus": "ind_65_79 + {alias}.ind_80p",
+    }
+    natural_names = {
+        "individuals": "individuals",
+        "under_11_ratio": "under_11",
+        "under_18_ratio": "under_18",
+        "age_65_plus": "age_65_plus",
+    }
+    queries = []
+    for method, alias in (("proportional", "d"), ("composition", "c")):
+        fields = ", ".join(
+            f"sum({alias}.{expression.format(alias=alias)}) AS {name}"
+            for name, expression in expressions.items()
+        )
+        queries.append(
+            f"""
+            SELECT '{method}' AS method, {grid_id} AS grid_id, {fields}
+            FROM _validation_downscaled d
+            JOIN {composition_relation} c USING (cell_id)
+            GROUP BY grid_id
+            """
+        )
+    equal_fields = ", ".join(
+        "sum(CASE WHEN coalesce(f.main_residences, 0) > 0 "
+        f"AND m.occupied_cell_count > 0 THEN n.{natural_name} "
+        f"/ m.occupied_cell_count ELSE 0.0 END) AS {name}"
+        for name, natural_name in natural_names.items()
+    )
+    queries.append(
+        f"""
+        SELECT 'equal_split' AS method, {grid_id} AS grid_id, {equal_fields}
+        FROM _validation_downscaled d
+        LEFT JOIN _validation_ff f USING (cell_id)
+        JOIN _validation_natural_totals n USING (natural_cell_id)
+        JOIN _validation_main_cells m USING (natural_cell_id)
+        GROUP BY grid_id
+        """
+    )
+    union = "\nUNION ALL\n".join(queries)
+    return connection.execute(
+        f"""
+        WITH predictions AS ({union}),
+        values_by_variable AS (
+            SELECT methods.method, e.density_class, v.variable, v.predicted, v.reference
+            FROM _validation_1km valid
+            JOIN _validation_eurostat e ON e.GRD_ID = valid.GRD_ID
+            CROSS JOIN (
+                SELECT 'proportional' AS method UNION ALL
+                SELECT 'composition' UNION ALL SELECT 'equal_split'
+            ) methods
+            LEFT JOIN predictions p
+              ON p.grid_id = e.GRD_ID AND p.method = methods.method
+            CROSS JOIN LATERAL (VALUES
+                ('individuals', coalesce(p.individuals, 0), e.population),
+                ('age_65_plus', coalesce(p.age_65_plus, 0), e.age_65_plus),
+                ('under_11_ratio', coalesce(p.under_11_ratio, 0), e.under_15),
+                ('under_18_ratio', coalesce(p.under_18_ratio, 0), e.under_15)
+            ) AS v(variable, predicted, reference)
+            WHERE v.reference IS NOT NULL AND v.reference >= 0
+        )
+        SELECT method, variable, density_class, count(*) AS cell_count,
+            sum(predicted) AS downscaled_total, sum(reference) AS reference_total,
+            sum(CASE WHEN reference > 0 THEN 1 ELSE 0 END) AS positive_reference_count,
+            sum(predicted) / nullif(sum(reference), 0) AS ratio,
+            CASE WHEN variable LIKE '%_ratio' THEN NULL ELSE
+                quantile_cont(abs(predicted - reference) / nullif(reference, 0), 0.5)
+            END AS median_absolute_relative_error
+        FROM values_by_variable
+        GROUP BY method, variable, density_class
+        ORDER BY method, variable, density_class
+        """
+    ).to_arrow_table().to_pylist()
 
 
 def _format_count(value: int, threshold: int) -> str:
@@ -554,6 +730,41 @@ def render_validation_report(
                 share=row["share_within_tolerance"],
             )
         )
+    if metrics_1km and "method" in metrics_1km[0]:
+        lines.extend([
+            "",
+            "## Eurostat 1 km cells wholly inside the department",
+            "",
+            "Age 65 and over is compared directly. Under-11 "
+            "(ind_0_3 + ind_4_5 + ind_6_10) and under-18 "
+            "(those groups plus ind_11_17) divided by Eurostat under-15 "
+            "are information only, not errors.",
+            "",
+            "| Method | Variable | Density | Cells | Prediction | Reference | "
+            "Ratio | Median absolute relative error |",
+            "|---|---|---|---:|---:|---:|---:|---:|",
+        ])
+        for row in metrics_1km:
+            median = row["median_absolute_relative_error"]
+            ratio = row["ratio"]
+            lines.append(
+                "| {method} | {variable} | {density} | {cells} | {predicted} | "
+                "{reference} | {ratio} | {median} |".format(
+                    method=row["method"], variable=row["variable"],
+                    density=row["density_class"],
+                    cells=_format_count(row["cell_count"], count_suppression_threshold),
+                    predicted=_format_total(
+                        row["downscaled_total"], count_suppression_threshold
+                    ),
+                    reference=_format_total(
+                        row["reference_total"], count_suppression_threshold
+                    ),
+                    ratio="NA" if ratio is None else f"{ratio:.3f}",
+                    median="NA" if median is None else f"{100 * float(median):.1f}%",
+                )
+            )
+        lines.append("")
+        return "\n".join(lines)
     lines.extend(
         [
             "",
@@ -631,13 +842,16 @@ def build_validation_report(
     downscaled_path = output_directory / downscale.output_pattern.format(
         year=downscale.output_year
     )
+    composition_path = output_directory / downscale.composition_output_pattern.format(
+        year=downscale.output_year
+    )
     ff_cells_path = output_directory / report.ff_cells_pattern.format(
         vintage=downscale.ff_vintage
     )
     ff_metadata_path = output_directory / report.metadata_pattern.format(
         vintage=downscale.ff_vintage
     )
-    for path in (downscaled_path, ff_cells_path, ff_metadata_path):
+    for path in (downscaled_path, composition_path, ff_cells_path, ff_metadata_path):
         if not path.is_file():
             raise FileNotFoundError(path)
     metadata = json.loads(ff_metadata_path.read_text(encoding="utf-8"))
@@ -658,7 +872,7 @@ def build_validation_report(
             connection, Path(report.contours_2021), department
         )
         with tempfile.TemporaryDirectory(
-            prefix="filosofi_validation_"
+            prefix="filosofi_validation_", dir=output_directory
         ) as directory:
             insee_path = _extract_filosofi_200m(
                 Path(config.filosofi_200m_archive), Path(directory)
@@ -669,6 +883,7 @@ def build_validation_report(
                 insee_path,
                 ff_cells_path,
                 eurostat_path,
+                composition=composition_path,
                 department=department,
                 cell_resolution_m=downscale.cell_resolution_m,
                 eurostat_resolution_m=validation.eurostat_resolution_m,

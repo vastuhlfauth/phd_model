@@ -13,6 +13,71 @@ def _cell_id(northing: int, easting: int) -> int:
     return northing // 200 * 100_000 + easting // 200
 
 
+def test_composition_comparison_and_eurostat_age_ratios() -> None:
+    zone = "CRS3035RES1000mN2400000E4000000"
+    values = {
+        "ind": 10.0, "men": 5.0, "ind_0_3": 1.0, "ind_4_5": 1.0,
+        "ind_6_10": 1.0, "ind_11_17": 1.0, "ind_65_79": 1.0,
+        "ind_80p": 1.0, "men_1ind": 2.0, "men_5ind": 1.0,
+        "men_prop": 3.0, "men_mais": 4.0, "log_soc": 1.0, "ind_snv": 100.0,
+    }
+    origins = pa.Table.from_pylist([
+        {
+            "cell_id": _cell_id(2_400_000, 4_000_000 + 200 * i),
+            "natural_cell_id": zone, "natural_cell_size_m": 1000, **values,
+        }
+        for i in range(2)
+    ])
+    insee = pa.Table.from_pylist([
+        {
+            "idcar_200m": f"CRS3035RES200mN2400000E{4_000_000 + 200 * i}",
+            "idcar_1km": zone, "idcar_nat": zone, "lcog_geo": "33001",
+            "i_est_200": 0, **values,
+        }
+        for i in range(2)
+    ])
+    ff = pa.Table.from_pylist([
+        {"cell_id": _cell_id(2_400_000, 4_000_000 + 200 * i), "main_residences": 1}
+        for i in range(2)
+    ])
+    eurostat = pa.Table.from_pylist([
+        {"GRD_ID": zone, "T": 100, "LAND_SURFACE": 1.0, "Y_LT15": 3, "Y_GE65": 5}
+    ])
+    with duckdb.connect() as connection:
+        connection.execute("LOAD spatial")
+        connection.execute(
+            "CREATE TEMP TABLE department_boundary AS SELECT "
+            "ST_GeomFromText('POLYGON ((4000000 2400000,4001000 2400000,"
+            "4001000 2401000,4000000 2401000,4000000 2400000))') AS geom"
+        )
+        metrics, ages, reasons = calculate_validation_metrics(
+            connection, origins, insee, ff, eurostat, composition=origins,
+            department="33", cell_resolution_m=200, eurostat_resolution_m=1000,
+            density_thresholds_population_km2=(300, 1500),
+            within_tolerance_fraction=0.2,
+        )
+    assert {
+        (row["method"], row["variable"]) for row in metrics
+    } >= {
+        (method, variable)
+        for method in ("composition", "proportional", "equal_split")
+        for variable in ("men_prop", "ind_snv", "individuals")
+    }
+    old = next(row for row in ages if (
+        row["method"] == "composition" and row["variable"] == "age_65_plus"
+    ))
+    assert old["downscaled_total"] == pytest.approx(4)
+    assert old["reference_total"] == 5
+    young = next(row for row in ages if (
+        row["method"] == "composition" and row["variable"] == "under_11_ratio"
+    ))
+    assert young["ratio"] == pytest.approx(2)
+    report = render_validation_report(2021, "33", metrics, ages, reasons, 50, 0.2)
+    assert "information only" in report
+    assert "ind_0_3" in report
+    assert "CRS3035" not in report
+
+
 def test_validation_reports_errors_and_suppresses_small_counts() -> None:
     natural_cell_id = "CRS3035RES1000mN2400000E4000000"
     first_cell = _cell_id(2_400_000, 4_000_000)
