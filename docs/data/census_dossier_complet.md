@@ -38,6 +38,55 @@ The same totals were returned by `LOG_T2` / `DS_RP_LOGEMENT_PRINC`; `LOG_T1`
 is used because it is the documented historical series. Earlier periods for
 these measures are 1968, 1975, 1982, 1990, 1999, 2007, 2012, and 2017.
 
+## Temporal growth inputs
+
+The 2021 CSV also supplies the 2015 and 2021 commune measures used to estimate
+2019-to-2021 growth. For a measure `P`, the two-year factor is
+`(P21 / P15)^(1/3)`, the geometric annual growth over the six years from 2015
+to 2021 applied for two years.
+
+| Measure | 2015 column | 2021 column | Use |
+|---|---|---|---|
+| Households | `P15_MEN` | `P21_MEN` | Household variables |
+| Population in households | `P15_PMEN` | `P21_PMEN` | Individuals and fallback |
+| Ages 25-39 | `P15_POP2539` | `P21_POP2539` | `ind_25_39` |
+| Ages 40-54 | `P15_POP4054` | `P21_POP4054` | `ind_40_54` |
+| Ages 55-64 | `P15_POP5564` | `P21_POP5564` | `ind_55_64` |
+| Ages 65-79 | `P15_POP6579` | `P21_POP6579` | `ind_65_79` |
+| Ages 80 and over | `P15_POP80P` | `P21_POP80P` | `ind_80p` |
+| Ages 18-24 | `P15_POP1824` | `P21_POP1824` | `ind_18_24` |
+| Ages 6-10 | `P15_POP0610` | `P21_POP0610` | `ind_6_10` |
+| Ages 11-14 | `P15_POP1114` | `P21_POP1114` | Component of `ind_11_17` and under-6 |
+| Ages 15-17 | `P15_POP1517` | `P21_POP1517` | Component of `ind_11_17` |
+| Ages under 15 | `P15_POP0014` | `P21_POP0014` | Component for ages 0-5 |
+
+For `ind_11_17`, sum ages 11-14 and 15-17 before calculating growth. Derive
+ages 0-5 as under-15 minus ages 6-10 minus ages 11-14; this factor applies to
+both `ind_0_3` and `ind_4_5`. If an age measure is unavailable, use population-
+in-households growth. For 2021-to-2023 growth, use the matching 2021 and 2023
+census measures directly; variables without a census counterpart use the
+growth of their denominator.
+
+The corresponding 2023 census selectors are:
+
+| Measure | `ID_TAB` / `DS` | `TAB_MEASURE` |
+|---|---|---|
+| Population in households | `POP_T1` / `DS_RP_POPULATION_PRINC` | `POP` |
+| Ages under 15 | `POP_T1` / `DS_RP_POPULATION_PRINC` | `POP_AGE_Y_LT15` |
+| Ages 25-39 | `POP_T1` / `DS_RP_POPULATION_PRINC` | `POP_AGE_Y25T39` |
+| Ages 40-54 | `POP_T1` / `DS_RP_POPULATION_PRINC` | `POP_AGE_Y40T54` |
+| Ages 55-64 | `POP_T1` / `DS_RP_POPULATION_PRINC` | `POP_AGE_Y55T64` |
+| Ages 65-79 | `POP_T1` / `DS_RP_POPULATION_PRINC` | `POP_AGE_Y65T79` |
+| Ages 80 and over | `POP_T1` / `DS_RP_POPULATION_PRINC` | `POP_AGE_Y_GE80` |
+| Ages 6-10 | `FOR_T1` / `DS_RP_EDUCATION_PRINC` | `POP_AGE_Y6T10` |
+| Ages 11-14 | `FOR_T1` / `DS_RP_EDUCATION_PRINC` | `POP_AGE_Y11T14` |
+| Ages 15-17 | `FOR_T1` / `DS_RP_EDUCATION_PRINC` | `POP_AGE_Y15T17` |
+| Ages 18-24 | `FOR_T1` / `DS_RP_EDUCATION_PRINC` | `POP_AGE_Y18T24` |
+
+The 2023 series is filtered to `GEO_OBJECT=COM` and `TIME_PERIOD=2023`; values
+are in `OBS_VALUE`. Household growth uses the main-residence measure
+`DWELLINGS_OCS_DW_MAIN` from the housing selectors above.
+
 ## Metadata dimensions
 
 The 2023 file has 25,453 distinct five-dimension combinations. The distinct
