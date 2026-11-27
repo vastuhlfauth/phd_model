@@ -1,5 +1,20 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 within-cell convergence repair
+
+- The user's cross-validation run failed in fold 0 during within-cell fitting.
+- Reproduced false non-convergence synthetically with weak within-group
+  covariate variation; absolute coefficient updates did not stabilize even
+  though the conditional predictions had stabilized.
+- Centered the fitting design within natural cells (conditional likelihood
+  unchanged) and check the full Newton update of the conditional predictor.
+  Damped steps cannot masquerade as convergence; divergent fits still fail.
+- Fitting errors now identify the variable, iteration limit and predictor-step
+  size, without including restricted observations.
+- Synthetic solver and cross-validation tests: 17 passed; Ruff passed.
+  No real-data run; the original failing variable remains unverified.
+- Retry `python -m landgrid.origins.crossval`; completed folds are resumable.
+
 ## 2026-11-27 — Step 3 grouped cross-validation integration
 
 - Added the standalone five-fold grouped cross-validation command, refitting

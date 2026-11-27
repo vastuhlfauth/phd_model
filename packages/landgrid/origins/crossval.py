@@ -471,16 +471,21 @@ def _fit_within_models(
             """
         ).to_arrow_table()
         groups = training["natural_cell_id"].to_numpy(zero_copy_only=False)
-        model = fit_within_poisson(
-            _feature_matrix(training, COVARIATES),
-            _float_column(training, "target"),
-            _float_column(training, "exposure"),
-            groups,
-            COVARIATES,
-            standardization_weights=_float_column(training, "standardization_weight"),
-            tolerance=downscale.poisson_tolerance,
-            max_iterations=downscale.poisson_max_iterations,
-        )
+        try:
+            model = fit_within_poisson(
+                _feature_matrix(training, COVARIATES),
+                _float_column(training, "target"),
+                _float_column(training, "exposure"),
+                groups,
+                COVARIATES,
+                standardization_weights=_float_column(
+                    training, "standardization_weight"
+                ),
+                tolerance=downscale.poisson_tolerance,
+                max_iterations=downscale.poisson_max_iterations,
+            )
+        except RuntimeError as error:
+            raise RuntimeError(f"within-cell model for {variable}: {error}") from error
         models[variable] = model
         diagnostics[variable] = {
             "dispersion": model.dispersion,

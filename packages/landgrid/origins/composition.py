@@ -175,7 +175,8 @@ def fit_within_poisson(
         if candidate_rank > rank:
             selected.append(index)
             rank = candidate_rank
-    design = matrix[:, selected]
+    # Group constants cancel from the conditional likelihood.
+    design = centered[:, selected]
     if len(y) <= n_groups + rank:
         raise ValueError("insufficient residual degrees of freedom for dispersion")
     totals = np.bincount(group_index, weights=y)
@@ -205,6 +206,10 @@ def fit_within_poisson(
         within = design - group_mean[group_index]
         information = within.T @ (mu[:, None] * within)
         step = np.linalg.solve(information, design.T @ (y - mu))
+        conditional_change = float(np.max(np.abs(design @ step)))
+        if conditional_change <= tolerance:
+            converged = True
+            break
         fraction = 1.0
         while fraction > tolerance:
             candidate = beta + fraction * step
@@ -215,11 +220,12 @@ def fit_within_poisson(
         else:
             raise RuntimeError("within-cell Poisson could not find an improving step")
         beta = candidate
-        if np.max(np.abs(fraction * step)) <= tolerance:
-            converged = True
-            break
     if not converged:
-        raise RuntimeError("within-cell Poisson did not converge")
+        raise RuntimeError(
+            f"within-cell Poisson did not converge after {max_iterations} iterations "
+            f"(conditional predictor step {conditional_change:.6g}, "
+            f"tolerance {tolerance:.6g})"
+        )
     mu, _ = evaluate(beta)
     dispersion = float(np.sum((y - mu) ** 2 / mu) / (len(y) - n_groups - rank))
     if rank:

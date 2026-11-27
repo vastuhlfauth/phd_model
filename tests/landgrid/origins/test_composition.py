@@ -146,6 +146,47 @@ def test_within_poisson_standardizes_using_household_weights() -> None:
     assert model.means[0] == pytest.approx(1.5)
 
 
+def test_within_poisson_converges_with_weak_within_group_variation() -> None:
+    """Section 6.3 experiment: convergence depends on conditional splits."""
+    from landgrid.origins.composition import fit_within_poisson
+
+    rng = np.random.default_rng(17)
+    groups = np.repeat(np.arange(40), 4)
+    exposure = rng.uniform(1, 30, len(groups))
+    within = np.tile(np.array([-1.5, -0.5, 0.5, 1.5]), 40)
+    x = (np.repeat(np.linspace(-2, 2, 40), 4) + 1e-6 * within)[:, None]
+    y = exposure * np.exp(
+        0.6 * within + np.repeat(np.linspace(-1, 1, 40), 4)
+    )
+    model = fit_within_poisson(
+        x, y, exposure, groups, ("x",), standardization_weights=exposure,
+        tolerance=1e-8, max_iterations=100,
+    )
+    centered = (x.reshape(-1, 4) - x.reshape(-1, 4).mean(axis=1)[:, None])
+    rates = np.exp(centered * model.coefficients[0] / model.scales[0])
+    weights = exposure.reshape(-1, 4) * rates
+    predicted = (
+        y.reshape(-1, 4).sum(axis=1)[:, None]
+        * weights / weights.sum(axis=1)[:, None]
+    )
+    assert predicted == pytest.approx(y.reshape(-1, 4), rel=1e-8)
+    assert np.isfinite(model.standard_errors).all()
+
+
+def test_within_poisson_does_not_accept_separated_counts() -> None:
+    """Section 6.3 experiment: a divergent fit must remain an error."""
+    from landgrid.origins.composition import fit_within_poisson
+
+    x = np.tile(np.array([0.0, 1.0, 2.0]), 8)[:, None]
+    exposure = np.ones(len(x))
+    y = np.tile(np.array([0.0, 0.0, 10.0]), 8)
+    with pytest.raises(RuntimeError, match="within-cell Poisson did not converge"):
+        fit_within_poisson(
+            x, y, exposure, np.repeat(np.arange(8), 3), ("x",),
+            standardization_weights=exposure, tolerance=1e-8, max_iterations=20,
+        )
+
+
 def test_regression_weights_use_the_specified_denominator_and_preserve_total() -> None:
     from landgrid.origins.composition import apply_regression_weights
 

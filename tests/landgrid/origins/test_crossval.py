@@ -263,3 +263,30 @@ def test_synthetic_fold_scores_identical_non_imputed_holdouts(
     assert "<50" in report
     assert "cell_id" not in report
     assert summarized["ind"]["zero_offset_training_cells_excluded"] == "<50"
+
+
+def test_within_model_failure_identifies_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import landgrid.origins.crossval as crossval
+    from landgrid.origins.composition import COVARIATES
+    from landgrid.origins.fichiers_fonciers import load_origins_config
+
+    def fail_fit(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("within-cell Poisson did not converge")
+
+    monkeypatch.setattr(crossval, "fit_within_poisson", fail_fit)
+    with duckdb.connect() as connection:
+        connection.register(
+            "_cv_fold_train_reference",
+            pa.Table.from_pylist([{
+                "natural_cell_id": "a", "cell_id": 1, "i_est_200": 0,
+                "ref_ind": 2.0, "ref_men": 1.0,
+                **dict.fromkeys(COVARIATES, 1.0),
+            }]),
+        )
+        with pytest.raises(RuntimeError, match="within-cell model for ind:"):
+            crossval._fit_within_models(
+                connection, age_variables=(),
+                downscale=load_origins_config().downscale,
+            )
