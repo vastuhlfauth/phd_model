@@ -1,5 +1,15 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 temporal archive preparation
+
+- Added resumable preparation of the two nested 2019 Filosofi archives using
+  Windows `tar`, restricted to configured interim destinations.
+- Synthetic extraction tests: 5 passed; Ruff and Pylance syntax checks passed.
+  The real archives were not unpacked or validated in this session.
+- The 2019 unpacker is not yet integrated with the FF or composition builders.
+  Commune allocation, COG matching, growth and temporal outputs remain open.
+- Run `python -m landgrid.origins.unpack_filosofi` to prepare the archives.
+
 ## 2026-11-27 — Step 3 chosen composition and within covariates
 
 - Applied configured overrides, then cross-validation choices, then the

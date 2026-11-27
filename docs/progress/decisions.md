@@ -1,5 +1,11 @@
 ## Decisions taken while coding
 
+- 2026-11-27, step 3: for the temporal experiment, carry the 2021 Filosofi
+  scope forward using census growth rather than absolute census margins as an
+  explicit section-6.3 step-7 exception, pending the temporal test and spec
+  update. Compare 2019-2021 geometric census growth and FF dwelling growth.
+  Use the approved census age-band combinations, reconcile age margins to
+  individuals, and split commune-crossing cells by FF main residences.
 - 2026-11-27, step 3: keep the configured 80 bound on `dnbniv` as a
   plausibility check, without using `dniv`; correct section 6.3 wording later.
 - 2026-11-27, step 3: apply configured per-variable method overrides before

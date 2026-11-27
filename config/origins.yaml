@@ -1,12 +1,20 @@
 filosofi:
   200m_archive: "data/raw/filosofi/2021/Filosofi2021_carreaux_200m_csv.zip"
   natural_archive: "data/raw/filosofi/2021/Filosofi2021_carreaux_nivNaturel_csv.zip"
+  temporal_2019:
+    200m_archive: "data/raw/filosofi/2019/Filosofi2019_carreaux_200m_csv.zip"
+    200m_destination: "data/interim/landgrid/filosofi_2019_200m"
+    200m_member: "carreaux_200m_met.csv"
+    natural_archive: "data/raw/filosofi/2019/Filosofi2019_carreaux_nivNaturel_csv.zip"
+    natural_destination: "data/interim/landgrid/filosofi_2019_natural"
+    natural_member: "carreaux_nivNaturel_met.csv"
 jobs:
   log_directory: "logs"
   ff_task_pattern: "ff_cells_{vintage}"
   composition_task: "origins_composition"
   validation_task: "origins_validation"
   crossval_task: "origins_crossval"
+  unpack_filosofi_task: "origins_unpack_filosofi_2019"
 vintages:
   2021:
     parquet_pattern: "data/raw/fichiers_fonciers/ff2021/pb0010_local/ccodep={department}/part-01.parquet"
