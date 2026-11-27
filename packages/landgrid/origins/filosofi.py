@@ -3,12 +3,33 @@
 from __future__ import annotations
 
 import re
+import shutil
+import zipfile
 from collections.abc import Iterable
+from pathlib import Path
 
 _INSPIRE_NATURAL = re.compile(
     r"^CRS3035RES(?P<resolution>\d+)mN(?P<northing>\d+)E(?P<easting>\d+)$"
 )
 NaturalCellLookup = dict[int, dict[tuple[int, int], str]]
+
+
+def source_csv(source: Path, member: str, directory: Path) -> Path:
+    """Resolve an unpacked CSV or extract a metropolitan archive member."""
+    if source.suffix.casefold() == ".csv":
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        return source
+    with zipfile.ZipFile(source) as archive:
+        name = next(
+            (name for name in archive.namelist() if name.endswith(member)), None
+        )
+        if name is None:
+            raise FileNotFoundError(f"{member} is missing from {source}")
+        target = directory / Path(member).name
+        with archive.open(name) as input_file, target.open("wb") as output:
+            shutil.copyfileobj(input_file, output)
+    return target
 
 
 def decode_natural_cell(code: str) -> tuple[int, int, int]:

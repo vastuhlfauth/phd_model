@@ -466,9 +466,12 @@ def test_ipf_reports_nonconvergence_without_replacing_input() -> None:
     assert result == [(3.0,), (3.0,)]
 
 
+@pytest.mark.parametrize(("year", "vintage"), [(None, 2022), (2019, 2021)])
 def test_composition_build_writes_separate_output_and_reuses_checkpoint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    year: int | None,
+    vintage: int,
 ) -> None:
     import landgrid.origins.composition as composition
     from landgrid.origins.composition import AGE_VARIABLES, COVARIATES
@@ -516,15 +519,24 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
                 "men_1ind": 2.0 * np.exp(0.3 * j),
             })
     reference[0]["i_est_200"] = 1
+    output_year = year or 2021
     output = tmp_path / "interim"
     output.mkdir()
-    pq.write_table(pa.Table.from_pylist(cells), output / "origins_2021_200m.parquet")
-    pq.write_table(pa.Table.from_pylist(ff_cells), output / "ff_cells_2022.parquet")
-    pq.write_table(pa.Table.from_pylist(ff_natural), output / "ff_natural_2022.parquet")
-    (output / "ff_cells_2022.json").write_text(
-        json.dumps({"signature": "synthetic", "second_home_source": "hybrid_2024"})
+    benchmark = output / f"origins_{output_year}_200m.parquet"
+    pq.write_table(pa.Table.from_pylist(cells), benchmark)
+    pq.write_table(
+        pa.Table.from_pylist(ff_cells), output / f"ff_cells_{vintage}.parquet"
     )
-    (output / "origins_2021_200m.json").write_text(
+    pq.write_table(
+        pa.Table.from_pylist(ff_natural), output / f"ff_natural_{vintage}.parquet"
+    )
+    (output / f"ff_cells_{vintage}.json").write_text(
+        json.dumps({
+            "signature": "synthetic", "second_home_source": "hybrid_2024",
+            "grid_year": output_year,
+        })
+    )
+    (output / f"origins_{output_year}_200m.json").write_text(
         json.dumps({
             "ff_signature": "synthetic",
             "pilot_signature": composition._file_signature(Path("config/pilot.yaml")),
@@ -537,6 +549,9 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
     archive = tmp_path / "natural.zip"
     with zipfile.ZipFile(archive, "w") as zipped:
         zipped.writestr("carreaux_nivNaturel_met.csv", buffer.getvalue())
+    (tmp_path / "carreaux_nivNaturel_met.csv").write_text(
+        buffer.getvalue(), encoding="utf-8", newline=""
+    )
     reference_archive = tmp_path / "reference.zip"
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=list(reference[0]))
@@ -544,11 +559,16 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
     writer.writerows(reference)
     with zipfile.ZipFile(reference_archive, "w") as zipped:
         zipped.writestr("carreaux_200m_met.csv", buffer.getvalue())
+    (tmp_path / "carreaux_200m_met.csv").write_text(
+        buffer.getvalue(), encoding="utf-8", newline=""
+    )
     raw = yaml.safe_load(Path("config/origins.yaml").read_text(encoding="utf-8"))
     raw["report"]["interim_directory"] = str(output)
     raw["report"]["output_directory"] = str(output)
     raw["filosofi"]["natural_archive"] = str(archive)
     raw["filosofi"]["200m_archive"] = str(reference_archive)
+    raw["filosofi"]["temporal_2019"]["natural_destination"] = str(tmp_path)
+    raw["filosofi"]["temporal_2019"]["200m_destination"] = str(tmp_path)
     raw["downscale"]["fixed_methods"]["men_5ind"] = "proportional"
     choice_path = output / "composition_method_choice_2021.json"
     choice_path.write_text(json.dumps({
@@ -556,7 +576,7 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
     }))
     config = tmp_path / "origins.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
-    baseline = (output / "origins_2021_200m.parquet").read_bytes()
+    baseline = benchmark.read_bytes()
 
     original = composition.apply_models
 
@@ -571,6 +591,7 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
         reference_200m: pa.Table | Path | None = None,
         completed: dict[str, dict[str, object]] | None = None,
         checkpoint: Callable[[dict[str, dict[str, object]]], None] | None = None,
+        cross_validate: bool = True,
     ) -> dict[str, dict[str, object]]:
         assert checkpoint is not None
 
@@ -583,29 +604,35 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
             connection, natural_input, ff_natural_input, ff_cells_input, model_config,
             methods=methods, reference_200m=reference_200m,
             completed=completed, checkpoint=interrupted_checkpoint,
+            cross_validate=cross_validate,
         )
 
     monkeypatch.setattr(composition, "apply_models", interrupt)
     with pytest.raises(RuntimeError, match="simulated interruption"):
-        composition.build_composition(config_path=config)
+        composition.build_composition(config_path=config, year=year)
     state = json.loads(
-        (output / "composition_2021_checkpoint" / "state.json").read_text()
+        (output / f"composition_{output_year}_checkpoint" / "state.json").read_text()
     )
     assert list(state["reports"]) == ["ind"]
     monkeypatch.setattr(composition, "apply_models", original)
-    result = composition.build_composition(config_path=config)
+    result = composition.build_composition(config_path=config, year=year)
     assert Path(result["output"]).is_file()
-    assert (output / "origins_2021_200m.parquet").read_bytes() == baseline
-    result_again = composition.build_composition(config_path=config)
+    assert benchmark.read_bytes() == baseline
+    result_again = composition.build_composition(config_path=config, year=year)
     assert result_again["cached"] is True
     built = pq.read_table(result["output"]).to_pylist()
-    reports = json.loads((output / "origins_2021_composition_models.json").read_text())
+    reports = json.loads(
+        (output / f"origins_{output_year}_composition_models.json").read_text()
+    )
     assert reports["men_1ind"]["method"] == "within"
     assert reports["men_1ind"]["training_cell_count"] == 22
     assert reports["men_5ind"]["method"] == "proportional"
+    assert len(reports["ind"]["cross_validation_weighted_mae"]) == (
+        0 if year == 2019 else 5
+    )
     assert built[1]["men_1ind"] > built[0]["men_1ind"]
     assert sum(row["men_1ind"] for row in built[:2]) == pytest.approx(4.0)
-    text = (output / "origins_2021_composition_report.md").read_text()
+    text = (output / f"origins_{output_year}_composition_report.md").read_text()
     assert "Dispersion:" in text and "Dropped features:" in text
     assert built[0]["ind"] != built[1]["ind"]
     assert sum(built[0][name] for name in AGE_VARIABLES) == pytest.approx(
@@ -614,9 +641,13 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
     choice_path.write_text(json.dumps({
         "year": 2021, "chosen_methods": {"men_1ind": "proportional"}
     }))
-    rebuilt = composition.build_composition(config_path=config)
+    rebuilt = composition.build_composition(config_path=config, year=year)
     assert rebuilt["cached"] is False
     rebuilt_reports = json.loads(
-        (output / "origins_2021_composition_models.json").read_text()
+        (output / f"origins_{output_year}_composition_models.json").read_text()
     )
     assert rebuilt_reports["men_1ind"]["method"] == "proportional"
+    if year == 2019:
+        choice_path.unlink()
+        with pytest.raises(FileNotFoundError):
+            composition.build_composition(config_path=config, year=year)

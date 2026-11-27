@@ -1,5 +1,23 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 year-aware origins inputs
+
+- Configured the 2019/2021 Filosofi-to-FF pairings once; the default remains
+  2021. FF, downscale and composition accept `--year`.
+- The 2019 builders read the unpacked interim CSVs and reuse 2021 method
+  choices; model fits use 2019 data without cross-validation.
+- Synthetic touched-module tests: 55 passed; Ruff passed. No real data run.
+- Not yet implemented: COG-mapped cell-commune output, census integration,
+  temporal comparison and the 2023 grid. Do not treat the commands below
+  as completing the temporal test.
+- Prepare files with `python -m landgrid.origins.unpack_filosofi`.
+- Build FF: `python -m landgrid.origins.fichiers_fonciers --vintage 2021 --year 2019`;
+  `python -m landgrid.origins.fichiers_fonciers --vintage 2022`;
+  `python -m landgrid.origins.fichiers_fonciers --vintage 2024`.
+- Run `python -m landgrid.origins.downscale --year 2019`, then
+  `python -m landgrid.origins.composition --year 2019`. The latter requires
+  the 2021 method-choice JSON under interim.
+
 ## 2026-11-27 — Step 3 stable-unit census growth factors
 
 - Census measures are summed within connected, year-specific COG units before

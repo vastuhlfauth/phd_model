@@ -28,6 +28,33 @@ from landgrid.origins.fichiers_fonciers import (
 from landgrid.origins.filosofi import NaturalCellLookup, build_natural_cell_lookup
 
 
+def test_configured_grid_year_pairs_and_unpacked_readers(tmp_path: Path) -> None:
+    import landgrid.origins.fichiers_fonciers as ff
+
+    config = load_origins_config()
+    assert config.grid_years[2019].ff_vintage == 2021
+    assert config.grid_years[2021].ff_vintage == 2022
+    assert config.filosofi_sources(2021) == (
+        Path(config.filosofi_200m_archive),
+        Path(config.filosofi_natural_archive),
+    )
+    cells = tmp_path / "carreaux_200m_met.csv"
+    cells.write_text("idcar_200m,lcog_geo\ncell,33001\n", encoding="utf-8")
+    natural = tmp_path / "carreaux_nivNaturel_met.csv"
+    natural.write_text(
+        "idcar_nat\nCRS3035RES200mN2400000E4000000\n", encoding="utf-8"
+    )
+    with duckdb.connect() as connection:
+        assert ff._filosofi_200m_map(connection, cells, tmp_path) == {
+            "cell": "33001"
+        }
+        assert ff._filosofi_natural_ids(connection, natural, tmp_path) == (
+            build_natural_cell_lookup(["CRS3035RES200mN2400000E4000000"])
+        )
+    with pytest.raises(ValueError, match="unsupported grid year"):
+        config.filosofi_sources(2020)
+
+
 def test_aggregates_cell_weights_by_main_residence_commune() -> None:
     rows = pa.Table.from_pylist([
         {

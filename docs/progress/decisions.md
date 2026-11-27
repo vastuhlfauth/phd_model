@@ -1,5 +1,7 @@
 ## Decisions taken while coding
 
+- 2026-11-27, step 3: reuse the 2021 composition method choices for 2019;
+  refit on 2019 without cross-validation. Fail if the choice file is missing.
 - 2026-11-27, step 3: build temporal growth units as connected groups in the
   year-specific COG passage table. Sum census and Filosofi values over a unit;
   merges, splits and chains are never proportionally allocated. Apply one

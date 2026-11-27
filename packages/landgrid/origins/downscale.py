@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import tempfile
-import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -22,6 +20,7 @@ from landgrid.origins.fichiers_fonciers import (
     _quoted_identifier,
     load_origins_config,
 )
+from landgrid.origins.filosofi import source_csv
 from landgrid.origins.job import open_restricted_connection
 
 _NUMERIC_TYPES = {
@@ -391,18 +390,8 @@ def _extract_archive_member(
     suffix: str,
     directory: Path,
 ) -> Path:
-    """Stream one configured Filosofi CSV member into a temporary directory."""
-    with zipfile.ZipFile(archive_path) as archive:
-        member = next(
-            (name for name in archive.namelist() if name.endswith(suffix)),
-            None,
-        )
-        if member is None:
-            raise FileNotFoundError(f"{suffix} is missing from {archive_path}")
-        target = directory / Path(suffix).name
-        with archive.open(member) as source, target.open("wb") as output:
-            shutil.copyfileobj(source, output)
-    return target
+    """Resolve an unpacked CSV or extract an archive member."""
+    return source_csv(archive_path, suffix, directory)
 
 
 def build_origins_2021_200m(
@@ -410,39 +399,43 @@ def build_origins_2021_200m(
     config_path: str | Path = "config/origins.yaml",
     pilot_config_path: str | Path = "config/pilot.yaml",
     output_directory: str | Path | None = None,
+    year: int | None = None,
 ) -> dict[str, Any]:
-    """Build 2021 origins from Filosofi 2021 and hybrid FF 2022 in interim."""
+    """Build section 6.3 origins for the configured Filosofi/FF pairing."""
     config = load_origins_config(config_path)
     downscale: DownscaleConfig = config.downscale
+    grid_year = downscale.output_year if year is None else year
+    households_archive, natural_archive = config.filosofi_sources(grid_year)
+    vintage = config.grid_years[grid_year].ff_vintage
     output_dir = Path(output_directory or config.report.output_directory)
     ff_cells_path = output_dir / config.report.ff_cells_pattern.format(
-        vintage=downscale.ff_vintage
+        vintage=vintage
     )
     ff_metadata_path = output_dir / config.report.metadata_pattern.format(
-        vintage=downscale.ff_vintage
+        vintage=vintage
     )
     if not ff_cells_path.is_file() or not ff_metadata_path.is_file():
         raise FileNotFoundError(
-            f"missing FF {downscale.ff_vintage} hybrid build under {output_dir}"
+            f"missing FF {vintage} hybrid build under {output_dir}"
         )
     metadata = json.loads(ff_metadata_path.read_text(encoding="utf-8"))
     if not isinstance(metadata, dict) or metadata.get(
         "second_home_source"
     ) != "hybrid_2024":
         raise ValueError(
-            f"FF {downscale.ff_vintage} inputs must use the adopted hybrid rule"
+            f"FF {vintage} inputs must use the adopted hybrid rule"
         )
-    natural_archive = Path(config.filosofi_natural_archive)
-    households_archive = Path(config.filosofi_200m_archive)
+    if grid_year != downscale.output_year and metadata.get("grid_year") != grid_year:
+        raise ValueError(f"FF {vintage} build must use grid year {grid_year}")
     if not natural_archive.is_file():
         raise FileNotFoundError(natural_archive)
     if not households_archive.is_file():
         raise FileNotFoundError(households_archive)
     output_path = output_dir / downscale.output_pattern.format(
-        year=downscale.output_year
+        year=grid_year
     )
     metadata_path = output_dir / downscale.metadata_pattern.format(
-        year=downscale.output_year
+        year=grid_year
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     metadata_path.unlink(missing_ok=True)
@@ -499,8 +492,8 @@ def build_origins_2021_200m(
         metadata_path.with_suffix(".tmp.json").write_text(
             json.dumps(
                 {
-                    "output_year": downscale.output_year,
-                    "fichiers_fonciers_vintage": downscale.ff_vintage,
+                    "output_year": grid_year,
+                    "fichiers_fonciers_vintage": vintage,
                     "second_home_source": metadata["second_home_source"],
                     "ff_signature": metadata["signature"],
                     "pilot_signature": _file_signature(Path(pilot_config_path)),
@@ -553,11 +546,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--pilot-config", type=Path, default=Path("config/pilot.yaml")
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--year", type=int)
     args = parser.parse_args(argv)
     result = build_origins_2021_200m(
         config_path=args.config,
         pilot_config_path=args.pilot_config,
         output_directory=args.output,
+        year=args.year,
     )
     threshold = load_origins_config(args.config).report.count_suppression_threshold
     result["fallback_summary"] = _suppressed_summary(

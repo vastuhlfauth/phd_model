@@ -7,12 +7,10 @@ import hashlib
 import json
 import logging
 import math
-import shutil
 import statistics
 import sys
 import tempfile
 import time
-import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -28,6 +26,7 @@ from landgrid.origins.filosofi import (
     NaturalCellLookup,
     build_natural_cell_lookup,
     derived_departments,
+    source_csv,
 )
 from landgrid.origins.job import open_restricted_connection
 
@@ -137,6 +136,12 @@ class JobConfig:
 
 
 @dataclass(frozen=True)
+class GridYearConfig:
+    ff_vintage: int
+    source: str
+
+
+@dataclass(frozen=True)
 class OriginsConfig:
     filosofi_200m_archive: str
     filosofi_natural_archive: str
@@ -158,6 +163,20 @@ class OriginsConfig:
     nbetagemax_used: bool
     construction_period_starts: tuple[int, int, int]
     second_home_rescaling: float | None
+    grid_years: dict[int, GridYearConfig]
+    temporal_2019_200m: str
+    temporal_2019_natural: str
+
+    def filosofi_sources(self, year: int) -> tuple[Path, Path]:
+        """Return the configured 200 m and natural inputs for a grid year."""
+        if year not in self.grid_years:
+            raise ValueError(f"unsupported grid year: {year}")
+        source = self.grid_years[year].source
+        if source == "archives":
+            return Path(self.filosofi_200m_archive), Path(self.filosofi_natural_archive)
+        if source == "temporal_2019":
+            return Path(self.temporal_2019_200m), Path(self.temporal_2019_natural)
+        raise ValueError(f"unsupported Filosofi source: {source}")
 
 
 def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConfig:
@@ -228,11 +247,25 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         }
         or any(value not in {"proportional", "composition", "within"}
                for value in downscale["fixed_methods"].values())
+        or downscale["fixed_methods"].get("ind_inc") != "proportional"
         or float(downscale["ipf_tolerance"]) <= 0
         or int(downscale["ipf_max_iterations"]) <= 0
     ):
         raise ValueError("invalid composition model or IPF configuration")
     validation = raw["validation"]
+    grid_years = {
+        int(year): GridYearConfig(int(value["ff_vintage"]), str(value["source"]))
+        for year, value in raw["filosofi"]["grid_years"].items()
+    }
+    if any(
+        pair.ff_vintage not in vintages
+        or pair.source not in {"archives", "temporal_2019"}
+        for pair in grid_years.values()
+    ):
+        raise ValueError("invalid grid-year pairing")
+    if int(downscale["output_year"]) not in grid_years:
+        raise ValueError("default grid year has no pairing")
+    temporal = raw["filosofi"]["temporal_2019"]
     density_thresholds = tuple(
         int(value)
         for value in validation["density_thresholds_population_km2"]
@@ -283,7 +316,7 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         ),
         downscale=DownscaleConfig(
             output_year=int(raw["downscale"]["output_year"]),
-            ff_vintage=int(raw["downscale"]["ff_vintage"]),
+            ff_vintage=grid_years[int(downscale["output_year"])].ff_vintage,
             cell_resolution_m=int(raw["downscale"]["cell_resolution_m"]),
             output_pattern=raw["downscale"]["output_pattern"],
             metadata_pattern=raw["downscale"]["metadata_pattern"],
@@ -347,6 +380,13 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         nbetagemax_used=bool(raw["cleaning"]["nbetagemax_used"]),
         construction_period_starts=periods,
         second_home_rescaling=raw["second_home_rescaling"],
+        grid_years=grid_years,
+        temporal_2019_200m=str(
+            Path(temporal["200m_destination"]) / temporal["200m_member"]
+        ),
+        temporal_2019_natural=str(
+            Path(temporal["natural_destination"]) / temporal["natural_member"]
+        ),
     )
 
 
@@ -642,15 +682,7 @@ def _filosofi_200m_map(
     with tempfile.TemporaryDirectory(
         prefix="filosofi_200m_", dir=temporary_directory
     ) as directory:
-        csv_path = Path(directory) / "filosofi_200m.csv"
-        with zipfile.ZipFile(archive) as zipped:
-            member = next(
-                name
-                for name in zipped.namelist()
-                if name.endswith("carreaux_200m_met.csv")
-            )
-            with zipped.open(member) as source, csv_path.open("wb") as target:
-                shutil.copyfileobj(source, target)
+        csv_path = source_csv(archive, "carreaux_200m_met.csv", Path(directory))
         rows = connection.execute(
             """
             SELECT idcar_200m, lcog_geo
@@ -673,15 +705,9 @@ def _filosofi_natural_ids(
     with tempfile.TemporaryDirectory(
         prefix="filosofi_natural_", dir=temporary_directory
     ) as directory:
-        csv_path = Path(directory) / "filosofi_natural.csv"
-        with zipfile.ZipFile(archive) as zipped:
-            member = next(
-                name
-                for name in zipped.namelist()
-                if name.endswith("carreaux_nivNaturel_met.csv")
-            )
-            with zipped.open(member) as source, csv_path.open("wb") as target:
-                shutil.copyfileobj(source, target)
+        csv_path = source_csv(
+            archive, "carreaux_nivNaturel_met.csv", Path(directory)
+        )
         rows = connection.execute(
             """
             SELECT DISTINCT idcar_nat
@@ -1491,9 +1517,12 @@ def build_ff_cells(
     output: str | Path | None = None,
     force: bool = False,
     second_home_source: str | None = None,
+    year: int | None = None,
 ) -> dict[str, object]:
     """Build or reuse combined department 200 m dwelling cells."""
     config = load_origins_config(config_path)
+    grid_year = config.downscale.output_year if year is None else year
+    configured_cells, configured_natural = config.filosofi_sources(grid_year)
     if vintage not in config.vintages:
         raise ValueError(f"unsupported origins vintage: {vintage}")
     configured_source = config.vintages[vintage].second_home_source
@@ -1524,10 +1553,10 @@ def build_ff_cells(
     connection, spill = open_restricted_connection(output_directory)
     try:
         filosofi_archive = Path(
-            filosofi_200m_archive or config.filosofi_200m_archive
+            filosofi_200m_archive or configured_cells
         )
         natural_archive = Path(
-            filosofi_natural_archive or config.filosofi_natural_archive
+            filosofi_natural_archive or configured_natural
         )
         if not filosofi_archive.is_file():
             raise FileNotFoundError(filosofi_archive)
@@ -1583,6 +1612,10 @@ def build_ff_cells(
             vintage=vintage
         )
         signature = build_ff_cells_signature(vintage, config, input_files)
+        if grid_year != config.downscale.output_year:
+            signature = hashlib.sha256(
+                f"{signature}:{grid_year}".encode("utf-8")
+            ).hexdigest()
 
         if (
             not force
@@ -1768,6 +1801,7 @@ def build_ff_cells(
                     "diagnostics": diagnostics,
                     "department_diagnostics": department_diagnostics_all,
                     "second_home_source": config.vintages[vintage].second_home_source,
+                    "grid_year": grid_year,
                     "departments": resolved_departments,
                     "commune_row_count": commune_table.num_rows,
                 },
@@ -1810,6 +1844,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     )
     parser.add_argument("--vintage", type=int, required=True)
+    parser.add_argument("--year", type=int)
     parser.add_argument("--department", action="append")
     parser.add_argument(
         "--filosofi-200m",
@@ -1828,13 +1863,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     from landgrid.origins.job import logged_job
 
     config = load_origins_config(args.config)
+    cells_source, natural_source = config.filosofi_sources(
+        args.year if args.year is not None else config.downscale.output_year
+    )
     threshold = config.report.count_suppression_threshold
     with logged_job(
         Path(config.jobs.log_directory),
         config.jobs.ff_task_pattern.format(vintage=args.vintage),
         [
-            str(args.filosofi_200m or config.filosofi_200m_archive),
-            str(args.filosofi_natural or config.filosofi_natural_archive),
+            str(args.filosofi_200m or cells_source),
+            str(args.filosofi_natural or natural_source),
             config.vintages[args.vintage].parquet_pattern,
         ],
         threshold,
@@ -1848,6 +1886,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output=args.output,
             force=args.force,
             second_home_source=args.second_home_source,
+            year=args.year,
         )
         job.outputs.extend(
             str(result[name]) for name in (

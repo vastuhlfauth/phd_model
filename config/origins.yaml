@@ -8,6 +8,13 @@ filosofi:
     natural_archive: "data/raw/filosofi/2019/Filosofi2019_carreaux_nivNaturel_csv.zip"
     natural_destination: "data/interim/landgrid/filosofi_2019_natural"
     natural_member: "carreaux_nivNaturel_met.csv"
+  grid_years:
+    2019:
+      ff_vintage: 2021
+      source: temporal_2019
+    2021:
+      ff_vintage: 2022
+      source: archives
 jobs:
   log_directory: "logs"
   ff_task_pattern: "ff_cells_{vintage}"
@@ -111,7 +118,6 @@ second_home_rescaling: null
 
 downscale:
   output_year: 2021
-  ff_vintage: 2022
   cell_resolution_m: 200
   output_pattern: "origins_{year}_200m.parquet"
   metadata_pattern: "origins_{year}_200m.json"

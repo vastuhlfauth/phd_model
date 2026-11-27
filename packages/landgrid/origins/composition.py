@@ -444,6 +444,7 @@ def fit_poisson(
     tolerance: float,
     max_iterations: int,
     coefficient_bound: float | None = None,
+    cross_validate: bool = True,
 ) -> PoissonModel:
     """Fit household-weighted Poisson counts with log exposure (section 6.3)."""
     from dataclasses import replace
@@ -451,27 +452,29 @@ def fit_poisson(
     if (
         x.ndim != 2 or x.shape != (len(y), len(names))
         or exposure.shape != y.shape or weights.shape != y.shape
-        or len(y) < folds or folds < 2 or tolerance <= 0 or max_iterations <= 0
+        or (cross_validate and (len(y) < folds or folds < 2))
+        or len(y) == 0 or tolerance <= 0 or max_iterations <= 0
         or not np.isfinite(y).all() or not np.isfinite(exposure).all()
         or not np.isfinite(weights).all() or np.any(y < 0)
         or np.any(exposure <= 0) or np.any(weights <= 0) or np.sum(y) == 0
     ):
         raise ValueError("invalid Poisson fitting inputs")
-    assignments = np.random.default_rng(seed).permutation(len(y)) % folds
     errors = []
-    for fold in range(folds):
-        train = assignments != fold
-        test = ~train
-        fitted = _fit_poisson_once(
-            x[train], y[train], exposure[train], weights[train], names,
-            tolerance, max_iterations,
-        )
-        if coefficient_bound is not None:
-            _check_coefficient_bound(fitted, coefficient_bound)
-        predicted = exposure[test] * fitted.predict_rate(x[test])
-        errors.append(
-            float(np.average(np.abs(predicted - y[test]), weights=weights[test]))
-        )
+    if cross_validate:
+        assignments = np.random.default_rng(seed).permutation(len(y)) % folds
+        for fold in range(folds):
+            train = assignments != fold
+            test = ~train
+            fitted = _fit_poisson_once(
+                x[train], y[train], exposure[train], weights[train], names,
+                tolerance, max_iterations,
+            )
+            if coefficient_bound is not None:
+                _check_coefficient_bound(fitted, coefficient_bound)
+            predicted = exposure[test] * fitted.predict_rate(x[test])
+            errors.append(
+                float(np.average(np.abs(predicted - y[test]), weights=weights[test]))
+            )
     model = _fit_poisson_once(
         x, y, exposure, weights, names, tolerance, max_iterations
     )
@@ -547,6 +550,7 @@ def apply_models(
     reference_200m: pa.Table | Path | None = None,
     completed: dict[str, dict[str, object]] | None = None,
     checkpoint: Callable[[dict[str, dict[str, object]]], None] | None = None,
+    cross_validate: bool = True,
 ) -> dict[str, dict[str, object]]:
     """Fit natural-cell models and apply them to 200 m cells (section 6.3)."""
     sources = []
@@ -751,6 +755,7 @@ def apply_models(
                         tolerance=config.poisson_tolerance,
                         max_iterations=config.poisson_max_iterations,
                         coefficient_bound=config.poisson_coefficient_bound,
+                        cross_validate=cross_validate,
                     ),
                     variable=variable, method=method,
                     coefficient_bound=config.poisson_coefficient_bound,
@@ -1164,6 +1169,7 @@ def build_composition(
     *,
     config_path: str | Path = "config/origins.yaml",
     pilot_config_path: str | Path = "config/pilot.yaml",
+    year: int | None = None,
 ) -> dict[str, object]:
     """Build the experimental 200 m composition product under interim."""
     config = load_origins_config(config_path)
@@ -1174,8 +1180,9 @@ def build_composition(
     ):
         raise ValueError("composition outputs must stay under data/interim")
     output.mkdir(parents=True, exist_ok=True)
-    year = options.output_year
-    vintage = options.ff_vintage
+    year = options.output_year if year is None else year
+    cells_source, archive = config.filosofi_sources(year)
+    vintage = config.grid_years[year].ff_vintage
     ff_cells = output / config.report.ff_cells_pattern.format(vintage=vintage)
     ff_natural = output / config.report.ff_natural_pattern.format(vintage=vintage)
     ff_metadata = output / config.report.metadata_pattern.format(vintage=vintage)
@@ -1188,6 +1195,8 @@ def build_composition(
         or not ff_info.get("signature")
     ):
         raise ValueError("composition requires a signed hybrid FF build")
+    if year != options.output_year and ff_info.get("grid_year") != year:
+        raise ValueError(f"FF {vintage} build must use grid year {year}")
     benchmark = output / options.output_pattern.format(year=year)
     benchmark_metadata = output / options.metadata_pattern.format(year=year)
     pilot_signature = _file_signature(Path(pilot_config_path))
@@ -1201,17 +1210,20 @@ def build_composition(
         or benchmark_info.get("pilot_signature") != pilot_signature
     ):
         build_origins_2021_200m(
-            config_path=config_path, pilot_config_path=pilot_config_path
+            config_path=config_path, pilot_config_path=pilot_config_path, year=year
         )
-    archive = Path(config.filosofi_natural_archive)
     inputs = (
         Path(config_path), Path(pilot_config_path), archive, ff_cells,
         ff_natural, ff_metadata, benchmark,
     )
-    choice_path = output / options.crossval_choice_pattern.format(year=year)
+    choice_path = output / options.crossval_choice_pattern.format(
+        year=options.output_year
+    )
+    if year != options.output_year and not choice_path.is_file():
+        raise FileNotFoundError(choice_path)
     methods = load_method_choices(choice_path, options)
     reference_archive = (
-        Path(config.filosofi_200m_archive) if "within" in methods.values() else None
+        cells_source if "within" in methods.values() else None
     )
     signature = composition_input_signature(
         inputs, choice_path=choice_path, reference_archive=reference_archive
@@ -1292,15 +1304,14 @@ def build_composition(
             )
             reference_csv = None
             if reference_archive is not None:
-                from landgrid.origins.validation import _extract_filosofi_200m
-
-                reference_csv = _extract_filosofi_200m(
-                    reference_archive, Path(directory)
+                reference_csv = _extract_archive_member(
+                    reference_archive, "carreaux_200m_met.csv", Path(directory)
                 )
             reports = apply_models(
                 connection, natural_csv, ff_natural, ff_cells, options,
                 methods=methods, reference_200m=reference_csv,
                 completed=reports, checkpoint=checkpoint,
+                cross_validate=year == options.output_year,
             )
         output_columns = {
             row[0] for row in connection.execute(
@@ -1357,18 +1368,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build composition origins")
     parser.add_argument("--config", type=Path, default=Path("config/origins.yaml"))
     parser.add_argument("--pilot-config", type=Path, default=Path("config/pilot.yaml"))
+    parser.add_argument("--year", type=int)
     args = parser.parse_args(argv)
     from landgrid.origins.job import logged_job
 
     logging.basicConfig(level=logging.INFO)
     config = load_origins_config(args.config)
+    source_200m, source_natural = config.filosofi_sources(
+        config.downscale.output_year if args.year is None else args.year
+    )
+    task = config.jobs.composition_task
+    if args.year is not None and args.year != config.downscale.output_year:
+        task = f"{task}_{args.year}"
     with logged_job(
-        Path(config.jobs.log_directory), config.jobs.composition_task,
-        [config.filosofi_natural_archive, config.report.output_directory],
+        Path(config.jobs.log_directory), task,
+        [str(source_natural), str(source_200m), config.report.output_directory],
         config.report.count_suppression_threshold,
     ) as job:
         result = build_composition(
-            config_path=args.config, pilot_config_path=args.pilot_config
+            config_path=args.config, pilot_config_path=args.pilot_config, year=args.year
         )
         job.outputs.extend((str(result["output"]), str(result["report"])))
         for key in ("natural_cells", "ipf_failures"):
