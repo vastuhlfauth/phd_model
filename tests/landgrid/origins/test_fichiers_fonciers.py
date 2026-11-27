@@ -15,6 +15,7 @@ from landgrid.origins.fichiers_fonciers import (
     OriginsConfig,
     VintageConfig,
     aggregate_dwelling_rows,
+    aggregate_staged_ff_cell_communes,
     aggregate_staged_ff_cells,
     aggregate_staged_ff_communes,
     build_department_ff_cells,
@@ -25,6 +26,68 @@ from landgrid.origins.fichiers_fonciers import (
     load_origins_config,
 )
 from landgrid.origins.filosofi import NaturalCellLookup, build_natural_cell_lookup
+
+
+def test_aggregates_cell_weights_by_main_residence_commune() -> None:
+    rows = pa.Table.from_pylist([
+        {
+            "cell_id": 11, "idcom": "33001", "valid_location": True,
+            "dwelling": 1,
+            "main_residence": 1, "owner_occupied_main_residence": 1,
+            "social_housing_main_residence": 0, "house": 1, "flat": 0,
+            "jannath_clean": 1940,
+        },
+        {
+            "cell_id": 11, "idcom": "33002", "valid_location": True,
+            "dwelling": 1,
+            "main_residence": 1, "owner_occupied_main_residence": 0,
+            "social_housing_main_residence": 1, "house": 0, "flat": 1,
+            "jannath_clean": 1980,
+        },
+        {
+            "cell_id": 11, "idcom": "33001", "valid_location": True,
+            "dwelling": 1,
+            "main_residence": 0, "owner_occupied_main_residence": 0,
+            "social_housing_main_residence": 0, "house": 0, "flat": 0,
+            "jannath_clean": None,
+        },
+    ])
+    with duckdb.connect() as connection:
+        connection.register("staged", rows)
+        actual = aggregate_staged_ff_cell_communes(
+            connection, ["staged"]
+        ).to_pylist()
+
+    assert actual == [
+        {
+            "cell_id": 11,
+            "commune_code": "33001",
+            "main_residences": 1,
+            "owner_occupied_main_residences": 1,
+            "main_residence_houses": 1,
+            "main_residence_flats": 0,
+            "social_housing_main_residences": 0,
+            "construction_av45": 1,
+            "construction_45_70": 0,
+            "construction_70_90": 0,
+            "construction_ap90": 0,
+            "construction_inc": 0,
+        },
+        {
+            "cell_id": 11,
+            "commune_code": "33002",
+            "main_residences": 1,
+            "owner_occupied_main_residences": 0,
+            "main_residence_houses": 0,
+            "main_residence_flats": 1,
+            "social_housing_main_residences": 1,
+            "construction_av45": 0,
+            "construction_45_70": 0,
+            "construction_70_90": 1,
+            "construction_ap90": 0,
+            "construction_inc": 0,
+        },
+    ]
 
 
 @pytest.mark.parametrize(

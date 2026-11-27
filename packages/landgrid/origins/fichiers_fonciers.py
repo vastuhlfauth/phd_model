@@ -133,6 +133,7 @@ class JobConfig:
     composition_task: str
     validation_task: str
     crossval_task: str
+    unpack_filosofi_task: str
 
 
 @dataclass(frozen=True)
@@ -1344,6 +1345,52 @@ def aggregate_staged_ff_natural(
         ORDER BY natural_cell_id
         """,
         [vintage],
+    ).to_arrow_table()
+
+
+def aggregate_staged_ff_cell_communes(
+    connection: duckdb.DuckDBPyConnection,
+    staging_tables: Sequence[str],
+    config: OriginsConfig | None = None,
+) -> pa.Table:
+    """Aggregate cell weights by the communes of their main residences."""
+    if not staging_tables:
+        raise ValueError("at least one staged department table is required")
+    if config is None:
+        config = load_origins_config()
+    first, second, third = config.construction_period_starts
+    periods = {
+        "av45": f"jannath_clean < {first}",
+        "45_70": f"jannath_clean >= {first} AND jannath_clean < {second}",
+        "70_90": f"jannath_clean >= {second} AND jannath_clean < {third}",
+        "ap90": f"jannath_clean >= {third}",
+        "inc": "jannath_clean IS NULL",
+    }
+    construction = ",\n".join(
+        f"count(*) FILTER (WHERE main_residence = 1 AND {condition}) "
+        f"AS construction_{name}"
+        for name, condition in periods.items()
+    )
+    union = " UNION ALL ".join(
+        f"SELECT * FROM {_quoted_identifier(table)}" for table in staging_tables
+    )
+    return connection.execute(
+        f"""
+        SELECT cell_id, trim(CAST(idcom AS VARCHAR)) AS commune_code,
+            sum(main_residence) AS main_residences,
+            sum(owner_occupied_main_residence)
+                AS owner_occupied_main_residences,
+            sum(house * main_residence) AS main_residence_houses,
+            sum(flat * main_residence) AS main_residence_flats,
+            sum(social_housing_main_residence)
+                AS social_housing_main_residences,
+            {construction}
+        FROM ({union}) AS staged
+        WHERE valid_location AND dwelling = 1 AND idcom IS NOT NULL
+            AND trim(CAST(idcom AS VARCHAR)) <> ''
+        GROUP BY cell_id, commune_code
+        ORDER BY cell_id, commune_code
+        """
     ).to_arrow_table()
 
 
