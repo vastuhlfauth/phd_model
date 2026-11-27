@@ -97,6 +97,39 @@ def test_poisson_imputes_missing_covariates_with_indicator() -> None:
     assert np.isfinite(model.predict_rate(x)).all()
 
 
+def test_within_poisson_recovers_split_despite_group_intercepts() -> None:
+    from landgrid.origins.composition import fit_within_poisson
+
+    x = np.tile(np.array([0.0, 1.0, 2.0]), 8)[:, None]
+    exposure = np.tile(np.array([2.0, 4.0, 3.0]), 8)
+    groups = np.repeat(np.arange(8), 3)
+    intercepts = np.repeat(np.linspace(-1, 2, 8), 3)
+    y = exposure * np.exp(intercepts + 0.6 * x[:, 0])
+    model = fit_within_poisson(
+        x, y, exposure, groups, ("x",), tolerance=1e-10, max_iterations=100
+    )
+    rates = model.predict_rate(x)
+    assert rates[2] / rates[0] == pytest.approx(np.exp(1.2), rel=1e-7)
+    assert model.dispersion == pytest.approx(0, abs=1e-12)
+    assert np.isfinite(model.standard_errors).all()
+
+
+def test_within_poisson_excludes_zero_offsets_and_reports_dispersion() -> None:
+    from landgrid.origins.composition import fit_within_poisson
+
+    x = np.tile(np.array([0.0, 1.0, 2.0]), 10)[:, None]
+    groups = np.repeat(np.arange(10), 3)
+    exposure = np.ones(30)
+    exposure[0] = 0
+    y = np.tile(np.array([1.0, 10.0, 3.0]), 10)
+    model = fit_within_poisson(
+        x, y, exposure, groups, ("x",), tolerance=1e-10, max_iterations=100
+    )
+    assert model.zero_offset_count == 1
+    assert model.dispersion > 1
+    assert np.all(model.standard_errors > 0)
+
+
 def test_regression_weights_use_the_specified_denominator_and_preserve_total() -> None:
     from landgrid.origins.composition import apply_regression_weights
 

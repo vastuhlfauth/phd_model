@@ -82,6 +82,159 @@ class PoissonModel:
             return np.exp(linear)
 
 
+@dataclass(frozen=True)
+class WithinPoissonModel:
+    """Conditional Poisson split model with natural-cell fixed effects (6.3)."""
+
+    means: FloatArray
+    scales: FloatArray
+    selected: tuple[int, ...]
+    feature_names: tuple[str, ...]
+    coefficients: FloatArray
+    standard_errors: FloatArray
+    dispersion: float
+    zero_offset_count: int
+    training_cell_count: int
+    training_group_count: int
+
+    def predict_rate(self, covariates: FloatArray) -> FloatArray:
+        """Return relative, dimensionless cell rates without fixed effects."""
+        matrix = _design_matrix(covariates, self.means, self.scales)
+        linear = matrix[:, self.selected] @ self.coefficients
+        if not np.isfinite(linear).all():
+            raise ValueError("non-finite within-cell Poisson predictor")
+        with np.errstate(over="raise", invalid="raise"):
+            return np.exp(linear)
+
+
+def fit_within_poisson(
+    x: FloatArray,
+    y: FloatArray,
+    exposure: FloatArray,
+    groups: npt.NDArray,
+    names: tuple[str, ...],
+    *,
+    tolerance: float,
+    max_iterations: int,
+) -> WithinPoissonModel:
+    """Fit 200 m counts using observed exposures and natural-cell effects (6.3)."""
+    if (
+        x.ndim != 2 or x.shape != (len(y), len(names))
+        or exposure.shape != y.shape or groups.shape != y.shape
+        or not np.isfinite(y).all() or np.any(y < 0)
+        or not np.isfinite(exposure).all() or np.any(exposure < 0)
+        or np.isinf(x).any() or tolerance <= 0 or max_iterations <= 0
+    ):
+        raise ValueError("invalid within-cell Poisson fitting inputs")
+    zero_offset_count = int(np.count_nonzero(exposure == 0))
+    eligible = exposure > 0
+    x, y, exposure, groups = (
+        x[eligible], y[eligible], exposure[eligible], groups[eligible]
+    )
+    _, group_index, group_counts = np.unique(
+        groups, return_inverse=True, return_counts=True
+    )
+    group_totals = np.bincount(group_index, weights=y)
+    eligible = (group_counts[group_index] >= 2) & (group_totals[group_index] > 0)
+    x, y, exposure, groups = (
+        x[eligible], y[eligible], exposure[eligible], groups[eligible]
+    )
+    _, group_index, group_counts = np.unique(
+        groups, return_inverse=True, return_counts=True
+    )
+    n_groups = len(group_counts)
+    if n_groups == 0:
+        raise ValueError("no informative natural cells for within-cell Poisson")
+    observed = ~np.isnan(x)
+    sums = (observed * exposure[:, None]).sum(axis=0)
+    if np.any(sums == 0):
+        raise ValueError("a covariate has no observed training values")
+    means = np.nansum(x * exposure[:, None], axis=0) / sums
+    scales = np.sqrt(
+        np.nansum((x - means) ** 2 * exposure[:, None], axis=0) / sums
+    )
+    scales[scales == 0] = 1
+    matrix = _design_matrix(x, means, scales)
+    all_names = ("intercept", *names, *(f"{name}_missing" for name in names))
+    centered = matrix.copy()
+    for column in range(matrix.shape[1]):
+        centered[:, column] -= (
+            np.bincount(group_index, weights=matrix[:, column]) / group_counts
+        )[group_index]
+    selected: list[int] = []
+    rank = 0
+    for index in range(1, matrix.shape[1]):
+        candidate = centered[:, [*selected, index]]
+        candidate_rank = np.linalg.matrix_rank(candidate)
+        if candidate_rank > rank:
+            selected.append(index)
+            rank = candidate_rank
+    design = matrix[:, selected]
+    if len(y) <= n_groups + rank:
+        raise ValueError("insufficient residual degrees of freedom for dispersion")
+    totals = np.bincount(group_index, weights=y)
+
+    def evaluate(beta: FloatArray) -> tuple[FloatArray, float]:
+        linear = np.log(exposure) + design @ beta
+        maxima = np.full(n_groups, -np.inf)
+        np.maximum.at(maxima, group_index, linear)
+        relative = np.exp(linear - maxima[group_index])
+        sums_by_group = np.bincount(group_index, weights=relative)
+        mu = totals[group_index] * relative / sums_by_group[group_index]
+        likelihood = float(
+            np.dot(y, linear - maxima[group_index])
+            - np.dot(totals, np.log(sums_by_group))
+        )
+        return mu, likelihood
+
+    beta = np.zeros(rank)
+    converged = rank == 0
+    for _ in range(max_iterations if rank else 0):
+        mu, likelihood = evaluate(beta)
+        group_mean = np.vstack([
+            np.bincount(group_index, weights=mu * design[:, column])
+            / totals
+            for column in range(rank)
+        ]).T
+        within = design - group_mean[group_index]
+        information = within.T @ (mu[:, None] * within)
+        step = np.linalg.solve(information, design.T @ (y - mu))
+        fraction = 1.0
+        while fraction > tolerance:
+            candidate = beta + fraction * step
+            _, new_likelihood = evaluate(candidate)
+            if np.isfinite(new_likelihood) and new_likelihood >= likelihood - tolerance:
+                break
+            fraction /= 2
+        else:
+            raise RuntimeError("within-cell Poisson could not find an improving step")
+        beta = candidate
+        if np.max(np.abs(fraction * step)) <= tolerance:
+            converged = True
+            break
+    if not converged:
+        raise RuntimeError("within-cell Poisson did not converge")
+    mu, _ = evaluate(beta)
+    dispersion = float(np.sum((y - mu) ** 2 / mu) / (len(y) - n_groups - rank))
+    if rank:
+        group_mean = np.vstack([
+            np.bincount(group_index, weights=mu * design[:, column]) / totals
+            for column in range(rank)
+        ]).T
+        within = design - group_mean[group_index]
+        information = within.T @ (mu[:, None] * within)
+        errors = np.sqrt(np.diag(np.linalg.inv(information)) * dispersion)
+    else:
+        errors = np.empty(0)
+    return WithinPoissonModel(
+        means=means, scales=scales, selected=tuple(selected),
+        feature_names=tuple(all_names[index] for index in selected),
+        coefficients=beta, standard_errors=errors, dispersion=dispersion,
+        zero_offset_count=zero_offset_count, training_cell_count=len(y),
+        training_group_count=n_groups,
+    )
+
+
 def _design_matrix(x: FloatArray, means: FloatArray, scales: FloatArray) -> FloatArray:
     """Impute training means and add missing-value indicators."""
     missing = np.isnan(x)
