@@ -83,6 +83,8 @@ report:
   ff_checkpoint_metadata_pattern: "department_{department}.json"
   ff_communes_pattern: "ff_communes_{vintage}.parquet"
   ff_extra_codes_pattern: "ff_extra_codes_{vintage}.parquet"
+  filosofi_cells_cache_pattern: "filosofi_{year}_200m.parquet"
+  filosofi_natural_cache_pattern: "filosofi_{year}_natural.parquet"
   metadata_pattern: "ff_cells_{vintage}.json"
   report_pattern: "ff_commune_report_{vintage}.md"
   comparison_report_pattern: "ff_commune_comparison_{vintage}.md"

@@ -93,6 +93,50 @@ def test_filosofi_commune_parser_handles_both_formats() -> None:
         connection.execute(f"SELECT {commune_codes_sql(repr('33001X'))}").fetchall()
 
 
+def test_filosofi_parquet_cache_reuses_and_invalidates_source(tmp_path: Path) -> None:
+    import landgrid.origins.fichiers_fonciers as ff
+
+    source = tmp_path / "cells.csv"
+    source.write_text("idcar_200m,lcog_geo\ncell,01001\n", encoding="utf-8")
+    target = tmp_path / "cached.parquet"
+    with duckdb.connect() as connection:
+        ff.prepare_filosofi_parquet(connection, source, "cells.csv", target)
+        assert connection.execute(
+            "SELECT lcog_geo FROM read_parquet(?)", [str(target)]
+        ).fetchone() == ("01001",)
+        before = target.stat().st_mtime_ns
+        ff.prepare_filosofi_parquet(connection, source, "cells.csv", target)
+        assert target.stat().st_mtime_ns == before
+        source.write_text("idcar_200m,lcog_geo\ncell,0100201003\n", encoding="utf-8")
+        ff.prepare_filosofi_parquet(connection, source, "cells.csv", target)
+        assert connection.execute(
+            "SELECT lcog_geo FROM read_parquet(?)", [str(target)]
+        ).fetchone() == ("0100201003",)
+
+
+def test_filosofi_parquet_lookup_preserves_pilot_scope(tmp_path: Path) -> None:
+    import landgrid.origins.fichiers_fonciers as ff
+
+    cells = tmp_path / "cells.parquet"
+    natural = tmp_path / "natural.parquet"
+    pq.write_table(pa.Table.from_pylist([
+        {
+            "idcar_200m": "CRS3035RES200mN2400000E4000000",
+            "lcog_geo": "1700133001",
+        },
+        {
+            "idcar_200m": "CRS3035RES200mN2400200E4000000",
+            "lcog_geo": "34001",
+        },
+    ]), cells)
+    pq.write_table(pa.Table.from_pylist([
+        {"idcar_nat": "CRS3035RES1000mN2400000E4000000"},
+    ]), natural)
+    with duckdb.connect() as connection:
+        ff._register_filosofi_parquet(connection, cells, natural)
+        assert derived_departments_for_pilot(connection, "33") == {"17", "33", "34"}
+
+
 def test_aggregates_cell_weights_by_main_residence_commune() -> None:
     rows = pa.Table.from_pylist([
         {
@@ -287,6 +331,23 @@ def test_ff_build_resumes_completed_departments(
     assert json.loads(
         (tmp_path / "interim" / "ff_cells_2024.json").read_text()
     )["signature"]
+
+    def forbid_input_load(*args: object, **kwargs: object) -> None:
+        raise AssertionError("cache should be checked before loading input")
+
+    monkeypatch.setattr(ff, "_filosofi_200m_map", forbid_input_load)
+    monkeypatch.setattr(ff, "open_restricted_connection", forbid_input_load)
+    cached = ff.build_ff_cells(2024, ["33", "34"], config_path=config_path)
+    assert cached["cached"] is True
+    assert cached["row_count"] == result["row_count"]
+    with pytest.raises(AssertionError, match="cache should be checked"):
+        ff.build_ff_cells(2024, ["33"], config_path=config_path)
+    with pytest.raises(AssertionError, match="cache should be checked"):
+        ff.build_ff_cells(2024, ["33", "34"], config_path=config_path, force=True)
+    source = tmp_path / "ff_33.parquet"
+    source.write_bytes(source.read_bytes() + b"changed")
+    with pytest.raises(AssertionError, match="cache should be checked"):
+        ff.build_ff_cells(2024, ["33", "34"], config_path=config_path)
 
 
 @pytest.mark.parametrize(

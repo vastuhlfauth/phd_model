@@ -1,14 +1,19 @@
 # Landgrid origins
 
-## 2026-11-27 — Step 3 2019 commune-list parsing
+## 2026-11-27 — Step 3 commune parsing and FF performance
 
 - Filosofi 2019 concatenates five-character `lcog_geo` codes; 2021 uses
   comma-separated codes. Both use the same column name. Preserve leading zeroes.
 - In the 2021 FF checkpoint for Gironde, mismatches drop from 75,982 to <50.
 - The corrected 2019 Gironde scope reaches 3,884 natural cells, versus
   3,870 before; 14 are added, none removed. Rebuild downstream products.
-- Synthetic FF and downscale tests: 34 passed. Timing optimization,
-  COG-mapped cell-commune output and temporal products remain open.
+- FF builds now log stage times, cache both full Filosofi inputs as Parquet,
+  check completed outputs before loading data, and use grid-key joins.
+- Historical 2021 FF log: 699 s total, about 6.5 s classification; cached
+  2022 log: 472 s total. Other stages were not timed in those runs.
+- Synthetic FF tests: 33 passed; Ruff passed. The <60 s build and <10 s cache
+  targets have not been verified on real builds; no full job was run.
+- COG-mapped cell-commune output and temporal products remain open.
 
 ## 2026-11-27 — Step 3 year-aware origins inputs
 

@@ -2,6 +2,9 @@
 
 - 2026-11-27, step 3: parse five-character `lcog_geo` codes as concatenated
   in 2019 and comma-separated in 2021; retain leading zeroes and COG letters.
+- 2026-11-27, step 3: cache metropolitan Filosofi sources as Parquet by
+  grid year and source signature; check complete FF output signatures before
+  reading inputs. Recheck real build timings after rebuilding.
 - 2026-11-27, step 3: reuse the 2021 composition method choices for 2019;
   refit on 2019 without cross-validation. Fail if the choice file is missing.
 - 2026-11-27, step 3: build temporal growth units as connected groups in the

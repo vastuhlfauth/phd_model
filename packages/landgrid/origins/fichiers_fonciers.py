@@ -73,6 +73,8 @@ class ReportConfig:
     ff_checkpoint_metadata_pattern: str
     ff_communes_pattern: str
     ff_extra_codes_pattern: str
+    filosofi_cells_cache_pattern: str
+    filosofi_natural_cache_pattern: str
     metadata_pattern: str
     report_pattern: str
     count_suppression_threshold: int
@@ -300,6 +302,8 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             ff_checkpoint_metadata_pattern=report["ff_checkpoint_metadata_pattern"],
             ff_communes_pattern=report["ff_communes_pattern"],
             ff_extra_codes_pattern=report["ff_extra_codes_pattern"],
+            filosofi_cells_cache_pattern=report["filosofi_cells_cache_pattern"],
+            filosofi_natural_cache_pattern=report["filosofi_natural_cache_pattern"],
             metadata_pattern=report["metadata_pattern"],
             report_pattern=report["report_pattern"],
             count_suppression_threshold=int(
@@ -674,6 +678,88 @@ def build_ff_cells_signature(
     ).hexdigest()
 
 
+def prepare_filosofi_parquet(
+    connection: duckdb.DuckDBPyConnection,
+    source: Path,
+    member: str,
+    target: Path,
+) -> None:
+    """Cache one complete metropolitan Filosofi input as Parquet (6.3)."""
+    signature = {"source": _file_signature(source), "member": member, "version": 1}
+    metadata_path = target.with_suffix(".json")
+    if target.is_file() and metadata_path.is_file():
+        if json.loads(metadata_path.read_text(encoding="utf-8")) == signature:
+            return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="filosofi_parquet_", dir=target.parent
+    ) as directory:
+        csv_path = source_csv(source, member, Path(directory))
+        csv_literal = _sql_literal(str(csv_path.resolve()))
+        columns = {
+            row[0] for row in connection.execute(
+                f"DESCRIBE SELECT * FROM read_csv_auto({csv_literal}, header=true)"
+            ).fetchall()
+        }
+        types = ", types={'lcog_geo': 'VARCHAR'}" if "lcog_geo" in columns else ""
+        temporary = target.with_suffix(".tmp.parquet")
+        write_parquet(
+            connection,
+            f"SELECT * FROM read_csv_auto({csv_literal}, header=true{types})",
+            temporary,
+        )
+        temporary.replace(target)
+    temporary_metadata = metadata_path.with_suffix(".tmp.json")
+    temporary_metadata.write_text(
+        json.dumps(signature, sort_keys=True), encoding="utf-8"
+    )
+    temporary_metadata.replace(metadata_path)
+
+
+def _register_filosofi_parquet(
+    connection: duckdb.DuckDBPyConnection, cells: Path, natural: Path
+) -> None:
+    """Load Filosofi lookup tables directly into DuckDB, without Python rows."""
+    expression = commune_codes_sql("lcog_geo")
+    connection.execute(
+        f"""
+        CREATE TEMP TABLE _filosofi_200m AS
+        SELECT idcar_200m AS cell_code, array_to_string({expression}, ',') AS lcog_geo
+        FROM read_parquet(?)
+        """,
+        [str(cells)],
+    )
+    connection.execute(
+        """
+        CREATE TEMP TABLE _natural_cells AS
+        SELECT DISTINCT CASE WHEN regexp_full_match(
+                idcar_nat, '^CRS3035RES[0-9]+mN[0-9]+E[0-9]+$'
+            ) THEN idcar_nat
+            ELSE error('invalid Filosofi natural-level identifier')
+            END AS natural_cell_id,
+            CAST(regexp_extract(idcar_nat, '^CRS3035RES([0-9]+)mN', 1) AS BIGINT)
+                AS resolution_m,
+            CAST(regexp_extract(idcar_nat, 'mN([0-9]+)E', 1) AS BIGINT)
+                AS northing_m,
+            CAST(regexp_extract(idcar_nat, 'E([0-9]+)$', 1) AS BIGINT)
+                AS easting_m
+        FROM read_parquet(?)
+        """,
+        [str(natural)],
+    )
+    invalid = connection.execute(
+        """
+        SELECT count(*) FROM _natural_cells
+        WHERE natural_cell_id IS NULL OR resolution_m < 200 OR resolution_m % 200 <> 0
+            OR northing_m % resolution_m <> 0 OR easting_m % resolution_m <> 0
+        """
+    ).fetchone()[0]
+    if invalid:
+        raise ValueError("invalid Filosofi natural-level cell coordinates")
+    if not connection.execute("SELECT count(*) FROM _natural_cells").fetchone()[0]:
+        raise ValueError("Filosofi natural-level file contains no cells")
+
+
 def _filosofi_200m_map(
     connection: duckdb.DuckDBPyConnection,
     archive: Path,
@@ -832,10 +918,10 @@ def _create_natural_cell_map(
             ) AS resolutions
             JOIN _natural_cells AS n
               ON n.resolution_m = resolutions.resolution_m
-             AND n.northing_m = floor(p.northing_m / n.resolution_m)
-                * n.resolution_m
-             AND n.easting_m = floor(p.easting_m / n.resolution_m)
-                * n.resolution_m
+             AND n.northing_m = floor(p.northing_m / resolutions.resolution_m)
+                * resolutions.resolution_m
+             AND n.easting_m = floor(p.easting_m / resolutions.resolution_m)
+                * resolutions.resolution_m
         )
         SELECT cell_id,
             min(natural_cell_id) AS natural_cell_id,
@@ -878,26 +964,34 @@ def derived_departments_for_pilot(
         pilot_natural AS (
             SELECT DISTINCT natural_cells.natural_cell_id
             FROM cells
+            CROSS JOIN (
+                SELECT DISTINCT resolution_m FROM _natural_cells
+            ) AS resolutions
             JOIN _natural_cells AS natural_cells
-              ON natural_cells.northing_m
-                    = floor(cells.northing_m / natural_cells.resolution_m)
-                      * natural_cells.resolution_m
+              ON natural_cells.resolution_m = resolutions.resolution_m
+             AND natural_cells.northing_m
+                    = floor(cells.northing_m / resolutions.resolution_m)
+                      * resolutions.resolution_m
              AND natural_cells.easting_m
-                    = floor(cells.easting_m / natural_cells.resolution_m)
-                      * natural_cells.resolution_m
+                    = floor(cells.easting_m / resolutions.resolution_m)
+                      * resolutions.resolution_m
             CROSS JOIN UNNEST(string_split(cells.lcog_geo, ',')) AS commune(code)
             WHERE left(trim(commune.code), length(?)) = ?
         ),
         neighbor_communes AS (
             SELECT DISTINCT trim(commune.code) AS commune_code
             FROM cells
+            CROSS JOIN (
+                SELECT DISTINCT resolution_m FROM _natural_cells
+            ) AS resolutions
             JOIN _natural_cells AS natural_cells
-              ON natural_cells.northing_m <= cells.northing_m
-             AND cells.northing_m
-                    < natural_cells.northing_m + natural_cells.resolution_m
-             AND natural_cells.easting_m <= cells.easting_m
-             AND cells.easting_m
-                    < natural_cells.easting_m + natural_cells.resolution_m
+              ON natural_cells.resolution_m = resolutions.resolution_m
+             AND natural_cells.northing_m
+                    = floor(cells.northing_m / resolutions.resolution_m)
+                      * resolutions.resolution_m
+             AND natural_cells.easting_m
+                    = floor(cells.easting_m / resolutions.resolution_m)
+                      * resolutions.resolution_m
             JOIN pilot_natural
               ON pilot_natural.natural_cell_id = natural_cells.natural_cell_id
             CROSS JOIN UNNEST(string_split(cells.lcog_geo, ',')) AS commune(code)
@@ -1551,25 +1645,116 @@ def build_ff_cells(
 
     output_directory = Path(output or config.report.output_directory)
     output_directory.mkdir(parents=True, exist_ok=True)
+    output_path = output_directory / config.report.ff_cells_pattern.format(
+        vintage=vintage
+    )
+    natural_output_path = output_directory / (
+        config.report.ff_natural_pattern.format(vintage=vintage)
+    )
+    commune_output_path = output_directory / (
+        config.report.ff_communes_pattern.format(vintage=vintage)
+    )
+    extra_codes_output_path = output_directory / (
+        config.report.ff_extra_codes_pattern.format(vintage=vintage)
+    )
+    metadata_path = output_directory / config.report.metadata_pattern.format(
+        vintage=vintage
+    )
+    filosofi_archive = Path(filosofi_200m_archive or configured_cells)
+    natural_archive = Path(filosofi_natural_archive or configured_natural)
+    requested_departments = (
+        None if departments is None
+        else sorted({str(value).strip() for value in departments})
+    )
+    pilot_path = Path(pilot_config_path)
+    pilot_signature = (
+        _file_signature(pilot_path)
+        if requested_departments is None and pilot_path.is_file()
+        else None
+    )
+    if not force and all(path.is_file() for path in (
+        output_path, natural_output_path, commune_output_path,
+        extra_codes_output_path, metadata_path,
+    )):
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        cached_departments = metadata.get("departments")
+        counts = metadata.get("output_counts")
+        selection_matches = (
+            metadata.get("requested_departments") == requested_departments
+            and (
+                requested_departments is not None
+                or (
+                    pilot_signature is not None
+                    and metadata.get("pilot_signature") == pilot_signature
+                )
+            )
+        )
+        if (
+            selection_matches
+            and isinstance(cached_departments, list)
+            and isinstance(counts, dict)
+            and all(key in counts for key in (
+                "row_count", "commune_row_count", "extra_codes_row_count"
+            ))
+        ):
+            input_files = [
+                filosofi_archive, natural_archive,
+                *[
+                    _partition_for_department(config, vintage, department)
+                    for department in cached_departments
+                ],
+            ]
+            if hybrid:
+                input_files.extend(
+                    _partition_for_department(config, 2024, department)
+                    for department in cached_departments
+                )
+            if all(path.is_file() for path in input_files):
+                signature = build_ff_cells_signature(vintage, config, input_files)
+                if grid_year != config.downscale.output_year:
+                    signature = hashlib.sha256(
+                        f"{signature}:{grid_year}".encode("utf-8")
+                    ).hexdigest()
+                if metadata.get("signature") == signature:
+                    LOGGER.info("Reused FF output cache before loading inputs")
+                    return {
+                        "output": str(output_path),
+                        "natural_output": str(natural_output_path),
+                        "communes_output": str(commune_output_path),
+                        "extra_codes_output": str(extra_codes_output_path),
+                        "cached": True,
+                        "signature": signature,
+                        "departments": cached_departments,
+                        **counts,
+                    }
     connection, spill = open_restricted_connection(output_directory)
     try:
-        filosofi_archive = Path(
-            filosofi_200m_archive or configured_cells
-        )
-        natural_archive = Path(
-            filosofi_natural_archive or configured_natural
-        )
+        stage_started = time.perf_counter()
         if not filosofi_archive.is_file():
             raise FileNotFoundError(filosofi_archive)
         if not natural_archive.is_file():
             raise FileNotFoundError(natural_archive)
-        filosofi_map = _filosofi_200m_map(
-            connection, filosofi_archive, output_directory
+        cached_cells = output_directory / (
+            config.report.filosofi_cells_cache_pattern.format(year=grid_year)
         )
-        natural_cell_lookup = _filosofi_natural_ids(
-            connection, natural_archive, output_directory
+        cached_natural = (
+            output_directory / config.report.filosofi_natural_cache_pattern.format(
+                year=grid_year
+            )
         )
-        _register_lookup_tables(connection, filosofi_map, natural_cell_lookup)
+        prepare_filosofi_parquet(
+            connection, filosofi_archive, "carreaux_200m_met.csv", cached_cells
+        )
+        prepare_filosofi_parquet(
+            connection, natural_archive, "carreaux_nivNaturel_met.csv", cached_natural
+        )
+        LOGGER.info("Filosofi Parquet preparation: %.2f seconds",
+                    time.perf_counter() - stage_started)
+        stage_started = time.perf_counter()
+        _register_filosofi_parquet(connection, cached_cells, cached_natural)
+        LOGGER.info("Filosofi lookup loading: %.2f seconds",
+                    time.perf_counter() - stage_started)
+        stage_started = time.perf_counter()
         if departments is None:
             pilot_department = _pilot_department(pilot_config_path)
             resolved_departments = sorted(
@@ -1579,6 +1764,8 @@ def build_ff_cells(
             resolved_departments = sorted({str(value).strip() for value in departments})
         if not resolved_departments or any(not value for value in resolved_departments):
             raise ValueError("at least one valid department is required")
+        LOGGER.info("Department selection: %.2f seconds",
+                    time.perf_counter() - stage_started)
 
         input_files = [
             filosofi_archive,
@@ -1597,21 +1784,6 @@ def build_ff_cells(
             missing = [str(path) for path in input_files if not path.is_file()]
             raise FileNotFoundError("; ".join(missing))
 
-        output_path = output_directory / config.report.ff_cells_pattern.format(
-            vintage=vintage
-        )
-        natural_output_path = output_directory / (
-            config.report.ff_natural_pattern.format(vintage=vintage)
-        )
-        commune_output_path = output_directory / (
-            config.report.ff_communes_pattern.format(vintage=vintage)
-        )
-        extra_codes_output_path = output_directory / (
-            config.report.ff_extra_codes_pattern.format(vintage=vintage)
-        )
-        metadata_path = output_directory / config.report.metadata_pattern.format(
-            vintage=vintage
-        )
         signature = build_ff_cells_signature(vintage, config, input_files)
         if grid_year != config.downscale.output_year:
             signature = hashlib.sha256(
@@ -1628,14 +1800,7 @@ def build_ff_cells(
         ):
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             if metadata.get("signature") == signature:
-                return {
-                    "output": str(output_path),
-                    "natural_output": str(natural_output_path),
-                    "communes_output": str(commune_output_path),
-                    "extra_codes_output": str(extra_codes_output_path),
-                    "cached": True,
-                    "signature": signature,
-                    "departments": resolved_departments,
+                counts = {
                     "row_count": int(
                         read_parquet(connection, output_path).aggregate(
                             "count(*)"
@@ -1652,8 +1817,29 @@ def build_ff_cells(
                         ).fetchone()[0]
                     ),
                 }
+                metadata.update({
+                    "requested_departments": requested_departments,
+                    "pilot_signature": pilot_signature,
+                    "output_counts": counts,
+                })
+                temporary_metadata = metadata_path.with_suffix(".tmp.json")
+                temporary_metadata.write_text(
+                    json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8"
+                )
+                temporary_metadata.replace(metadata_path)
+                return {
+                    "output": str(output_path),
+                    "natural_output": str(natural_output_path),
+                    "communes_output": str(commune_output_path),
+                    "extra_codes_output": str(extra_codes_output_path),
+                    "cached": True,
+                    "signature": signature,
+                    "departments": resolved_departments,
+                    **counts,
+                }
 
         metadata_path.unlink(missing_ok=True)
+        stage_started = time.perf_counter()
         _create_natural_cell_map(
             connection,
             [
@@ -1661,6 +1847,8 @@ def build_ff_cells(
                 for department in resolved_departments
             ],
         )
+        LOGGER.info("FF natural-cell map: %.2f seconds",
+                    time.perf_counter() - stage_started)
 
         diagnostics = {
             "premises_without_coordinates": 0,
@@ -1711,9 +1899,10 @@ def build_ff_cells(
                     vintage,
                     department,
                     config,
-                    filosofi_map,
-                    natural_cell_lookup,
+                    {},
+                    {},
                 )
+                stage_started = time.perf_counter()
                 temporary_stage = stage_path.with_suffix(".tmp.parquet")
                 write_parquet(
                     connection,
@@ -1729,10 +1918,13 @@ def build_ff_cells(
                     encoding="utf-8",
                 )
                 temporary_metadata.replace(stage_metadata_path)
+                LOGGER.info("FF department %s checkpoint: %.2f seconds",
+                            department, time.perf_counter() - stage_started)
             staging_tables.append(table_name)
             department_diagnostics_all[department] = department_diagnostics
             for key, value in department_diagnostics.items():
                 diagnostics[key] += value
+        stage_started = time.perf_counter()
         table = aggregate_staged_ff_cells(connection, staging_tables, vintage, config)
         natural_table = aggregate_staged_ff_natural(
             connection, staging_tables, vintage, config
@@ -1747,6 +1939,8 @@ def build_ff_cells(
             staging_tables,
             config.vintages[vintage].second_home_column,
         )
+        LOGGER.info("FF aggregation: %.2f seconds",
+                    time.perf_counter() - stage_started)
         extra_codes_table = pa.Table.from_pylist(
             extra_codes,
             schema=pa.schema(
@@ -1758,6 +1952,7 @@ def build_ff_cells(
                 ]
             ),
         )
+        stage_started = time.perf_counter()
         connection.register("_ff_cells", table)
         connection.register("_ff_natural", natural_table)
         connection.register("_ff_communes", commune_table)
@@ -1795,6 +1990,8 @@ def build_ff_cells(
             connection.unregister("_ff_communes")
             connection.unregister("_ff_extra_codes")
 
+        LOGGER.info("FF output writing: %.2f seconds",
+                    time.perf_counter() - stage_started)
         metadata_path.with_suffix(".tmp.json").write_text(
             json.dumps(
                 {
@@ -1805,6 +2002,13 @@ def build_ff_cells(
                     "grid_year": grid_year,
                     "departments": resolved_departments,
                     "commune_row_count": commune_table.num_rows,
+                    "requested_departments": requested_departments,
+                    "pilot_signature": pilot_signature,
+                    "output_counts": {
+                        "row_count": table.num_rows,
+                        "commune_row_count": commune_table.num_rows,
+                        "extra_codes_row_count": extra_codes_table.num_rows,
+                    },
                 },
                 indent=2,
                 sort_keys=True,
