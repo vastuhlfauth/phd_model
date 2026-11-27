@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pyarrow as pa
 import pytest
 from landgrid.origins.validation import (
@@ -15,6 +16,59 @@ from landgrid.origins.validation import (
 
 def _cell_id(northing: int, easting: int) -> int:
     return northing // 200 * 100_000 + easting // 200
+
+
+def test_grouped_folds_are_balanced_reproducible_and_keep_groups_together() -> None:
+    from landgrid.origins.validation import grouped_folds
+
+    groups = np.array(["c", "a", "b", "a", "d", "c", "e", "f", "g"])
+    folds = grouped_folds(groups, folds=5, seed=17)
+    reordered = grouped_folds(groups[::-1], folds=5, seed=17)[::-1]
+    assert np.array_equal(folds, reordered)
+    assert set(folds) == set(range(5))
+    for group in np.unique(groups):
+        assert len(set(folds[groups == group])) == 1
+    with pytest.raises(ValueError, match="natural cells"):
+        grouped_folds(np.array(["a", "b"]), folds=5, seed=17)
+
+
+def test_method_choice_uses_pooled_medians_and_percentage_point_ties() -> None:
+    from landgrid.origins.validation import choose_methods
+
+    medians = {
+        "ind": {"proportional": 0.105, "composition": 0.101, "within": 0.100},
+        "men_1ind": {"proportional": 0.20, "composition": 0.104, "within": 0.10},
+        "ind_snv": {"proportional": 0.12, "composition": 0.11, "within": 0.10},
+    }
+    assert choose_methods(medians, tolerance=0.005) == {
+        "ind": "proportional", "men_1ind": "composition", "ind_snv": "within",
+    }
+    with pytest.raises(ValueError, match="median"):
+        choose_methods({"ind": {"proportional": None}}, tolerance=0.005)
+
+
+def test_pooled_medians_share_observations_and_exclude_zero_reference() -> None:
+    from landgrid.origins.validation import pooled_method_medians
+
+    observations = pa.Table.from_pylist([
+        {"cell_id": cell, "variable": "ind", "method": method,
+         "reference": reference, "predicted": predicted}
+        for cell, reference, predictions in (
+            (1, 10.0, (10.0, 9.0, 8.0)),
+            (2, 20.0, (16.0, 16.0, 16.0)),
+            (3, 0.0, (9.0, 9.0, 9.0)),
+        )
+        for method, predicted in zip(
+            ("proportional", "composition", "within"), predictions, strict=True
+        )
+    ])
+    with duckdb.connect() as connection:
+        medians = pooled_method_medians(connection, observations)
+        assert medians["ind"] == pytest.approx({
+            "proportional": 0.1, "composition": 0.15, "within": 0.2
+        })
+        with pytest.raises(ValueError, match="same"):
+            pooled_method_medians(connection, observations.slice(1))
 
 
 def test_composition_comparison_and_eurostat_age_ratios() -> None:

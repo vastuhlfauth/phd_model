@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import logging
+import math
 import shutil
 import tempfile
 import zipfile
@@ -14,6 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import numpy as np
+import numpy.typing as npt
 import pyarrow as pa
 
 from landgrid.origins.fichiers_fonciers import (
@@ -29,6 +32,89 @@ LOGGER = logging.getLogger(__name__)
 COMPOSITION_VALIDATION_VARIABLES = (
     "men_1ind", "men_5ind", "men_prop", "men_mais", "log_soc", "ind_snv",
 )
+
+
+def grouped_folds(
+    groups: npt.NDArray, *, folds: int, seed: int
+) -> npt.NDArray[np.int64]:
+    """Assign each natural cell to one reproducible validation fold (6.5)."""
+    if groups.ndim != 1 or folds < 2:
+        raise ValueError("invalid natural cells or number of folds")
+    unique, inverse = np.unique(groups, return_inverse=True)
+    if len(unique) < folds:
+        raise ValueError("not enough natural cells for grouped folds")
+    assignment = np.empty(len(unique), dtype=np.int64)
+    assignment[np.random.default_rng(seed).permutation(len(unique))] = (
+        np.arange(len(unique)) % folds
+    )
+    return assignment[inverse]
+
+
+def choose_methods(
+    medians: dict[str, dict[str, float | None]], *, tolerance: float
+) -> dict[str, str]:
+    """Choose from pooled relative-error medians using a fraction tolerance (6.5)."""
+    if not math.isfinite(tolerance) or tolerance < 0:
+        raise ValueError("invalid median tolerance")
+    priority = ("proportional", "composition", "within")
+    choices = {}
+    for variable, scores in medians.items():
+        if set(scores) != set(priority) or any(
+            value is None or not math.isfinite(value) or value < 0
+            for value in scores.values()
+        ):
+            raise ValueError(f"invalid or unavailable median for {variable}")
+        best = min(float(value) for value in scores.values() if value is not None)
+        choices[variable] = next(
+            method for method in priority
+            if float(scores[method]) - best <= tolerance
+            or math.isclose(float(scores[method]) - best, tolerance, abs_tol=1e-12)
+        )
+    return choices
+
+
+def pooled_method_medians(
+    connection: duckdb.DuckDBPyConnection, observations: pa.Table
+) -> dict[str, dict[str, float | None]]:
+    """Pool held-out 200 m relative errors across folds and strata (6.5)."""
+    connection.register("_pooled_observations_input", observations)
+    try:
+        invalid = connection.execute(
+            """
+            SELECT count(*) FROM (
+                SELECT variable, cell_id
+                FROM _pooled_observations_input
+                GROUP BY variable, cell_id
+                HAVING count(*) != 3 OR count(DISTINCT method) != 3
+                    OR count(*) FILTER (
+                        WHERE method NOT IN ('proportional', 'composition', 'within')
+                            OR method IS NULL OR predicted IS NULL
+                            OR NOT isfinite(predicted) OR predicted < 0
+                            OR reference IS NULL OR NOT isfinite(reference)
+                            OR reference < 0
+                    ) > 0
+                    OR min(reference) != max(reference)
+                    OR variable IS NULL OR cell_id IS NULL
+            )
+            """
+        ).fetchone()[0]
+        if invalid or observations.num_rows == 0:
+            raise ValueError("methods must score the same valid held-out observations")
+        rows = connection.execute(
+            """
+            SELECT variable, method,
+                quantile_cont(abs(predicted - reference) / NULLIF(reference, 0), 0.5)
+            FROM _pooled_observations_input
+            GROUP BY variable, method
+            ORDER BY variable, method
+            """
+        ).fetchall()
+        result: dict[str, dict[str, float | None]] = {}
+        for variable, method, median in rows:
+            result.setdefault(variable, {})[method] = median
+        return result
+    finally:
+        connection.unregister("_pooled_observations_input")
 
 
 def _sql_string(value: str) -> str:
