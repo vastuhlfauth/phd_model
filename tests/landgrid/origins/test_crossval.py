@@ -53,8 +53,26 @@ def test_choice_json_has_one_method_per_variable() -> None:
     )
 
 
+def test_choice_json_excludes_fixed_method_and_forces_failed_variable() -> None:
+    from landgrid.origins.crossval import build_choice_payload
+
+    payload = build_choice_payload(
+        year=2021, folds=5, seed=17, tie_tolerance=0.005,
+        medians={"ind": {"proportional": 0.3, "composition": 0.1, "within": 0.05}},
+        within_diagnostics={},
+        fixed_methods={"ind_inc": "proportional"},
+        regression_fallbacks={
+            "ind": [{"fold": 1, "method": "within", "reason": "did not converge"}],
+        },
+    )
+    assert payload["chosen_methods"] == {"ind": "proportional"}
+    assert payload["fixed_methods"] == {"ind_inc": "proportional"}
+    assert payload["regression_fallbacks"]["ind"][0]["reason"] == "did not converge"
+
+
+@pytest.mark.parametrize("fallback", ["none", "within", "composition_bound"])
 def test_synthetic_fold_scores_identical_non_imputed_holdouts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fallback: str,
 ) -> None:
     import landgrid.origins.crossval as crossval
     from landgrid.origins.composition import AGE_VARIABLES, COVARIATES, DIRECT_WEIGHTS
@@ -159,23 +177,34 @@ def test_synthetic_fold_scores_identical_non_imputed_holdouts(
     pacsv.write_csv(pa.Table.from_pylist(reference_rows), reference_path)
 
     class ConstantRate:
+        coefficients = np.array([0.0])
+        feature_names = ("constant",)
         dispersion = 1.25
         zero_offset_count = 2
 
         @staticmethod
         def predict_rate(values: np.ndarray) -> np.ndarray:
-            return np.ones(len(values), dtype=np.float64)
+            return np.linspace(1.0, 2.0, len(values), dtype=np.float64)
+
+    class OverBoundRate(ConstantRate):
+        coefficients = np.array([10.01])
 
     monkeypatch.setattr(
         crossval,
         "fit_poisson",
-        lambda *args, **kwargs: ConstantRate(),
+        lambda *args, **kwargs: (
+            OverBoundRate() if fallback == "composition_bound" else ConstantRate()
+        ),
     )
-    monkeypatch.setattr(
-        crossval,
-        "fit_within_poisson",
-        lambda *args, **kwargs: ConstantRate(),
-    )
+    fitted_targets = []
+
+    def within_fit(*args: object, **kwargs: object) -> ConstantRate:
+        fitted_targets.append(args[1])
+        if fallback == "within":
+            raise RuntimeError("within-cell Poisson did not converge")
+        return ConstantRate()
+
+    monkeypatch.setattr(crossval, "fit_within_poisson", within_fit)
     options = load_origins_config().downscale
 
     with duckdb.connect() as connection:
@@ -249,6 +278,19 @@ def test_synthetic_fold_scores_identical_non_imputed_holdouts(
         summarized = crossval._summarize_within_diagnostics(
             {partition.fold: diagnostics}, threshold=50
         )
+        if fallback != "none":
+            inconsistent = connection.execute(
+                """
+                SELECT count(*) FROM (
+                    SELECT cell_id FROM _cv_fold_observations
+                    WHERE variable = 'ind'
+                    GROUP BY cell_id
+                    HAVING max(predicted) - min(predicted)
+                        > 1e-9 * greatest(1.0, max(abs(predicted)))
+                )
+                """
+            ).fetchone()[0]
+            assert inconsistent == 0
 
     assert scored_cells == 6
     assert dict(method_cells) == {
@@ -258,7 +300,13 @@ def test_synthetic_fold_scores_identical_non_imputed_holdouts(
     }
     assert scored_groups.issubset(partition.held_out_groups)
     assert scored_groups.isdisjoint(partition.training_groups)
-    assert diagnostics["ind"]["dispersion"] == 1.25
+    assert diagnostics["ind"]["dispersion"] == (
+        None if fallback == "within" else 1.25
+    )
+    assert "ind_inc" not in diagnostics
+    assert "ind_inc" not in choices
+    assert len(fitted_targets) == len(AGE_VARIABLES) + 5
+    assert bool(diagnostics["ind"]["fallbacks"]) is (fallback != "none")
     assert set(choices) == set(medians)
     assert "<50" in report
     assert "cell_id" not in report
@@ -266,7 +314,7 @@ def test_synthetic_fold_scores_identical_non_imputed_holdouts(
 
 
 def test_within_model_failure_identifies_variable(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
 ) -> None:
     import landgrid.origins.crossval as crossval
     from landgrid.origins.composition import COVARIATES
@@ -281,12 +329,15 @@ def test_within_model_failure_identifies_variable(
             "_cv_fold_train_reference",
             pa.Table.from_pylist([{
                 "natural_cell_id": "a", "cell_id": 1, "i_est_200": 0,
-                "ref_ind": 2.0, "ref_men": 1.0,
+                "ref_ind": 2.0, "ref_men": 1.0, "ref_ind_snv": 10.0,
+                **{f"ref_{name}": 1.0 for name in crossval.HOUSEHOLD_VARIABLES},
                 **dict.fromkeys(COVARIATES, 1.0),
             }]),
         )
-        with pytest.raises(RuntimeError, match="within-cell model for ind:"):
-            crossval._fit_within_models(
-                connection, age_variables=(),
-                downscale=load_origins_config().downscale,
-            )
+        models, diagnostics = crossval._fit_within_models(
+            connection, age_variables=(),
+            downscale=load_origins_config().downscale,
+        )
+    assert models["ind"] is None
+    assert "did not converge" in diagnostics["ind"]["fallback_reason"]
+    assert "ind" in caplog.text

@@ -27,6 +27,26 @@ from landgrid.origins.fichiers_fonciers import (
 from landgrid.origins.filosofi import NaturalCellLookup, build_natural_cell_lookup
 
 
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("poisson_coefficient_bound", 0),
+        ("poisson_coefficient_bound", float("nan")),
+        ("fixed_methods", {"ind_inc": "within"}),
+        ("fixed_methods", {"unknown_variable": "proportional"}),
+    ],
+)
+def test_invalid_regression_guard_config_is_rejected(
+    tmp_path: Path, key: str, value: object,
+) -> None:
+    raw = yaml.safe_load(Path("config/origins.yaml").read_text(encoding="utf-8"))
+    raw["downscale"][key] = value
+    config = tmp_path / "origins.yaml"
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid composition model"):
+        load_origins_config(config)
+
+
 def test_covariates_are_recomputed_from_natural_cell_dwellings(
     tmp_path: Path,
 ) -> None:

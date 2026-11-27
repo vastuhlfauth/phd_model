@@ -126,6 +126,10 @@ downscale:
   poisson_seed: 17
   poisson_tolerance: 1.0e-8
   poisson_max_iterations: 100
+  # Absolute bound on non-intercept coefficients after standardisation.
+  poisson_coefficient_bound: 10.0
+  fixed_methods:
+    ind_inc: proportional
   ipf_tolerance: 1.0e-9
   ipf_max_iterations: 1000
 

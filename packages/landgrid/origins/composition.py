@@ -8,6 +8,7 @@ import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
 
 import duckdb
 import numpy as np
@@ -105,6 +106,56 @@ class WithinPoissonModel:
             raise ValueError("non-finite within-cell Poisson predictor")
         with np.errstate(over="raise", invalid="raise"):
             return np.exp(linear)
+
+
+RegressionModel = TypeVar("RegressionModel", PoissonModel, WithinPoissonModel)
+
+
+def _check_coefficient_bound(
+    model: PoissonModel | WithinPoissonModel, bound: float,
+) -> None:
+    coefficients = np.asarray([
+        coefficient for name, coefficient in zip(
+            model.feature_names, model.coefficients, strict=True
+        ) if name != "intercept"
+    ])
+    if not np.isfinite(coefficients).all():
+        raise RuntimeError("non-finite regression coefficients")
+    maximum = float(np.max(np.abs(coefficients))) if coefficients.size else 0.0
+    if maximum > bound:
+        raise RuntimeError(
+            f"non-intercept coefficient {maximum:.6g} exceeds "
+            f"configured bound {bound:g}"
+        )
+
+
+def guarded_regression_fit(
+    fit: Callable[[], RegressionModel], *,
+    variable: str, method: str, coefficient_bound: float,
+) -> tuple[RegressionModel | None, str | None]:
+    """Use explicit proportional fallback for unusable section-6.3 rate fits."""
+    try:
+        model = fit()
+        _check_coefficient_bound(model, coefficient_bound)
+    except (
+        RuntimeError, np.linalg.LinAlgError, FloatingPointError, ValueError,
+    ) as error:
+        if (
+            isinstance(error, ValueError)
+            and not isinstance(error, np.linalg.LinAlgError)
+            and str(error) not in {
+                "no informative natural cells for within-cell Poisson",
+                "insufficient residual degrees of freedom for dispersion",
+            }
+        ):
+            raise
+        reason = f"{type(error).__name__}: {error}"
+        LOGGER.warning(
+            "%s model for %s: falling back to proportional (%s)",
+            method, variable, reason,
+        )
+        return None, reason
+    return model, None
 
 
 def fit_within_poisson(
@@ -373,6 +424,7 @@ def fit_poisson(
     seed: int,
     tolerance: float,
     max_iterations: int,
+    coefficient_bound: float | None = None,
 ) -> PoissonModel:
     """Fit household-weighted Poisson counts with log exposure (section 6.3)."""
     from dataclasses import replace
@@ -395,6 +447,8 @@ def fit_poisson(
             x[train], y[train], exposure[train], weights[train], names,
             tolerance, max_iterations,
         )
+        if coefficient_bound is not None:
+            _check_coefficient_bound(fitted, coefficient_bound)
         predicted = exposure[test] * fitted.predict_rate(x[test])
         errors.append(
             float(np.average(np.abs(predicted - y[test]), weights=weights[test]))
@@ -402,6 +456,8 @@ def fit_poisson(
     model = _fit_poisson_once(
         x, y, exposure, weights, names, tolerance, max_iterations
     )
+    if coefficient_bound is not None:
+        _check_coefficient_bound(model, coefficient_bound)
     return replace(model, cross_validation_errors=tuple(errors))
 
 
@@ -534,7 +590,6 @@ def apply_models(
             if variable in reports:
                 LOGGER.info("Reused composition model %s", variable)
                 continue
-            LOGGER.info("Fitting composition model %s", variable)
             y = np.asarray(train[variable].to_numpy(zero_copy_only=False), dtype=float)
             denominator = "ind" if variable in (*age_variables, "ind_snv") else "men"
             exposure = individuals if denominator == "ind" else households
@@ -546,6 +601,23 @@ def apply_models(
             ):
                 raise ValueError(f"invalid natural-cell controls for {variable}")
             valid = (households > 0) & (exposure > 0)
+            if variable in config.fixed_methods:
+                LOGGER.info("Applying configured proportional method for %s", variable)
+                apply_regression_weights(
+                    connection,
+                    pa.table({
+                        "cell_id": predictions["cell_id"],
+                        "rate": np.ones(predictions.num_rows),
+                    }),
+                    variable, denominator, config.cell_resolution_m,
+                )
+                reports[variable] = {
+                    "status": f"configured proportional to {denominator}",
+                    "method": "proportional",
+                }
+                if checkpoint is not None:
+                    checkpoint(reports)
+                continue
             if not np.any(y[valid] > 0):
                 maximum = connection.execute(
                     f"SELECT max({_quoted_identifier(variable)}) "
@@ -559,19 +631,36 @@ def apply_models(
                 if checkpoint is not None:
                     checkpoint(reports)
                 continue
-            model = fit_poisson(
-                train_x[valid], y[valid], exposure[valid], households[valid],
-                COVARIATES, folds=config.poisson_folds, seed=config.poisson_seed,
-                tolerance=config.poisson_tolerance,
-                max_iterations=config.poisson_max_iterations,
+            LOGGER.info("Fitting composition model %s", variable)
+            model, reason = guarded_regression_fit(
+                lambda: fit_poisson(
+                    train_x[valid], y[valid], exposure[valid], households[valid],
+                    COVARIATES, folds=config.poisson_folds, seed=config.poisson_seed,
+                    tolerance=config.poisson_tolerance,
+                    max_iterations=config.poisson_max_iterations,
+                    coefficient_bound=config.poisson_coefficient_bound,
+                ),
+                variable=variable, method="composition",
+                coefficient_bound=config.poisson_coefficient_bound,
             )
             rate_table = pa.table({
                 "cell_id": predictions["cell_id"],
-                "rate": model.predict_rate(prediction_x),
+                "rate": (
+                    np.ones(predictions.num_rows) if model is None
+                    else model.predict_rate(prediction_x)
+                ),
             })
             apply_regression_weights(
                 connection, rate_table, variable, denominator, config.cell_resolution_m
             )
+            if model is None:
+                reports[variable] = {
+                    "status": f"proportional fallback: {reason}",
+                    "method": "proportional", "fallback_reason": reason,
+                }
+                if checkpoint is not None:
+                    checkpoint(reports)
+                continue
             reports[variable] = {
                 "feature_names": list(model.feature_names),
                 "input_names": list(model.input_names),

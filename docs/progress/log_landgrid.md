@@ -1,5 +1,30 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 verified separation and proportional guards
+
+- Reproduced the actual fold-1 `ind_inc` failure: the missing-covariate
+  indicator separates the unknown-age counts; its finite unpenalized fit
+  does not exist. The earlier synthetic numerical fixes did not resolve it.
+- At the user's direction, configured `ind_inc` proportional to individuals;
+  excluded it from both fitting paths and method choice, retained its age-IPF
+  margin. No boundary solution or regularization was applied.
+- Added the configured absolute bound of 10 on non-intercept coefficients.
+  Separation/non-convergence, singular fits and over-bound coefficients cause
+  logged proportional fallbacks in composition and cross-validation.
+- Cross-validation reports and JSON list fit/fold/reason; any failed variable
+  is forced to proportional in final choices. Changed rules invalidate old
+  checkpoints; the existing proportional benchmark is untouched.
+- Synthetic changed-module tests: 54 passed. Ruff passed, excluding the
+  unrelated pre-existing E501 in `fichiers_fonciers.py`.
+- With explicit approval, checked all five actual folds in separate hard-capped
+  runs: fitting, scoring and all three methods' control totals passed.
+  Actual composition fitting/IPF and pooled JSON/report generation also passed.
+  `men_5ind` used the configured guard (over-bound/singular fits).
+- Each check stayed below two minutes; retained only aggregate diagnostics
+  under `data/interim/landgrid/guarded_crossval_checks/`.
+- Run `python -m landgrid.origins.crossval`; rebuild composition if needed with
+  `python -m landgrid.origins.composition`. Neither full command was run.
+
 ## 2026-11-27 — Step 3 stable within-cell line search
 
 - The user's retry completed fold 0 and failed fitting `ind_inc` in fold 1.

@@ -1,5 +1,10 @@
 ## Decisions taken while coding
 
+- 2026-11-27, step 3: `ind_inc` uses configured proportional individual
+  weights, not regressions or method choice; retain its age-IPF margin.
+  No boundary or penalized fits. Regression failures and standardized
+  non-intercept coefficients above the configured bound (10) fall back
+  to proportional, with fit/fold/reason in reports and choices.
 - 2026-11-27, step 3: compare within-cell Poisson likelihood increments
   directly to avoid cancellation of large totals; retain the unpenalized
   conditional model and configured tolerance.

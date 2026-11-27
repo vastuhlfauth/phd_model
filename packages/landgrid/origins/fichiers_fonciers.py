@@ -109,6 +109,8 @@ class DownscaleConfig:
     poisson_seed: int
     poisson_tolerance: float
     poisson_max_iterations: int
+    poisson_coefficient_bound: float
+    fixed_methods: dict[str, str]
     ipf_tolerance: float
     ipf_max_iterations: int
 
@@ -213,6 +215,10 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         or float(downscale["crossval_tie_tolerance"]) < 0
         or float(downscale["poisson_tolerance"]) <= 0
         or int(downscale["poisson_max_iterations"]) <= 0
+        or not math.isfinite(float(downscale["poisson_coefficient_bound"]))
+        or float(downscale["poisson_coefficient_bound"]) <= 0
+        or set(downscale["fixed_methods"]) - {"ind_inc"}
+        or any(value != "proportional" for value in downscale["fixed_methods"].values())
         or float(downscale["ipf_tolerance"]) <= 0
         or int(downscale["ipf_max_iterations"]) <= 0
     ):
@@ -301,6 +307,8 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             poisson_seed=int(raw["downscale"]["poisson_seed"]),
             poisson_tolerance=float(raw["downscale"]["poisson_tolerance"]),
             poisson_max_iterations=int(raw["downscale"]["poisson_max_iterations"]),
+            poisson_coefficient_bound=float(downscale["poisson_coefficient_bound"]),
+            fixed_methods=dict(downscale["fixed_methods"]),
             ipf_tolerance=float(raw["downscale"]["ipf_tolerance"]),
             ipf_max_iterations=int(raw["downscale"]["ipf_max_iterations"]),
         ),

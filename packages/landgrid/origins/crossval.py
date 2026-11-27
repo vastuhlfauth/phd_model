@@ -22,17 +22,21 @@ from landgrid.origins.composition import (
     AGE_VARIABLES,
     COVARIATES,
     DIRECT_WEIGHTS,
+    PoissonModel,
+    WithinPoissonModel,
     apply_direct_weights,
     apply_regression_weights,
     balance_age_groups,
     fit_poisson,
     fit_within_poisson,
+    guarded_regression_fit,
 )
 from landgrid.origins.downscale import (
     _extract_archive_member,
     _relation,
 )
 from landgrid.origins.fichiers_fonciers import (
+    DownscaleConfig,
     _file_signature,
     _pilot_department,
     _quoted_identifier,
@@ -92,15 +96,28 @@ def build_choice_payload(
     medians: dict[str, dict[str, float | None]],
     within_diagnostics: dict[str, object],
     signature: str | None = None,
+    fixed_methods: dict[str, str] | None = None,
+    regression_fallbacks: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, object]:
     """Build the aggregate method-choice JSON payload."""
+    fixed_methods = fixed_methods or {}
+    regression_fallbacks = regression_fallbacks or {}
+    choices = choose_methods(
+        {name: values for name, values in medians.items() if name not in fixed_methods},
+        tolerance=tie_tolerance,
+    )
+    choices.update({
+        name: "proportional" for name in regression_fallbacks if name in choices
+    })
     payload: dict[str, object] = {
         "year": year,
         "folds": folds,
         "seed": seed,
         "tie_tolerance": tie_tolerance,
         "pooled_median_absolute_relative_error": medians,
-        "chosen_methods": choose_methods(medians, tolerance=tie_tolerance),
+        "chosen_methods": choices,
+        "fixed_methods": fixed_methods,
+        "regression_fallbacks": regression_fallbacks,
         "within_model_diagnostics": within_diagnostics,
     }
     if signature is not None:
@@ -399,8 +416,8 @@ def _fit_natural_models(
     connection: duckdb.DuckDBPyConnection,
     *,
     age_variables: tuple[str, ...],
-    downscale: Any,
-) -> dict[str, Any | None]:
+    downscale: DownscaleConfig,
+) -> tuple[dict[str, PoissonModel | None], dict[str, str]]:
     training = _training_natural_table(connection)
     if training.num_rows == 0:
         raise ValueError("cross-validation fold has no natural-level training cells")
@@ -408,8 +425,11 @@ def _fit_natural_models(
     households = _float_column(training, "men")
     individuals = _float_column(training, "ind")
     variables = ("ind", *age_variables, *HOUSEHOLD_VARIABLES, "ind_snv")
-    models: dict[str, Any | None] = {}
+    models: dict[str, PoissonModel | None] = {}
+    fallbacks: dict[str, str] = {}
     for variable in variables:
+        if variable in downscale.fixed_methods:
+            continue
         y = _float_column(training, variable)
         denominator = (
             "ind" if variable in age_variables or variable == "ind_snv" else "men"
@@ -430,31 +450,36 @@ def _fit_natural_models(
                 )
             models[variable] = None
             continue
-        model = fit_poisson(
-            x[valid],
-            y[valid],
-            exposure[valid],
-            households[valid],
-            COVARIATES,
-            folds=downscale.poisson_folds,
-            seed=downscale.poisson_seed,
-            tolerance=downscale.poisson_tolerance,
-            max_iterations=downscale.poisson_max_iterations,
+        model, reason = guarded_regression_fit(
+            lambda: fit_poisson(
+                x[valid], y[valid], exposure[valid], households[valid], COVARIATES,
+                folds=downscale.poisson_folds,
+                seed=downscale.poisson_seed,
+                tolerance=downscale.poisson_tolerance,
+                max_iterations=downscale.poisson_max_iterations,
+                coefficient_bound=downscale.poisson_coefficient_bound,
+            ),
+            variable=variable, method="composition",
+            coefficient_bound=downscale.poisson_coefficient_bound,
         )
         models[variable] = model
-    return models
+        if reason is not None:
+            fallbacks[variable] = reason
+    return models, fallbacks
 
 
 def _fit_within_models(
     connection: duckdb.DuckDBPyConnection,
     *,
     age_variables: tuple[str, ...],
-    downscale: Any,
-) -> tuple[dict[str, Any], dict[str, dict[str, float | int]]]:
+    downscale: DownscaleConfig,
+) -> tuple[dict[str, WithinPoissonModel | None], dict[str, dict[str, Any]]]:
     variables = ("ind", *age_variables, *HOUSEHOLD_VARIABLES, "ind_snv")
-    models: dict[str, Any] = {}
-    diagnostics: dict[str, dict[str, float | int]] = {}
+    models: dict[str, WithinPoissonModel | None] = {}
+    diagnostics: dict[str, dict[str, Any]] = {}
     for variable in variables:
+        if variable in downscale.fixed_methods:
+            continue
         denominator = (
             "ind" if variable in age_variables or variable == "ind_snv" else "men"
         )
@@ -471,8 +496,8 @@ def _fit_within_models(
             """
         ).to_arrow_table()
         groups = training["natural_cell_id"].to_numpy(zero_copy_only=False)
-        try:
-            model = fit_within_poisson(
+        model, reason = guarded_regression_fit(
+            lambda: fit_within_poisson(
                 _feature_matrix(training, COVARIATES),
                 _float_column(training, "target"),
                 _float_column(training, "exposure"),
@@ -483,13 +508,18 @@ def _fit_within_models(
                 ),
                 tolerance=downscale.poisson_tolerance,
                 max_iterations=downscale.poisson_max_iterations,
-            )
-        except RuntimeError as error:
-            raise RuntimeError(f"within-cell model for {variable}: {error}") from error
+            ),
+            variable=variable, method="within",
+            coefficient_bound=downscale.poisson_coefficient_bound,
+        )
         models[variable] = model
         diagnostics[variable] = {
-            "dispersion": model.dispersion,
-            "zero_offset_training_cells_excluded": model.zero_offset_count,
+            "dispersion": None if model is None else model.dispersion,
+            "zero_offset_training_cells_excluded": (
+                int(np.count_nonzero(_float_column(training, "exposure") == 0))
+                if model is None else model.zero_offset_count
+            ),
+            "fallback_reason": reason,
         }
     return models, diagnostics
 
@@ -556,8 +586,8 @@ def _run_fold(
     partition: FoldPartition,
     age_variables: tuple[str, ...],
     ff_cells: Path,
-    downscale: Any,
-) -> tuple[dict[str, dict[str, float | int]], int]:
+    downscale: DownscaleConfig,
+) -> tuple[dict[str, dict[str, Any]], int]:
     training_groups = pa.table({"natural_cell_id": list(partition.training_groups)})
     heldout_groups = pa.table({"natural_cell_id": list(partition.held_out_groups)})
     connection.register("_cv_training_group_input", training_groups)
@@ -613,7 +643,7 @@ def _run_fold(
     ).to_arrow_table()
     heldout_cell_ids = heldout_features_table["cell_id"]
     heldout_features = _feature_matrix(heldout_features_table, COVARIATES)
-    natural_models = _fit_natural_models(
+    natural_models, natural_fallbacks = _fit_natural_models(
         connection,
         age_variables=age_variables,
         downscale=downscale,
@@ -621,6 +651,15 @@ def _run_fold(
     within_models, diagnostics = _fit_within_models(
         connection, age_variables=age_variables, downscale=downscale
     )
+    for variable, row in diagnostics.items():
+        reasons = {}
+        if variable in natural_fallbacks:
+            reasons["composition"] = natural_fallbacks[variable]
+        if row["fallback_reason"] is not None:
+            reasons["within"] = row["fallback_reason"]
+        row["fallbacks"] = reasons
+        if reasons:
+            natural_models[variable] = within_models[variable] = None
 
     connection.execute("DROP TABLE IF EXISTS _cv_fold_observations")
     for method in METHODS:
@@ -650,6 +689,17 @@ def _run_fold(
                     denominator,
                     downscale.cell_resolution_m,
                 )
+        for variable in downscale.fixed_methods:
+            if variable not in age_variables:
+                continue
+            apply_regression_weights(
+                connection,
+                pa.table({
+                    "cell_id": heldout_cell_ids,
+                    "rate": np.ones(len(heldout_cell_ids)),
+                }),
+                variable, "ind", downscale.cell_resolution_m,
+            )
         failures = balance_age_groups(
             connection,
             age_variables,
@@ -664,7 +714,9 @@ def _run_fold(
         _save_fold_observations(
             connection,
             method=method,
-            age_variables=age_variables,
+            age_variables=tuple(
+                name for name in age_variables if name not in downscale.fixed_methods
+            ),
             resolution_m=downscale.cell_resolution_m,
         )
     scored_cells = int(
@@ -685,7 +737,7 @@ def _suppressed_count(value: int, threshold: int) -> str | int:
 
 
 def _summarize_within_diagnostics(
-    fold_diagnostics: dict[int, dict[str, dict[str, float | int]]],
+    fold_diagnostics: dict[int, dict[str, dict[str, Any]]],
     threshold: int,
 ) -> dict[str, object]:
     variables = sorted(next(iter(fold_diagnostics.values())))
@@ -698,11 +750,13 @@ def _summarize_within_diagnostics(
         zero_offsets = [
             int(row["zero_offset_training_cells_excluded"]) for _, row in rows
         ]
-        dispersions = [float(row["dispersion"]) for _, row in rows]
+        dispersions = [
+            float(row["dispersion"]) for _, row in rows if row["dispersion"] is not None
+        ]
         result[variable] = {
-            "mean_dispersion": float(np.mean(dispersions)),
+            "mean_dispersion": float(np.mean(dispersions)) if dispersions else None,
             "dispersion_by_fold": {
-                str(fold): float(row["dispersion"]) for fold, row in rows
+                str(fold): row["dispersion"] for fold, row in rows
             },
             "zero_offset_training_cells_excluded": _suppressed_count(
                 sum(zero_offsets), threshold
@@ -717,6 +771,19 @@ def _summarize_within_diagnostics(
     return result
 
 
+def _summarize_regression_fallbacks(
+    fold_diagnostics: dict[int, dict[str, dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    result: dict[str, list[dict[str, Any]]] = {}
+    for fold, diagnostics in sorted(fold_diagnostics.items()):
+        for variable, row in diagnostics.items():
+            for method, reason in row["fallbacks"].items():
+                result.setdefault(variable, []).append({
+                    "fold": fold, "method": method, "reason": reason,
+                })
+    return result
+
+
 def _render_crossval_report(
     *,
     year: int,
@@ -726,6 +793,8 @@ def _render_crossval_report(
     choices: dict[str, str],
     count_threshold: int,
     tolerance_fraction: float,
+    fixed_methods: dict[str, str] | None = None,
+    regression_fallbacks: dict[str, list[dict[str, Any]]] | None = None,
 ) -> str:
     lines = [
         f"# Origins cross-validation — Filosofi {year}",
@@ -791,6 +860,29 @@ def _render_crossval_report(
                 share=row["share_within_tolerance"],
             )
         )
+    lines.extend(["", "## Configured methods and regression fallbacks", ""])
+    for variable, method in (fixed_methods or {}).items():
+        lines.append(
+            f"- `{variable}`: configured {method} to individuals; excluded from "
+            "regressions and method choice, retained in the age IPF margin."
+        )
+    lines.extend([
+        "",
+        "A regression failure in any fold forces the variable's final choice "
+        "to proportional. Both fitted methods use proportional rates for that "
+        "variable in the affected fold.",
+        "",
+        "| Variable | Fold | Fit | Proportional fallback reason |",
+        "|---|---:|---|---|",
+    ])
+    for variable, rows in (regression_fallbacks or {}).items():
+        for row in rows:
+            lines.append(
+                f"| {variable} | {row['fold']} | {row['method']} | "
+                f"{str(row['reason']).replace('|', ';')} |"
+            )
+    if not regression_fallbacks:
+        lines.append("No regression fallbacks.")
     lines.append("")
     return "\n".join(lines)
 
@@ -903,7 +995,7 @@ def build_cross_validation(
     signature = hashlib.sha256(
         json.dumps(
             {
-                "version": 1,
+                "version": 2,
                 "inputs": [_file_signature(path) for path in inputs],
                 "folds": options.crossval_folds,
                 "seed": options.crossval_seed,
@@ -961,7 +1053,7 @@ def build_cross_validation(
                 folds=options.crossval_folds,
                 seed=options.crossval_seed,
             )
-            fold_diagnostics: dict[int, dict[str, dict[str, float | int]]] = {}
+            fold_diagnostics: dict[int, dict[str, dict[str, Any]]] = {}
             scored_cell_total = 0
             for partition, fold_path, metadata_path in zip(
                 partitions, fold_paths, checkpoint_metadata_paths, strict=True
@@ -1012,6 +1104,10 @@ def build_cross_validation(
                 tolerance_fraction=config.validation.within_tolerance_fraction,
             )
             choices = choose_methods(medians, tolerance=options.crossval_tie_tolerance)
+            regression_fallbacks = _summarize_regression_fallbacks(fold_diagnostics)
+            choices.update({
+                name: "proportional" for name in regression_fallbacks if name in choices
+            })
             threshold = report.count_suppression_threshold
             diagnostics = _summarize_within_diagnostics(fold_diagnostics, threshold)
             payload = build_choice_payload(
@@ -1022,6 +1118,8 @@ def build_cross_validation(
                 medians=medians,
                 within_diagnostics=diagnostics,
                 signature=signature,
+                fixed_methods=options.fixed_methods,
+                regression_fallbacks=regression_fallbacks,
             )
             report_text = _render_crossval_report(
                 year=year,
@@ -1031,6 +1129,8 @@ def build_cross_validation(
                 choices=choices,
                 count_threshold=threshold,
                 tolerance_fraction=config.validation.within_tolerance_fraction,
+                fixed_methods=options.fixed_methods,
+                regression_fallbacks=regression_fallbacks,
             )
             _write_json(choice_path, payload)
             temporary_report = report_path.with_suffix(".tmp.md")

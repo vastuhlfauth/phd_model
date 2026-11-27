@@ -5,6 +5,7 @@ import io
 import json
 import zipfile
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import duckdb
@@ -13,6 +14,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import yaml
+from landgrid.origins.composition import PoissonModel
 
 
 def test_direct_weights_preserve_controls_and_count_household_fallbacks() -> None:
@@ -210,6 +212,68 @@ def test_within_poisson_line_search_is_stable_when_counts_are_rescaled() -> None
     assert np.isfinite(models[1].standard_errors).all()
 
 
+@pytest.fixture
+def guard_model() -> PoissonModel:
+    return PoissonModel(
+        input_names=("density",), means=np.zeros(1), scales=np.ones(1),
+        selected=(0, 1), feature_names=("intercept", "density"),
+        coefficients=np.array([12.0, 10.0]), standard_errors=np.zeros(2),
+        deviance_explained=0.0, cross_validation_errors=(), missing_counts={},
+    )
+
+
+@pytest.mark.parametrize(
+    "failure", ["nonconvergence", "singular", "bound", "uninformative"],
+)
+def test_regression_guard_reports_proportional_fallback(
+    failure: str, caplog: pytest.LogCaptureFixture, guard_model: PoissonModel,
+) -> None:
+    """Section 6.3 experiment: unusable fits must explicitly use proportional."""
+    from landgrid.origins.composition import guarded_regression_fit
+
+    def fit() -> PoissonModel:
+        if failure == "nonconvergence":
+            raise RuntimeError("Poisson fitting did not converge")
+        if failure == "singular":
+            raise np.linalg.LinAlgError("Singular matrix")
+        if failure == "uninformative":
+            raise ValueError("no informative natural cells for within-cell Poisson")
+        return replace(guard_model, coefficients=np.array([12.0, 10.01]))
+
+    model, reason = guarded_regression_fit(
+        fit, variable="ind", method="composition", coefficient_bound=10,
+    )
+    assert model is None
+    assert reason
+    assert "ind" in caplog.text
+    assert "proportional" in caplog.text
+
+
+def test_regression_guard_does_not_hide_invalid_inputs() -> None:
+    from landgrid.origins.composition import guarded_regression_fit
+
+    def fit() -> PoissonModel:
+        raise ValueError("invalid Poisson fitting inputs")
+
+    with pytest.raises(ValueError, match="invalid Poisson fitting inputs"):
+        guarded_regression_fit(
+            fit, variable="ind", method="composition", coefficient_bound=10,
+        )
+
+
+def test_regression_guard_accepts_bound_and_does_not_bound_intercept(
+    guard_model: PoissonModel,
+) -> None:
+    from landgrid.origins.composition import guarded_regression_fit
+
+    model, reason = guarded_regression_fit(
+        lambda: guard_model, variable="ind_snv", method="composition",
+        coefficient_bound=10,
+    )
+    assert model is guard_model
+    assert reason is None
+
+
 def test_regression_weights_use_the_specified_denominator_and_preserve_total() -> None:
     from landgrid.origins.composition import apply_regression_weights
 
@@ -291,6 +355,10 @@ def test_fit_and_apply_composition_models_individuals_before_ages() -> None:
     assert result[1]["ind_0_3"] > result[0]["ind_0_3"]
     assert reports["ind"]["training_cell_count"] == 12
     assert reports["ind"]["training_missing_counts"]["owner_share"] == 1
+    assert reports["ind_inc"]["method"] == "proportional"
+    assert "coefficients" not in reports["ind_inc"]
+    for row in result:
+        assert row["ind_inc"] == pytest.approx(row["ind"] / len(AGE_VARIABLES))
     assert sum(row["ind"] for row in result[:2]) == pytest.approx(natural[0]["ind"])
     assert sum(row["ind_0_3"] for row in result[:2]) == pytest.approx(
         natural[0]["ind_0_3"]
