@@ -1,5 +1,19 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 grouped cross-validation integration
+
+- Added the standalone five-fold grouped cross-validation command, refitting
+  natural-level and within-cell models outside each held-out natural cell.
+- Applied the existing direct-weight and age-IPF steps to all three methods;
+  scored the shared, non-imputed section-6.5 200 m holdouts by cell size and
+  Eurostat density class.
+- Added per-fold interim checkpoints, pooled method choices, within-model
+  dispersion and suppressed zero-offset counts, plus the aggregate report.
+- Synthetic acceptance and targeted validation/config tests passed. Ruff passed
+  on changed code; an unrelated pre-existing E501 in `fichiers_fonciers.py`
+  was excluded. No restricted inputs or real data were accessed.
+- Run `python -m landgrid.origins.crossval` to perform the experiment.
+
 ## 2026-11-27 — Step 3 within-cell experiment groundwork
 
 - Added a standalone within-cell Poisson fitting primitive with

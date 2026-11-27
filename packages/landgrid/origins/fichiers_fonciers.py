@@ -63,6 +63,7 @@ class CensusVintageConfig:
 
 @dataclass(frozen=True)
 class ReportConfig:
+    interim_directory: str
     output_directory: str
     ff_vintage_to_census: dict[int, int]
     ff_cells_pattern: str
@@ -97,6 +98,13 @@ class DownscaleConfig:
     composition_checkpoint_pattern: str
     composition_stage_pattern: str
     composition_checkpoint_state: str
+    crossval_choice_pattern: str
+    crossval_report_pattern: str
+    crossval_checkpoint_pattern: str
+    crossval_fold_checkpoint_pattern: str
+    crossval_folds: int
+    crossval_seed: int
+    crossval_tie_tolerance: float
     poisson_folds: int
     poisson_seed: int
     poisson_tolerance: float
@@ -121,6 +129,7 @@ class JobConfig:
     ff_task_pattern: str
     composition_task: str
     validation_task: str
+    crossval_task: str
 
 
 @dataclass(frozen=True)
@@ -199,6 +208,9 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
     downscale = raw["downscale"]
     if (
         int(downscale["poisson_folds"]) < 2
+        or int(downscale["crossval_folds"]) != 5
+        or not math.isfinite(float(downscale["crossval_tie_tolerance"]))
+        or float(downscale["crossval_tie_tolerance"]) < 0
         or float(downscale["poisson_tolerance"]) <= 0
         or int(downscale["poisson_max_iterations"]) <= 0
         or float(downscale["ipf_tolerance"]) <= 0
@@ -224,6 +236,7 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
         vintages=vintages,
         census=census,
         report=ReportConfig(
+            interim_directory=report["interim_directory"],
             output_directory=report["output_directory"],
             ff_vintage_to_census={
                 int(vintage): int(census_vintage)
@@ -271,6 +284,19 @@ def load_origins_config(path: str | Path = "config/origins.yaml") -> OriginsConf
             composition_checkpoint_state=raw["downscale"][
                 "composition_checkpoint_state"
             ],
+            crossval_choice_pattern=raw["downscale"]["crossval_choice_pattern"],
+            crossval_report_pattern=raw["downscale"]["crossval_report_pattern"],
+            crossval_checkpoint_pattern=raw["downscale"][
+                "crossval_checkpoint_pattern"
+            ],
+            crossval_fold_checkpoint_pattern=raw["downscale"][
+                "crossval_fold_checkpoint_pattern"
+            ],
+            crossval_folds=int(raw["downscale"]["crossval_folds"]),
+            crossval_seed=int(raw["downscale"]["crossval_seed"]),
+            crossval_tie_tolerance=float(
+                raw["downscale"]["crossval_tie_tolerance"]
+            ),
             poisson_folds=int(raw["downscale"]["poisson_folds"]),
             poisson_seed=int(raw["downscale"]["poisson_seed"]),
             poisson_tolerance=float(raw["downscale"]["poisson_tolerance"]),

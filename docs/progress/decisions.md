@@ -1,5 +1,9 @@
 ## Decisions taken while coding
 
+- 2026-11-27, step 3: compare proportional, composition and within-cell
+  predictions on the same non-imputed validation cells, grouped by natural
+  cell; within 0.5 percentage points, choose the simpler method. Do not adopt
+  the experimental method until the real cross-validation results are reviewed.
 - 2026-11-27, step 3: keep the section-6.3 direct second-home rule. Adding
   non-vacant dwellings that are neither owner-occupied nor let improves totals
   but worsens median commune ratios to the census: 185% to 239% in 2022 and

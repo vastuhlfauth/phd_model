@@ -6,6 +6,7 @@ jobs:
   ff_task_pattern: "ff_cells_{vintage}"
   composition_task: "origins_composition"
   validation_task: "origins_validation"
+  crossval_task: "origins_crossval"
 vintages:
   2021:
     parquet_pattern: "data/raw/fichiers_fonciers/ff2021/pb0010_local/ccodep={department}/part-01.parquet"
@@ -55,6 +56,7 @@ census:
       vacant: "DWELLINGS_OCS_DW_VAC"
 
 report:
+  interim_directory: "data/interim"
   output_directory: "data/interim/landgrid"
   ff_vintage_to_census:
     2022: 2021
@@ -113,6 +115,13 @@ downscale:
   composition_checkpoint_pattern: "composition_{year}_checkpoint"
   composition_stage_pattern: "stage_{index}.parquet"
   composition_checkpoint_state: "state.json"
+  crossval_choice_pattern: "composition_method_choice_{year}.json"
+  crossval_report_pattern: "origins_{year}_crossval.md"
+  crossval_checkpoint_pattern: "origins_{year}_crossval_checkpoint"
+  crossval_fold_checkpoint_pattern: "fold_{fold}.parquet"
+  crossval_folds: 5
+  crossval_seed: 17
+  crossval_tie_tolerance: 0.005
   poisson_folds: 5
   poisson_seed: 17
   poisson_tolerance: 1.0e-8

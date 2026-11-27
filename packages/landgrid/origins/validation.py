@@ -74,16 +74,26 @@ def choose_methods(
 
 
 def pooled_method_medians(
-    connection: duckdb.DuckDBPyConnection, observations: pa.Table
+    connection: duckdb.DuckDBPyConnection, observations: pa.Table | Path | str
 ) -> dict[str, dict[str, float | None]]:
     """Pool held-out 200 m relative errors across folds and strata (6.5)."""
-    connection.register("_pooled_observations_input", observations)
+    if isinstance(observations, str):
+        if not observations.isascii() or not observations.isidentifier():
+            raise ValueError("invalid DuckDB observations relation")
+        relation, registered = (
+            '"' + observations.replace('"', '""') + '"',
+            False,
+        )
+    else:
+        relation, registered = _source_relation(
+            connection, "_pooled_observations_input", observations
+        )
     try:
         invalid = connection.execute(
-            """
+            f"""
             SELECT count(*) FROM (
                 SELECT variable, cell_id
-                FROM _pooled_observations_input
+                FROM {relation}
                 GROUP BY variable, cell_id
                 HAVING count(*) != 3 OR count(DISTINCT method) != 3
                     OR count(*) FILTER (
@@ -98,13 +108,16 @@ def pooled_method_medians(
             )
             """
         ).fetchone()[0]
-        if invalid or observations.num_rows == 0:
+        empty = connection.execute(
+            f"SELECT count(*) FROM {relation}"
+        ).fetchone()[0] == 0
+        if invalid or empty:
             raise ValueError("methods must score the same valid held-out observations")
         rows = connection.execute(
-            """
+            f"""
             SELECT variable, method,
                 quantile_cont(abs(predicted - reference) / NULLIF(reference, 0), 0.5)
-            FROM _pooled_observations_input
+            FROM {relation}
             GROUP BY variable, method
             ORDER BY variable, method
             """
@@ -114,7 +127,8 @@ def pooled_method_medians(
             result.setdefault(variable, {})[method] = median
         return result
     finally:
-        connection.unregister("_pooled_observations_input")
+        if registered:
+            connection.unregister("_pooled_observations_input")
 
 
 def _sql_string(value: str) -> str:

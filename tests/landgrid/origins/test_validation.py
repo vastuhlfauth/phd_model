@@ -64,9 +64,14 @@ def test_pooled_medians_share_observations_and_exclude_zero_reference() -> None:
     ])
     with duckdb.connect() as connection:
         medians = pooled_method_medians(connection, observations)
+        connection.register("_pooled_observations_view_input", observations)
+        relation_medians = pooled_method_medians(
+            connection, "_pooled_observations_view_input"
+        )
         assert medians["ind"] == pytest.approx({
             "proportional": 0.1, "composition": 0.15, "within": 0.2
         })
+        assert relation_medians == medians
         with pytest.raises(ValueError, match="same"):
             pooled_method_medians(connection, observations.slice(1))
 
