@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import math
+import posixpath
+import xml.etree.ElementTree as ET
+import zipfile
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from io import BytesIO
+from pathlib import Path
 
 import duckdb
 
@@ -61,6 +67,321 @@ def rescale_age_margins(
     return (
         {name: value * adjustment for name, value in age_margins.items()},
         adjustment,
+    )
+
+
+def derive_age_measures(
+    measures: Mapping[str, float | None],
+) -> dict[str, float | None]:
+    """Derive the approved census age bands from their published components."""
+    derived: dict[str, float | None] = {}
+    direct = {
+        "age_6_10": "age_6_10",
+        "age_18_24": "age_18_24",
+        "age_25_39": "age_25_39",
+        "age_40_54": "age_40_54",
+        "age_55_64": "age_55_64",
+        "age_65_79": "age_65_79",
+        "age_80p": "age_80p",
+    }
+    for output, source in direct.items():
+        derived[output] = measures.get(source)
+    under_15 = measures.get("under_15")
+    age_6_10 = measures.get("age_6_10")
+    age_11_14 = measures.get("age_11_14")
+    age_15_17 = measures.get("age_15_17")
+    derived["age_0_5"] = (
+        under_15 - age_6_10 - age_11_14
+        if under_15 is not None and age_6_10 is not None
+        and age_11_14 is not None
+        else None
+    )
+    derived["age_11_17"] = (
+        age_11_14 + age_15_17
+        if age_11_14 is not None and age_15_17 is not None
+        else None
+    )
+    return derived
+
+
+def calculate_growth_factors(
+    base_measures: Mapping[str, float | None],
+    target_measures: Mapping[str, float | None],
+    *,
+    variables: Sequence[str],
+    measure_by_variable: Mapping[str, str | None],
+    denominator_by_variable: Mapping[str, str],
+    observed_years: float,
+    projected_years: float,
+    fallback_individual_growth: float | None = None,
+) -> tuple[dict[str, float], dict[str, int]]:
+    """Calculate commune growth factors, with approved age and FF fallbacks."""
+    variables = tuple(variables)
+    if (
+        not variables
+        or len(variables) != len(set(variables))
+        or set(variables) - set(measure_by_variable)
+        or set(variables) - set(denominator_by_variable)
+    ):
+        raise ValueError("invalid census growth variable mapping")
+    if fallback_individual_growth is not None and (
+        not math.isfinite(fallback_individual_growth)
+        or fallback_individual_growth < 0
+    ):
+        raise ValueError("invalid FF individual growth fallback")
+
+    def measure_factor(name: str) -> float | None:
+        start = base_measures.get(name)
+        end = target_measures.get(name)
+        if (
+            start is None or end is None
+            or not math.isfinite(start) or not math.isfinite(end)
+            or start <= 0 or end < 0
+        ):
+            return None
+        return projected_growth_factor(
+            start, end, observed_years=observed_years,
+            projected_years=projected_years,
+        )
+
+    individual_factor = measure_factor("individuals")
+    fallbacks: dict[str, int] = {}
+    if individual_factor is None:
+        if fallback_individual_growth is None:
+            raise ValueError("no valid individual census growth or FF fallback")
+        individual_factor = fallback_individual_growth
+        fallbacks["individual_from_ff"] = 1
+    factors: dict[str, float] = {}
+    age_measures = {
+        "age_0_5", "age_6_10", "age_11_17", "age_18_24",
+        "age_25_39", "age_40_54", "age_55_64", "age_65_79", "age_80p",
+    }
+    for variable in variables:
+        measure = measure_by_variable[variable]
+        if measure is None:
+            denominator = denominator_by_variable[variable]
+            factor = (
+                individual_factor if denominator == "individuals"
+                else measure_factor(denominator)
+            )
+            if factor is None:
+                raise ValueError(
+                    f"no valid census growth for denominator {denominator}"
+                )
+            factors[variable] = factor
+            fallbacks["denominator"] = fallbacks.get("denominator", 0) + 1
+        elif measure == "individuals":
+            factors[variable] = individual_factor
+        else:
+            factor = measure_factor(measure)
+            if factor is None and measure in age_measures:
+                factor = individual_factor
+                fallbacks["age_to_individual"] = (
+                    fallbacks.get("age_to_individual", 0) + 1
+                )
+            if factor is None:
+                raise ValueError(f"no valid census growth for measure {measure}")
+            factors[variable] = factor
+    return factors, fallbacks
+
+
+def load_cog_passage_edges(
+    path: str | Path,
+    *,
+    source_year: int,
+    target_year: int,
+) -> tuple[tuple[str, str], ...]:
+    """Read year-specific commune passage edges from the INSEE COG workbook."""
+    archive_path = Path(path)
+    if not archive_path.is_file():
+        raise FileNotFoundError(archive_path)
+    if archive_path.suffix.casefold() == ".xlsx":
+        workbook_bytes = archive_path.read_bytes()
+    else:
+        with zipfile.ZipFile(archive_path) as outer:
+            workbooks = [
+                member for member in outer.namelist()
+                if member.casefold().endswith(".xlsx")
+            ]
+            if len(workbooks) != 1:
+                raise ValueError("COG archive must contain exactly one workbook")
+            workbook_bytes = outer.read(workbooks[0])
+
+    namespace = {
+        "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+        "office_rel": (
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        ),
+        "package_rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    }
+    with zipfile.ZipFile(BytesIO(workbook_bytes)) as workbook:
+        workbook_xml = ET.fromstring(workbook.read("xl/workbook.xml"))
+        relationships_xml = ET.fromstring(
+            workbook.read("xl/_rels/workbook.xml.rels")
+        )
+        relationships = {
+            relation.attrib["Id"]: relation.attrib["Target"]
+            for relation in relationships_xml.findall(
+                "package_rel:Relationship", namespace
+            )
+        }
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in workbook.namelist():
+            with workbook.open("xl/sharedStrings.xml") as source:
+                for _, item in ET.iterparse(source, events=("end",)):
+                    if item.tag.endswith("}si"):
+                        shared_strings.append("".join(
+                            part.text or ""
+                            for part in item.findall(".//main:t", namespace)
+                        ))
+                        item.clear()
+
+        def cell_text(cell: ET.Element) -> str:
+            value = cell.find("main:v", namespace)
+            if cell.attrib.get("t") == "inlineStr":
+                return "".join(
+                    part.text or ""
+                    for part in cell.findall(".//main:t", namespace)
+                )
+            if value is None or value.text is None:
+                return ""
+            if cell.attrib.get("t") == "s":
+                return shared_strings[int(value.text)]
+            return value.text
+
+        def column_index(reference: str) -> int:
+            letters = "".join(
+                character for character in reference if character.isalpha()
+            )
+            result = 0
+            for letter in letters.upper():
+                result = result * 26 + ord(letter) - ord("A") + 1
+            return result
+
+        sheet = next(
+            (
+                item for item in workbook_xml.findall(
+                    "main:sheets/main:sheet", namespace
+                )
+                if item.attrib.get("name") == "COM"
+            ),
+            None,
+        )
+        if sheet is None:
+            raise ValueError("COG workbook lacks the COM passage sheet")
+        relation_id = sheet.attrib[f"{{{namespace['office_rel']}}}id"]
+        target = relationships[relation_id]
+        sheet_path = (
+            target.lstrip("/")
+            if target.startswith("/")
+            else posixpath.normpath(posixpath.join("xl", target))
+        )
+        source_column_name = f"CODGEO_{source_year}"
+        target_column_name = f"CODGEO_{target_year}"
+        required_headers = {"NIVGEO", source_column_name, target_column_name}
+        header_columns: dict[int, str] | None = None
+        edges: set[tuple[str, str]] = set()
+        found_headers = False
+        with workbook.open(sheet_path) as source:
+            for _, row in ET.iterparse(source, events=("end",)):
+                if not row.tag.endswith("}row"):
+                    continue
+                values = {
+                    column_index(cell.attrib["r"]): cell_text(cell).strip()
+                    for cell in row.findall("main:c", namespace)
+                }
+                if header_columns is None:
+                    if required_headers.issubset(values.values()):
+                        header_columns = {
+                            index: value for index, value in values.items()
+                            if value in required_headers
+                        }
+                        found_headers = True
+                else:
+                    header_indices = {
+                        name: index for index, name in header_columns.items()
+                    }
+                    if values.get(header_indices["NIVGEO"]) == "COM":
+                        start = values.get(header_indices[source_column_name], "")
+                        end = values.get(header_indices[target_column_name], "")
+                        if start and end:
+                            edges.add((start, end))
+                row.clear()
+        if not found_headers:
+            raise ValueError(
+                f"COG workbook lacks headers for {source_year} and {target_year}"
+            )
+        if not edges:
+            raise ValueError("COG workbook contains no commune passage rows")
+        return tuple(sorted(edges))
+
+
+@dataclass(frozen=True)
+class StableGrowthUnits:
+    """Connected commune groups used as stable temporal growth units."""
+
+    code_to_unit: dict[str, str]
+    source_codes_by_unit: dict[str, tuple[str, ...]]
+    target_codes_by_unit: dict[str, tuple[str, ...]]
+    combined_units: frozenset[str]
+
+
+def build_stable_growth_units(
+    edges: Sequence[tuple[str, str]],
+) -> StableGrowthUnits:
+    """Connect COG merge/split chains without dividing commune totals."""
+    parents: dict[str, str] = {}
+
+    def find(code: str) -> str:
+        parents.setdefault(code, code)
+        if parents[code] != code:
+            parents[code] = find(parents[code])
+        return parents[code]
+
+    def union(first: str, second: str) -> None:
+        first_root = find(first)
+        second_root = find(second)
+        if first_root != second_root:
+            parents[second_root] = first_root
+
+    unique_edges = set(edges)
+    if not unique_edges or any(
+        not source.strip() or not target.strip()
+        for source, target in unique_edges
+    ):
+        raise ValueError("COG passage edges must contain commune codes")
+    for source, target in unique_edges:
+        union(source.strip(), target.strip())
+
+    sources_by_root: dict[str, set[str]] = {}
+    targets_by_root: dict[str, set[str]] = {}
+    for source, target in unique_edges:
+        root = find(source.strip())
+        sources_by_root.setdefault(root, set()).add(source.strip())
+        targets_by_root.setdefault(root, set()).add(target.strip())
+
+    code_to_unit: dict[str, str] = {}
+    source_codes_by_unit: dict[str, tuple[str, ...]] = {}
+    target_codes_by_unit: dict[str, tuple[str, ...]] = {}
+    combined_units: set[str] = set()
+    members_by_root: dict[str, set[str]] = {}
+    for code in parents:
+        members_by_root.setdefault(find(code), set()).add(code)
+    for root, members in members_by_root.items():
+        sources = tuple(sorted(sources_by_root.get(root, set())))
+        targets = tuple(sorted(targets_by_root.get(root, set())))
+        unit = targets[0] if len(targets) == 1 else "|".join(targets)
+        if len(sources) > 1 or len(targets) > 1:
+            combined_units.add(unit)
+        source_codes_by_unit[unit] = sources
+        target_codes_by_unit[unit] = targets
+        for code in members:
+            code_to_unit[code] = unit
+    return StableGrowthUnits(
+        code_to_unit=code_to_unit,
+        source_codes_by_unit=source_codes_by_unit,
+        target_codes_by_unit=target_codes_by_unit,
+        combined_units=frozenset(combined_units),
     )
 
 

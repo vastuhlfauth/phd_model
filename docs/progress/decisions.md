@@ -1,5 +1,10 @@
 ## Decisions taken while coding
 
+- 2026-11-27, step 3: build temporal growth units as connected groups in the
+  year-specific COG passage table. Sum census and Filosofi values over a unit;
+  merges, splits and chains are never proportionally allocated. Apply one
+  growth factor to the unit and every target commune it contains, and report
+  combined-unit counts and household totals for both temporal products.
 - 2026-11-27, step 3: for the temporal experiment, carry the 2021 Filosofi
   scope forward using census growth rather than absolute census margins as an
   explicit section-6.3 step-7 exception, pending the temporal test and spec
