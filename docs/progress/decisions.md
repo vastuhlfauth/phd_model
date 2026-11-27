@@ -1,5 +1,13 @@
 ## Decisions taken while coding
 
+- 2026-11-27, step 3: keep the section-6.3 direct second-home rule. Adding
+  non-vacant dwellings that are neither owner-occupied nor let improves totals
+  but worsens median commune ratios to the census: 185% to 239% in 2022 and
+  118% to 184% in 2024. The extra category's `T` counts change from 18,067
+  to 6,411 and its `B` counts from 1,184 to 11,157 across vintages.
+- 2026-11-27, step 3: the within-natural-cell regression is an experimental
+  exception to section 6.3; retain the proportional benchmark and leave the
+  specification unchanged pending results.
 - 2026-11-26, step 3: test direct counterpart weights and individual-offset
   age and standard-of-living regressions as an experimental override of
   section 6.3; retain proportional downscaling as the benchmark and leave
