@@ -1,5 +1,19 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 within-cell experiment groundwork
+
+- Added a standalone within-cell Poisson fitting primitive with
+  household-weighted preprocessing, zero-offset exclusion and
+  Pearson-dispersion-adjusted standard errors.
+- Added grouped-fold, pooled-median and tie-breaking validation helpers.
+- Recorded the second-home decision and the experimental specification
+  exception. The proportional benchmark remains unchanged.
+- The new helpers are not connected to the composition or validation
+  commands. Cross-validation, choice-file handling, model reporting and
+  chosen-method output remain to be implemented; do not interpret the
+  existing reports as cross-validated results.
+- Only synthetic tests were run; no real data was accessed.
+
 ## 2026-11-26 — Step 3 validation checkpoint serialization
 
 - Fixed positive-reference counts returned by DuckDB as decimals, which caused
