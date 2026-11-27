@@ -44,6 +44,10 @@ AGE_VARIABLES = (
     "ind_0_3", "ind_4_5", "ind_6_10", "ind_11_17", "ind_18_24",
     "ind_25_39", "ind_40_54", "ind_55_64", "ind_65_79", "ind_80p", "ind_inc",
 )
+REGRESSION_VARIABLES = (
+    "ind", *AGE_VARIABLES, "men_1ind", "men_5ind", "men_fmp", "men_pauv",
+    "ind_snv",
+)
 COVARIATES = (
     "owner_share", "second_home_share", "social_share",
     "npiece_i_mean", "npiece_i_std", "dnbniv_mean", "dnbniv_std",
@@ -91,6 +95,7 @@ class WithinPoissonModel:
     scales: FloatArray
     selected: tuple[int, ...]
     feature_names: tuple[str, ...]
+    dropped_features: tuple[str, ...]
     coefficients: FloatArray
     standard_errors: FloatArray
     dispersion: float
@@ -204,12 +209,14 @@ def fit_within_poisson(
         raise ValueError("no informative natural cells for within-cell Poisson")
     observed = ~np.isnan(x)
     sums = (observed * standardization_weights[:, None]).sum(axis=0)
-    if np.any(sums == 0):
-        raise ValueError("a covariate has no observed training values")
-    means = np.nansum(x * standardization_weights[:, None], axis=0) / sums
-    scales = np.sqrt(
-        np.nansum((x - means) ** 2 * standardization_weights[:, None], axis=0) / sums
+    means = np.divide(
+        np.nansum(x * standardization_weights[:, None], axis=0), sums,
+        out=np.zeros(len(names)), where=sums > 0,
     )
+    scales = np.sqrt(np.divide(
+        np.nansum((x - means) ** 2 * standardization_weights[:, None], axis=0),
+        sums, out=np.zeros(len(names)), where=sums > 0,
+    ))
     scales[scales == 0] = 1
     matrix = _design_matrix(x, means, scales)
     all_names = ("intercept", *names, *(f"{name}_missing" for name in names))
@@ -221,11 +228,22 @@ def fit_within_poisson(
     selected: list[int] = []
     rank = 0
     for index in range(1, matrix.shape[1]):
+        minima = np.full(n_groups, np.inf)
+        maxima = np.full(n_groups, -np.inf)
+        np.minimum.at(minima, group_index, matrix[:, index])
+        np.maximum.at(maxima, group_index, matrix[:, index])
+        if np.array_equal(minima, maxima):
+            continue
         candidate = centered[:, [*selected, index]]
         candidate_rank = np.linalg.matrix_rank(candidate)
         if candidate_rank > rank:
             selected.append(index)
             rank = candidate_rank
+    dropped_features = tuple(
+        all_names[index] for index in range(1, len(all_names))
+        if index not in selected
+    )
+    LOGGER.info("Within-cell Poisson dropped features: %s", ", ".join(dropped_features))
     # Group constants cancel from the conditional likelihood.
     design = centered[:, selected]
     if len(y) <= n_groups + rank:
@@ -303,6 +321,7 @@ def fit_within_poisson(
     return WithinPoissonModel(
         means=means, scales=scales, selected=tuple(selected),
         feature_names=tuple(all_names[index] for index in selected),
+        dropped_features=dropped_features,
         coefficients=beta, standard_errors=errors, dispersion=dispersion,
         zero_offset_count=zero_offset_count, training_cell_count=len(y),
         training_group_count=n_groups,
@@ -524,6 +543,8 @@ def apply_models(
     ff_cells: pa.Table | Path,
     config: DownscaleConfig,
     *,
+    methods: dict[str, str] | None = None,
+    reference_200m: pa.Table | Path | None = None,
     completed: dict[str, dict[str, object]] | None = None,
     checkpoint: Callable[[dict[str, dict[str, object]]], None] | None = None,
 ) -> dict[str, dict[str, object]]:
@@ -553,6 +574,21 @@ def apply_models(
             "ind", *age_variables, "men_1ind", "men_5ind", "men_fmp",
             "men_pauv", "ind_snv",
         )
+        chosen = {
+            name: config.fixed_methods.get(name, config.default_method)
+            for name in variables
+        }
+        if methods is not None:
+            chosen.update(methods)
+        reference_relation = None
+        if any(chosen[name] == "within" for name in variables):
+            if reference_200m is None:
+                raise ValueError("within models require INSEE 200 m reference")
+            reference_relation, is_registered = _relation(
+                connection, "_composition_reference", reference_200m
+            )
+            if is_registered:
+                registered.append("_composition_reference")
         features = ", ".join(f"f.{_quoted_identifier(name)}" for name in COVARIATES)
         controls = ", ".join(
             f"n.{_quoted_identifier(name)}" for name in ("men", *variables)
@@ -577,6 +613,46 @@ def apply_models(
         ).to_arrow_table()
         if train.num_rows == 0:
             raise ValueError("no natural-level cells have FF model covariates")
+        if reference_relation is not None:
+            resolution = config.cell_resolution_m
+            northing = f"CAST(floor(d.cell_id / 100000) AS BIGINT) * {resolution}"
+            easting = f"(d.cell_id % 100000) * {resolution}"
+            code = (
+                f"'CRS3035RES{resolution}mN' || CAST({northing} AS VARCHAR) "
+                f"|| 'E' || CAST({easting} AS VARCHAR)"
+            )
+            target_names = {"men", "ind"} | {
+                name for name in variables if chosen[name] == "within"
+            }
+            target_sql = ", ".join(
+                f"i.{_quoted_identifier(name)} AS {_quoted_identifier('ref_' + name)}"
+                for name in sorted(target_names)
+            )
+            connection.execute(
+                f"""
+                CREATE OR REPLACE TEMP TABLE _within_training AS
+                SELECT d.cell_id, d.natural_cell_id, i.idcar_nat AS reference_group,
+                    {target_sql}, {features}
+                FROM _composition_origins d
+                JOIN {reference_relation} i ON i.idcar_200m = {code}
+                LEFT JOIN {ff_cells_relation} f USING (cell_id)
+                WHERE i.i_est_200 = 0
+                """
+            )
+            invalid = connection.execute(
+                """
+                SELECT count(*) FROM (
+                    SELECT cell_id FROM _within_training
+                    GROUP BY cell_id
+                    HAVING count(*) != 1
+                        OR count(*) FILTER (
+                            WHERE reference_group IS DISTINCT FROM natural_cell_id
+                        ) > 0
+                )
+                """
+            ).fetchone()[0]
+            if invalid:
+                raise ValueError("duplicate or mismatched INSEE 200 m training cells")
         train_x = np.column_stack([
             train[name].to_numpy(zero_copy_only=False) for name in COVARIATES
         ]).astype(float)
@@ -601,7 +677,8 @@ def apply_models(
             ):
                 raise ValueError(f"invalid natural-cell controls for {variable}")
             valid = (households > 0) & (exposure > 0)
-            if variable in config.fixed_methods:
+            method = chosen[variable]
+            if method == "proportional":
                 LOGGER.info("Applying configured proportional method for %s", variable)
                 apply_regression_weights(
                     connection,
@@ -627,22 +704,57 @@ def apply_models(
                     raise ValueError(
                         f"no positive training observations for {variable}"
                     )
-                reports[variable] = {"status": "all training and output controls zero"}
+                reports[variable] = {
+                    "status": "all training and output controls zero", "method": method,
+                }
                 if checkpoint is not None:
                     checkpoint(reports)
                 continue
             LOGGER.info("Fitting composition model %s", variable)
-            model, reason = guarded_regression_fit(
-                lambda: fit_poisson(
-                    train_x[valid], y[valid], exposure[valid], households[valid],
-                    COVARIATES, folds=config.poisson_folds, seed=config.poisson_seed,
-                    tolerance=config.poisson_tolerance,
-                    max_iterations=config.poisson_max_iterations,
+            if method == "within":
+                training = connection.execute(
+                    f"""
+                    SELECT natural_cell_id,
+                        {_quoted_identifier('ref_' + variable)} AS target,
+                        {_quoted_identifier('ref_' + denominator)} AS exposure,
+                        ref_men AS households,
+                        {", ".join(_quoted_identifier(name) for name in COVARIATES)}
+                    FROM _within_training
+                    ORDER BY natural_cell_id, cell_id
+                    """
+                ).to_arrow_table()
+                within_x = np.column_stack([
+                    training[name].to_numpy(zero_copy_only=False) for name in COVARIATES
+                ]).astype(float)
+                model, reason = guarded_regression_fit(
+                    lambda: fit_within_poisson(
+                        within_x,
+                        np.asarray(training["target"].to_numpy(), dtype=float),
+                        np.asarray(training["exposure"].to_numpy(), dtype=float),
+                        training["natural_cell_id"].to_numpy(zero_copy_only=False),
+                        COVARIATES,
+                        standardization_weights=np.asarray(
+                            training["households"].to_numpy(), dtype=float
+                        ),
+                        tolerance=config.poisson_tolerance,
+                        max_iterations=config.poisson_max_iterations,
+                    ),
+                    variable=variable, method=method,
                     coefficient_bound=config.poisson_coefficient_bound,
-                ),
-                variable=variable, method="composition",
-                coefficient_bound=config.poisson_coefficient_bound,
-            )
+                )
+            else:
+                model, reason = guarded_regression_fit(
+                    lambda: fit_poisson(
+                        train_x[valid], y[valid], exposure[valid], households[valid],
+                        COVARIATES, folds=config.poisson_folds,
+                        seed=config.poisson_seed,
+                        tolerance=config.poisson_tolerance,
+                        max_iterations=config.poisson_max_iterations,
+                        coefficient_bound=config.poisson_coefficient_bound,
+                    ),
+                    variable=variable, method=method,
+                    coefficient_bound=config.poisson_coefficient_bound,
+                )
             rate_table = pa.table({
                 "cell_id": predictions["cell_id"],
                 "rate": (
@@ -661,7 +773,23 @@ def apply_models(
                 if checkpoint is not None:
                     checkpoint(reports)
                 continue
+            if isinstance(model, WithinPoissonModel):
+                reports[variable] = {
+                    "method": method,
+                    "feature_names": list(model.feature_names),
+                    "dropped_features": list(model.dropped_features),
+                    "coefficients": model.coefficients.tolist(),
+                    "standard_errors": model.standard_errors.tolist(),
+                    "dispersion": model.dispersion,
+                    "training_cell_count": model.training_cell_count,
+                    "training_group_count": model.training_group_count,
+                    "zero_offset_count": model.zero_offset_count,
+                }
+                if checkpoint is not None:
+                    checkpoint(reports)
+                continue
             reports[variable] = {
+                "method": method,
                 "feature_names": list(model.feature_names),
                 "input_names": list(model.input_names),
                 "means": model.means.tolist(),
@@ -882,10 +1010,46 @@ def _write_json(path: Path, value: object) -> None:
     temporary.replace(path)
 
 
-def composition_input_signature(inputs: Sequence[Path]) -> str:
+def load_method_choices(path: Path, config: DownscaleConfig) -> dict[str, str]:
+    """Resolve per-variable experimental methods, giving configuration precedence."""
+    choices: dict[str, str] = {}
+    if path.is_file():
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("year") != config.output_year or not isinstance(
+            payload.get("chosen_methods"), dict
+        ):
+            raise ValueError("invalid composition method-choice file")
+        for name, method in payload["chosen_methods"].items():
+            if name in REGRESSION_VARIABLES:
+                if not isinstance(method, str) or method not in {
+                    "proportional", "composition", "within"
+                }:
+                    raise ValueError(f"invalid method choice for {name}")
+                choices[name] = method
+    else:
+        LOGGER.warning("Method-choice file missing: %s; using config default", path)
+    return {
+        name: config.fixed_methods.get(name, choices.get(name, config.default_method))
+        for name in REGRESSION_VARIABLES
+    }
+
+
+def composition_input_signature(
+    inputs: Sequence[Path], *, choice_path: Path | None = None,
+    reference_archive: Path | None = None,
+) -> str:
     """Fingerprint composition inputs to reject stale checkpoints and outputs."""
     return hashlib.sha256(json.dumps(
-        {"version": 1, "inputs": [_file_signature(path) for path in inputs]},
+        {
+            "version": 2, "inputs": [_file_signature(path) for path in inputs],
+            "choice": (
+                _file_signature(choice_path) if choice_path and choice_path.is_file()
+                else None
+            ),
+            "reference": (
+                _file_signature(reference_archive) if reference_archive else None
+            ),
+        },
         sort_keys=True,
     ).encode("utf-8")).hexdigest()
 
@@ -902,10 +1066,8 @@ def _render_composition_report(
     lines = [
         "# Experimental composition models",
         "",
-        "Poisson rates use household-weighted natural-cell observations; "
-        "covariates are standardised and missing values use the weighted training "
-        "mean with a missing indicator. Cross-validation uses configured folds, "
-        "with household-weighted mean absolute error per natural cell.",
+        "Natural-cell and within-cell Poisson covariates use household-weighted "
+        "standardisation and mean imputation with missing indicators.",
         "",
         "## Direct-weight household fallbacks",
         "",
@@ -920,10 +1082,30 @@ def _render_composition_report(
     ])
     for variable, report in reports.items():
         lines.extend(["", f"## {variable}", ""])
+        lines.append(f"Method: {report['method']}")
         if "status" in report:
             lines.append(str(report["status"]))
             continue
         lines.append(f"Training cells: {count(int(report['training_cell_count']))}")
+        if report["method"] == "within":
+            lines.append(f"Dispersion: {float(report['dispersion']):.6g}")
+            lines.append(
+                "Dropped features: " + (
+                    ", ".join(report["dropped_features"]) or "none"
+                )
+            )
+            lines.append("Standard errors are dispersion-corrected.")
+            lines.extend(
+                ["", "| Feature | Coefficient | Standard error |", "|---|---:|---:|"]
+            )
+            for name, coefficient, error in zip(
+                report["feature_names"], report["coefficients"],
+                report["standard_errors"], strict=True,
+            ):
+                lines.append(
+                    f"| {name} | {float(coefficient):.6g} | {float(error):.6g} |"
+                )
+            continue
         lines.append(f"Deviance explained: {float(report['deviance_explained']):.6g}")
         lines.append(
             "Cross-validation weighted MAE by fold: "
@@ -987,6 +1169,10 @@ def build_composition(
     config = load_origins_config(config_path)
     options = config.downscale
     output = Path(config.report.output_directory)
+    if not output.resolve().is_relative_to(
+        Path(config.report.interim_directory).resolve()
+    ):
+        raise ValueError("composition outputs must stay under data/interim")
     output.mkdir(parents=True, exist_ok=True)
     year = options.output_year
     vintage = options.ff_vintage
@@ -1022,7 +1208,14 @@ def build_composition(
         Path(config_path), Path(pilot_config_path), archive, ff_cells,
         ff_natural, ff_metadata, benchmark,
     )
-    signature = composition_input_signature(inputs)
+    choice_path = output / options.crossval_choice_pattern.format(year=year)
+    methods = load_method_choices(choice_path, options)
+    reference_archive = (
+        Path(config.filosofi_200m_archive) if "within" in methods.values() else None
+    )
+    signature = composition_input_signature(
+        inputs, choice_path=choice_path, reference_archive=reference_archive
+    )
     result_path = output / options.composition_output_pattern.format(year=year)
     report_path = output / options.composition_report_pattern.format(year=year)
     model_path = output / options.composition_model_pattern.format(year=year)
@@ -1097,8 +1290,16 @@ def build_composition(
             natural_csv = _extract_archive_member(
                 archive, "carreaux_nivNaturel_met.csv", Path(directory)
             )
+            reference_csv = None
+            if reference_archive is not None:
+                from landgrid.origins.validation import _extract_filosofi_200m
+
+                reference_csv = _extract_filosofi_200m(
+                    reference_archive, Path(directory)
+                )
             reports = apply_models(
                 connection, natural_csv, ff_natural, ff_cells, options,
+                methods=methods, reference_200m=reference_csv,
                 completed=reports, checkpoint=checkpoint,
             )
         output_columns = {

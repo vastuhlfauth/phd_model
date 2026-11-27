@@ -181,6 +181,7 @@ def test_synthetic_fold_scores_identical_non_imputed_holdouts(
         feature_names = ("constant",)
         dispersion = 1.25
         zero_offset_count = 2
+        dropped_features = ("constant_missing",)
 
         @staticmethod
         def predict_rate(values: np.ndarray) -> np.ndarray:
@@ -311,6 +312,9 @@ def test_synthetic_fold_scores_identical_non_imputed_holdouts(
     assert "<50" in report
     assert "cell_id" not in report
     assert summarized["ind"]["zero_offset_training_cells_excluded"] == "<50"
+    assert summarized["ind"]["dropped_features_by_fold"][str(partition.fold)] == (
+        [] if fallback == "within" else ["constant_missing"]
+    )
 
 
 def test_within_model_failure_identifies_variable(

@@ -786,6 +786,9 @@ def render_validation_report(
     eurostat_reasons: dict[str, int],
     count_suppression_threshold: int,
     within_tolerance_fraction: float,
+    *,
+    methods: dict[str, str] | None = None,
+    crossval_report: str = "",
 ) -> str:
     """Render aggregate error statistics and totals, never cell-level rows."""
     lines = [
@@ -802,6 +805,8 @@ def render_validation_report(
         "as within range. Density uses Eurostat population divided by "
         "LAND_SURFACE when positive, otherwise 1 km². A missing Eurostat row "
         "is unmatched; a null or negative population is population unavailable.",
+        "Within-model INSEE rows are in-sample; held-out errors are in "
+        f"[{crossval_report}]({crossval_report})." if crossval_report else "",
         "",
         "Eurostat input issues among the 200 m validation cells "
         "(reasons can overlap; unmatched cells are not counted as null fields):",
@@ -820,10 +825,33 @@ def render_validation_report(
     ]
     for row in metrics_200m:
         median = row["median_absolute_relative_error"]
+        method = row["method"]
+        if method == "composition" and methods is not None:
+            components = {
+                "individuals": ("ind",),
+                "under_18": ("ind_0_3", "ind_4_5", "ind_6_10", "ind_11_17"),
+                "age_65_plus": ("ind_65_79", "ind_80p"),
+            }.get(row["variable"], (row["variable"],))
+            selected = {methods[name] for name in components if name in methods}
+            age_variables = {
+                "ind_0_3", "ind_4_5", "ind_6_10", "ind_11_17", "ind_18_24",
+                "ind_25_39", "ind_40_54", "ind_55_64", "ind_65_79", "ind_80p",
+                "ind_inc",
+            }
+            if age_variables.intersection(components) and any(
+                methods.get(name) == "within" for name in (*age_variables, "ind")
+            ):
+                selected.add("within")
+            if selected == {"within"}:
+                method = "within (in-sample)"
+            elif "within" in selected:
+                method = "mixed (includes within; in-sample)"
+            elif len(selected) == 1:
+                method = next(iter(selected))
         lines.append(
             "| {method} | {variable} | {size} | {density} | {cells} | "
             "{positive} | {mae:.3f} | {median} | {share:.1%} |".format(
-                method=row["method"],
+                method=method,
                 variable=row["variable"],
                 size=row["natural_cell_size_m"],
                 density=row["density_class"],
@@ -845,7 +873,8 @@ def render_validation_report(
             "",
             "## Eurostat 1 km cells wholly inside the department",
             "",
-            "Age 65 and over is compared directly. Under-11 "
+            "Eurostat comparisons are independent. Age 65 and over is compared "
+            "directly. Under-11 "
             "(ind_0_3 + ind_4_5 + ind_6_10) and under-18 "
             "(those groups plus ind_11_17) divided by Eurostat under-15 "
             "are information only, not errors.",
@@ -958,6 +987,9 @@ def build_validation_report(
     composition_metadata_path = output_directory / (
         downscale.composition_metadata_pattern.format(year=downscale.output_year)
     )
+    composition_model_path = output_directory / (
+        downscale.composition_model_pattern.format(year=downscale.output_year)
+    )
     ff_cells_path = output_directory / report.ff_cells_pattern.format(
         vintage=downscale.ff_vintage
     )
@@ -969,6 +1001,7 @@ def build_validation_report(
     )
     for path in (
         downscaled_path, composition_path, composition_metadata_path,
+        composition_model_path,
         ff_cells_path, ff_natural_path, ff_metadata_path,
     ):
         if not path.is_file():
@@ -979,13 +1012,24 @@ def build_validation_report(
     composition_metadata = json.loads(
         composition_metadata_path.read_text(encoding="utf-8")
     )
-    from landgrid.origins.composition import composition_input_signature
+    from landgrid.origins.composition import (
+        composition_input_signature,
+        load_method_choices,
+    )
+
+    choice_path = output_directory / downscale.crossval_choice_pattern.format(
+        year=downscale.output_year
+    )
+    choices = load_method_choices(choice_path, downscale)
+    reference_archive = (
+        Path(config.filosofi_200m_archive) if "within" in choices.values() else None
+    )
 
     expected_signature = composition_input_signature((
         Path(config_path), Path(pilot_config_path),
         Path(config.filosofi_natural_archive),
         ff_cells_path, ff_natural_path, ff_metadata_path, downscaled_path,
-    ))
+    ), choice_path=choice_path, reference_archive=reference_archive)
     if (
         not composition_metadata.get("completed")
         or composition_metadata.get("ff_signature") != metadata.get("signature")
@@ -1068,6 +1112,15 @@ def build_validation_report(
         eurostat_reasons,
         report.count_suppression_threshold,
         validation.within_tolerance_fraction,
+        methods={
+            name: details["method"]
+            for name, details in json.loads(
+                composition_model_path.read_text(encoding="utf-8")
+            ).items()
+        },
+        crossval_report=downscale.crossval_report_pattern.format(
+            year=downscale.output_year
+        ),
     )
     temporary = report_path.with_suffix(".tmp.md")
     temporary.write_text(content, encoding="utf-8")

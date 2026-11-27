@@ -428,7 +428,10 @@ def _fit_natural_models(
     models: dict[str, PoissonModel | None] = {}
     fallbacks: dict[str, str] = {}
     for variable in variables:
-        if variable in downscale.fixed_methods:
+        if (
+            variable == "ind_inc"
+            and downscale.fixed_methods.get(variable) == "proportional"
+        ):
             continue
         y = _float_column(training, variable)
         denominator = (
@@ -478,7 +481,10 @@ def _fit_within_models(
     models: dict[str, WithinPoissonModel | None] = {}
     diagnostics: dict[str, dict[str, Any]] = {}
     for variable in variables:
-        if variable in downscale.fixed_methods:
+        if (
+            variable == "ind_inc"
+            and downscale.fixed_methods.get(variable) == "proportional"
+        ):
             continue
         denominator = (
             "ind" if variable in age_variables or variable == "ind_snv" else "men"
@@ -496,6 +502,7 @@ def _fit_within_models(
             """
         ).to_arrow_table()
         groups = training["natural_cell_id"].to_numpy(zero_copy_only=False)
+        LOGGER.info("Fitting cross-validation within model %s", variable)
         model, reason = guarded_regression_fit(
             lambda: fit_within_poisson(
                 _feature_matrix(training, COVARIATES),
@@ -515,6 +522,7 @@ def _fit_within_models(
         models[variable] = model
         diagnostics[variable] = {
             "dispersion": None if model is None else model.dispersion,
+            "dropped_features": [] if model is None else list(model.dropped_features),
             "zero_offset_training_cells_excluded": (
                 int(np.count_nonzero(_float_column(training, "exposure") == 0))
                 if model is None else model.zero_offset_count
@@ -689,8 +697,8 @@ def _run_fold(
                     denominator,
                     downscale.cell_resolution_m,
                 )
-        for variable in downscale.fixed_methods:
-            if variable not in age_variables:
+        for variable, fixed_method in downscale.fixed_methods.items():
+            if variable != "ind_inc" or fixed_method != "proportional":
                 continue
             apply_regression_weights(
                 connection,
@@ -715,7 +723,9 @@ def _run_fold(
             connection,
             method=method,
             age_variables=tuple(
-                name for name in age_variables if name not in downscale.fixed_methods
+                name for name in age_variables
+                if name != "ind_inc"
+                or downscale.fixed_methods.get(name) != "proportional"
             ),
             resolution_m=downscale.cell_resolution_m,
         )
@@ -757,6 +767,9 @@ def _summarize_within_diagnostics(
             "mean_dispersion": float(np.mean(dispersions)) if dispersions else None,
             "dispersion_by_fold": {
                 str(fold): row["dispersion"] for fold, row in rows
+            },
+            "dropped_features_by_fold": {
+                str(fold): row["dropped_features"] for fold, row in rows
             },
             "zero_offset_training_cells_excluded": _suppressed_count(
                 sum(zero_offsets), threshold
@@ -995,7 +1008,7 @@ def build_cross_validation(
     signature = hashlib.sha256(
         json.dumps(
             {
-                "version": 2,
+                "version": 3,
                 "inputs": [_file_signature(path) for path in inputs],
                 "folds": options.crossval_folds,
                 "seed": options.crossval_seed,

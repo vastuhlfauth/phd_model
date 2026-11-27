@@ -128,6 +128,7 @@ downscale:
   poisson_max_iterations: 100
   # Absolute bound on non-intercept coefficients after standardisation.
   poisson_coefficient_bound: 10.0
+  default_method: composition
   fixed_methods:
     ind_inc: proportional
   ipf_tolerance: 1.0e-9

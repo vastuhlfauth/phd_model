@@ -197,6 +197,9 @@ def test_validation_reuses_aggregate_checkpoint(
             output / "origins_2021_200m.parquet",
         )),
     }))
+    (output / "origins_2021_composition_models.json").write_text(json.dumps({
+        "ind": {"method": "within"},
+    }))
     monkeypatch.setattr(validation, "load_origins_config", lambda *args: config)
     monkeypatch.setattr(validation, "_load_department_boundary", lambda *args: None)
     monkeypatch.setattr(validation, "_extract_filosofi_200m", lambda *args: archive)
@@ -228,6 +231,36 @@ def test_validation_reuses_aggregate_checkpoint(
         validation.build_validation_report(
             config_path=config_path, pilot_config_path=pilot
         )
+
+
+def test_validation_marks_within_rows_in_sample_but_not_eurostat() -> None:
+    metrics = [{
+        "method": "composition", "variable": "individuals",
+        "natural_cell_size_m": 1000, "density_class": "<300",
+        "cell_count": 1, "positive_reference_count": 1,
+        "mean_absolute_error": 1.0, "median_absolute_relative_error": 0.1,
+        "share_within_tolerance": 1.0,
+    }]
+    eurostat = [{
+        "method": "composition", "variable": "individuals", "density_class": "<300",
+        "cell_count": 1, "downscaled_total": 10.0, "reference_total": 10.0,
+        "ratio": 1.0, "median_absolute_relative_error": 0.1,
+    }]
+    report = render_validation_report(
+        2021, "33", metrics, eurostat, {}, 50, 0.2,
+        methods={"ind": "within"}, crossval_report="origins_2021_crossval.md",
+    )
+    insee, euro = report.split("## Eurostat 1 km")
+    assert "| within (in-sample) | individuals |" in insee
+    assert "origins_2021_crossval.md" in insee
+    assert "| composition | individuals |" in euro
+    assert "in-sample" not in euro
+    metrics[0]["variable"] = "under_18"
+    report = render_validation_report(
+        2021, "33", metrics, [], {}, 50, 0.2,
+        methods={"ind": "within", "ind_0_3": "composition"},
+    )
+    assert "| mixed (includes within; in-sample) | under_18 |" in report
 
 
 def test_validation_reports_errors_and_suppresses_small_counts() -> None:

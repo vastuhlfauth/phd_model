@@ -148,6 +148,48 @@ def test_within_poisson_standardizes_using_household_weights() -> None:
     assert model.means[0] == pytest.approx(1.5)
 
 
+def test_within_poisson_records_covariates_without_within_group_variation() -> None:
+    from landgrid.origins.composition import fit_within_poisson
+
+    groups = np.repeat(np.arange(8), 3)
+    x = np.column_stack((np.tile([0.0, 1.0, 2.0], 8), groups, np.full(24, np.nan)))
+    exposure = np.ones(len(groups))
+    model = fit_within_poisson(
+        x, exposure * np.exp(0.3 * x[:, 0]), exposure, groups,
+        ("x", "group", "absent"),
+        standardization_weights=exposure, tolerance=1e-10, max_iterations=100,
+    )
+    assert "x" in model.feature_names
+    assert set(model.dropped_features) == {
+        "group", "absent", "x_missing", "group_missing", "absent_missing"
+    }
+
+
+def test_method_choices_config_override_and_missing_file_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    from landgrid.origins.composition import load_method_choices
+    from landgrid.origins.fichiers_fonciers import load_origins_config
+
+    config = replace(
+        load_origins_config().downscale,
+        fixed_methods={"ind": "proportional", "ind_inc": "proportional"},
+    )
+    path = tmp_path / "choices.json"
+    path.write_text(json.dumps({
+        "year": config.output_year,
+        "chosen_methods": {"ind": "within", "men_1ind": "within"},
+    }))
+    choices = load_method_choices(path, config)
+    assert choices["ind"] == "proportional"
+    assert choices["men_1ind"] == "within"
+    assert choices["men_5ind"] == config.default_method
+    path.unlink()
+    choices = load_method_choices(path, config)
+    assert choices["men_1ind"] == config.default_method
+    assert "warning" in caplog.text.lower() or "missing" in caplog.text.lower()
+
+
 def test_within_poisson_converges_with_weak_within_group_variation() -> None:
     """Section 6.3 experiment: convergence depends on conditional splits."""
     from landgrid.origins.composition import fit_within_poisson
@@ -432,7 +474,7 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
     from landgrid.origins.composition import AGE_VARIABLES, COVARIATES
     from landgrid.origins.fichiers_fonciers import DownscaleConfig
 
-    natural, ff_natural, cells, ff_cells = [], [], [], []
+    natural, ff_natural, cells, ff_cells, reference = [], [], [], [], []
     direct = {
         "men_prop": 10.0, "men_mais": 10.0, "men_coll": 10.0,
         "log_soc": 2.0, "log_av45": 2.0, "log_45_70": 3.0,
@@ -467,6 +509,13 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
                 "construction_70_90": 1, "construction_ap90": 1,
                 "construction_inc": 1,
             })
+            reference.append({
+                "idcar_200m": f"CRS3035RES200mN0E{cell_id * 200}",
+                "idcar_nat": zone, "ind": ind / 2,
+                "i_est_200": 0, "men": 10.0,
+                "men_1ind": 2.0 * np.exp(0.3 * j),
+            })
+    reference[0]["i_est_200"] = 1
     output = tmp_path / "interim"
     output.mkdir()
     pq.write_table(pa.Table.from_pylist(cells), output / "origins_2021_200m.parquet")
@@ -488,9 +537,23 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
     archive = tmp_path / "natural.zip"
     with zipfile.ZipFile(archive, "w") as zipped:
         zipped.writestr("carreaux_nivNaturel_met.csv", buffer.getvalue())
+    reference_archive = tmp_path / "reference.zip"
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=list(reference[0]))
+    writer.writeheader()
+    writer.writerows(reference)
+    with zipfile.ZipFile(reference_archive, "w") as zipped:
+        zipped.writestr("carreaux_200m_met.csv", buffer.getvalue())
     raw = yaml.safe_load(Path("config/origins.yaml").read_text(encoding="utf-8"))
+    raw["report"]["interim_directory"] = str(output)
     raw["report"]["output_directory"] = str(output)
     raw["filosofi"]["natural_archive"] = str(archive)
+    raw["filosofi"]["200m_archive"] = str(reference_archive)
+    raw["downscale"]["fixed_methods"]["men_5ind"] = "proportional"
+    choice_path = output / "composition_method_choice_2021.json"
+    choice_path.write_text(json.dumps({
+        "year": 2021, "chosen_methods": {"men_1ind": "within", "men_5ind": "within"}
+    }))
     config = tmp_path / "origins.yaml"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
     baseline = (output / "origins_2021_200m.parquet").read_bytes()
@@ -504,6 +567,8 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
         ff_cells_input: pa.Table | Path,
         model_config: DownscaleConfig,
         *,
+        methods: dict[str, str] | None = None,
+        reference_200m: pa.Table | Path | None = None,
         completed: dict[str, dict[str, object]] | None = None,
         checkpoint: Callable[[dict[str, dict[str, object]]], None] | None = None,
     ) -> dict[str, dict[str, object]]:
@@ -516,6 +581,7 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
 
         return original(
             connection, natural_input, ff_natural_input, ff_cells_input, model_config,
+            methods=methods, reference_200m=reference_200m,
             completed=completed, checkpoint=interrupted_checkpoint,
         )
 
@@ -533,7 +599,24 @@ def test_composition_build_writes_separate_output_and_reuses_checkpoint(
     result_again = composition.build_composition(config_path=config)
     assert result_again["cached"] is True
     built = pq.read_table(result["output"]).to_pylist()
+    reports = json.loads((output / "origins_2021_composition_models.json").read_text())
+    assert reports["men_1ind"]["method"] == "within"
+    assert reports["men_1ind"]["training_cell_count"] == 22
+    assert reports["men_5ind"]["method"] == "proportional"
+    assert built[1]["men_1ind"] > built[0]["men_1ind"]
+    assert sum(row["men_1ind"] for row in built[:2]) == pytest.approx(4.0)
+    text = (output / "origins_2021_composition_report.md").read_text()
+    assert "Dispersion:" in text and "Dropped features:" in text
     assert built[0]["ind"] != built[1]["ind"]
     assert sum(built[0][name] for name in AGE_VARIABLES) == pytest.approx(
         built[0]["ind"], rel=1e-8
     )
+    choice_path.write_text(json.dumps({
+        "year": 2021, "chosen_methods": {"men_1ind": "proportional"}
+    }))
+    rebuilt = composition.build_composition(config_path=config)
+    assert rebuilt["cached"] is False
+    rebuilt_reports = json.loads(
+        (output / "origins_2021_composition_models.json").read_text()
+    )
+    assert rebuilt_reports["men_1ind"]["method"] == "proportional"

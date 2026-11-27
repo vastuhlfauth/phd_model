@@ -1,5 +1,19 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 chosen composition and within covariates
+
+- Applied configured overrides, then cross-validation choices, then the
+  configured default; missing choice files warn. The benchmark is unchanged.
+- Within models train on eligible non-imputed 200 m observations in reached
+  natural cells. Within-constant/dependent features are dropped and recorded;
+  interim reports include dispersion-adjusted model diagnostics.
+- Composition and cross-validation checkpoints invalidate on changed inputs
+  or fitting rules. INSEE within results are in-sample; Eurostat is independent.
+- The `dnbniv` bound of 80 stays as a plausibility check; `dniv` is not used.
+  Section 6.3 wording will be fixed separately.
+- Synthetic touched-module tests: 44 passed; Ruff passed. No real data or full
+  jobs were run.
+
 ## 2026-11-27 — Step 3 verified separation and proportional guards
 
 - Reproduced the actual fold-1 `ind_inc` failure: the missing-covariate

@@ -17,6 +17,7 @@ This file holds the current state only. Search the history for your step; don't 
   - Mode-cell report: CLI and synthetic integration (2026-11-20)
   - Mode-cell report: reference energy calculations (2026-11-20)
 - `docs/progress/log_landgrid.md`: step 3. Latest entries:
+  - Step 3 chosen composition and within covariates (2026-11-27)
   - Step 3 verified separation and proportional guards (2026-11-27)
   - Step 3 stable within-cell line search (2026-11-27)
   - Step 3 within-cell convergence repair (2026-11-27)
@@ -44,7 +45,7 @@ decisions in `decisions.md`, and the step row, assumptions and open points below
 | 2c | Audit of the remaining 12 excluded community GTFS resources | merged | `data/source-urls` | Checked, for each of the 12 datasets with a community-tagged excluded GTFS resource, whether that dataset keeps another producer GTFS resource; all 12 do (true duplicates), so none needed a TCL-Lyon-style override. Added a `discover_gtfs` safeguard that logs a warning if a community exclusion would ever leave a dataset with zero producer GTFS resources, so a future case is caught automatically. Ruff clean; 68 tests pass. |
 | 2d | France OSM sizes, resilient acquisition batches and reruns | merged | `fix/osm-size` | France uses HEAD sizes without MD5 sidecars; OSM discovery refreshes all 28 extracts. Failed acquisitions no longer abort the batch; summary counts/reasons and exit 1 on failures. Recorded matching files skip network requests and preserve verification/date. Tests first; Ruff clean; 81 tests pass. |
 | 2e | Acquisition robustness, own GTFS archives, offline feed checks, Filosofi 2019 | merged | `fix/acquire-robustness` | Per-file atomic manifest persistence; Windows replacement retries and short-lived readers; strict latest-own-archive fallback; offline GTFS inventory command; covered-resource exclusions; both Filosofi 2019 archives acquired. Tests first; Ruff clean; 108 tests pass. Offline check: 551 downloaded, 536 passing feeds, 47 expired, 15 invalid/unusable, 18 flex indicators; no files deleted. |
-| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Actual `ind_inc` separation diagnosed; fixed proportional individual weights and logged regression guards implemented. All five actual folds, composition/IPF and pooled reporting passed separate capped checks. Full command and review pending; chosen-method composition product remains pending. |
+| 3 | `landgrid/origins` | in progress | `step/landgrid-origins` | Chosen-method composition and in-sample validation labels implemented synthetically; rerun grouped cross-validation and review interim outputs. |
 | 4 | `landgrid/jobs` | not started | | |
 | 5 | `landgrid/services`, `nature`, `social`, `destinations` | not started | | |
 | 6 | `mobgrid/osm` | in progress | `step/mobgrid-osm` | OSRM queries complete; fit stalled, calibration disabled by default; report rerun pending |
@@ -72,6 +73,8 @@ Status values: not started, in progress, review, merged.
 
 - 2026-11-27, step 3: within-cell Poisson is an experimental exception to
   section 6.3 pending cross-validation; existing FF cleaning is unchanged.
+- 2026-11-27, step 3: `dnbniv` uses the 80 plausibility bound; `dniv` is not
+  used. The section 6.3 wording awaits correction.
 - 2026-11-26, step 3: experimental regressions use household-weighted
   natural-cell means for standardisation and missing-covariate imputation;
   linearly dependent predictors are omitted. Cross-validation reports
@@ -167,8 +170,8 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [x] Step 3: integrate within-cell fitting, grouped cross-validation,
   dispersion and zero-offset reporting, per-variable choice-file handling and
   aggregate cross-validation reporting.
-- [ ] Step 3: apply per-variable choices to the final composition product;
-  keep the proportional output as the benchmark until choices are reviewed.
+- [x] Step 3: apply per-variable choices to the final composition product;
+  keep the proportional output as the benchmark.
 - [ ] Step 3: run the grouped 2021 cross-validation command and review its
   interim-only method choices and diagnostics. Actual `ind_inc` separation is
   resolved by configured proportional individual weights; all five folds passed
@@ -179,9 +182,8 @@ Each item stays open until a value is decided; the value goes into `config/`.
 - [ ] Step 3, section 6.5: run the documented aggregate validation on the
   restricted pilot inputs and review composition/IPF failures and performance;
   no real-data build or report was run during coding.
-- [ ] Step 3, section 6.3: resolve the existing cleaning discrepancy before
-  interpreting the composition models: the implementation applies the
-  configured floor-code threshold to `dnbniv`, while the spec names `dniv`.
+- [ ] Step 3, section 6.3: correct the specification wording to describe the
+  `dnbniv` plausibility bound, rather than `dniv`.
 - [ ] Step 6 OSRM: rerun the report with calibration disabled. Select a
   suitable reference before interpreting car holdout performance, parameter
   uncertainty or proposed values; the OSRM fit stalled. Foot strata unfilled after
