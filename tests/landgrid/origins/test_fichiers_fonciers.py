@@ -55,6 +55,44 @@ def test_configured_grid_year_pairs_and_unpacked_readers(tmp_path: Path) -> None
         config.filosofi_sources(2020)
 
 
+def test_filosofi_concatenated_communes_reach_pilot(tmp_path: Path) -> None:
+    import landgrid.origins.fichiers_fonciers as ff
+
+    cells = tmp_path / "cells.csv"
+    cells.write_text(
+        "idcar_200m,lcog_geo\n"
+        "CRS3035RES200mN2400000E4000000,1700133001\n",
+        encoding="utf-8",
+    )
+    lookup = build_natural_cell_lookup(["CRS3035RES1000mN2400000E4000000"])
+    with duckdb.connect() as connection:
+        mapping = ff._filosofi_200m_map(connection, cells, tmp_path)
+        assert mapping["CRS3035RES200mN2400000E4000000"] == "17001,33001"
+        ff._register_lookup_tables(connection, mapping, lookup)
+        assert derived_departments_for_pilot(connection, "33") == {"17", "33"}
+
+
+def test_filosofi_commune_parser_handles_both_formats() -> None:
+    from landgrid.origins.filosofi import commune_codes_sql
+
+    with duckdb.connect() as connection:
+        expression = commune_codes_sql("code")
+        rows = connection.execute(
+            f"SELECT {expression} FROM (VALUES "
+            "('3325533046'), ('2A041, 2A247'), ('33001'), (NULL)) AS t(code)"
+        ).fetchall()
+    assert rows == [
+        (["33255", "33046"],),
+        (["2A041", "2A247"],),
+        (["33001"],),
+        ([],),
+    ]
+    with duckdb.connect() as connection, pytest.raises(
+        duckdb.InvalidInputException, match="invalid Filosofi commune-code list"
+    ):
+        connection.execute(f"SELECT {commune_codes_sql(repr('33001X'))}").fetchall()
+
+
 def test_aggregates_cell_weights_by_main_residence_commune() -> None:
     rows = pa.Table.from_pylist([
         {

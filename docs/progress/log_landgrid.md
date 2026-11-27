@@ -1,5 +1,15 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 2019 commune-list parsing
+
+- Filosofi 2019 concatenates five-character `lcog_geo` codes; 2021 uses
+  comma-separated codes. Both use the same column name. Preserve leading zeroes.
+- In the 2021 FF checkpoint for Gironde, mismatches drop from 75,982 to <50.
+- The corrected 2019 Gironde scope reaches 3,884 natural cells, versus
+  3,870 before; 14 are added, none removed. Rebuild downstream products.
+- Synthetic FF and downscale tests: 34 passed. Timing optimization,
+  COG-mapped cell-commune output and temporal products remain open.
+
 ## 2026-11-27 — Step 3 year-aware origins inputs
 
 - Configured the 2019/2021 Filosofi-to-FF pairings once; the default remains

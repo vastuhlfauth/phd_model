@@ -14,6 +14,22 @@ _INSPIRE_NATURAL = re.compile(
 NaturalCellLookup = dict[int, dict[tuple[int, int], str]]
 
 
+def commune_codes_sql(expression: str) -> str:
+    """Parse 2019 concatenated or 2021 comma-separated COG codes (6.3)."""
+    value = (
+        f"regexp_replace(trim(CAST({expression} AS VARCHAR)), "
+        "'\\s*,\\s*', ',', 'g')"
+    )
+    return (
+        f"CASE WHEN {expression} IS NULL OR {value} = '' THEN []::VARCHAR[] "
+        f"WHEN regexp_full_match({value}, '([A-Za-z0-9]{{5}})+') "
+        f"THEN regexp_extract_all({value}, '.{{5}}') "
+        f"WHEN regexp_full_match({value}, '[A-Za-z0-9]{{5}}(,[A-Za-z0-9]{{5}})+') "
+        f"THEN string_split({value}, ',') "
+        "ELSE error('invalid Filosofi commune-code list') END"
+    )
+
+
 def source_csv(source: Path, member: str, directory: Path) -> Path:
     """Resolve an unpacked CSV or extract a metropolitan archive member."""
     if source.suffix.casefold() == ".csv":

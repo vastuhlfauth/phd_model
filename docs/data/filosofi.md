@@ -37,6 +37,12 @@ member names as the 2021 archive. The extracted 2019 metropolitan CSV schemas
 have the same column names and DuckDB types as their 2021 equivalents; no
 column differences were found.
 
+The `lcog_geo` column uses different list formats: 2019 concatenates
+five-character codes without separators, while 2021 separates them with
+commas. Codes must be read as strings, including leading zeroes and Corsican
+letters. In Gironde the corrected 2019 interpretation reaches 3,884 natural
+cells, versus 3,870 using only the first code.
+
 ## Columns: natural-level CSV
 
 `carreaux_nivNaturel_{met,mart,reun}.csv` (2021 and 2019):

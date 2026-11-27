@@ -20,7 +20,7 @@ from landgrid.origins.fichiers_fonciers import (
     _quoted_identifier,
     load_origins_config,
 )
-from landgrid.origins.filosofi import source_csv
+from landgrid.origins.filosofi import commune_codes_sql, source_csv
 from landgrid.origins.job import open_restricted_connection
 
 _NUMERIC_TYPES = {
@@ -456,14 +456,14 @@ def build_origins_2021_200m(
             natural_cell_ids = [
                 str(row[0])
                 for row in connection.execute(
-                    """
+                    f"""
                     SELECT DISTINCT idcar_nat
-                    FROM read_csv_auto(?, header=true)
+                    FROM read_csv_auto(
+                        ?, header=true, types={{'lcog_geo': 'VARCHAR'}}
+                    )
                     WHERE idcar_nat IS NOT NULL AND EXISTS (
                         SELECT 1
-                        FROM UNNEST(string_split(
-                            CAST(lcog_geo AS VARCHAR), ','
-                        )) AS commune(code)
+                        FROM UNNEST({commune_codes_sql('lcog_geo')}) AS commune(code)
                         WHERE left(trim(commune.code), length(?)) = ?
                     )
                     ORDER BY idcar_nat

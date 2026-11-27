@@ -25,6 +25,7 @@ from common.grid import cell_id
 from landgrid.origins.filosofi import (
     NaturalCellLookup,
     build_natural_cell_lookup,
+    commune_codes_sql,
     derived_departments,
     source_csv,
 )
@@ -640,7 +641,7 @@ def build_ff_cells_signature(
     vintage: int,
     config: OriginsConfig,
     input_files: Sequence[Path],
-    code_version: int = 5,
+    code_version: int = 6,
 ) -> str:
     """Build the cache signature for one Fichiers fonciers vintage."""
     payload = {
@@ -684,9 +685,9 @@ def _filosofi_200m_map(
     ) as directory:
         csv_path = source_csv(archive, "carreaux_200m_met.csv", Path(directory))
         rows = connection.execute(
-            """
-            SELECT idcar_200m, lcog_geo
-            FROM read_csv_auto(?, header=true)
+            f"""
+            SELECT idcar_200m, array_to_string({commune_codes_sql('lcog_geo')}, ',')
+            FROM read_csv_auto(?, header=true, types={{'lcog_geo': 'VARCHAR'}})
             """,
             [str(csv_path)],
         ).fetchall()

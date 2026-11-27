@@ -191,7 +191,8 @@ def test_benchmark_metadata_tracks_ff_signature(
         )
         cells_csv = tmp_path / "carreaux_200m_met.csv"
         cells_csv.write_text(
-            f"idcar_200m,idcar_nat,lcog_geo,men\n{natural},{natural},33001,2\n",
+            f"idcar_200m,idcar_nat,lcog_geo,men\n"
+            f"{natural},{natural},1700133001,2\n",
             encoding="utf-8",
         )
         temporal = raw["filosofi"]["temporal_2019"]
