@@ -181,23 +181,18 @@ def fit_within_poisson(
         raise ValueError("insufficient residual degrees of freedom for dispersion")
     totals = np.bincount(group_index, weights=y)
 
-    def evaluate(beta: FloatArray) -> tuple[FloatArray, float]:
+    def evaluate(beta: FloatArray) -> FloatArray:
         linear = np.log(exposure) + design @ beta
         maxima = np.full(n_groups, -np.inf)
         np.maximum.at(maxima, group_index, linear)
         relative = np.exp(linear - maxima[group_index])
         sums_by_group = np.bincount(group_index, weights=relative)
-        mu = totals[group_index] * relative / sums_by_group[group_index]
-        likelihood = float(
-            np.dot(y, linear - maxima[group_index])
-            - np.dot(totals, np.log(sums_by_group))
-        )
-        return mu, likelihood
+        return totals[group_index] * relative / sums_by_group[group_index]
 
     beta = np.zeros(rank)
     converged = rank == 0
     for _ in range(max_iterations if rank else 0):
-        mu, likelihood = evaluate(beta)
+        mu = evaluate(beta)
         group_mean = np.vstack([
             np.bincount(group_index, weights=mu * design[:, column])
             / totals
@@ -210,15 +205,31 @@ def fit_within_poisson(
         if conditional_change <= tolerance:
             converged = True
             break
+        direction = within @ step
         fraction = 1.0
         while fraction > tolerance:
             candidate = beta + fraction * step
-            _, new_likelihood = evaluate(candidate)
-            if np.isfinite(new_likelihood) and new_likelihood >= likelihood - tolerance:
+            delta = fraction * direction
+            mean_delta = np.bincount(group_index, weights=mu * delta) / totals
+            # Compare likelihoods through their increment, not large totals.
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                remainder = np.bincount(
+                    group_index, weights=mu * (np.expm1(delta) - delta)
+                ) / totals
+                improvement = float(
+                    np.dot(y - mu, delta)
+                    + np.dot(totals, mean_delta - np.log1p(mean_delta + remainder))
+                )
+            if np.isfinite(improvement) and improvement >= -tolerance:
                 break
             fraction /= 2
         else:
-            raise RuntimeError("within-cell Poisson could not find an improving step")
+            raise RuntimeError(
+                "within-cell Poisson could not find an improving step "
+                f"(conditional predictor step {conditional_change:.6g}, "
+                f"likelihood increment {improvement:.6g}, "
+                f"tolerance {tolerance:.6g})"
+            )
         beta = candidate
     if not converged:
         raise RuntimeError(
@@ -226,7 +237,7 @@ def fit_within_poisson(
             f"(conditional predictor step {conditional_change:.6g}, "
             f"tolerance {tolerance:.6g})"
         )
-    mu, _ = evaluate(beta)
+    mu = evaluate(beta)
     dispersion = float(np.sum((y - mu) ** 2 / mu) / (len(y) - n_groups - rank))
     if rank:
         group_mean = np.vstack([

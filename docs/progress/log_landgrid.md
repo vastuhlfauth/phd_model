@@ -1,5 +1,18 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 stable within-cell line search
+
+- The user's retry completed fold 0 and failed fitting `ind_inc` in fold 1.
+- Reproduced the same error synthetically with correlated covariates:
+  subtracting large log-likelihood totals rejected a positive Newton update.
+- Compare the conditional likelihood increment directly using `expm1` and
+  `log1p`; keep the model, convergence tolerance and full-step stopping rule
+  unchanged. Failed line searches now report aggregate step diagnostics.
+- Synthetic composition tests: 14 passed; Ruff passed. The prior weak-variation
+  repair and explicit separated-fit failure remain covered.
+- No real-data run; the original `ind_inc` cause remains unverified.
+- Retry `python -m landgrid.origins.crossval`; fold 0 can be reused.
+
 ## 2026-11-27 — Step 3 within-cell convergence repair
 
 - The user's cross-validation run failed in fold 0 during within-cell fitting.

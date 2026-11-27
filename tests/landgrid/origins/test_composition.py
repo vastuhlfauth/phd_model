@@ -187,6 +187,29 @@ def test_within_poisson_does_not_accept_separated_counts() -> None:
         )
 
 
+def test_within_poisson_line_search_is_stable_when_counts_are_rescaled() -> None:
+    """Section 6.3 experiment: count scaling must not reject an improving fit."""
+    from landgrid.origins.composition import fit_within_poisson
+
+    rng = np.random.default_rng(2)
+    groups = np.repeat(np.arange(80), 5)
+    base = rng.normal(size=len(groups))
+    x = np.column_stack((base, base + 1e-4 * rng.normal(size=len(groups))))
+    exposure = rng.uniform(1, 30, len(groups))
+    y = rng.poisson(exposure * np.exp(0.3 * base)).astype(float)
+    models = [
+        fit_within_poisson(
+            x, y * multiplier, exposure, groups, ("a", "b"),
+            standardization_weights=exposure, tolerance=1e-8, max_iterations=100,
+        )
+        for multiplier in (1.0, 1e6)
+    ]
+    assert models[1].predict_rate(x) == pytest.approx(
+        models[0].predict_rate(x), rel=1e-7
+    )
+    assert np.isfinite(models[1].standard_errors).all()
+
+
 def test_regression_weights_use_the_specified_denominator_and_preserve_total() -> None:
     from landgrid.origins.composition import apply_regression_weights
 

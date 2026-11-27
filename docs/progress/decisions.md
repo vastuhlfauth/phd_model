@@ -1,5 +1,8 @@
 ## Decisions taken while coding
 
+- 2026-11-27, step 3: compare within-cell Poisson likelihood increments
+  directly to avoid cancellation of large totals; retain the unpenalized
+  conditional model and configured tolerance.
 - 2026-11-27, step 3: assess within-cell Poisson convergence on the full
   conditional predictor update, not absolute coefficient changes or damped
   steps. Retain the unpenalized model and explicit failures for divergent fits.
