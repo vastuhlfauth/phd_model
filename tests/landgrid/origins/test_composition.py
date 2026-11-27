@@ -106,7 +106,8 @@ def test_within_poisson_recovers_split_despite_group_intercepts() -> None:
     intercepts = np.repeat(np.linspace(-1, 2, 8), 3)
     y = exposure * np.exp(intercepts + 0.6 * x[:, 0])
     model = fit_within_poisson(
-        x, y, exposure, groups, ("x",), tolerance=1e-10, max_iterations=100
+        x, y, exposure, groups, ("x",), standardization_weights=exposure,
+        tolerance=1e-10, max_iterations=100,
     )
     rates = model.predict_rate(x)
     assert rates[2] / rates[0] == pytest.approx(np.exp(1.2), rel=1e-7)
@@ -123,11 +124,26 @@ def test_within_poisson_excludes_zero_offsets_and_reports_dispersion() -> None:
     exposure[0] = 0
     y = np.tile(np.array([1.0, 10.0, 3.0]), 10)
     model = fit_within_poisson(
-        x, y, exposure, groups, ("x",), tolerance=1e-10, max_iterations=100
+        x, y, exposure, groups, ("x",), standardization_weights=exposure,
+        tolerance=1e-10, max_iterations=100,
     )
     assert model.zero_offset_count == 1
     assert model.dispersion > 1
     assert np.all(model.standard_errors > 0)
+
+
+def test_within_poisson_standardizes_using_household_weights() -> None:
+    from landgrid.origins.composition import fit_within_poisson
+
+    x = np.tile(np.array([0.0, 1.0, 2.0]), 8)[:, None]
+    groups = np.repeat(np.arange(8), 3)
+    households = np.tile(np.array([1.0, 2.0, 5.0]), 8)
+    individuals = np.ones(24)
+    model = fit_within_poisson(
+        x, individuals * np.exp(0.3 * x[:, 0]), individuals, groups, ("x",),
+        standardization_weights=households, tolerance=1e-10, max_iterations=100,
+    )
+    assert model.means[0] == pytest.approx(1.5)
 
 
 def test_regression_weights_use_the_specified_denominator_and_preserve_total() -> None:

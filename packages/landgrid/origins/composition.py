@@ -114,6 +114,7 @@ def fit_within_poisson(
     groups: npt.NDArray,
     names: tuple[str, ...],
     *,
+    standardization_weights: FloatArray,
     tolerance: float,
     max_iterations: int,
 ) -> WithinPoissonModel:
@@ -121,8 +122,11 @@ def fit_within_poisson(
     if (
         x.ndim != 2 or x.shape != (len(y), len(names))
         or exposure.shape != y.shape or groups.shape != y.shape
+        or standardization_weights.shape != y.shape
         or not np.isfinite(y).all() or np.any(y < 0)
         or not np.isfinite(exposure).all() or np.any(exposure < 0)
+        or not np.isfinite(standardization_weights).all()
+        or np.any(standardization_weights < 0)
         or np.isinf(x).any() or tolerance <= 0 or max_iterations <= 0
     ):
         raise ValueError("invalid within-cell Poisson fitting inputs")
@@ -131,6 +135,7 @@ def fit_within_poisson(
     x, y, exposure, groups = (
         x[eligible], y[eligible], exposure[eligible], groups[eligible]
     )
+    standardization_weights = standardization_weights[eligible]
     _, group_index, group_counts = np.unique(
         groups, return_inverse=True, return_counts=True
     )
@@ -139,6 +144,7 @@ def fit_within_poisson(
     x, y, exposure, groups = (
         x[eligible], y[eligible], exposure[eligible], groups[eligible]
     )
+    standardization_weights = standardization_weights[eligible]
     _, group_index, group_counts = np.unique(
         groups, return_inverse=True, return_counts=True
     )
@@ -146,12 +152,12 @@ def fit_within_poisson(
     if n_groups == 0:
         raise ValueError("no informative natural cells for within-cell Poisson")
     observed = ~np.isnan(x)
-    sums = (observed * exposure[:, None]).sum(axis=0)
+    sums = (observed * standardization_weights[:, None]).sum(axis=0)
     if np.any(sums == 0):
         raise ValueError("a covariate has no observed training values")
-    means = np.nansum(x * exposure[:, None], axis=0) / sums
+    means = np.nansum(x * standardization_weights[:, None], axis=0) / sums
     scales = np.sqrt(
-        np.nansum((x - means) ** 2 * exposure[:, None], axis=0) / sums
+        np.nansum((x - means) ** 2 * standardization_weights[:, None], axis=0) / sums
     )
     scales[scales == 0] = 1
     matrix = _design_matrix(x, means, scales)
