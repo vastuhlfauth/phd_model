@@ -1,5 +1,15 @@
 # Landgrid origins
 
+## 2026-11-27 — Step 3 stable-unit census growth factors
+
+- Census measures are summed within connected, year-specific COG units before
+  growth ratios are calculated; per-variable factors use census measures or
+  their denominator.
+- Added individual-growth fallback support for unavailable census bases and
+  fallback-to-individual handling for missing configured measures.
+- Synthetic temporal tests: 16 passed; Ruff passed. No real data was accessed.
+- The end-to-end 2019–2021 temporal test and 2023 grid remain open.
+
 ## 2026-11-27 — Step 3 temporal archive preparation
 
 - Added resumable preparation of the two nested 2019 Filosofi archives using

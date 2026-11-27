@@ -217,6 +217,23 @@ def test_individual_growth_uses_ff_fallback_when_census_base_is_zero() -> None:
     assert fallbacks == {"individual_from_ff": 1}
 
 
+def test_missing_base_measure_can_fall_back_to_individual_growth() -> None:
+    from landgrid.origins.temporal import calculate_growth_factors
+
+    growth, fallbacks = calculate_growth_factors(
+        {"individuals": 100.0, "households": 0.0},
+        {"individuals": 110.0, "households": 5.0},
+        variables=("men",),
+        measure_by_variable={"men": "households"},
+        denominator_by_variable={"men": "households"},
+        observed_years=6,
+        projected_years=2,
+        fallback_missing_to_individual=True,
+    )
+    assert growth["men"] == pytest.approx((1.1) ** (1 / 3))
+    assert fallbacks == {"measure_to_individual": 1}
+
+
 def test_loads_year_specific_edges_from_cog_workbook(tmp_path) -> None:
     from landgrid.origins.temporal import load_cog_passage_edges
 
@@ -290,3 +307,66 @@ def test_builds_stable_units_for_merges_splits_and_chains() -> None:
     assert units.combined_units == {
         "new_a", "new_c1|new_c2", "bridge|new_chain",
     }
+
+
+def test_aggregates_census_growth_over_stable_units_before_ratios() -> None:
+    from landgrid.origins.temporal import build_unit_growth_factors
+
+    source = pa.Table.from_pylist([
+        {
+            "commune_code": "old", "individuals": 10.0, "households": 4.0,
+            "age_child": 3.0,
+        },
+    ])
+    target = pa.Table.from_pylist([
+        {
+            "commune_code": "child_a", "individuals": 12.0, "households": 5.0,
+            "age_child": 3.0,
+        },
+        {
+            "commune_code": "child_b", "individuals": 18.0, "households": 7.0,
+            "age_child": 6.0,
+        },
+    ])
+    mapping = pa.Table.from_pylist([
+        {"commune_code": "old", "unit_id": "unit"},
+        {"commune_code": "child_a", "unit_id": "unit"},
+        {"commune_code": "child_b", "unit_id": "unit"},
+    ])
+    with duckdb.connect() as connection:
+        connection.register("census_source", source)
+        connection.register("census_target", target)
+        connection.register("code_units", mapping)
+        report = build_unit_growth_factors(
+            connection,
+            source_relation="census_source",
+            target_relation="census_target",
+            code_units_relation="code_units",
+            variables=("ind", "men", "age_child", "ind_snv"),
+            measure_by_variable={
+                "ind": "individuals",
+                "men": "households",
+                "age_child": "age_child",
+                "ind_snv": None,
+            },
+            denominator_by_variable={
+                "ind": "households",
+                "men": "households",
+                "age_child": "individuals",
+                "ind_snv": "individuals",
+            },
+            observed_years=2,
+            projected_years=2,
+        )
+        factors = connection.execute(
+            "SELECT * FROM _temporal_growth_factors"
+        ).to_arrow_table().to_pylist()
+
+    assert factors == [{
+        "unit_id": "unit",
+        "ind": 3.0,
+        "men": 3.0,
+        "age_child": 3.0,
+        "ind_snv": 3.0,
+    }]
+    assert report["matched_growth_units"] == 1

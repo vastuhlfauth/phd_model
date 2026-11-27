@@ -114,6 +114,7 @@ def calculate_growth_factors(
     observed_years: float,
     projected_years: float,
     fallback_individual_growth: float | None = None,
+    fallback_missing_to_individual: bool = False,
 ) -> tuple[dict[str, float], dict[str, int]]:
     """Calculate commune growth factors, with approved age and FF fallbacks."""
     variables = tuple(variables)
@@ -174,11 +175,15 @@ def calculate_growth_factors(
             factors[variable] = individual_factor
         else:
             factor = measure_factor(measure)
-            if factor is None and measure in age_measures:
+            if factor is None and (
+                measure in age_measures or fallback_missing_to_individual
+            ):
                 factor = individual_factor
-                fallbacks["age_to_individual"] = (
-                    fallbacks.get("age_to_individual", 0) + 1
+                fallback_name = (
+                    "age_to_individual" if measure in age_measures
+                    else "measure_to_individual"
                 )
+                fallbacks[fallback_name] = fallbacks.get(fallback_name, 0) + 1
             if factor is None:
                 raise ValueError(f"no valid census growth for measure {measure}")
             factors[variable] = factor
@@ -383,6 +388,255 @@ def build_stable_growth_units(
         target_codes_by_unit=target_codes_by_unit,
         combined_units=frozenset(combined_units),
     )
+
+
+def build_unit_growth_factors(
+    connection: duckdb.DuckDBPyConnection,
+    *,
+    source_relation: str,
+    target_relation: str,
+    code_units_relation: str,
+    variables: Sequence[str],
+    measure_by_variable: Mapping[str, str | None],
+    denominator_by_variable: Mapping[str, str],
+    observed_years: float,
+    projected_years: float,
+    fallback_relation: str | None = None,
+    fallback_missing_to_individual: bool = False,
+) -> dict[str, int]:
+    """Aggregate census measures to stable units before computing growth."""
+    variables = tuple(variables)
+    if (
+        not variables
+        or len(variables) != len(set(variables))
+        or set(variables) - set(measure_by_variable)
+        or set(variables) - set(denominator_by_variable)
+        or observed_years <= 0
+        or projected_years <= 0
+        or not math.isfinite(observed_years)
+        or not math.isfinite(projected_years)
+    ):
+        raise ValueError("invalid unit growth inputs")
+    measures = {
+        measure
+        for variable in variables
+        for measure in (
+            measure_by_variable[variable],
+            denominator_by_variable[variable],
+        )
+        if measure is not None
+    } | {"individuals"}
+    quoted_source = _quoted_identifier(source_relation)
+    quoted_target = _quoted_identifier(target_relation)
+    quoted_mapping = _quoted_identifier(code_units_relation)
+    for relation, required in (
+        (quoted_source, {"commune_code", *measures}),
+        (quoted_target, {"commune_code", *measures}),
+        (quoted_mapping, {"commune_code", "unit_id"}),
+    ):
+        available = {
+            str(row[0])
+            for row in connection.execute(
+                f"DESCRIBE SELECT * FROM {relation}"
+            ).fetchall()
+        }
+        missing = required - available
+        if missing:
+            raise ValueError(
+                f"growth input {relation} lacks columns: {', '.join(sorted(missing))}"
+            )
+    duplicate_mapping = connection.execute(
+        f"""
+        SELECT count(*) FROM (
+            SELECT commune_code FROM {quoted_mapping}
+            GROUP BY commune_code HAVING count(*) > 1
+        )
+        """
+    ).fetchone()[0]
+    if duplicate_mapping:
+        raise ValueError("duplicate codes in stable growth-unit mapping")
+    if fallback_relation is not None:
+        quoted_fallback = _quoted_identifier(fallback_relation)
+        fallback_columns = {
+            str(row[0])
+            for row in connection.execute(
+                f"DESCRIBE SELECT * FROM {quoted_fallback}"
+            ).fetchall()
+        }
+        if not {"unit_id", "fallback_individual_growth"}.issubset(
+            fallback_columns
+        ):
+            raise ValueError("FF growth fallback lacks required columns")
+    else:
+        quoted_fallback = None
+
+    source_fields = ",\n".join(
+        f"sum(try_cast(s.{_quoted_identifier(name)} AS DOUBLE)) "
+        f"AS {_quoted_identifier('source_' + name)}"
+        for name in sorted(measures)
+    )
+    target_fields = ",\n".join(
+        f"sum(try_cast(t.{_quoted_identifier(name)} AS DOUBLE)) "
+        f"AS {_quoted_identifier('target_' + name)}"
+        for name in sorted(measures)
+    )
+    connection.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE _temporal_source_units AS
+        SELECT m.unit_id, {source_fields}
+        FROM {quoted_source} s
+        JOIN {quoted_mapping} m USING (commune_code)
+        GROUP BY m.unit_id
+        """
+    )
+    connection.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE _temporal_target_units AS
+        SELECT m.unit_id, {target_fields}
+        FROM {quoted_target} t
+        JOIN {quoted_mapping} m USING (commune_code)
+        GROUP BY m.unit_id
+        """
+    )
+    joined_fields = ",\n".join(
+        f"s.{_quoted_identifier('source_' + name)}, "
+        f"t.{_quoted_identifier('target_' + name)}"
+        for name in sorted(measures)
+    )
+    fallback_join = (
+        f"LEFT JOIN {quoted_fallback} f USING (unit_id)"
+        if quoted_fallback is not None else ""
+    )
+    fallback_field = (
+        "f.fallback_individual_growth"
+        if quoted_fallback is not None else "NULL::DOUBLE"
+    )
+    connection.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE _temporal_growth_inputs AS
+        SELECT coalesce(s.unit_id, t.unit_id) AS unit_id, {joined_fields},
+            {fallback_field} AS fallback_individual_growth
+        FROM _temporal_source_units s
+        FULL OUTER JOIN _temporal_target_units t USING (unit_id)
+        {fallback_join}
+        """
+    )
+
+    exponent = projected_years / observed_years
+
+    def raw_factor(measure: str) -> str:
+        start = _quoted_identifier("source_" + measure)
+        end = _quoted_identifier("target_" + measure)
+        return (
+            f"CASE WHEN isfinite({start}) AND isfinite({end}) "
+            f"AND {start} > 0 AND {end} >= 0 "
+            f"THEN pow({end} / {start}, {exponent!r}) END"
+        )
+
+    individual_raw = raw_factor("individuals")
+    individual_factor = (
+        "coalesce("
+        + individual_raw
+        + ", CASE WHEN isfinite(fallback_individual_growth) "
+        "AND fallback_individual_growth >= 0 "
+        "THEN fallback_individual_growth END)"
+        if quoted_fallback is not None else individual_raw
+    )
+    household_raw = (
+        raw_factor("households") if "households" in measures else "NULL::DOUBLE"
+    )
+    household_factor = (
+        f"coalesce({household_raw}, {individual_factor})"
+        if fallback_missing_to_individual else household_raw
+    )
+
+    age_measures = {
+        "age_0_5", "age_6_10", "age_11_17", "age_18_24",
+        "age_25_39", "age_40_54", "age_55_64", "age_65_79", "age_80p",
+    }
+
+    def factor_for_measure(measure: str) -> str:
+        if measure == "individuals":
+            return individual_factor
+        if measure == "households":
+            return household_factor
+        factor = raw_factor(measure)
+        if measure in age_measures or fallback_missing_to_individual:
+            return f"coalesce({factor}, {individual_factor})"
+        return factor
+
+    def factor_for_variable(variable: str) -> str:
+        measure = measure_by_variable[variable]
+        if measure is None:
+            measure = denominator_by_variable[variable]
+        return (
+            f"{factor_for_measure(measure)} "
+            f"AS {_quoted_identifier(variable)}"
+        )
+
+    factor_fields = ",\n".join(
+        factor_for_variable(variable) for variable in variables
+    )
+    connection.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE _temporal_growth_candidates AS
+        SELECT unit_id, {factor_fields}
+        FROM _temporal_growth_inputs
+        """
+    )
+    invalid_factors = " OR ".join(
+        f"{_quoted_identifier(variable)} IS NULL "
+        f"OR NOT isfinite({_quoted_identifier(variable)}) "
+        f"OR {_quoted_identifier(variable)} < 0"
+        for variable in variables
+    )
+    connection.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE _temporal_growth_factors AS
+        SELECT * FROM _temporal_growth_candidates
+        WHERE NOT ({invalid_factors})
+        """
+    )
+    invalid_units = int(connection.execute(
+        f"""
+        SELECT count(*) FROM _temporal_growth_candidates
+        WHERE {invalid_factors}
+        """
+    ).fetchone()[0])
+    matched_units = int(connection.execute(
+        "SELECT count(*) FROM _temporal_growth_factors"
+    ).fetchone()[0])
+    unmatched_source_codes = int(connection.execute(
+        f"""
+        SELECT count(*) FROM {quoted_source} s
+        LEFT JOIN {quoted_mapping} m USING (commune_code)
+        WHERE m.unit_id IS NULL
+        """
+    ).fetchone()[0])
+    unmatched_target_codes = int(connection.execute(
+        f"""
+        SELECT count(*) FROM {quoted_target} t
+        LEFT JOIN {quoted_mapping} m USING (commune_code)
+        WHERE m.unit_id IS NULL
+        """
+    ).fetchone()[0])
+    individual_fallback_units = 0
+    if quoted_fallback is not None:
+        individual_fallback_units = int(connection.execute(
+            f"""
+            SELECT count(*) FROM _temporal_growth_inputs
+            WHERE ({individual_raw}) IS NULL
+                AND isfinite(fallback_individual_growth)
+                AND fallback_individual_growth >= 0
+            """
+        ).fetchone()[0])
+    return {
+        "matched_growth_units": matched_units,
+        "incomplete_growth_units": invalid_units,
+        "unmatched_source_codes": unmatched_source_codes,
+        "unmatched_target_codes": unmatched_target_codes,
+        "individual_from_ff_units": individual_fallback_units,
+    }
 
 
 def allocate_commune_controls(
